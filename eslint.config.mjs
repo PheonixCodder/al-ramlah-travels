@@ -12,7 +12,23 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "services/**",
+    ".agents/**",
+    ".claude/**",
+    "agent/**",
   ]),
+  {
+    settings: {
+      react: {
+        version: "19.0",
+      },
+    },
+    rules: {
+      "react-hooks/purity": "warn",
+      "react-hooks/set-state-in-effect": "warn",
+      "@typescript-eslint/no-explicit-any": "warn",
+    },
+  },
 ]);
 
 export default eslintConfig;

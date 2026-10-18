@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { eq } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import { db } from "@/db"
 import {
   airlines,
@@ -9,30 +9,43 @@ import {
   hotels,
   vehicles,
   transportSectors,
+  transportRates,
   ziyaratPlaces,
   visaRates,
   agencySettings,
   user,
-  account,
 } from "@/db/schema"
 import { requireAdmin, requireSuperAdmin } from "@/lib/auth-guard"
+import { auth } from "@/lib/auth"
 import {
   hotelSchema,
   vehicleSchema,
   transportSectorSchema,
+  transportRateSchema,
   ziyaratPlaceSchema,
   airlineSchema,
   departureCitySchema,
+  createStaffUserSchema,
 } from "@/lib/validations/catalog"
 import { z } from "zod"
-import { randomUUID } from "node:crypto"
+
+function isForeignKeyError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false
+  const errorObj = err as { code?: string; message?: string }
+  return (
+    errorObj.code === "23503" ||
+    (typeof errorObj.message === "string" &&
+      (errorObj.message.includes("foreign key") ||
+        errorObj.message.includes("violates foreign key constraint")))
+  )
+}
 
 // ==========================================
 // HOTELS ACTIONS
 // ==========================================
 
 export async function upsertHotel(rawInput: unknown) {
-  const session = await requireAdmin()
+  await requireAdmin()
   const validated = hotelSchema.parse(rawInput)
 
   if (validated.id) {
@@ -51,8 +64,14 @@ export async function upsertHotel(rawInput: unknown) {
         allowsSharedRooms: validated.allowsSharedRooms,
         allowsPrivateRooms: validated.allowsPrivateRooms,
         availableRoomTypes: validated.availableRoomTypes,
-        offersDining: validated.offersDining,
-        availableMealPlans: validated.availableMealPlans,
+        sharingPriceSar: validated.sharingPriceSar,
+        roomPriceSar: validated.roomPriceSar,
+        quadPriceSar: validated.quadPriceSar,
+        triplePriceSar: validated.triplePriceSar,
+        doublePriceSar: validated.doublePriceSar,
+        validFrom: validated.validFrom ?? null,
+        validUntil: validated.validUntil ?? null,
+        locationNotes: validated.locationNotes ?? null,
         isFeatured: validated.isFeatured,
         isActive: validated.isActive,
         sortOrder: validated.sortOrder,
@@ -80,8 +99,14 @@ export async function upsertHotel(rawInput: unknown) {
         allowsSharedRooms: validated.allowsSharedRooms,
         allowsPrivateRooms: validated.allowsPrivateRooms,
         availableRoomTypes: validated.availableRoomTypes,
-        offersDining: validated.offersDining,
-        availableMealPlans: validated.availableMealPlans,
+        sharingPriceSar: validated.sharingPriceSar,
+        roomPriceSar: validated.roomPriceSar,
+        quadPriceSar: validated.quadPriceSar,
+        triplePriceSar: validated.triplePriceSar,
+        doublePriceSar: validated.doublePriceSar,
+        validFrom: validated.validFrom ?? null,
+        validUntil: validated.validUntil ?? null,
+        locationNotes: validated.locationNotes ?? null,
         isFeatured: validated.isFeatured,
         isActive: validated.isActive,
         sortOrder: validated.sortOrder,
@@ -108,10 +133,32 @@ export async function toggleHotelActive(id: string, isActive: boolean) {
 
 export async function deleteHotel(id: string) {
   await requireAdmin()
-  await db.delete(hotels).where(eq(hotels.id, id))
-  revalidatePath("/admin/hotels")
-  revalidatePath("/")
-  return { success: true }
+  try {
+    await db.delete(hotels).where(eq(hotels.id, id))
+    revalidatePath("/admin/hotels")
+    revalidatePath("/")
+    return { success: true }
+  } catch (err: unknown) {
+    if (isForeignKeyError(err)) {
+      try {
+        await db
+          .update(hotels)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(hotels.id, id))
+        revalidatePath("/admin/hotels")
+        revalidatePath("/")
+      } catch {}
+      return {
+        success: false,
+        error:
+          "This hotel is referenced by existing pilgrim applications or packages and cannot be permanently deleted. It has been deactivated instead.",
+      }
+    }
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to delete hotel.",
+    }
+  }
 }
 
 // ==========================================
@@ -132,6 +179,8 @@ export async function upsertVehicle(rawInput: unknown) {
         seatCapacity: validated.seatCapacity,
         luggageCapacity: validated.luggageCapacity,
         allowsCustomPickupTime: validated.allowsCustomPickupTime,
+        defaultRateSar: validated.defaultRateSar,
+        ziyaratRateSar: validated.ziyaratRateSar,
         imageUrl: validated.imageUrl || null,
         description: validated.description || null,
         isActive: validated.isActive,
@@ -154,6 +203,8 @@ export async function upsertVehicle(rawInput: unknown) {
         seatCapacity: validated.seatCapacity,
         luggageCapacity: validated.luggageCapacity,
         allowsCustomPickupTime: validated.allowsCustomPickupTime,
+        defaultRateSar: validated.defaultRateSar,
+        ziyaratRateSar: validated.ziyaratRateSar,
         imageUrl: validated.imageUrl || null,
         description: validated.description || null,
         isActive: validated.isActive,
@@ -181,10 +232,32 @@ export async function toggleVehicleActive(id: string, isActive: boolean) {
 
 export async function deleteVehicle(id: string) {
   await requireAdmin()
-  await db.delete(vehicles).where(eq(vehicles.id, id))
-  revalidatePath("/admin/transport")
-  revalidatePath("/")
-  return { success: true }
+  try {
+    await db.delete(vehicles).where(eq(vehicles.id, id))
+    revalidatePath("/admin/transport")
+    revalidatePath("/")
+    return { success: true }
+  } catch (err: unknown) {
+    if (isForeignKeyError(err)) {
+      try {
+        await db
+          .update(vehicles)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(vehicles.id, id))
+        revalidatePath("/admin/transport")
+        revalidatePath("/")
+      } catch {}
+      return {
+        success: false,
+        error:
+          "This vehicle is referenced by existing transport rates or bookings and cannot be permanently deleted. It has been deactivated instead.",
+      }
+    }
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to delete vehicle.",
+    }
+  }
 }
 
 export async function upsertTransportSector(rawInput: unknown) {
@@ -202,6 +275,9 @@ export async function upsertTransportSector(rawInput: unknown) {
         originType: validated.originType,
         destinationType: validated.destinationType,
         supportsTrain: validated.supportsTrain,
+        sharedBusRateSarPerPax: validated.sharedBusRateSarPerPax,
+        isSharedBusEligible: validated.isSharedBusEligible,
+        terminalParkingFeeSar: validated.terminalParkingFeeSar,
         approxDistanceKm: validated.approxDistanceKm ?? null,
         approxDurationMinutes: validated.approxDurationMinutes ?? null,
         isActive: validated.isActive,
@@ -225,6 +301,9 @@ export async function upsertTransportSector(rawInput: unknown) {
         originType: validated.originType,
         destinationType: validated.destinationType,
         supportsTrain: validated.supportsTrain,
+        sharedBusRateSarPerPax: validated.sharedBusRateSarPerPax,
+        isSharedBusEligible: validated.isSharedBusEligible,
+        terminalParkingFeeSar: validated.terminalParkingFeeSar,
         approxDistanceKm: validated.approxDistanceKm ?? null,
         approxDurationMinutes: validated.approxDurationMinutes ?? null,
         isActive: validated.isActive,
@@ -252,10 +331,119 @@ export async function toggleSectorActive(id: string, isActive: boolean) {
 
 export async function deleteTransportSector(id: string) {
   await requireAdmin()
-  await db.delete(transportSectors).where(eq(transportSectors.id, id))
+  try {
+    await db.delete(transportSectors).where(eq(transportSectors.id, id))
+    revalidatePath("/admin/transport")
+    revalidatePath("/")
+    return { success: true }
+  } catch (err: unknown) {
+    if (isForeignKeyError(err)) {
+      try {
+        await db
+          .update(transportSectors)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(transportSectors.id, id))
+        revalidatePath("/admin/transport")
+        revalidatePath("/")
+      } catch {}
+      return {
+        success: false,
+        error:
+          "This transport sector is referenced by existing transport rates or itineraries and cannot be permanently deleted. It has been deactivated instead.",
+      }
+    }
+    return {
+      success: false,
+      error:
+        err instanceof Error ? err.message : "Failed to delete transport sector.",
+    }
+  }
+}
+
+// ==========================================
+// 2D ROUTE SECTOR × VEHICLE RATE ACTIONS
+// ==========================================
+
+export async function upsertTransportRate(rawInput: unknown) {
+  await requireAdmin()
+  const validated = transportRateSchema.parse(rawInput)
+
+  // Look for existing rate by ID or by sectorId + vehicleId
+  if (validated.id) {
+    const [updated] = await db
+      .update(transportRates)
+      .set({
+        rateSar: validated.rateSar,
+        ratePkrOverride: validated.ratePkrOverride ?? null,
+        notes: validated.notes ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(transportRates.id, validated.id))
+      .returning()
+
+    revalidatePath("/admin/transport")
+    revalidatePath("/")
+    return { success: true, data: updated }
+  }
+
+  const [existing] = await db
+    .select({ id: transportRates.id })
+    .from(transportRates)
+    .where(
+      and(
+        eq(transportRates.sectorId, validated.sectorId),
+        eq(transportRates.vehicleId, validated.vehicleId)
+      )
+    )
+    .limit(1)
+
+  if (existing) {
+    const [updated] = await db
+      .update(transportRates)
+      .set({
+        rateSar: validated.rateSar,
+        ratePkrOverride: validated.ratePkrOverride ?? null,
+        notes: validated.notes ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(transportRates.id, existing.id))
+      .returning()
+
+    revalidatePath("/admin/transport")
+    revalidatePath("/")
+    return { success: true, data: updated }
+  }
+
+  const [inserted] = await db
+    .insert(transportRates)
+    .values({
+      sectorId: validated.sectorId,
+      vehicleId: validated.vehicleId,
+      rateSar: validated.rateSar,
+      ratePkrOverride: validated.ratePkrOverride ?? null,
+      notes: validated.notes ?? null,
+    })
+    .returning()
+
   revalidatePath("/admin/transport")
   revalidatePath("/")
-  return { success: true }
+  return { success: true, data: inserted }
+}
+
+export async function deleteTransportRate(id: string) {
+  await requireAdmin()
+  try {
+    await db.delete(transportRates).where(eq(transportRates.id, id))
+    revalidatePath("/admin/transport")
+    revalidatePath("/")
+    return { success: true }
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error:
+        err instanceof Error ? err.message : "Failed to delete transport rate.",
+    }
+  }
 }
 
 // ==========================================
@@ -319,10 +507,33 @@ export async function toggleZiyaratActive(id: string, isActive: boolean) {
 
 export async function deleteZiyaratPlace(id: string) {
   await requireAdmin()
-  await db.delete(ziyaratPlaces).where(eq(ziyaratPlaces.id, id))
-  revalidatePath("/admin/ziyarat")
-  revalidatePath("/")
-  return { success: true }
+  try {
+    await db.delete(ziyaratPlaces).where(eq(ziyaratPlaces.id, id))
+    revalidatePath("/admin/ziyarat")
+    revalidatePath("/")
+    return { success: true }
+  } catch (err: unknown) {
+    if (isForeignKeyError(err)) {
+      try {
+        await db
+          .update(ziyaratPlaces)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(ziyaratPlaces.id, id))
+        revalidatePath("/admin/ziyarat")
+        revalidatePath("/")
+      } catch {}
+      return {
+        success: false,
+        error:
+          "This Ziyarat site is referenced by existing pilgrimage itineraries and cannot be permanently deleted. It has been deactivated instead.",
+      }
+    }
+    return {
+      success: false,
+      error:
+        err instanceof Error ? err.message : "Failed to delete Ziyarat place.",
+    }
+  }
 }
 
 // ==========================================
@@ -386,10 +597,33 @@ export async function toggleAirlineActive(id: string, isActive: boolean) {
 
 export async function deleteAirline(id: string) {
   await requireAdmin()
-  await db.delete(airlines).where(eq(airlines.id, id))
-  revalidatePath("/admin/flights")
-  revalidatePath("/")
-  return { success: true }
+  try {
+    await db.delete(airlines).where(eq(airlines.id, id))
+    revalidatePath("/admin/flights")
+    revalidatePath("/")
+    return { success: true }
+  } catch (err: unknown) {
+    if (isForeignKeyError(err)) {
+      try {
+        await db
+          .update(airlines)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(airlines.id, id))
+        revalidatePath("/admin/flights")
+        revalidatePath("/")
+      } catch {}
+      return {
+        success: false,
+        error:
+          "This airline is referenced by existing packages or flights and cannot be permanently deleted. It has been deactivated instead.",
+      }
+    }
+    return {
+      success: false,
+      error:
+        err instanceof Error ? err.message : "Failed to delete airline.",
+    }
+  }
 }
 
 export async function upsertDepartureCity(rawInput: unknown) {
@@ -445,10 +679,33 @@ export async function toggleDepartureCityActive(id: string, isActive: boolean) {
 
 export async function deleteDepartureCity(id: string) {
   await requireAdmin()
-  await db.delete(departureCities).where(eq(departureCities.id, id))
-  revalidatePath("/admin/flights")
-  revalidatePath("/")
-  return { success: true }
+  try {
+    await db.delete(departureCities).where(eq(departureCities.id, id))
+    revalidatePath("/admin/flights")
+    revalidatePath("/")
+    return { success: true }
+  } catch (err: unknown) {
+    if (isForeignKeyError(err)) {
+      try {
+        await db
+          .update(departureCities)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(departureCities.id, id))
+        revalidatePath("/admin/flights")
+        revalidatePath("/")
+      } catch {}
+      return {
+        success: false,
+        error:
+          "This departure city is referenced by departure batches or pilgrim applications and cannot be permanently deleted. It has been deactivated instead.",
+      }
+    }
+    return {
+      success: false,
+      error:
+        err instanceof Error ? err.message : "Failed to delete departure city.",
+    }
+  }
 }
 
 // ==========================================
@@ -458,8 +715,14 @@ export async function deleteDepartureCity(id: string) {
 const updateVisaRateSchema = z.object({
   id: z.string().uuid(),
   pricePkr: z.number().int().min(0),
+  priceSar: z.number().int().min(0).default(470),
+  withoutMasarPriceSar: z.number().int().min(0).default(470),
+  withMasar10DaysSar: z.number().int().min(0).default(500),
+  withMasar15DaysSar: z.number().int().min(0).default(515),
+  withMasar21DaysSar: z.number().int().min(0).default(530),
+  withMasar28DaysSar: z.number().int().min(0).default(545),
   label: z.string().min(1).optional(),
-  notes: z.string().optional(),
+  notes: z.string().optional().nullable(),
 })
 
 export async function updateVisaRate(rawInput: unknown) {
@@ -470,6 +733,12 @@ export async function updateVisaRate(rawInput: unknown) {
     .update(visaRates)
     .set({
       pricePkr: validated.pricePkr,
+      priceSar: validated.priceSar,
+      withoutMasarPriceSar: validated.withoutMasarPriceSar,
+      withMasar10DaysSar: validated.withMasar10DaysSar,
+      withMasar15DaysSar: validated.withMasar15DaysSar,
+      withMasar21DaysSar: validated.withMasar21DaysSar,
+      withMasar28DaysSar: validated.withMasar28DaysSar,
       ...(validated.label ? { label: validated.label } : {}),
       notes: validated.notes ?? null,
       updatedByUserId: session.user.id,
@@ -487,7 +756,7 @@ export async function updateVisaRate(rawInput: unknown) {
 // AGENCY SETTINGS ACTIONS
 // ==========================================
 
-const agencySettingsSchema = z.object({
+const agencySettingsActionSchema = z.object({
   agencyName: z.string().min(2),
   tagline: z.string().min(2),
   primaryWhatsapp: z.string().min(7),
@@ -501,11 +770,12 @@ const agencySettingsSchema = z.object({
   tiktokUrl: z.string().optional().or(z.literal("")),
   workingHours: z.string().min(3),
   slaOverdueHours: z.number().int().min(1).max(168),
+  sarToPkrRate: z.number().int().min(1).default(75),
 })
 
 export async function updateAgencySettings(rawInput: unknown) {
   const session = await requireAdmin()
-  const validated = agencySettingsSchema.parse(rawInput)
+  const validated = agencySettingsActionSchema.parse(rawInput)
 
   const existing = await db
     .select({ id: agencySettings.id })
@@ -560,17 +830,11 @@ export async function updateAgencySettings(rawInput: unknown) {
 // ADMIN USER / STAFF MANAGEMENT ACTIONS
 // ==========================================
 
-const createStaffUserSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
-  role: z.enum(["super_admin", "staff"]).default("staff"),
-})
-
 export async function createStaffUser(rawInput: unknown) {
   await requireSuperAdmin()
   const validated = createStaffUserSchema.parse(rawInput)
 
-  // Check if user with email already exists
+  // 1. Check if user with email already exists in DB
   const [existing] = await db
     .select({ id: user.id })
     .from(user)
@@ -581,21 +845,35 @@ export async function createStaffUser(rawInput: unknown) {
     throw new Error("A user with this email address already exists")
   }
 
-  const newUserId = randomUUID()
-  const [newUser] = await db
-    .insert(user)
-    .values({
-      id: newUserId,
-      name: validated.name,
-      email: validated.email.toLowerCase(),
+  // 2. Call Better Auth signUpEmail (without passing headers to keep current admin's session intact)
+  try {
+    await auth.api.signUpEmail({
+      body: {
+        name: validated.name,
+        email: validated.email.toLowerCase(),
+        password: validated.password,
+      },
+    })
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Failed to initialize staff account"
+    throw new Error(message)
+  }
+
+  // 3. Ensure role, active status, and verified email are set on the created record
+  const [updatedUser] = await db
+    .update(user)
+    .set({
       role: validated.role,
       isActive: true,
       emailVerified: true,
+      updatedAt: new Date(),
     })
+    .where(eq(user.email, validated.email.toLowerCase()))
     .returning()
 
   revalidatePath("/admin/users")
-  return { success: true, data: newUser }
+  return { success: true, data: updatedUser }
 }
 
 export async function toggleUserActive(userId: string, isActive: boolean) {

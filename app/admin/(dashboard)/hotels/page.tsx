@@ -2,6 +2,7 @@ import * as React from "react"
 import { db } from "@/db"
 import { hotels } from "@/db/schema"
 import { asc } from "drizzle-orm"
+import { requireAdmin } from "@/lib/auth-guard"
 import { HotelsClient } from "@/components/admin/catalog/hotels-client"
 
 export const metadata = {
@@ -9,6 +10,8 @@ export const metadata = {
 }
 
 export default async function AdminHotelsPage() {
+  await requireAdmin()
+
   const allHotels = await db
     .select()
     .from(hotels)

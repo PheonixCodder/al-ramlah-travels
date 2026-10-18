@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition } from "react"
+import { useState } from "react"
 import { updateVisaRate } from "@/app/actions/catalog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,13 +10,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import {
   FileCheck,
-  ShieldCheck,
-  Calendar,
-  AlertCircle,
   Save,
   Loader2,
   CheckCircle2,
   Info,
+  Coins,
+  ShieldAlert,
 } from "lucide-react"
 
 export interface VisaRateData {
@@ -25,6 +24,12 @@ export interface VisaRateData {
   label: string
   maxDays: number
   pricePkr: number
+  priceSar: number
+  withoutMasarPriceSar: number
+  withMasar10DaysSar: number
+  withMasar15DaysSar: number
+  withMasar21DaysSar: number
+  withMasar28DaysSar: number
   notes?: string | null
   updatedAt: Date | string
 }
@@ -53,6 +58,12 @@ export function VisaClient({ initialRates }: VisaClientProps) {
       await updateVisaRate({
         id: rate.id,
         pricePkr: rate.pricePkr,
+        priceSar: rate.priceSar ?? 470,
+        withoutMasarPriceSar: rate.withoutMasarPriceSar ?? 470,
+        withMasar10DaysSar: rate.withMasar10DaysSar ?? 500,
+        withMasar15DaysSar: rate.withMasar15DaysSar ?? 515,
+        withMasar21DaysSar: rate.withMasar21DaysSar ?? 530,
+        withMasar28DaysSar: rate.withMasar28DaysSar ?? 545,
         label: rate.label,
         notes: rate.notes || undefined,
       })
@@ -69,7 +80,7 @@ export function VisaClient({ initialRates }: VisaClientProps) {
     }
   }
 
-  function updateField(id: string, field: keyof VisaRateData, val: any) {
+  function updateField(id: string, field: keyof VisaRateData, val: unknown) {
     setRates((prev) =>
       prev.map((r) => (r.id === id ? { ...r, [field]: val } : r))
     )
@@ -83,7 +94,7 @@ export function VisaClient({ initialRates }: VisaClientProps) {
           Visa Pricing & Regulations
         </h1>
         <p className="text-sm text-muted-foreground">
-          Configure Saudi Ministry of Hajj & Umrah electronic tourist/umrah visa fees per pilgrim passport.
+          Configure Saudi Ministry of Hajj & Umrah electronic tourist/umrah visa fees, SAR base costs, and Masar platform ground duration tiers.
         </p>
       </div>
 
@@ -123,8 +134,8 @@ export function VisaClient({ initialRates }: VisaClientProps) {
                     </span>
                   </div>
                 </div>
-                <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-xs">
-                  $\le 30$ Days
+                <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-xs font-semibold">
+                  &le; 30 Days
                 </Badge>
               </div>
 
@@ -150,7 +161,7 @@ export function VisaClient({ initialRates }: VisaClientProps) {
 
                 <div className="space-y-1.5">
                   <Label htmlFor="st-price" className="text-xs font-semibold">
-                    Rate per Passport (PKR)
+                    Customer Guaranteed Rate (PKR)
                   </Label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
@@ -173,13 +184,123 @@ export function VisaClient({ initialRates }: VisaClientProps) {
                   </div>
                 </div>
 
+                {/* Masar Ground & Base SAR Rates Matrix */}
+                <div className="rounded-lg border border-gold/40 bg-card p-3 space-y-2.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground border-b border-border/60 pb-1.5">
+                    <Coins className="size-3.5 text-gold" />
+                    <span>Masar Platform & Ministry SAR Cost Breakdown</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="space-y-1">
+                      <Label htmlFor="st-without-masar" className="text-[11px]">
+                        Without Masar (SAR)
+                      </Label>
+                      <Input
+                        id="st-without-masar"
+                        type="number"
+                        min={0}
+                        value={shortTerm.withoutMasarPriceSar ?? 470}
+                        onChange={(e) =>
+                          updateField(
+                            shortTerm.id,
+                            "withoutMasarPriceSar",
+                            Number(e.target.value)
+                          )
+                        }
+                        className="h-8 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="st-with-masar-10" className="text-[11px]">
+                        With Masar 10-Days (SAR)
+                      </Label>
+                      <Input
+                        id="st-with-masar-10"
+                        type="number"
+                        min={0}
+                        value={shortTerm.withMasar10DaysSar ?? 500}
+                        onChange={(e) =>
+                          updateField(
+                            shortTerm.id,
+                            "withMasar10DaysSar",
+                            Number(e.target.value)
+                          )
+                        }
+                        className="h-8 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="st-with-masar-15" className="text-[11px]">
+                        With Masar 15-Days (SAR)
+                      </Label>
+                      <Input
+                        id="st-with-masar-15"
+                        type="number"
+                        min={0}
+                        value={shortTerm.withMasar15DaysSar ?? 515}
+                        onChange={(e) =>
+                          updateField(
+                            shortTerm.id,
+                            "withMasar15DaysSar",
+                            Number(e.target.value)
+                          )
+                        }
+                        className="h-8 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="st-with-masar-21" className="text-[11px]">
+                        With Masar 21-Days (SAR)
+                      </Label>
+                      <Input
+                        id="st-with-masar-21"
+                        type="number"
+                        min={0}
+                        value={shortTerm.withMasar21DaysSar ?? 530}
+                        onChange={(e) =>
+                          updateField(
+                            shortTerm.id,
+                            "withMasar21DaysSar",
+                            Number(e.target.value)
+                          )
+                        }
+                        className="h-8 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="col-span-2 space-y-1">
+                      <Label htmlFor="st-with-masar-28" className="text-[11px]">
+                        With Masar 28-Days (SAR)
+                      </Label>
+                      <Input
+                        id="st-with-masar-28"
+                        type="number"
+                        min={0}
+                        value={shortTerm.withMasar28DaysSar ?? 545}
+                        onChange={(e) =>
+                          updateField(
+                            shortTerm.id,
+                            "withMasar28DaysSar",
+                            Number(e.target.value)
+                          )
+                        }
+                        className="h-8 font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-1.5">
                   <Label htmlFor="st-notes" className="text-xs">
                     Customer Disclaimers & Inclusions
                   </Label>
                   <Textarea
                     id="st-notes"
-                    rows={3}
+                    rows={2}
                     value={shortTerm.notes ?? ""}
                     onChange={(e) =>
                       updateField(shortTerm.id, "notes", e.target.value)
@@ -197,7 +318,7 @@ export function VisaClient({ initialRates }: VisaClientProps) {
               <Button
                 onClick={() => handleSave(shortTerm)}
                 disabled={savingId === shortTerm.id}
-                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
               >
                 {savingId === shortTerm.id ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -234,8 +355,8 @@ export function VisaClient({ initialRates }: VisaClientProps) {
                     </span>
                   </div>
                 </div>
-                <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-xs">
-                  $&gt; 30$ Days
+                <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-xs font-semibold">
+                  &gt; 30 Days
                 </Badge>
               </div>
 
@@ -261,7 +382,7 @@ export function VisaClient({ initialRates }: VisaClientProps) {
 
                 <div className="space-y-1.5">
                   <Label htmlFor="lt-price" className="text-xs font-semibold">
-                    Rate per Passport (PKR)
+                    Customer Guaranteed Rate (PKR)
                   </Label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
@@ -284,13 +405,123 @@ export function VisaClient({ initialRates }: VisaClientProps) {
                   </div>
                 </div>
 
+                {/* Masar Ground & Base SAR Rates Matrix */}
+                <div className="rounded-lg border border-gold/40 bg-card p-3 space-y-2.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground border-b border-border/60 pb-1.5">
+                    <Coins className="size-3.5 text-gold" />
+                    <span>Masar Platform & Ministry SAR Cost Breakdown</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="space-y-1">
+                      <Label htmlFor="lt-without-masar" className="text-[11px]">
+                        Without Masar (SAR)
+                      </Label>
+                      <Input
+                        id="lt-without-masar"
+                        type="number"
+                        min={0}
+                        value={longTerm.withoutMasarPriceSar ?? 470}
+                        onChange={(e) =>
+                          updateField(
+                            longTerm.id,
+                            "withoutMasarPriceSar",
+                            Number(e.target.value)
+                          )
+                        }
+                        className="h-8 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="lt-with-masar-10" className="text-[11px]">
+                        With Masar 10-Days (SAR)
+                      </Label>
+                      <Input
+                        id="lt-with-masar-10"
+                        type="number"
+                        min={0}
+                        value={longTerm.withMasar10DaysSar ?? 500}
+                        onChange={(e) =>
+                          updateField(
+                            longTerm.id,
+                            "withMasar10DaysSar",
+                            Number(e.target.value)
+                          )
+                        }
+                        className="h-8 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="lt-with-masar-15" className="text-[11px]">
+                        With Masar 15-Days (SAR)
+                      </Label>
+                      <Input
+                        id="lt-with-masar-15"
+                        type="number"
+                        min={0}
+                        value={longTerm.withMasar15DaysSar ?? 515}
+                        onChange={(e) =>
+                          updateField(
+                            longTerm.id,
+                            "withMasar15DaysSar",
+                            Number(e.target.value)
+                          )
+                        }
+                        className="h-8 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="lt-with-masar-21" className="text-[11px]">
+                        With Masar 21-Days (SAR)
+                      </Label>
+                      <Input
+                        id="lt-with-masar-21"
+                        type="number"
+                        min={0}
+                        value={longTerm.withMasar21DaysSar ?? 530}
+                        onChange={(e) =>
+                          updateField(
+                            longTerm.id,
+                            "withMasar21DaysSar",
+                            Number(e.target.value)
+                          )
+                        }
+                        className="h-8 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="col-span-2 space-y-1">
+                      <Label htmlFor="lt-with-masar-28" className="text-[11px]">
+                        With Masar 28-Days (SAR)
+                      </Label>
+                      <Input
+                        id="lt-with-masar-28"
+                        type="number"
+                        min={0}
+                        value={longTerm.withMasar28DaysSar ?? 545}
+                        onChange={(e) =>
+                          updateField(
+                            longTerm.id,
+                            "withMasar28DaysSar",
+                            Number(e.target.value)
+                          )
+                        }
+                        className="h-8 font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-1.5">
                   <Label htmlFor="lt-notes" className="text-xs">
                     Customer Disclaimers & Inclusions
                   </Label>
                   <Textarea
                     id="lt-notes"
-                    rows={3}
+                    rows={2}
                     value={longTerm.notes ?? ""}
                     onChange={(e) =>
                       updateField(longTerm.id, "notes", e.target.value)
@@ -308,7 +539,7 @@ export function VisaClient({ initialRates }: VisaClientProps) {
               <Button
                 onClick={() => handleSave(longTerm)}
                 disabled={savingId === longTerm.id}
-                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
               >
                 {savingId === longTerm.id ? (
                   <Loader2 className="size-4 animate-spin" />

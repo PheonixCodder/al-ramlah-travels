@@ -33,7 +33,7 @@ const DEFAULT_SLIDES: PublicHeroSlide[] = [
     badge: "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
     title: "Sacred Journeys Crafted with Dignity & Comfort",
     subtitle:
-      "Bespoke Umrah planning, licensed Ministry rates, 50-meter courtyard hotels, and private chauffeured GMC transfers across the Haramain.",
+      "Bespoke Umrah planning, licensed Ministry rates, 50-meter courtyard hotels, and private GMC transfers across the Haramain.",
     imageUrl:
       "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=85&w=1920",
     primaryCtaLabel: "Build Custom Umrah Journey",
@@ -135,6 +135,7 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
             <div className="flex flex-wrap items-center gap-4 pt-2">
               <Button
                 size="lg"
+                nativeButton={false}
                 render={<Link href={slide.primaryCtaUrl} />}
                 className="gap-2 bg-gold px-7 py-3 text-sm sm:text-base font-bold text-emerald-950 hover:bg-gold/90 shadow-lg shadow-gold/20"
               >
@@ -146,6 +147,7 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
                 <Button
                   size="lg"
                   variant="outline"
+                  nativeButton={false}
                   render={<Link href={slide.secondaryCtaUrl} />}
                   className="border-white/30 bg-white/10 px-6 py-3 text-sm sm:text-base font-medium text-white backdrop-blur-xs hover:bg-white/20 hover:text-white"
                 >

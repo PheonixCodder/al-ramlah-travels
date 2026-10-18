@@ -19,7 +19,6 @@ import {
   Settings,
   ExternalLink,
   LogOut,
-  Shield,
 } from "lucide-react"
 
 import {
@@ -37,6 +36,7 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
+import { authClient } from "@/lib/auth-client"
 
 interface NavItem {
   title: string
@@ -65,14 +65,12 @@ const NAV_GROUPS: NavGroup[] = [
         title: "Applications & Quotes",
         href: "/admin/applications",
         icon: FileText,
-        badge: "12",
         badgeClass: "bg-amber-500/25 text-amber-200 border border-amber-500/40",
       },
       {
         title: "Contact Inbox",
         href: "/admin/messages",
         icon: Inbox,
-        badge: "3",
         badgeClass:
           "bg-emerald-500/25 text-emerald-200 border border-emerald-500/40",
       },
@@ -141,18 +139,37 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
+export interface AdminSidebarUser {
+  name?: string | null
+  email?: string | null
+  role?: string | null
+}
+
 export interface AdminSidebarProps
   extends React.ComponentProps<typeof Sidebar> {
+  user?: AdminSidebarUser
   pendingQuotesCount?: number
   unreadMessagesCount?: number
 }
 
 export function AdminSidebar({
+  user,
   pendingQuotesCount,
   unreadMessagesCount,
   ...props
 }: AdminSidebarProps) {
   const pathname = usePathname()
+
+  const handleSignOut = async () => {
+    try {
+      await authClient.signOut()
+    } catch (err) {
+      console.error("Sign out error:", err)
+    }
+    window.location.href = "/admin/login"
+  }
+
+  const isSuperAdmin = user?.role === "super_admin"
 
   return (
     <Sidebar
@@ -165,7 +182,7 @@ export function AdminSidebar({
         <div className="flex items-center gap-3">
           <div className="relative size-10 shrink-0 overflow-hidden rounded-lg border border-gold/40 bg-card p-1 shadow-xs">
             <Image
-              src="/logo-icon.png"
+              src="/logo.jpg"
               alt="Al Ramlah Travels Emblem"
               width={36}
               height={36}
@@ -193,52 +210,55 @@ export function AdminSidebar({
 
       {/* Sidebar Content: 4 Navigation Groups */}
       <SidebarContent className="gap-2 px-2 py-2">
-        {NAV_GROUPS.map((group) => (
-          <SidebarGroup key={group.groupLabel} className="p-0">
-            <SidebarGroupLabel className="px-2 text-[11px] font-semibold tracking-wider text-sidebar-foreground/50 uppercase group-data-[collapsible=icon]:hidden">
-              {group.groupLabel}
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {group.items.map((item) => {
-                  const isActive =
-                    item.href === "/admin"
-                      ? pathname === "/admin"
-                      : pathname?.startsWith(item.href)
+        {NAV_GROUPS.map((group) => {
+          // Filter out items restricted to super_admin if current user is not super_admin
+          const visibleItems = group.items.filter(
+            (item) => !item.role || (item.role === "super_admin" && isSuperAdmin)
+          )
 
-                  return (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton
-                        isActive={isActive}
-                        tooltip={item.title}
-                        render={<Link href={item.href} />}
-                        className="transition-colors data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-gold"
-                      >
-                        <item.icon className="size-4 shrink-0" />
-                        <span className="truncate">{item.title}</span>
-                      </SidebarMenuButton>
+          if (visibleItems.length === 0) return null
 
-                      {(() => {
-                        let badgeValue = item.badge
-                        if (
-                          item.href === "/admin/applications" &&
-                          pendingQuotesCount !== undefined
-                        ) {
-                          badgeValue =
-                            pendingQuotesCount > 0
-                              ? String(pendingQuotesCount)
-                              : undefined
-                        } else if (
-                          item.href === "/admin/messages" &&
-                          unreadMessagesCount !== undefined
-                        ) {
-                          badgeValue =
-                            unreadMessagesCount > 0
-                              ? String(unreadMessagesCount)
-                              : undefined
-                        }
-                        if (!badgeValue) return null
-                        return (
+          return (
+            <SidebarGroup key={group.groupLabel} className="p-0">
+              <SidebarGroupLabel className="px-2 text-[11px] font-semibold tracking-wider text-sidebar-foreground/50 uppercase group-data-[collapsible=icon]:hidden">
+                {group.groupLabel}
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {visibleItems.map((item) => {
+                    const isActive =
+                      item.href === "/admin"
+                        ? pathname === "/admin"
+                        : pathname?.startsWith(item.href)
+
+                    let badgeValue: string | undefined = undefined
+                    if (
+                      item.href === "/admin/applications" &&
+                      pendingQuotesCount !== undefined &&
+                      pendingQuotesCount > 0
+                    ) {
+                      badgeValue = String(pendingQuotesCount)
+                    } else if (
+                      item.href === "/admin/messages" &&
+                      unreadMessagesCount !== undefined &&
+                      unreadMessagesCount > 0
+                    ) {
+                      badgeValue = String(unreadMessagesCount)
+                    }
+
+                    return (
+                      <SidebarMenuItem key={item.title}>
+                        <SidebarMenuButton
+                          isActive={isActive}
+                          tooltip={item.title}
+                          render={<Link href={item.href} />}
+                          className="transition-colors data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-gold cursor-pointer"
+                        >
+                          <item.icon className="size-4 shrink-0" />
+                          <span className="truncate">{item.title}</span>
+                        </SidebarMenuButton>
+
+                        {badgeValue && (
                           <SidebarMenuBadge
                             className={
                               item.badgeClass ??
@@ -247,15 +267,15 @@ export function AdminSidebar({
                           >
                             {badgeValue}
                           </SidebarMenuBadge>
-                        )
-                      })()}
-                    </SidebarMenuItem>
-                  )
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+                        )}
+                      </SidebarMenuItem>
+                    )
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )
+        })}
       </SidebarContent>
 
       <SidebarSeparator className="bg-sidebar-border" />
@@ -278,8 +298,8 @@ export function AdminSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Sign Out"
-              className="text-red-300 hover:bg-red-950/30 hover:text-red-200"
-              render={<Link href="/admin/login" />}
+              onClick={handleSignOut}
+              className="text-red-300 hover:bg-red-950/30 hover:text-red-200 cursor-pointer"
             >
               <LogOut className="size-4 shrink-0" />
               <span className="truncate">Sign Out</span>

@@ -2,6 +2,7 @@ import * as React from "react"
 import { db } from "@/db"
 import { airlines, departureCities, hotels } from "@/db/schema"
 import { asc } from "drizzle-orm"
+import { requireAdmin } from "@/lib/auth-guard"
 import {
   GroupsClient,
   PackageWithRelations,
@@ -12,6 +13,8 @@ export const metadata = {
 }
 
 export default async function AdminGroupsPage() {
+  await requireAdmin()
+
   const [packagesData, allAirlines, allHotels, allCities] = await Promise.all([
     db.query.groupPackages.findMany({
       orderBy: (table, { asc }) => [asc(table.sortOrder), asc(table.createdAt)],

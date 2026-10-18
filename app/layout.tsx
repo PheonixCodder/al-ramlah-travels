@@ -55,8 +55,8 @@ export const metadata: Metadata = {
     "Custom Umrah Calculator",
   ],
   icons: {
-    icon: "/logo-icon.png",
-    apple: "/logo-icon.png",
+    icon: "/logo.jpg",
+    apple: "/logo.jpg",
   },
 }
 

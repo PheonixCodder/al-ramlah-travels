@@ -14,6 +14,9 @@ import {
   Send,
   Loader2,
   Lock,
+  Sparkles,
+  ArrowDownToLine,
+  Check,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -25,18 +28,27 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { TabularPrice } from "@/components/layout/status-badge"
 import { saveApplicationQuote, updateApplicationStatus } from "@/app/actions/quotes"
+import { QuoteDispatchBar } from "./quote-dispatch-bar"
+import type { ApplicationRateHintsResult } from "@/lib/domain/quote-hints"
 
-interface QuoteWorksheetFormProps {
+export interface QuoteWorksheetFormProps {
   application: {
     id: string
     referenceNumber: string
     status: "pending_quote" | "quoted" | "approved" | "rejected" | "cancelled"
+    customerName: string
+    customerPhone: string
+    customerWhatsapp: string
+    customerEmail?: string | null
+    ksaArrivalDate?: string | null
+    ksaDepartureDate?: string | null
+    totalPassportCount: number
+    totalKsaDays?: number | null
     includeVisa: boolean
     includeFlights: boolean
     includeHotels: boolean
     includeTransport: boolean
     includeZiyarat: boolean
-    totalPassportCount: number
     lockedVisaRatePerPersonPkr?: number | null
     calculatedVisaTotalPkr?: number | null
   }
@@ -55,11 +67,15 @@ interface QuoteWorksheetFormProps {
     quoteNotesCustomer?: string | null
     internalNotesAdmin?: string | null
   } | null
+  rateHints?: ApplicationRateHintsResult
+  sarToPkrRate?: number
 }
 
 export function QuoteWorksheetForm({
   application,
   initialQuote,
+  rateHints,
+  sarToPkrRate = 75,
 }: QuoteWorksheetFormProps) {
   const router = useRouter()
 
@@ -133,6 +149,40 @@ export function QuoteWorksheetForm({
       setPaymentStatus("paid_in_full")
     } else {
       setPaymentStatus("partially_paid")
+    }
+  }
+
+  // Auto-fill all suggested rates from catalog rateHints
+  const handleApplyAllHints = () => {
+    if (!rateHints) return
+
+    let appliedAny = false
+    if (rateHints.visaHint.totalPkr > 0) {
+      setVisaTotal(Math.round(rateHints.visaHint.totalPkr))
+      appliedAny = true
+    }
+    if (rateHints.makkahHotelHint.totalPkr > 0) {
+      setMakkahHotelTotal(Math.round(rateHints.makkahHotelHint.totalPkr))
+      appliedAny = true
+    }
+    if (rateHints.madinahHotelHint.totalPkr > 0) {
+      setMadinahHotelTotal(Math.round(rateHints.madinahHotelHint.totalPkr))
+      appliedAny = true
+    }
+    if (rateHints.transportHint.totalPkr > 0) {
+      setTransportTotal(Math.round(rateHints.transportHint.totalPkr))
+      appliedAny = true
+    }
+    if (rateHints.ziyaratHint.totalPkr > 0) {
+      setZiyaratTotal(Math.round(rateHints.ziyaratHint.totalPkr))
+      appliedAny = true
+    }
+
+    if (appliedAny) {
+      setFeedback({
+        type: "success",
+        message: `Suggested catalog rates auto-filled: SAR ${rateHints.estimatedGrandTotalSar.toLocaleString()} (≈ PKR ${Math.round(rateHints.estimatedGrandTotalPkr).toLocaleString()}) applied.`,
+      })
     }
   }
 
@@ -222,6 +272,24 @@ export function QuoteWorksheetForm({
 
   return (
     <div className="sticky top-20 flex flex-col gap-5">
+      {/* Live Quote Dispatch Bar synced with form state */}
+      <QuoteDispatchBar
+        application={application}
+        liveQuote={{
+          grandTotalPkr,
+          visaTotalPkr: visaTotal,
+          flightsTotalPkr: flightsTotal,
+          makkahHotelTotalPkr: makkahHotelTotal,
+          madinahHotelTotalPkr: madinahHotelTotal,
+          transportTotalPkr: transportTotal,
+          ziyaratTotalPkr: ziyaratTotal,
+          discountPkr: discount,
+          paymentStatus,
+          amountPaidPkr: amountPaid,
+          quoteNotesCustomer: customerNotes,
+        }}
+      />
+
       <Card className="border-border bg-card shadow-md">
         <CardHeader className="bg-secondary/40 pb-3 border-b border-border">
           <div className="flex items-center justify-between">
@@ -241,6 +309,43 @@ export function QuoteWorksheetForm({
           <CardDescription className="text-xs text-muted-foreground">
             Configure itemized tariffs for volatile services & calculate verified totals.
           </CardDescription>
+
+          {/* Prominent Auto-Fill Catalog Suggested Rates Button */}
+          {rateHints && rateHints.estimatedGrandTotalPkr > 0 && (
+            <div className="mt-3 rounded-lg border border-gold/40 bg-gold/10 p-2.5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                    <Sparkles className="size-3.5 text-gold" />
+                    <span>Suggested Catalog Total:</span>
+                  </span>
+                  <div className="font-mono text-xs text-foreground/90">
+                    <span className="font-bold">
+                      SAR {rateHints.estimatedGrandTotalSar.toLocaleString()}
+                    </span>{" "}
+                    ≈{" "}
+                    <span className="font-bold text-primary">
+                      PKR {Math.round(rateHints.estimatedGrandTotalPkr).toLocaleString()}
+                    </span>{" "}
+                    <span className="text-[10px] text-muted-foreground">
+                      (1 SAR = {sarToPkrRate} PKR)
+                    </span>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleApplyAllHints}
+                  disabled={isSubmitting}
+                  className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 text-xs font-semibold gap-1.5 shadow-2xs cursor-pointer"
+                >
+                  <ArrowDownToLine className="size-3.5 text-gold" />
+                  <span>Auto-Fill Suggested Catalog Rates</span>
+                </Button>
+              </div>
+            </div>
+          )}
         </CardHeader>
 
         <CardContent className="space-y-4 pt-4">
@@ -290,6 +395,29 @@ export function QuoteWorksheetForm({
                 className="font-mono text-sm tabular-nums"
                 disabled={isSubmitting}
               />
+              {/* Itemized Visa Rate Hint */}
+              {rateHints?.visaHint && rateHints.visaHint.totalPkr > 0 && (
+                <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50/70 px-2 py-1 text-[11px] text-amber-900">
+                  <span className="truncate">
+                    <span className="font-semibold">Catalog Hint:</span>{" "}
+                    {rateHints.visaHint.totalSar.toLocaleString()} SAR (PKR{" "}
+                    {Math.round(rateHints.visaHint.totalPkr).toLocaleString()}) —{" "}
+                    <span className="text-amber-800/80">
+                      {rateHints.visaHint.breakdownLabel}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisaTotal(Math.round(rateHints.visaHint.totalPkr))
+                    }
+                    className="ml-2 shrink-0 rounded bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-bold text-amber-950 transition-colors hover:bg-amber-300"
+                    title="Apply visa reference rate"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 2. Return Flights Total */}
@@ -324,6 +452,29 @@ export function QuoteWorksheetForm({
                 placeholder="0"
                 disabled={isSubmitting}
               />
+              {/* Itemized Makkah Hotel Hint */}
+              {rateHints?.makkahHotelHint && rateHints.makkahHotelHint.totalPkr > 0 && (
+                <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50/70 px-2 py-1 text-[11px] text-amber-900">
+                  <span className="truncate">
+                    <span className="font-semibold">Catalog Hint:</span>{" "}
+                    {rateHints.makkahHotelHint.totalSar.toLocaleString()} SAR (PKR{" "}
+                    {Math.round(rateHints.makkahHotelHint.totalPkr).toLocaleString()}) —{" "}
+                    <span className="text-amber-800/80">
+                      {rateHints.makkahHotelHint.breakdownLabel}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMakkahHotelTotal(Math.round(rateHints.makkahHotelHint.totalPkr))
+                    }
+                    className="ml-2 shrink-0 rounded bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-bold text-amber-950 transition-colors hover:bg-amber-300"
+                    title="Apply Makkah hotel reference rate"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 4. Madinah Hotel Total */}
@@ -341,6 +492,29 @@ export function QuoteWorksheetForm({
                 placeholder="0"
                 disabled={isSubmitting}
               />
+              {/* Itemized Madinah Hotel Hint */}
+              {rateHints?.madinahHotelHint && rateHints.madinahHotelHint.totalPkr > 0 && (
+                <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50/70 px-2 py-1 text-[11px] text-amber-900">
+                  <span className="truncate">
+                    <span className="font-semibold">Catalog Hint:</span>{" "}
+                    {rateHints.madinahHotelHint.totalSar.toLocaleString()} SAR (PKR{" "}
+                    {Math.round(rateHints.madinahHotelHint.totalPkr).toLocaleString()}) —{" "}
+                    <span className="text-amber-800/80">
+                      {rateHints.madinahHotelHint.breakdownLabel}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMadinahHotelTotal(Math.round(rateHints.madinahHotelHint.totalPkr))
+                    }
+                    className="ml-2 shrink-0 rounded bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-bold text-amber-950 transition-colors hover:bg-amber-300"
+                    title="Apply Madinah hotel reference rate"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 5. Ground Transport Total */}
@@ -358,6 +532,29 @@ export function QuoteWorksheetForm({
                 placeholder="0"
                 disabled={isSubmitting}
               />
+              {/* Itemized Transport Hint */}
+              {rateHints?.transportHint && rateHints.transportHint.totalPkr > 0 && (
+                <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50/70 px-2 py-1 text-[11px] text-amber-900">
+                  <span className="truncate">
+                    <span className="font-semibold">Catalog Hint:</span>{" "}
+                    {rateHints.transportHint.totalSar.toLocaleString()} SAR (PKR{" "}
+                    {Math.round(rateHints.transportHint.totalPkr).toLocaleString()}) —{" "}
+                    <span className="text-amber-800/80">
+                      {rateHints.transportHint.breakdownLabel}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTransportTotal(Math.round(rateHints.transportHint.totalPkr))
+                    }
+                    className="ml-2 shrink-0 rounded bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-bold text-amber-950 transition-colors hover:bg-amber-300"
+                    title="Apply transport reference rate"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 6. Ziyarat Total */}
@@ -375,6 +572,29 @@ export function QuoteWorksheetForm({
                 placeholder="0"
                 disabled={isSubmitting}
               />
+              {/* Itemized Ziyarat Hint */}
+              {rateHints?.ziyaratHint && rateHints.ziyaratHint.totalPkr > 0 && (
+                <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50/70 px-2 py-1 text-[11px] text-amber-900">
+                  <span className="truncate">
+                    <span className="font-semibold">Catalog Hint:</span>{" "}
+                    {rateHints.ziyaratHint.totalSar.toLocaleString()} SAR (PKR{" "}
+                    {Math.round(rateHints.ziyaratHint.totalPkr).toLocaleString()}) —{" "}
+                    <span className="text-amber-800/80">
+                      {rateHints.ziyaratHint.breakdownLabel}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setZiyaratTotal(Math.round(rateHints.ziyaratHint.totalPkr))
+                    }
+                    className="ml-2 shrink-0 rounded bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-bold text-amber-950 transition-colors hover:bg-amber-300"
+                    title="Apply ziyarat reference rate"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 7. Special Courtesy Discount */}

@@ -31,19 +31,25 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
 
   function handleToggle(id: string, current: boolean) {
     const next = !current
-    setPlaces((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, isActive: next } : p))
-    )
     startTransition(async () => {
-      await toggleZiyaratActive(id, next)
+      const res = await toggleZiyaratActive(id, next)
+      if (res.success) {
+        setPlaces((prev) =>
+          prev.map((p) => (p.id === id ? { ...p, isActive: next } : p))
+        )
+      }
     })
   }
 
   function handleDelete(id: string, name: string) {
     if (!window.confirm(`Delete Ziyarat place "${name}"?`)) return
-    setPlaces((prev) => prev.filter((p) => p.id !== id))
     startTransition(async () => {
-      await deleteZiyaratPlace(id)
+      const res = await deleteZiyaratPlace(id)
+      if (!res.success) {
+        alert(res.error)
+        return
+      }
+      setPlaces((prev) => prev.filter((p) => p.id !== id))
     })
   }
 
@@ -121,6 +127,7 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
                     src={place.imageUrl}
                     alt={place.name}
                     fill
+                    sizes="(max-width: 768px) 100vw, 33vw"
                     className="object-cover"
                   />
                 ) : (

@@ -1,5 +1,6 @@
 "use server"
 
+import { revalidatePath } from "next/cache"
 import { db } from "@/db"
 import * as schema from "@/db/schema"
 import {
@@ -86,8 +87,8 @@ export async function submitCustomApplication(
     const data: CustomJourneyApplicationInput = parseResult.data
 
     const totalPassportCount =
-      data.passengers.adults + data.passengers.children + data.passengers.infants
-    const bedAndSeatCount = data.passengers.adults + data.passengers.children
+      data.passengers.adults + data.passengers.infants
+    const bedAndSeatCount = data.passengers.adults
 
     // 1. Calculate Visa Tier & Cost if visa is included
     let totalKsaDays: number | null = null
@@ -111,7 +112,8 @@ export async function submitCustomApplication(
         data.ksaArrivalDate,
         data.ksaDepartureDate,
         totalPassportCount,
-        rates
+        rates,
+        { withMasar: data.includeHotels }
       )
 
       totalKsaDays = visaCalc.totalKsaDays
@@ -121,27 +123,34 @@ export async function submitCustomApplication(
     }
 
     // 2. Enforce Airport Rules
-    let entryAirport = "JED"
-    let exitAirport = "MED"
+    let entryAirport: "JED" | "MED" | null = null
+    let exitAirport: "JED" | "MED" | null = null
 
-    if (data.citySequence) {
-      if (
-        data.citySequence === "makkah_madinah" ||
-        data.citySequence === "makkah_madinah_makkah" ||
-        data.citySequence === "makkah_only"
-      ) {
-        entryAirport = "JED" // Invariant: Makkah has no airport, must fly to JED
-        exitAirport =
-          data.citySequence === "makkah_only" ||
-          data.citySequence === "makkah_madinah_makkah"
-            ? "JED"
-            : "MED"
-      } else if (data.citySequence === "madinah_makkah") {
-        entryAirport = "MED"
-        exitAirport = "JED"
-      } else if (data.citySequence === "madinah_only") {
-        entryAirport = "MED"
-        exitAirport = "MED"
+    if (data.includeFlights || data.includeHotels) {
+      entryAirport = data.entryAirport ?? "JED"
+      exitAirport = data.exitAirport ?? "MED"
+
+      if (data.citySequence) {
+        if (
+          data.citySequence === "makkah_madinah" ||
+          data.citySequence === "makkah_madinah_makkah" ||
+          data.citySequence === "makkah_madinah_jeddah" ||
+          data.citySequence === "makkah_only"
+        ) {
+          entryAirport = "JED" // Invariant: Makkah has no airport, must fly to JED
+          exitAirport =
+            data.citySequence === "makkah_only" ||
+            data.citySequence === "makkah_madinah_makkah" ||
+            data.citySequence === "makkah_madinah_jeddah"
+              ? "JED"
+              : data.exitAirport ?? "MED"
+        } else if (data.citySequence === "madinah_makkah") {
+          entryAirport = data.entryAirport ?? "MED"
+          exitAirport = "JED"
+        } else if (data.citySequence === "madinah_only") {
+          entryAirport = data.entryAirport ?? "MED"
+          exitAirport = data.exitAirport ?? "MED"
+        }
       }
     }
 
@@ -155,126 +164,139 @@ export async function submitCustomApplication(
 
     const referenceNumber = await generateApplicationReference()
 
-    // 3. Database Persistence inside transaction
-    const newApp = await db.transaction(async (tx) => {
-      const [app] = await tx
-        .insert(schema.applications)
-        .values({
-          referenceNumber,
-          source: "custom_builder",
-          status: "pending_quote",
-          presetMode: data.presetMode,
-          customerName: data.contact.customerName,
-          customerPhone: data.contact.customerPhone,
-          customerWhatsapp: data.contact.customerWhatsapp,
-          customerCity: data.contact.customerCity,
-          customerEmail: data.contact.customerEmail || null,
-          specialRequests: data.contact.specialRequests || null,
-          adults: data.passengers.adults,
-          children: data.passengers.children,
-          infants: data.passengers.infants,
-          totalPassportCount,
-          bedAndSeatCount,
-          includeVisa: data.includeVisa,
-          includeFlights: data.includeFlights,
-          includeHotels: data.includeHotels,
-          includeTransport: data.includeTransport,
-          includeZiyarat: data.includeZiyarat,
-          ksaArrivalDate: data.ksaArrivalDate || null,
-          ksaDepartureDate: data.ksaDepartureDate || null,
-          totalKsaDays,
-          calculatedVisaTier,
-          lockedVisaRatePerPersonPkr,
-          calculatedVisaTotalPkr,
-          citySequence: data.citySequence || null,
-          entryAirport,
-          exitAirport,
-          departureCityId: data.departureCityId || null,
-          flightRouteType: data.flightRouteType || null,
-          cabinClass: data.cabinClass || null,
-          preferredAirlineId: data.preferredAirlineId || null,
-          ziyaratScope: data.ziyaratScope || null,
-          ziyaratVehicleId: data.ziyaratVehicleId || null,
-          selectedZiyaratPlaceIds: data.selectedZiyaratPlaceIds || [],
-        })
-        .returning()
+    // 3. Database Persistence (neon-http compatible sequential inserts)
+    const [newApp] = await db
+      .insert(schema.applications)
+      .values({
+        referenceNumber,
+        source: "custom_builder",
+        status: "pending_quote",
+        presetMode: data.presetMode,
+        customerName: data.contact.customerName,
+        customerPhone: data.contact.customerPhone,
+        customerWhatsapp: data.contact.customerWhatsapp,
+        customerCity: data.contact.customerCity,
+        customerEmail: data.contact.customerEmail || null,
+        specialRequests: data.contact.specialRequests || null,
+        adults: data.passengers.adults,
+        infants: data.passengers.infants,
+        totalPassportCount,
+        bedAndSeatCount,
+        includeVisa: data.includeVisa,
+        includeFlights: data.includeFlights,
+        includeHotels: data.includeHotels,
+        includeTransport: data.includeTransport,
+        includeZiyarat: data.includeZiyarat,
+        ksaArrivalDate: data.ksaArrivalDate || null,
+        ksaDepartureDate: data.ksaDepartureDate || null,
+        totalKsaDays,
+        calculatedVisaTier,
+        lockedVisaRatePerPersonPkr,
+        calculatedVisaTotalPkr,
+        citySequence:
+          data.includeFlights || data.includeHotels
+            ? data.citySequence || null
+            : null,
+        entryAirport,
+        exitAirport,
+        departureCityId: data.includeFlights ? data.departureCityId || null : null,
+        flightRouteType: data.includeFlights ? data.flightRouteType || null : null,
+        cabinClass: data.includeFlights ? data.cabinClass || null : null,
+        preferredAirlineId: data.includeFlights ? data.preferredAirlineId || null : null,
+        ziyaratScope: data.includeZiyarat ? data.ziyaratScope || null : null,
+        ziyaratVehicleId: data.includeZiyarat ? data.ziyaratVehicleId || null : null,
+        selectedZiyaratPlaceIds: data.includeZiyarat
+          ? data.selectedZiyaratPlaceIds || []
+          : [],
+      })
+      .returning()
 
-      if (!app) {
-        throw new Error("Failed to insert application record.")
-      }
+    if (!newApp) {
+      throw new Error("Failed to insert application record.")
+    }
 
-      // Insert Hotel Stays if enabled
-      if (data.includeHotels && data.hotelStays && data.hotelStays.length > 0) {
-        const arrivalDateBase = data.ksaArrivalDate ?? new Date().toISOString().split("T")[0]!
-        let runningDate = new Date(arrivalDateBase)
+    // Insert Hotel Stays if enabled
+    if (data.includeHotels && data.hotelStays && data.hotelStays.length > 0) {
+      const staysToInsert = data.hotelStays.map((stay) => {
+        return {
+          applicationId: newApp.id,
+          stayOrder: stay.stayOrder,
+          city: stay.city,
+          hotelId: stay.hotelId,
+          checkInDate:
+            stay.checkInDate ||
+            data.ksaArrivalDate ||
+            new Date().toISOString().split("T")[0]!,
+          checkOutDate:
+            stay.checkOutDate ||
+            data.ksaDepartureDate ||
+            new Date().toISOString().split("T")[0]!,
+          nights: stay.nights,
+          roomCategory: stay.roomCategory,
+          sharedRoomType: stay.sharedRoomType || null,
+          privateRoomAllocation: stay.privateRoomAllocation || {
+            double: 0,
+            triple: 0,
+            quad: 0,
+          },
+        }
+      })
 
-        const staysToInsert = data.hotelStays.map((stay) => {
-          const checkIn = new Date(runningDate)
-          const checkOut = new Date(runningDate)
-          checkOut.setDate(checkOut.getDate() + stay.nights)
-          runningDate = checkOut
+      await db.insert(schema.applicationHotelStays).values(staysToInsert)
+    }
 
-          return {
-            applicationId: app.id,
-            stayOrder: stay.stayOrder,
-            city: stay.city,
-            hotelId: stay.hotelId,
-            checkInDate: checkIn.toISOString().split("T")[0]!,
-            checkOutDate: checkOut.toISOString().split("T")[0]!,
-            nights: stay.nights,
-            roomCategory: stay.roomCategory,
-            sharedRoomType: stay.sharedRoomType || null,
-            privateRoomAllocation: stay.privateRoomAllocation || {
-              double: 0,
-              triple: 0,
-              quad: 0,
-            },
-            mealPlan: stay.mealPlan,
-          }
-        })
+    // Insert Transport Segments if enabled
+    if (
+      data.includeTransport &&
+      data.transportSegments &&
+      data.transportSegments.length > 0
+    ) {
+      const allVehicles = await db.select().from(schema.vehicles)
+      const vehicleSeatMap = new Map(
+        allVehicles.map((v) => [v.id, v.seatCapacity])
+      )
 
-        await tx.insert(schema.applicationHotelStays).values(staysToInsert)
-      }
+      const segmentsToInsert = data.transportSegments.map((segment) => {
+        const seatCap = vehicleSeatMap.get(segment.vehicleId) ?? 4
+        const quantity =
+          segment.serviceType === "private"
+            ? Math.max(1, Math.ceil(bedAndSeatCount / Math.max(1, seatCap)))
+            : 1
 
-      // Insert Transport Segments if enabled
-      if (
-        data.includeTransport &&
-        data.transportSegments &&
-        data.transportSegments.length > 0
-      ) {
-        const segmentsToInsert = data.transportSegments.map((segment) => ({
-          applicationId: app.id,
+        return {
+          applicationId: newApp.id,
           segmentOrder: segment.segmentOrder,
           sectorId: segment.sectorId,
           serviceType: segment.serviceType,
           vehicleId: segment.vehicleId,
-          vehicleQuantity: 1,
+          vehicleQuantity: quantity,
           scheduledDate: segment.scheduledDate || data.ksaArrivalDate || null,
           pickupTime: segment.pickupTime || null,
-        }))
-
-        await tx
-          .insert(schema.applicationTransportSegments)
-          .values(segmentsToInsert)
-      }
-
-      // Create Initial Quote Record
-      await tx.insert(schema.applicationQuotes).values({
-        applicationId: app.id,
-        version: 1,
-        visaTotalPkr: calculatedVisaTotalPkr || 0,
-        flightsTotalPkr: 0,
-        makkahHotelTotalPkr: 0,
-        madinahHotelTotalPkr: 0,
-        transportTotalPkr: 0,
-        ziyaratTotalPkr: 0,
-        discountPkr: 0,
-        grandTotalPkr: isVisaOnly ? calculatedVisaTotalPkr || 0 : 0,
-        paymentStatus: "unpaid",
+        }
       })
 
-      return app
+      await db
+        .insert(schema.applicationTransportSegments)
+        .values(segmentsToInsert)
+    }
+
+    // Create Initial Quote Record
+    await db.insert(schema.applicationQuotes).values({
+      applicationId: newApp.id,
+      version: 1,
+      visaTotalPkr: calculatedVisaTotalPkr || 0,
+      flightsTotalPkr: 0,
+      makkahHotelTotalPkr: 0,
+      madinahHotelTotalPkr: 0,
+      transportTotalPkr: 0,
+      ziyaratTotalPkr: 0,
+      discountPkr: 0,
+      grandTotalPkr: isVisaOnly ? calculatedVisaTotalPkr || 0 : 0,
+      paymentStatus: "unpaid",
     })
+
+    revalidatePath("/admin")
+    revalidatePath("/admin/applications")
 
     // Fetch agency WhatsApp number for handoff link
     const settings = await db.query.agencySettings.findFirst({
@@ -282,7 +304,7 @@ export async function submitCustomApplication(
     })
     const agencyWhatsapp = settings?.primaryWhatsapp ?? "+923008456789"
 
-    const whatsappMessage = `As-salamu alaykum Al Ramlah Travels,\n\nI have submitted a Custom Journey inquiry on your portal.\n*Reference Code:* ${referenceNumber}\n*Lead Pilgrim:* ${data.contact.customerName}\n*City:* ${data.contact.customerCity}\n*Travellers:* ${data.passengers.adults} Adults, ${data.passengers.children} Children, ${data.passengers.infants} Infants\n*Selected Services:* ${[
+    const whatsappMessage = `As-salamu alaykum Al Ramlah Travels,\n\nI have submitted a Custom Journey inquiry on your portal.\n*Reference Code:* ${referenceNumber}\n*Lead Pilgrim:* ${data.contact.customerName}\n*City:* ${data.contact.customerCity}\n*Travellers:* ${data.passengers.adults} Adults, ${data.passengers.infants} Infants\n*Selected Services:* ${[
       data.includeVisa ? "Visa" : null,
       data.includeFlights ? "Flights" : null,
       data.includeHotels ? "Hotels" : null,
@@ -342,8 +364,8 @@ export async function submitGroupBookingApplication(
     const data: GroupBookingInput = parseResult.data
 
     const totalPassportCount =
-      data.passengers.adults + data.passengers.children + data.passengers.infants
-    const bedAndSeatCount = data.passengers.adults + data.passengers.children
+      data.passengers.adults + data.passengers.infants
+    const bedAndSeatCount = data.passengers.adults
 
     // Check departure availability
     const departure = await db.query.groupDepartures.findFirst({
@@ -372,59 +394,71 @@ export async function submitGroupBookingApplication(
 
     // Rate calculation based on room type
     let ratePerPersonPkr = pkg.quadPricePkr
-    if (data.selectedRoomType === "triple") {
-      ratePerPersonPkr = pkg.triplePricePkr
+    if (data.selectedRoomType === "sharing") {
+      ratePerPersonPkr =
+        departure.sharingPriceOverridePkr ??
+        pkg.sharingPricePkr ??
+        pkg.quadPricePkr
+    } else if (data.selectedRoomType === "triple") {
+      ratePerPersonPkr =
+        departure.triplePriceOverridePkr ?? pkg.triplePricePkr
     } else if (data.selectedRoomType === "double") {
-      ratePerPersonPkr = pkg.doublePricePkr
+      ratePerPersonPkr =
+        departure.doublePriceOverridePkr ?? pkg.doublePricePkr
+    } else if (data.selectedRoomType === "quad") {
+      ratePerPersonPkr =
+        departure.quadPriceOverridePkr ?? pkg.quadPricePkr
     }
 
-    const packageTotalPkr = ratePerPersonPkr * bedAndSeatCount
+    const infantPricePkr = pkg.infantPricePkr ?? 65000
+    const infantTotalPkr = (data.passengers.infants || 0) * infantPricePkr
+    const packageTotalPkr = ratePerPersonPkr * bedAndSeatCount + infantTotalPkr
     const referenceNumber = await generateApplicationReference()
 
-    await db.transaction(async (tx) => {
-      const [app] = await tx
-        .insert(schema.applications)
-        .values({
-          referenceNumber,
-          source: "group_booking",
-          status: "pending_quote",
-          presetMode: "group_package",
-          groupPackageId: pkg.id,
-          groupDepartureId: departure.id,
-          selectedRoomType: data.selectedRoomType,
-          customerName: data.contact.customerName,
-          customerPhone: data.contact.customerPhone,
-          customerWhatsapp: data.contact.customerWhatsapp,
-          customerCity: data.contact.customerCity,
-          customerEmail: data.contact.customerEmail || null,
-          specialRequests: data.contact.specialRequests || null,
-          adults: data.passengers.adults,
-          children: data.passengers.children,
-          infants: data.passengers.infants,
-          totalPassportCount,
-          bedAndSeatCount,
-          includeVisa: true,
-          includeFlights: true,
-          includeHotels: true,
-          includeTransport: true,
-          includeZiyarat: true,
-          ksaArrivalDate: departure.departureDate,
-          ksaDepartureDate: departure.returnDate,
-        })
-        .returning()
-
-      if (!app) {
-        throw new Error("Failed to insert group application.")
-      }
-
-      await tx.insert(schema.applicationQuotes).values({
-        applicationId: app.id,
-        version: 1,
-        grandTotalPkr: packageTotalPkr,
-        quoteNotesCustomer: `${pkg.title} (${departure.batchCode}) - ${data.selectedRoomType.toUpperCase()} Room Sharing for ${bedAndSeatCount} passenger(s).`,
-        paymentStatus: "unpaid",
+    const [groupApp] = await db
+      .insert(schema.applications)
+      .values({
+        referenceNumber,
+        source: "group_booking",
+        status: "pending_quote",
+        presetMode: "group_package",
+        groupPackageId: pkg.id,
+        groupDepartureId: departure.id,
+        selectedRoomType: data.selectedRoomType,
+        customerName: data.contact.customerName,
+        customerPhone: data.contact.customerPhone,
+        customerWhatsapp: data.contact.customerWhatsapp,
+        customerCity: data.contact.customerCity,
+        customerEmail: data.contact.customerEmail || null,
+        specialRequests: data.contact.specialRequests || null,
+        adults: data.passengers.adults,
+        infants: data.passengers.infants,
+        totalPassportCount,
+        bedAndSeatCount,
+        includeVisa: true,
+        includeFlights: true,
+        includeHotels: true,
+        includeTransport: true,
+        includeZiyarat: true,
+        ksaArrivalDate: departure.departureDate,
+        ksaDepartureDate: departure.returnDate,
       })
+      .returning()
+
+    if (!groupApp) {
+      throw new Error("Failed to insert group application.")
+    }
+
+    await db.insert(schema.applicationQuotes).values({
+      applicationId: groupApp.id,
+      version: 1,
+      grandTotalPkr: packageTotalPkr,
+      quoteNotesCustomer: `${pkg.title} (${departure.batchCode}) - ${data.selectedRoomType.toUpperCase()} Room Sharing for ${bedAndSeatCount} passenger(s)${data.passengers.infants > 0 ? ` + ${data.passengers.infants} Infant(s)` : ""}.`,
+      paymentStatus: "unpaid",
     })
+
+    revalidatePath("/admin")
+    revalidatePath("/admin/applications")
 
     const settings = await db.query.agencySettings.findFirst({
       where: eq(schema.agencySettings.id, "default"),
@@ -477,51 +511,51 @@ export async function submitHajjInquiryApplication(
 
     const data: HajjInquiryInput = parseResult.data
     const totalPassportCount =
-      data.passengers.adults + data.passengers.children + data.passengers.infants
-    const bedAndSeatCount = data.passengers.adults + data.passengers.children
+      data.passengers.adults + data.passengers.infants
+    const bedAndSeatCount = data.passengers.adults
 
     const referenceNumber = await generateApplicationReference()
 
-    await db.transaction(async (tx) => {
-      const [app] = await tx
-        .insert(schema.applications)
-        .values({
-          referenceNumber,
-          source: "hajj_inquiry",
-          status: "pending_quote",
-          presetMode: "hajj_consultation",
-          hajjConsultationType: data.hajjConsultationType,
-          customerName: data.contact.customerName,
-          customerPhone: data.contact.customerPhone,
-          customerWhatsapp: data.contact.customerWhatsapp,
-          customerCity: data.contact.customerCity,
-          customerEmail: data.contact.customerEmail || null,
-          specialRequests: data.notes || null,
-          adults: data.passengers.adults,
-          children: data.passengers.children,
-          infants: data.passengers.infants,
-          totalPassportCount,
-          bedAndSeatCount,
-          includeVisa: true,
-          includeFlights: true,
-          includeHotels: true,
-          includeTransport: true,
-          includeZiyarat: true,
-        })
-        .returning()
-
-      if (!app) {
-        throw new Error("Failed to insert Hajj application.")
-      }
-
-      await tx.insert(schema.applicationQuotes).values({
-        applicationId: app.id,
-        version: 1,
-        grandTotalPkr: 0,
-        quoteNotesCustomer: `Hajj Consultation Request: ${data.hajjConsultationType}`,
-        paymentStatus: "unpaid",
+    const [hajjApp] = await db
+      .insert(schema.applications)
+      .values({
+        referenceNumber,
+        source: "hajj_inquiry",
+        status: "pending_quote",
+        presetMode: "hajj_consultation",
+        hajjConsultationType: data.hajjConsultationType,
+        customerName: data.contact.customerName,
+        customerPhone: data.contact.customerPhone,
+        customerWhatsapp: data.contact.customerWhatsapp,
+        customerCity: data.contact.customerCity,
+        customerEmail: data.contact.customerEmail || null,
+        specialRequests: data.notes || null,
+        adults: data.passengers.adults,
+        infants: data.passengers.infants,
+        totalPassportCount,
+        bedAndSeatCount,
+        includeVisa: true,
+        includeFlights: true,
+        includeHotels: true,
+        includeTransport: true,
+        includeZiyarat: true,
       })
+      .returning()
+
+    if (!hajjApp) {
+      throw new Error("Failed to insert Hajj application.")
+    }
+
+    await db.insert(schema.applicationQuotes).values({
+      applicationId: hajjApp.id,
+      version: 1,
+      grandTotalPkr: 0,
+      quoteNotesCustomer: `Hajj Consultation Request: ${data.hajjConsultationType}`,
+      paymentStatus: "unpaid",
     })
+
+    revalidatePath("/admin")
+    revalidatePath("/admin/applications")
 
     const settings = await db.query.agencySettings.findFirst({
       where: eq(schema.agencySettings.id, "default"),
@@ -569,8 +603,10 @@ export interface StatusLookupResult {
     ksaDepartureDate?: string | null
     totalKsaDays?: number | null
     citySequence?: string | null
+    entryAirport?: string | null
+    exitAirport?: string | null
+    calculatedVisaTotalPkr?: number | null
     adults: number
-    children: number
     infants: number
     totalPassportCount: number
     bedAndSeatCount: number
@@ -592,7 +628,6 @@ export interface StatusLookupResult {
       nights: number
       roomCategory: string
       sharedRoomType?: string | null
-      mealPlan: string
     }>
     transportSegments: Array<{
       segmentOrder: number
@@ -604,6 +639,22 @@ export interface StatusLookupResult {
     }>
     groupPackageTitle?: string | null
     groupBatchCode?: string | null
+    groupBookingDetails?: {
+      packageTitle: string
+      packageTier: string
+      batchCode: string | null
+      selectedRoomType: string | null
+      durationDays: number
+      makkahNights: number
+      madinahNights: number
+      departureCityName: string | null
+      airlineName: string | null
+      outboundFlightNumber: string | null
+      returnFlightNumber: string | null
+      flightScheduleSummary: string | null
+      baggageAllowance: string | null
+      giftedInclusions: string[]
+    } | null
   }
   quote?: {
     visaTotalPkr: number
@@ -653,8 +704,12 @@ export async function lookupApplicationStatus(
           with: { sector: true, vehicle: true },
           orderBy: (segments, { asc }) => [asc(segments.segmentOrder)],
         },
-        groupPackage: true,
-        groupDeparture: true,
+        groupPackage: {
+          with: { airline: true },
+        },
+        groupDeparture: {
+          with: { departureCity: true },
+        },
         quotes: {
           orderBy: (quotes, { desc }) => [desc(quotes.version)],
           limit: 1,
@@ -714,8 +769,10 @@ export async function lookupApplicationStatus(
         ksaDepartureDate: app.ksaDepartureDate,
         totalKsaDays: app.totalKsaDays,
         citySequence: app.citySequence,
+        entryAirport: app.entryAirport,
+        exitAirport: app.exitAirport,
+        calculatedVisaTotalPkr: app.calculatedVisaTotalPkr,
         adults: app.adults,
-        children: app.children,
         infants: app.infants,
         totalPassportCount: app.totalPassportCount,
         bedAndSeatCount: app.bedAndSeatCount,
@@ -737,7 +794,6 @@ export async function lookupApplicationStatus(
           nights: stay.nights,
           roomCategory: stay.roomCategory,
           sharedRoomType: stay.sharedRoomType,
-          mealPlan: stay.mealPlan,
         })),
         transportSegments: (app.transportSegments || []).map((seg) => ({
           segmentOrder: seg.segmentOrder,
@@ -749,6 +805,29 @@ export async function lookupApplicationStatus(
         })),
         groupPackageTitle: app.groupPackage?.title || null,
         groupBatchCode: app.groupDeparture?.batchCode || null,
+        groupBookingDetails: app.groupPackage
+          ? {
+              packageTitle: app.groupPackage.title,
+              packageTier: app.groupPackage.tier,
+              batchCode: app.groupDeparture?.batchCode ?? null,
+              selectedRoomType: app.selectedRoomType ?? null,
+              durationDays: app.groupPackage.durationDays,
+              makkahNights: app.groupPackage.makkahNights,
+              madinahNights: app.groupPackage.madinahNights,
+              departureCityName:
+                (app.groupDeparture as any)?.departureCity?.name ?? null,
+              airlineName: (app.groupPackage as any)?.airline?.name ?? null,
+              outboundFlightNumber:
+                app.groupDeparture?.outboundFlightNumber ?? null,
+              returnFlightNumber:
+                app.groupDeparture?.returnFlightNumber ?? null,
+              flightScheduleSummary:
+                app.groupDeparture?.flightScheduleSummary ?? null,
+              baggageAllowance:
+                app.groupDeparture?.baggageAllowance ?? null,
+              giftedInclusions: app.groupPackage.giftedInclusions ?? [],
+            }
+          : null,
       },
       quote:
         canExposeQuote && latestQuote

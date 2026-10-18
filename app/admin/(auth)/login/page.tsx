@@ -93,7 +93,7 @@ function AdminLoginForm() {
         <div className="mb-6 flex flex-col items-center text-center">
           <div className="relative mb-3 flex size-16 items-center justify-center rounded-2xl border border-gold/40 bg-card p-2 shadow-md">
             <Image
-              src="/logo-icon.png"
+              src="/logo.jpg"
               alt="Al Ramlah Travels Emblem"
               width={54}
               height={54}

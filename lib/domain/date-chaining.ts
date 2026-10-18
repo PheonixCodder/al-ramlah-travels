@@ -9,8 +9,45 @@ export type CitySequence =
   | "makkah_madinah"
   | "madinah_makkah"
   | "makkah_madinah_makkah"
+  | "makkah_madinah_jeddah"
   | "makkah_only"
   | "madinah_only"
+
+export const CITY_SEQUENCES: readonly CitySequence[] = [
+  "makkah_madinah",
+  "madinah_makkah",
+  "makkah_madinah_makkah",
+  "makkah_madinah_jeddah",
+  "makkah_only",
+  "madinah_only",
+] as const
+
+/**
+ * Maps a city sequence enum code to a clean, human-readable display label.
+ */
+export function formatCitySequence(seq?: string | null): string {
+  if (!seq) return ""
+  switch (seq) {
+    case "makkah_madinah":
+      return "Makkah → Madinah"
+    case "madinah_makkah":
+      return "Madinah → Makkah"
+    case "makkah_madinah_makkah":
+      return "Makkah → Madinah → Makkah"
+    case "makkah_madinah_jeddah":
+      return "Makkah → Madinah → Jeddah"
+    case "makkah_only":
+      return "Makkah Only"
+    case "madinah_only":
+      return "Madinah Only"
+    case "MAK_FIRST":
+      return "Makkah 1st"
+    case "MED_FIRST":
+      return "Madinah 1st"
+    default:
+      return seq.replace(/_/g, " ")
+  }
+}
 
 export interface DateChainingResult {
   entryAirport: "JED" | "MED"

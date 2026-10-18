@@ -18,6 +18,7 @@ import {
   Loader2,
   CheckCircle2,
   Globe,
+  Coins,
 } from "lucide-react"
 
 export interface AgencySettingsData {
@@ -34,6 +35,7 @@ export interface AgencySettingsData {
   tiktokUrl?: string | null
   workingHours: string
   slaOverdueHours: number
+  sarToPkrRate: number
 }
 
 interface SettingsClientProps {
@@ -72,6 +74,9 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
   const [slaOverdueHours, setSlaOverdueHours] = useState(
     initialSettings?.slaOverdueHours ?? 24
   )
+  const [sarToPkrRate, setSarToPkrRate] = useState(
+    initialSettings?.sarToPkrRate ?? 75
+  )
   const [mapsEmbedUrl, setMapsEmbedUrl] = useState(
     initialSettings?.mapsEmbedUrl ?? ""
   )
@@ -104,6 +109,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
         officeAddress,
         workingHours,
         slaOverdueHours,
+        sarToPkrRate,
         mapsEmbedUrl: mapsEmbedUrl || undefined,
         facebookUrl: facebookUrl || undefined,
         instagramUrl: instagramUrl || undefined,
@@ -127,7 +133,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
           Agency Settings & Brand Info
         </h1>
         <p className="text-sm text-muted-foreground">
-          Configure agency contact numbers, office location, quote SLA threshold, and public branding.
+          Configure agency contact numbers, office location, quote SLA threshold, global currency conversion rate, and public branding.
         </p>
       </div>
 
@@ -148,15 +154,15 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
         {/* Brand Identity Card */}
         <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
           <div className="flex items-center gap-2 border-b border-border pb-3">
-            <Building2 className="size-4 text-primary" />
+            <Building2 className="size-4 text-gold" />
             <h2 className="font-semibold text-base text-foreground">
-              Brand Identity & Corporate Name
+              Brand Identity
             </h2>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="as-name">Agency Name</Label>
+              <Label htmlFor="as-name">Agency Legal Name</Label>
               <Input
                 id="as-name"
                 value={agencyName}
@@ -165,7 +171,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="as-tagline">Tagline</Label>
+              <Label htmlFor="as-tagline">Marketing Tagline</Label>
               <Input
                 id="as-tagline"
                 value={tagline}
@@ -176,23 +182,22 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
           </div>
         </div>
 
-        {/* Contact Numbers & Support Channels */}
+        {/* Contact Communications Card */}
         <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
           <div className="flex items-center gap-2 border-b border-border pb-3">
             <Phone className="size-4 text-emerald-700" />
             <h2 className="font-semibold text-base text-foreground">
-              Pilgrim Communication & Direct Channels
+              Contact & Inquiries
             </h2>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <Label htmlFor="as-wa">Primary WhatsApp (With Country Code)</Label>
+              <Label htmlFor="as-wa">Primary WhatsApp Contact</Label>
               <Input
                 id="as-wa"
                 value={primaryWhatsapp}
                 onChange={(e) => setPrimaryWhatsapp(e.target.value)}
-                placeholder="+923001234567"
                 required
               />
             </div>
@@ -223,7 +228,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
           <div className="flex items-center gap-2 border-b border-border pb-3">
             <MapPin className="size-4 text-amber-700" />
             <h2 className="font-semibold text-base text-foreground">
-              Office Location & Operations
+              Office Location, Currency & Operations
             </h2>
           </div>
 
@@ -237,7 +242,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="as-hours">Working / Support Hours</Label>
               <Input
@@ -257,6 +262,23 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
                 value={slaOverdueHours}
                 onChange={(e) => setSlaOverdueHours(Number(e.target.value))}
                 required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1">
+                <Coins className="size-3.5 text-gold" />
+                <Label htmlFor="as-sar" className="font-semibold">
+                  SAR to PKR Rate (1 SAR = PKR)
+                </Label>
+              </div>
+              <Input
+                id="as-sar"
+                type="number"
+                min={1}
+                value={sarToPkrRate}
+                onChange={(e) => setSarToPkrRate(Number(e.target.value))}
+                required
+                className="font-mono font-bold text-foreground"
               />
             </div>
           </div>
@@ -326,7 +348,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
           <Button
             type="submit"
             disabled={loading}
-            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-6 py-2.5"
+            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-6 py-2.5 cursor-pointer"
           >
             {loading ? (
               <Loader2 className="size-4 animate-spin" />

@@ -2,15 +2,14 @@ import * as React from "react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { eq, desc, asc, inArray } from "drizzle-orm"
-import { ArrowLeft, ChevronRight, FileSpreadsheet } from "lucide-react"
+import { ArrowLeft, ChevronRight } from "lucide-react"
 
 import { db } from "@/db"
 import * as schema from "@/db/schema"
 import { requireAdmin } from "@/lib/auth-guard"
-import { Button } from "@/components/ui/button"
 import { ApplicationDossier } from "@/components/admin/applications/application-dossier"
 import { QuoteWorksheetForm } from "@/components/admin/applications/quote-worksheet-form"
-import { QuoteDispatchBar } from "@/components/admin/applications/quote-dispatch-bar"
+import { calculateApplicationRateHints } from "@/lib/domain/quote-hints"
 
 interface ApplicationDetailPageProps {
   params: Promise<{
@@ -27,7 +26,7 @@ export default async function ApplicationDetailPage({
   // Await params as required by Next.js 16
   const { id } = await params
 
-  // Query application with all related stays, segments, quotes, and catalog references
+  // Query application with all related stays, segments, quotes, group relations, and catalog references
   const application = await db.query.applications.findFirst({
     where: eq(schema.applications.id, id),
     with: {
@@ -50,8 +49,18 @@ export default async function ApplicationDetailPage({
       departureCity: true,
       preferredAirline: true,
       ziyaratVehicle: true,
-      groupPackage: true,
-      groupDeparture: true,
+      groupPackage: {
+        with: {
+          makkahHotel: true,
+          madinahHotel: true,
+          airline: true,
+        },
+      },
+      groupDeparture: {
+        with: {
+          departureCity: true,
+        },
+      },
       assignedStaff: true,
     },
   })
@@ -60,20 +69,75 @@ export default async function ApplicationDetailPage({
     notFound()
   }
 
-  // Fetch linked Ziyarat Places if selected
-  let ziyaratPlaces: (typeof schema.ziyaratPlaces.$inferSelect)[] = []
-  if (
-    application.selectedZiyaratPlaceIds &&
-    application.selectedZiyaratPlaceIds.length > 0
-  ) {
-    try {
-      ziyaratPlaces = await db.query.ziyaratPlaces.findMany({
-        where: inArray(schema.ziyaratPlaces.id, application.selectedZiyaratPlaceIds),
-      })
-    } catch {
-      ziyaratPlaces = []
-    }
-  }
+  // Fetch linked Ziyarat Places, active catalog pricing matrices & agency settings in parallel
+  const [
+    ziyaratPlacesResult,
+    hotels,
+    vehicles,
+    transportSectors,
+    transportRates,
+    visaRates,
+    settings,
+  ] = await Promise.all([
+    application.selectedZiyaratPlaceIds && application.selectedZiyaratPlaceIds.length > 0
+      ? db.query.ziyaratPlaces.findMany({
+          where: inArray(schema.ziyaratPlaces.id, application.selectedZiyaratPlaceIds),
+        }).catch(() => [])
+      : Promise.resolve([]),
+    db.query.hotels.findMany({
+      where: eq(schema.hotels.isActive, true),
+    }),
+    db.query.vehicles.findMany({
+      where: eq(schema.vehicles.isActive, true),
+    }),
+    db.query.transportSectors.findMany({
+      where: eq(schema.transportSectors.isActive, true),
+    }),
+    db.query.transportRates.findMany(),
+    db.query.visaRates.findMany(),
+    db.query.agencySettings.findFirst(),
+  ])
+
+  const sarToPkrRate = settings?.sarToPkrRate ?? 75
+
+  // Calculate live itemized reference rate hints from database catalog matrices
+  const rateHints = calculateApplicationRateHints(
+    {
+      includeVisa: application.includeVisa,
+      includeHotels: application.includeHotels,
+      includeTransport: application.includeTransport,
+      includeZiyarat: application.includeZiyarat,
+      totalKsaDays: application.totalKsaDays,
+      ksaArrivalDate: application.ksaArrivalDate,
+      ksaDepartureDate: application.ksaDepartureDate,
+      totalPassportCount: application.totalPassportCount,
+      bedAndSeatCount: application.bedAndSeatCount,
+      ziyaratScope: application.ziyaratScope,
+      ziyaratVehicleId: application.ziyaratVehicleId,
+      hotelStays: application.hotelStays.map((s) => ({
+        city: s.city,
+        hotelId: s.hotelId,
+        nights: s.nights,
+        roomCategory: s.roomCategory,
+        sharedRoomType: s.sharedRoomType,
+        privateRoomAllocation: s.privateRoomAllocation,
+      })),
+      transportSegments: application.transportSegments.map((s) => ({
+        sectorId: s.sectorId,
+        vehicleId: s.vehicleId,
+        serviceType: s.serviceType,
+        vehicleQuantity: s.vehicleQuantity,
+      })),
+    },
+    {
+      hotels,
+      vehicles,
+      transportSectors,
+      transportRates,
+      visaRates,
+    },
+    sarToPkrRate
+  )
 
   const latestQuote = application.quotes?.[0] || null
 
@@ -98,27 +162,23 @@ export default async function ApplicationDetailPage({
         </div>
       </div>
 
-      {/* Quote Dispatch Bar */}
-      <QuoteDispatchBar
-        application={application}
-        latestQuote={latestQuote}
-      />
-
       {/* Main 2-Column Responsive Workspace */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">
         {/* Left Column: Itinerary Dossier (col-span-7) */}
         <div className="lg:col-span-7">
           <ApplicationDossier
             application={application}
-            ziyaratPlaces={ziyaratPlaces}
+            ziyaratPlaces={ziyaratPlacesResult}
           />
         </div>
 
-        {/* Right Column: Sticky Quoting Worksheet (col-span-5) */}
+        {/* Right Column: Sticky Quoting Worksheet with Embedded Live Dispatch Bar (col-span-5) */}
         <div className="lg:col-span-5">
           <QuoteWorksheetForm
             application={application}
             initialQuote={latestQuote}
+            rateHints={rateHints}
+            sarToPkrRate={sarToPkrRate}
           />
         </div>
       </div>

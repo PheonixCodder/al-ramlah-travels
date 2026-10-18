@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { eq, sql } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { db } from "@/db"
 import {
   groupPackages,
@@ -23,6 +23,17 @@ function generateReferenceNumber(): string {
   const year = new Date().getFullYear()
   const randomChars = Math.random().toString(36).substring(2, 6).toUpperCase()
   return `ART-${year}-${randomChars}`
+}
+
+function isForeignKeyError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false
+  const errorObj = err as { code?: string; message?: string }
+  return (
+    errorObj.code === "23503" ||
+    (typeof errorObj.message === "string" &&
+      (errorObj.message.includes("foreign key") ||
+        errorObj.message.includes("violates foreign key constraint")))
+  )
 }
 
 // ==========================================
@@ -49,10 +60,13 @@ export async function upsertGroupPackage(rawInput: unknown) {
         includesVisa: validated.includesVisa,
         includesTransport: validated.includesTransport,
         includesZiyarat: validated.includesZiyarat,
-        mealPlan: validated.mealPlan,
         quadPricePkr: validated.quadPricePkr,
         triplePricePkr: validated.triplePricePkr,
         doublePricePkr: validated.doublePricePkr,
+        sharingPricePkr: validated.sharingPricePkr,
+        infantPricePkr: validated.infantPricePkr,
+        giftedInclusions: validated.giftedInclusions,
+        multiHotelOptions: validated.multiHotelOptions,
         highlights: validated.highlights,
         bannerUrl: validated.bannerUrl || null,
         isFeatured: validated.isFeatured,
@@ -82,10 +96,13 @@ export async function upsertGroupPackage(rawInput: unknown) {
         includesVisa: validated.includesVisa,
         includesTransport: validated.includesTransport,
         includesZiyarat: validated.includesZiyarat,
-        mealPlan: validated.mealPlan,
         quadPricePkr: validated.quadPricePkr,
         triplePricePkr: validated.triplePricePkr,
         doublePricePkr: validated.doublePricePkr,
+        sharingPricePkr: validated.sharingPricePkr,
+        infantPricePkr: validated.infantPricePkr,
+        giftedInclusions: validated.giftedInclusions,
+        multiHotelOptions: validated.multiHotelOptions,
         highlights: validated.highlights,
         bannerUrl: validated.bannerUrl || null,
         isFeatured: validated.isFeatured,
@@ -114,10 +131,33 @@ export async function toggleGroupPackageActive(id: string, isActive: boolean) {
 
 export async function deleteGroupPackage(id: string) {
   await requireAdmin()
-  await db.delete(groupPackages).where(eq(groupPackages.id, id))
-  revalidatePath("/admin/groups")
-  revalidatePath("/")
-  return { success: true }
+  try {
+    await db.delete(groupPackages).where(eq(groupPackages.id, id))
+    revalidatePath("/admin/groups")
+    revalidatePath("/")
+    return { success: true }
+  } catch (err: unknown) {
+    if (isForeignKeyError(err)) {
+      try {
+        await db
+          .update(groupPackages)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(groupPackages.id, id))
+        revalidatePath("/admin/groups")
+        revalidatePath("/")
+      } catch {}
+      return {
+        success: false,
+        error:
+          "This group package is referenced by existing applications or bookings and cannot be permanently deleted. It has been deactivated instead.",
+      }
+    }
+    return {
+      success: false,
+      error:
+        err instanceof Error ? err.message : "Failed to delete group package.",
+    }
+  }
 }
 
 // ==========================================
@@ -153,6 +193,12 @@ export async function upsertGroupDeparture(rawInput: unknown) {
         quadPriceOverridePkr: validated.quadPriceOverridePkr ?? null,
         triplePriceOverridePkr: validated.triplePriceOverridePkr ?? null,
         doublePriceOverridePkr: validated.doublePriceOverridePkr ?? null,
+        sharingPriceOverridePkr: validated.sharingPriceOverridePkr ?? null,
+        outboundFlightNumber: validated.outboundFlightNumber ?? null,
+        returnFlightNumber: validated.returnFlightNumber ?? null,
+        flightScheduleSummary: validated.flightScheduleSummary ?? null,
+        routingNote: validated.routingNote ?? null,
+        baggageAllowance: validated.baggageAllowance ?? null,
         updatedAt: new Date(),
       })
       .where(eq(groupDepartures.id, validated.id))
@@ -176,6 +222,12 @@ export async function upsertGroupDeparture(rawInput: unknown) {
         quadPriceOverridePkr: validated.quadPriceOverridePkr ?? null,
         triplePriceOverridePkr: validated.triplePriceOverridePkr ?? null,
         doublePriceOverridePkr: validated.doublePriceOverridePkr ?? null,
+        sharingPriceOverridePkr: validated.sharingPriceOverridePkr ?? null,
+        outboundFlightNumber: validated.outboundFlightNumber ?? null,
+        returnFlightNumber: validated.returnFlightNumber ?? null,
+        flightScheduleSummary: validated.flightScheduleSummary ?? null,
+        routingNote: validated.routingNote ?? null,
+        baggageAllowance: validated.baggageAllowance ?? null,
       })
       .returning()
 
@@ -187,10 +239,25 @@ export async function upsertGroupDeparture(rawInput: unknown) {
 
 export async function deleteGroupDeparture(id: string) {
   await requireAdmin()
-  await db.delete(groupDepartures).where(eq(groupDepartures.id, id))
-  revalidatePath("/admin/groups")
-  revalidatePath("/")
-  return { success: true }
+  try {
+    await db.delete(groupDepartures).where(eq(groupDepartures.id, id))
+    revalidatePath("/admin/groups")
+    revalidatePath("/")
+    return { success: true }
+  } catch (err: unknown) {
+    if (isForeignKeyError(err)) {
+      return {
+        success: false,
+        error:
+          "This departure batch is referenced by existing pilgrim applications and cannot be deleted.",
+      }
+    }
+    return {
+      success: false,
+      error:
+        err instanceof Error ? err.message : "Failed to delete departure batch.",
+    }
+  }
 }
 
 // ==========================================
@@ -221,8 +288,8 @@ export async function submitGroupBooking(rawInput: unknown) {
     throw new Error("Selected group package could not be found.")
   }
 
-  // 2. Validate seat availability (Adults + Children)
-  const partySeatCount = validated.passengers.adults + validated.passengers.children
+  // 2. Validate seat availability (Adults)
+  const partySeatCount = validated.passengers.adults
   const remainingSeats = batch.totalSeats - batch.bookedSeats
 
   if (partySeatCount > remainingSeats) {
@@ -231,9 +298,11 @@ export async function submitGroupBooking(rawInput: unknown) {
     )
   }
 
-  // 3. Compute price per person for selected room type
+  // 3. Compute price per person for selected room type (including sharing)
   let ratePerPerson = 0
-  if (validated.selectedRoomType === "quad") {
+  if (validated.selectedRoomType === "sharing") {
+    ratePerPerson = batch.sharingPriceOverridePkr ?? pkg.sharingPricePkr
+  } else if (validated.selectedRoomType === "quad") {
     ratePerPerson = batch.quadPriceOverridePkr ?? pkg.quadPricePkr
   } else if (validated.selectedRoomType === "triple") {
     ratePerPerson = batch.triplePriceOverridePkr ?? pkg.triplePricePkr
@@ -241,11 +310,13 @@ export async function submitGroupBooking(rawInput: unknown) {
     ratePerPerson = batch.doublePriceOverridePkr ?? pkg.doublePricePkr
   }
 
-  const grandTotalPkr = ratePerPerson * partySeatCount
+  // Infant cost (infants take 0 beds and 0 vehicle seats, but incur visa/ticket costs)
+  const infantPriceUnit = pkg.infantPricePkr ?? 65000
+  const infantCost = validated.passengers.infants * infantPriceUnit
+  const grandTotalPkr = ratePerPerson * partySeatCount + infantCost
+
   const totalPassports =
-    validated.passengers.adults +
-    validated.passengers.children +
-    validated.passengers.infants
+    validated.passengers.adults + validated.passengers.infants
 
   const referenceNumber = generateReferenceNumber()
 
@@ -268,7 +339,6 @@ export async function submitGroupBooking(rawInput: unknown) {
       includeTransport: pkg.includesTransport,
       includeZiyarat: pkg.includesZiyarat,
       adults: validated.passengers.adults,
-      children: validated.passengers.children,
       infants: validated.passengers.infants,
       totalPassportCount: totalPassports,
       bedAndSeatCount: partySeatCount,
@@ -288,27 +358,13 @@ export async function submitGroupBooking(rawInput: unknown) {
     grandTotalPkr,
     currency: "PKR",
     paymentStatus: "unpaid",
-    quoteNotesCustomer: `Pre-Built Group Package: ${pkg.title} (${validated.selectedRoomType.toUpperCase()} Sharing). Includes ${pkg.durationDays} days itinerary departing on ${batch.departureDate}.`,
-    internalNotesAdmin: `Online Group Booking submitted via public website. Batch code: ${batch.batchCode}. Rate/person: PKR ${ratePerPerson.toLocaleString()}.`,
+    quoteNotesCustomer: `Pre-Built Group Package: ${pkg.title} (${validated.selectedRoomType.toUpperCase()} Sharing). Includes ${pkg.durationDays} days itinerary departing on ${batch.departureDate}.${infantCost > 0 ? ` Includes ${validated.passengers.infants} infant(s) at PKR ${infantPriceUnit.toLocaleString()}/infant.` : ""}`,
+    internalNotesAdmin: `Online Group Booking submitted via public website. Batch code: ${batch.batchCode}. Room tier: ${validated.selectedRoomType} @ PKR ${ratePerPerson.toLocaleString()}/pax.${infantCost > 0 ? ` Infant charge: PKR ${infantCost.toLocaleString()}.` : ""}`,
   })
 
-  // 6. Update batch bookedSeats and status
-  const newBookedSeats = batch.bookedSeats + partySeatCount
-  let newStatus = batch.status
-  if (newBookedSeats >= batch.totalSeats) {
-    newStatus = "sold_out"
-  } else if (newBookedSeats / batch.totalSeats >= 0.8 && newStatus === "open") {
-    newStatus = "filling_fast"
-  }
-
-  await db
-    .update(groupDepartures)
-    .set({
-      bookedSeats: newBookedSeats,
-      status: newStatus,
-      updatedAt: new Date(),
-    })
-    .where(eq(groupDepartures.id, batch.id))
+  // Note: We do NOT increment batch.bookedSeats here on initial submission.
+  // Seat deduction occurs strictly when the administrative quote is approved in quotes.ts,
+  // preventing double-counting while preserving seat inventory.
 
   revalidatePath("/admin/groups")
   revalidatePath("/admin/applications")
@@ -318,7 +374,7 @@ export async function submitGroupBooking(rawInput: unknown) {
     success: true,
     referenceNumber,
     grandTotalPkr,
-    remainingSeats: batch.totalSeats - newBookedSeats,
+    remainingSeats,
   }
 }
 
@@ -327,11 +383,8 @@ export async function submitHajjInquiry(rawInput: unknown) {
 
   const referenceNumber = generateReferenceNumber()
   const totalPassports =
-    validated.passengers.adults +
-    validated.passengers.children +
-    validated.passengers.infants
-  const bedAndSeatCount =
-    validated.passengers.adults + validated.passengers.children
+    validated.passengers.adults + validated.passengers.infants
+  const bedAndSeatCount = validated.passengers.adults
 
   const [createdApp] = await db
     .insert(applications)
@@ -342,7 +395,6 @@ export async function submitHajjInquiry(rawInput: unknown) {
       presetMode: "hajj_consultation",
       hajjConsultationType: validated.hajjConsultationType,
       adults: validated.passengers.adults,
-      children: validated.passengers.children,
       infants: validated.passengers.infants,
       totalPassportCount: totalPassports,
       bedAndSeatCount,

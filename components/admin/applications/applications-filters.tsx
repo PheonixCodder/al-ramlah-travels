@@ -12,6 +12,7 @@ interface ApplicationsFiltersProps {
   currentQuery?: string
   currentStatus?: string
   currentSource?: string
+  currentFilter?: string
   countsByStatus: Record<string, number>
 }
 
@@ -35,6 +36,7 @@ export function ApplicationsFilters({
   currentQuery = "",
   currentStatus = "all",
   currentSource = "all",
+  currentFilter,
   countsByStatus,
 }: ApplicationsFiltersProps) {
   const router = useRouter()
@@ -43,7 +45,12 @@ export function ApplicationsFilters({
 
   const [searchTerm, setSearchTerm] = React.useState(currentQuery)
 
-  const updateFilters = (updates: { q?: string; status?: string; source?: string }) => {
+  const updateFilters = (updates: {
+    q?: string
+    status?: string
+    source?: string
+    filter?: string
+  }) => {
     const params = new URLSearchParams(searchParams.toString())
 
     if (updates.q !== undefined) {
@@ -52,13 +59,26 @@ export function ApplicationsFilters({
     }
 
     if (updates.status !== undefined) {
-      if (updates.status && updates.status !== "all") params.set("status", updates.status)
-      else params.delete("status")
+      if (updates.status && updates.status !== "all") {
+        params.set("status", updates.status)
+        // Critical: Do NOT preserve filter=overdue when navigating away from pending_quote
+        if (updates.status !== "pending_quote") {
+          params.delete("filter")
+        }
+      } else {
+        params.delete("status")
+        params.delete("filter")
+      }
     }
 
     if (updates.source !== undefined) {
       if (updates.source && updates.source !== "all") params.set("source", updates.source)
       else params.delete("source")
+    }
+
+    if (updates.filter !== undefined) {
+      if (updates.filter) params.set("filter", updates.filter)
+      else params.delete("filter")
     }
 
     params.delete("page") // reset to page 1 on filter change
@@ -82,6 +102,7 @@ export function ApplicationsFilters({
         <form onSubmit={handleSearchSubmit} className="relative flex-1 sm:max-w-md">
           <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            id="admin-global-search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search reference (ART-...), pilgrim name, phone, city..."
@@ -121,6 +142,23 @@ export function ApplicationsFilters({
           })}
         </div>
       </div>
+
+      {/* Overdue Active Filter Indicator */}
+      {(currentFilter === "overdue" || searchParams.get("filter") === "overdue") && (
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center gap-2 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-800 shadow-2xs">
+            <span>Filtered by: SLA Overdue (&gt;24h)</span>
+            <button
+              type="button"
+              onClick={() => updateFilters({ filter: "" })}
+              className="inline-flex size-4 items-center justify-center rounded-full bg-red-200 text-red-900 transition-colors hover:bg-red-300"
+              title="Clear Overdue Filter"
+            >
+              <X className="size-3" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Status Filter Tabs */}
       <div className="flex items-center gap-1 overflow-x-auto border-b border-border pb-1">

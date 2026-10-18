@@ -34,6 +34,17 @@ export const auth = betterAuth({
       },
     },
   },
+  trustedOrigins: [
+    "http://localhost:3000",
+    "http://localhost:8080",
+    "http://localhost",
+    "https://*.ngrok-free.app",
+    "https://*.ngrok-free.dev",
+    "https://*.ngrok.app",
+    "https://*.ngrok.io",
+    "https://*.trycloudflare.com",
+    "https://*.lhr.life",
+  ],
   plugins: [nextCookies()],
 })
 

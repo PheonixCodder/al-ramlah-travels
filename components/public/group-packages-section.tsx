@@ -33,7 +33,6 @@ export interface PublicGroupPackageItem extends BookingModalPackage {
   includesVisa: boolean
   includesTransport: boolean
   includesZiyarat: boolean
-  mealPlan: string
   airline?: { name: string; iataCode: string } | null
   makkahHotel?: {
     name: string
@@ -53,123 +52,10 @@ interface GroupPackagesSectionProps {
   packages?: PublicGroupPackageItem[]
 }
 
-const DEFAULT_PACKAGES: PublicGroupPackageItem[] = [
-  {
-    id: "pkg-1",
-    slug: "vip-5star-executive-umrah",
-    title: "VIP 5-Star Executive Royal Umrah",
-    tier: "vip_5star",
-    durationDays: 14,
-    makkahNights: 8,
-    madinahNights: 6,
-    quadPricePkr: 385000,
-    triplePricePkr: 425000,
-    doublePricePkr: 495000,
-    highlights: [
-      "Direct Saudi Airlines Flights",
-      "Makkah Clock Royal Tower (50m)",
-      "Dar Al Taqwa Madinah (Courtyard Steps)",
-      "Private GMC Yukon Transport",
-      "Guided Ziyarat by Certified Scholars",
-    ],
-    bannerUrl:
-      "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&q=80&w=800",
-    includesVisa: true,
-    includesTransport: true,
-    includesZiyarat: true,
-    mealPlan: "breakfast",
-    airline: { name: "Saudia", iataCode: "SV" },
-    makkahHotel: {
-      name: "Makkah Clock Royal Tower, A Fairmont Hotel",
-      starRating: 5,
-      distanceLabel: "50m from King Abdulaziz Gate",
-      distanceMeters: 50,
-    },
-    madinahHotel: {
-      name: "Dar Al Taqwa Hotel Madinah",
-      starRating: 5,
-      distanceLabel: "Footsteps from Prophet's Mosque Courtyard",
-      distanceMeters: 30,
-    },
-    departures: [
-      {
-        id: "dep-1",
-        batchCode: "SV-NOV-LHE",
-        departureDate: "2026-11-15",
-        returnDate: "2026-11-29",
-        totalSeats: 45,
-        bookedSeats: 38,
-        status: "filling_fast",
-        departureCity: { cityName: "Lahore", airportCode: "LHE" },
-      },
-      {
-        id: "dep-2",
-        batchCode: "SV-DEC-KHI",
-        departureDate: "2026-12-05",
-        returnDate: "2026-12-19",
-        totalSeats: 45,
-        bookedSeats: 22,
-        status: "open",
-        departureCity: { cityName: "Karachi", airportCode: "KHI" },
-      },
-    ],
-  },
-  {
-    id: "pkg-2",
-    slug: "gold-luxury-family-umrah",
-    title: "Gold 5-Star Haramain Comfort Umrah",
-    tier: "gold",
-    durationDays: 14,
-    makkahNights: 8,
-    madinahNights: 6,
-    quadPricePkr: 325000,
-    triplePricePkr: 360000,
-    doublePricePkr: 410000,
-    highlights: [
-      "Direct Flight via PIA / Airblue",
-      "Swissôtel Al Maqam Makkah (100m)",
-      "Anwar Al Madinah Mövenpick (Courtyard)",
-      "Luxury Minibus Transport",
-      "Comprehensive Ziyarat Tour",
-    ],
-    bannerUrl:
-      "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800",
-    includesVisa: true,
-    includesTransport: true,
-    includesZiyarat: true,
-    mealPlan: "breakfast",
-    airline: { name: "Pakistan International Airlines", iataCode: "PK" },
-    makkahHotel: {
-      name: "Swissôtel Al Maqam Makkah",
-      starRating: 5,
-      distanceLabel: "100m from Haram Courtyard",
-      distanceMeters: 100,
-    },
-    madinahHotel: {
-      name: "Anwar Al Madinah Mövenpick",
-      starRating: 5,
-      distanceLabel: "Adjacent to Northern Courtyard",
-      distanceMeters: 120,
-    },
-    departures: [
-      {
-        id: "dep-3",
-        batchCode: "PK-NOV-ISB",
-        departureDate: "2026-11-20",
-        returnDate: "2026-12-04",
-        totalSeats: 40,
-        bookedSeats: 18,
-        status: "open",
-        departureCity: { cityName: "Islamabad", airportCode: "ISB" },
-      },
-    ],
-  },
-]
-
 export function GroupPackagesSection({
   packages = [],
 }: GroupPackagesSectionProps) {
-  const activePackages = packages.length > 0 ? packages : DEFAULT_PACKAGES
+  const activePackages = packages
   const [selectedTier, setSelectedTier] = useState<string>("all")
   const [selectedCity, setSelectedCity] = useState<string>("all")
 
@@ -191,6 +77,24 @@ export function GroupPackagesSection({
       p.departures.some((d) => d.departureCity?.airportCode === selectedCity)
     return matchesTier && matchesCity
   })
+
+  if (activePackages.length === 0) {
+    return (
+      <section id="group-packages" className="py-20 bg-background scroll-mt-16">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center space-y-4">
+          <Badge className="bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
+            Pre-Built Fixed Departures
+          </Badge>
+          <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+            Curated Group Umrah Packages
+          </h2>
+          <p className="text-muted-foreground text-sm max-w-lg mx-auto">
+            Upcoming seasonal group departure batches are currently being finalized with our airline partners. Please use our Custom Journey Builder above or check back shortly.
+          </p>
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section id="group-packages" className="py-20 bg-background scroll-mt-16">
@@ -420,6 +324,94 @@ export function GroupPackagesSection({
                       </div>
                     </div>
 
+                    {/* Flight Details Block */}
+                    {primaryBatch &&
+                      (primaryBatch.outboundFlightNumber ||
+                        primaryBatch.flightScheduleSummary ||
+                        primaryBatch.baggageAllowance) && (
+                        <div className="rounded-xl border border-border/80 bg-muted/15 p-3 text-xs space-y-1">
+                          <div className="flex items-center justify-between font-semibold text-foreground">
+                            <span className="flex items-center gap-1.5">
+                              <Plane className="size-3.5 text-gold" />
+                              Flight Spec:{" "}
+                              {primaryBatch.outboundFlightNumber
+                                ? `${primaryBatch.outboundFlightNumber}${
+                                    primaryBatch.returnFlightNumber
+                                      ? ` / ${primaryBatch.returnFlightNumber}`
+                                      : ""
+                                  }`
+                                : "Guaranteed Group Flight Block"}
+                            </span>
+                            {primaryBatch.baggageAllowance && (
+                              <span className="text-[10px] text-muted-foreground font-medium">
+                                Baggage: {primaryBatch.baggageAllowance}
+                              </span>
+                            )}
+                          </div>
+                          {primaryBatch.flightScheduleSummary && (
+                            <p className="text-[11px] text-muted-foreground">
+                              {primaryBatch.flightScheduleSummary}
+                            </p>
+                          )}
+                          {primaryBatch.routingNote && (
+                            <p className="text-[10px] text-muted-foreground/80 italic">
+                              {primaryBatch.routingNote}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                    {/* Gifted Inclusions */}
+                    {pkg.giftedInclusions && pkg.giftedInclusions.length > 0 && (
+                      <div className="rounded-xl border border-amber-300/40 bg-amber-50/40 p-3 text-xs space-y-1.5">
+                        <span className="flex items-center gap-1.5 font-bold text-amber-900 text-[11px] uppercase tracking-wider">
+                          <Sparkles className="size-3 text-gold" />
+                          Al Ramlah Gifted Privileges &amp; Umrah Kit:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {pkg.giftedInclusions.map((gift, idx) => (
+                            <span
+                              key={idx}
+                              className="rounded-md bg-white border border-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-950"
+                            >
+                              ★ {gift}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Alternative Multi-Hotel Options */}
+                    {pkg.multiHotelOptions &&
+                      pkg.multiHotelOptions.length > 0 && (
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Alternative Hotel Packages:
+                          </span>
+                          <div className="flex flex-col gap-1.5">
+                            {pkg.multiHotelOptions.map((opt, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center justify-between rounded-lg border border-border/60 bg-card p-2 text-xs"
+                              >
+                                <div>
+                                  <span className="font-bold text-foreground">
+                                    {opt.label}
+                                  </span>
+                                  <span className="block text-[10px] text-muted-foreground">
+                                    {opt.makkahHotelName} ({opt.makkahDistance}) ·{" "}
+                                    {opt.madinahHotelName} ({opt.madinahDistance})
+                                  </span>
+                                </div>
+                                <span className="font-mono text-xs font-bold text-emerald-800">
+                                  From PKR {opt.quadPricePkr.toLocaleString()}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                     {/* Real-Time Seat Capacity Indicator */}
                     {primaryBatch && (
                       <div className="rounded-xl border border-border bg-card p-3 space-y-2">
@@ -436,7 +428,9 @@ export function GroupPackagesSection({
                                 : "text-emerald-700"
                             }`}
                           >
-                            {remainingSeats > 0 ? `${remainingSeats} seats remaining` : "Sold Out"}
+                            {remainingSeats > 0
+                              ? `${remainingSeats} seats remaining`
+                              : "Sold Out"}
                           </span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -454,32 +448,68 @@ export function GroupPackagesSection({
                       </div>
                     )}
 
-                    {/* Per-Person Pricing Matrix */}
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-xl border border-border/80 bg-muted/15 p-2.5">
-                        <span className="block text-[11px] font-medium text-muted-foreground uppercase">
-                          Quad Sharing
-                        </span>
-                        <span className="font-mono text-sm sm:text-base font-extrabold text-foreground tabular-nums">
-                          PKR {pkg.quadPricePkr.toLocaleString()}
-                        </span>
+                    {/* Per-Person Pricing Matrix (4 Tiers) */}
+                    <div className="space-y-1.5">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                        <div className="rounded-xl border border-border/80 bg-muted/15 p-2">
+                          <span className="block text-[10px] font-medium text-muted-foreground uppercase">
+                            Sharing Bed
+                          </span>
+                          <span className="font-mono text-xs sm:text-sm font-extrabold text-foreground tabular-nums">
+                            PKR{" "}
+                            {(
+                              primaryBatch?.sharingPriceOverridePkr ??
+                              pkg.sharingPricePkr ??
+                              pkg.quadPricePkr
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="rounded-xl border border-border/80 bg-muted/15 p-2">
+                          <span className="block text-[10px] font-medium text-muted-foreground uppercase">
+                            Quad (4-Bed)
+                          </span>
+                          <span className="font-mono text-xs sm:text-sm font-extrabold text-foreground tabular-nums">
+                            PKR{" "}
+                            {(
+                              primaryBatch?.quadPriceOverridePkr ??
+                              pkg.quadPricePkr
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="rounded-xl border border-border/80 bg-muted/15 p-2">
+                          <span className="block text-[10px] font-medium text-muted-foreground uppercase">
+                            Triple (3-Bed)
+                          </span>
+                          <span className="font-mono text-xs sm:text-sm font-extrabold text-foreground tabular-nums">
+                            PKR{" "}
+                            {(
+                              primaryBatch?.triplePriceOverridePkr ??
+                              pkg.triplePricePkr
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="rounded-xl border border-border/80 bg-muted/15 p-2">
+                          <span className="block text-[10px] font-medium text-muted-foreground uppercase">
+                            Double (2-Bed)
+                          </span>
+                          <span className="font-mono text-xs sm:text-sm font-extrabold text-foreground tabular-nums">
+                            PKR{" "}
+                            {(
+                              primaryBatch?.doublePriceOverridePkr ??
+                              pkg.doublePricePkr
+                            ).toLocaleString()}
+                          </span>
+                        </div>
                       </div>
-                      <div className="rounded-xl border border-border/80 bg-muted/15 p-2.5">
-                        <span className="block text-[11px] font-medium text-muted-foreground uppercase">
-                          Triple Sharing
-                        </span>
-                        <span className="font-mono text-sm sm:text-base font-extrabold text-foreground tabular-nums">
-                          PKR {pkg.triplePricePkr.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="rounded-xl border border-border/80 bg-muted/15 p-2.5">
-                        <span className="block text-[11px] font-medium text-muted-foreground uppercase">
-                          Double Sharing
-                        </span>
-                        <span className="font-mono text-sm sm:text-base font-extrabold text-foreground tabular-nums">
-                          PKR {pkg.doublePricePkr.toLocaleString()}
-                        </span>
-                      </div>
+                      {pkg.infantPricePkr && (
+                        <div className="text-right text-[10px] text-muted-foreground">
+                          Infants (&lt;2 yrs):{" "}
+                          <strong className="text-foreground">
+                            PKR {pkg.infantPricePkr.toLocaleString()}
+                          </strong>{" "}
+                          (Includes Umrah Visa &amp; Air Ticket)
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

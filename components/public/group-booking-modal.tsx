@@ -33,9 +33,24 @@ export interface BookingModalPackage {
   id: string
   title: string
   durationDays: number
+  sharingPricePkr?: number
   quadPricePkr: number
   triplePricePkr: number
   doublePricePkr: number
+  infantPricePkr?: number
+  giftedInclusions?: string[]
+  multiHotelOptions?: Array<{
+    pkgCode: string
+    label: string
+    makkahHotelName: string
+    makkahDistance: string
+    madinahHotelName: string
+    madinahDistance: string
+    sharingPricePkr: number
+    quadPricePkr: number
+    triplePricePkr: number
+    doublePricePkr: number
+  }>
   departures: {
     id: string
     batchCode: string
@@ -45,9 +60,15 @@ export interface BookingModalPackage {
     bookedSeats: number
     status: string
     departureCity?: { cityName: string; airportCode: string } | null
+    sharingPriceOverridePkr?: number | null
     quadPriceOverridePkr?: number | null
     triplePriceOverridePkr?: number | null
     doublePriceOverridePkr?: number | null
+    outboundFlightNumber?: string | null
+    returnFlightNumber?: string | null
+    flightScheduleSummary?: string | null
+    baggageAllowance?: string | null
+    routingNote?: string | null
   }[]
 }
 
@@ -78,13 +99,12 @@ export function GroupBookingModal({
   const [batchId, setBatchId] = useState<string>(
     selectedBatchId || availableBatches[0]?.id || pkg.departures[0]?.id || ""
   )
-  const [roomType, setRoomType] = useState<"double" | "triple" | "quad">(
-    "quad"
-  )
+  const [roomType, setRoomType] = useState<
+    "sharing" | "double" | "triple" | "quad"
+  >("quad")
 
   // Passengers
   const [adults, setAdults] = useState<number>(2)
-  const [children, setChildren] = useState<number>(0)
   const [infants, setInfants] = useState<number>(0)
 
   // Contact
@@ -99,12 +119,17 @@ export function GroupBookingModal({
   const remainingSeats = activeBatch
     ? activeBatch.totalSeats - activeBatch.bookedSeats
     : 0
-  const partySeatCount = adults + children
+  const partySeatCount = adults
   const isOverCapacity = partySeatCount > remainingSeats
 
   // Price calculation
   let pricePerPerson = 0
-  if (roomType === "quad") {
+  if (roomType === "sharing") {
+    pricePerPerson =
+      activeBatch?.sharingPriceOverridePkr ??
+      pkg.sharingPricePkr ??
+      pkg.quadPricePkr
+  } else if (roomType === "quad") {
     pricePerPerson =
       activeBatch?.quadPriceOverridePkr ?? pkg.quadPricePkr
   } else if (roomType === "triple") {
@@ -114,7 +139,9 @@ export function GroupBookingModal({
     pricePerPerson =
       activeBatch?.doublePriceOverridePkr ?? pkg.doublePricePkr
   }
-  const estimatedTotal = pricePerPerson * partySeatCount
+  const infantPrice = pkg.infantPricePkr ?? 65000
+  const estimatedTotal =
+    pricePerPerson * partySeatCount + infants * infantPrice
 
   function syncPhoneToWhatsapp(val: string) {
     setCustomerPhone(val)
@@ -134,7 +161,7 @@ export function GroupBookingModal({
         groupPackageId: pkg.id,
         groupDepartureId: batchId,
         selectedRoomType: roomType,
-        passengers: { adults, children, infants },
+        passengers: { adults, infants },
         contact: {
           customerName,
           customerPhone,
@@ -296,7 +323,29 @@ export function GroupBookingModal({
                 <Label className="text-xs font-semibold">
                   Select Room Sharing Tier
                 </Label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRoomType("sharing")}
+                    className={`rounded-xl border p-2.5 text-center transition-all ${
+                      roomType === "sharing"
+                        ? "border-primary bg-primary/5 text-foreground ring-2 ring-primary/30"
+                        : "border-border bg-card hover:bg-muted/30 text-muted-foreground"
+                    }`}
+                  >
+                    <span className="block text-xs font-bold text-foreground">
+                      Sharing Bed
+                    </span>
+                    <span className="font-mono text-xs font-semibold text-emerald-800">
+                      PKR{" "}
+                      {(
+                        activeBatch?.sharingPriceOverridePkr ??
+                        pkg.sharingPricePkr ??
+                        pkg.quadPricePkr
+                      ).toLocaleString()}
+                    </span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setRoomType("quad")}
@@ -365,7 +414,7 @@ export function GroupBookingModal({
                   <span>Passenger Demographics</span>
                   <span>Seats: {partySeatCount}</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label htmlFor="gb-adults" className="text-xs">
                       Adults (12+ yrs)
@@ -378,19 +427,6 @@ export function GroupBookingModal({
                       value={adults}
                       onChange={(e) => setAdults(Number(e.target.value))}
                       required
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="gb-kids" className="text-xs">
-                      Children (2-11)
-                    </Label>
-                    <Input
-                      id="gb-kids"
-                      type="number"
-                      min={0}
-                      max={10}
-                      value={children}
-                      onChange={(e) => setChildren(Number(e.target.value))}
                     />
                   </div>
                   <div className="space-y-1">
@@ -488,16 +524,19 @@ export function GroupBookingModal({
               </div>
 
               {/* Price Estimation Bar */}
-              <div className="flex items-center justify-between rounded-xl border border-gold/30 bg-gold/5 p-3 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-gold/30 bg-gold/5 p-3 text-xs gap-1">
                 <div>
                   <span className="text-muted-foreground block">
-                    Estimated Total ({partySeatCount} seats × PKR {pricePerPerson.toLocaleString()}):
+                    Estimated Total ({partySeatCount} seats × PKR {pricePerPerson.toLocaleString()}
+                    {infants > 0
+                      ? ` + ${infants} infant${infants > 1 ? "s" : ""} × PKR ${infantPrice.toLocaleString()}`
+                      : ""}):
                   </span>
                   <span className="font-mono text-base font-extrabold text-foreground">
                     PKR {estimatedTotal.toLocaleString()}
                   </span>
                 </div>
-                <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                <Badge variant="outline" className="text-[10px] text-muted-foreground self-start sm:self-auto">
                   Provisional Hold
                 </Badge>
               </div>

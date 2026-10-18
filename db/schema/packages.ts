@@ -12,7 +12,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core"
-import { airlines, departureCities, hotels, mealPlanTypeEnum } from "./catalog"
+import { airlines, departureCities, hotels } from "./catalog"
 import { applications } from "./applications"
 
 // ==========================================
@@ -54,10 +54,29 @@ export const groupPackages = pgTable(
     includesVisa: boolean("includes_visa").notNull().default(true),
     includesTransport: boolean("includes_transport").notNull().default(true),
     includesZiyarat: boolean("includes_ziyarat").notNull().default(true),
-    mealPlan: mealPlanTypeEnum("meal_plan").notNull().default("breakfast"),
     quadPricePkr: integer("quad_price_pkr").notNull(),
     triplePricePkr: integer("triple_price_pkr").notNull(),
     doublePricePkr: integer("double_price_pkr").notNull(),
+    sharingPricePkr: integer("sharing_price_pkr").notNull().default(258299),
+    infantPricePkr: integer("infant_price_pkr").notNull().default(65000),
+    giftedInclusions: jsonb("gifted_inclusions").$type<string[]>().notNull().default([]),
+    multiHotelOptions: jsonb("multi_hotel_options")
+      .$type<
+        Array<{
+          pkgCode: string
+          label: string
+          makkahHotelName: string
+          makkahDistance: string
+          madinahHotelName: string
+          madinahDistance: string
+          sharingPricePkr: number
+          quadPricePkr: number
+          triplePricePkr: number
+          doublePricePkr: number
+        }>
+      >()
+      .notNull()
+      .default([]),
     highlights: jsonb("highlights").$type<string[]>().notNull().default([]),
     bannerUrl: text("banner_url"),
     isFeatured: boolean("is_featured").notNull().default(false),
@@ -96,6 +115,14 @@ export const groupDepartures = pgTable(
     quadPriceOverridePkr: integer("quad_price_override_pkr"),
     triplePriceOverridePkr: integer("triple_price_override_pkr"),
     doublePriceOverridePkr: integer("double_price_override_pkr"),
+    sharingPriceOverridePkr: integer("sharing_price_override_pkr"),
+    outboundFlightNumber: text("outbound_flight_number"),
+    returnFlightNumber: text("return_flight_number"),
+    flightScheduleSummary: text("flight_schedule_summary"),
+    routingNote: text("routing_note"),
+    baggageAllowance: text("baggage_allowance").default(
+      "23-KG Outbound / 46-KG Return"
+    ),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

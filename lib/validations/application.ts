@@ -2,7 +2,6 @@ import { z } from "zod"
 
 export const passengerCountsSchema = z.object({
   adults: z.number().int().min(1, "At least 1 adult is required"),
-  children: z.number().int().min(0).default(0),
   infants: z.number().int().min(0).default(0),
 })
 
@@ -30,6 +29,7 @@ export const customJourneyApplicationSchema = z.object({
   presetMode: z.enum([
     "complete_umrah",
     "visa_only",
+    "flights_only",
     "hotels_only",
     "transport_only",
     "custom_mix",
@@ -57,10 +57,13 @@ export const customJourneyApplicationSchema = z.object({
       "makkah_madinah",
       "madinah_makkah",
       "makkah_madinah_makkah",
+      "makkah_madinah_jeddah",
       "makkah_only",
       "madinah_only",
     ])
     .optional(),
+  entryAirport: z.enum(["JED", "MED"]).optional(),
+  exitAirport: z.enum(["JED", "MED"]).optional(),
   departureCityId: z.string().uuid().optional(),
   preferredAirlineId: z.string().uuid().optional(),
   flightRouteType: z.enum(["direct", "connecting"]).optional(),
@@ -72,9 +75,19 @@ export const customJourneyApplicationSchema = z.object({
         stayOrder: z.number().int().min(1).max(3),
         city: z.enum(["makkah", "madinah"]),
         hotelId: z.string().uuid(),
+        checkInDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        checkOutDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
         nights: z.number().int().min(1).max(60),
         roomCategory: z.enum(["shared", "private"]),
-        sharedRoomType: z.enum(["double", "triple", "quad"]).optional(),
+        sharedRoomType: z
+          .enum(["sharing", "double", "triple", "quad"])
+          .optional(),
         privateRoomAllocation: z
           .object({
             double: z.number().int().min(0),
@@ -82,12 +95,6 @@ export const customJourneyApplicationSchema = z.object({
             quad: z.number().int().min(0),
           })
           .optional(),
-        mealPlan: z.enum([
-          "room_only",
-          "breakfast",
-          "half_board",
-          "full_board",
-        ]),
       })
     )
     .optional(),
@@ -99,6 +106,7 @@ export const customJourneyApplicationSchema = z.object({
         sectorId: z.string().uuid(),
         serviceType: z.enum(["private", "shared"]),
         vehicleId: z.string().uuid(),
+        vehicleQuantity: z.number().int().min(1).default(1).optional(),
         scheduledDate: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -119,7 +127,7 @@ export const customJourneyApplicationSchema = z.object({
 export const groupBookingSchema = z.object({
   groupPackageId: z.string().uuid(),
   groupDepartureId: z.string().uuid(),
-  selectedRoomType: z.enum(["double", "triple", "quad"]),
+  selectedRoomType: z.enum(["sharing", "double", "triple", "quad"]),
   passengers: passengerCountsSchema,
   contact: customerContactSchema,
 })

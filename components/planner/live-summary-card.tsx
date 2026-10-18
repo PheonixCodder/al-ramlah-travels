@@ -2,8 +2,10 @@
 
 import React, { useState } from "react"
 import { usePlanner } from "./planner-context"
+import { formatDisplayDate } from "./planner-date-picker"
 import { LeadCaptureDialog } from "./lead-capture-dialog"
 import type { CustomJourneyApplicationInput } from "@/lib/validations/application"
+import { formatCitySequence } from "@/lib/domain"
 import {
   Calendar,
   Users,
@@ -22,6 +24,7 @@ export function LiveSummaryCard() {
   const {
     presetMode,
     pillars,
+    hasCityLegs,
     dates,
     travellers,
     itinerary,
@@ -30,6 +33,8 @@ export function LiveSummaryCard() {
     ziyarat,
     derived,
     catalog,
+    activeStepId,
+    goToStep,
   } = usePlanner()
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -42,6 +47,10 @@ export function LiveSummaryCard() {
   )
   const airline = airlines.find((a) => a.id === flights.preferredAirlineId)
 
+  const activeSegments = transport.segments.filter(
+    (s) => presetMode !== "transport_only" || s.enabled !== false
+  )
+
   // Construct submission payload for dialog
   const submissionPayload: Omit<CustomJourneyApplicationInput, "contact"> = {
     presetMode,
@@ -52,41 +61,50 @@ export function LiveSummaryCard() {
     includeZiyarat: pillars.ziyarat,
     passengers: {
       adults: travellers.adults,
-      children: travellers.children,
       infants: travellers.infants,
     },
     ksaArrivalDate: dates.arrivalDate,
     ksaDepartureDate: dates.departureDate,
-    citySequence: itinerary.citySequence,
-    departureCityId: flights.departureCityId || undefined,
-    flightRouteType: flights.routeType,
-    cabinClass: flights.cabinClass,
-    preferredAirlineId: flights.preferredAirlineId || undefined,
+    citySequence: hasCityLegs ? itinerary.citySequence : undefined,
+    entryAirport: hasCityLegs ? itinerary.entryAirport : undefined,
+    exitAirport: hasCityLegs ? itinerary.exitAirport : undefined,
+    departureCityId: pillars.flights
+      ? flights.departureCityId || undefined
+      : undefined,
+    flightRouteType: pillars.flights ? flights.routeType : undefined,
+    cabinClass: pillars.flights ? flights.cabinClass : undefined,
+    preferredAirlineId: pillars.flights
+      ? flights.preferredAirlineId || undefined
+      : undefined,
     hotelStays: pillars.hotels
       ? itinerary.stays.map((s) => ({
           stayOrder: s.stayOrder,
           city: s.city,
           hotelId: s.hotelId,
           nights: s.nights,
+          checkInDate: s.checkInDate,
+          checkOutDate: s.checkOutDate,
           roomCategory: s.roomCategory,
           sharedRoomType: s.sharedRoomType,
           privateRoomAllocation: s.privateRoomAllocation,
-          mealPlan: s.mealPlan,
         }))
       : undefined,
     transportSegments: pillars.transport
-      ? transport.segments.map((s) => ({
-          segmentOrder: s.segmentOrder,
-          sectorId: s.sectorId,
-          serviceType: s.serviceType,
-          vehicleId: s.vehicleId,
-          pickupTime: s.pickupTime,
-        }))
+      ? transport.segments
+          .filter((s) => s.enabled !== false)
+          .map((s) => ({
+            segmentOrder: s.segmentOrder,
+            sectorId: s.sectorId,
+            serviceType: s.serviceType,
+            vehicleId: s.vehicleId,
+            pickupTime: s.pickupTime,
+            scheduledDate: s.scheduledDate,
+          }))
       : undefined,
     ziyaratScope: pillars.ziyarat ? ziyarat.scope : undefined,
     ziyaratVehicleId: pillars.ziyarat
-      ? pillars.transport
-        ? leadVehicle?.id
+      ? pillars.transport && leadVehicle && leadVehicle.category !== "train"
+        ? leadVehicle.id
         : ziyarat.fallbackVehicleId
       : undefined,
     selectedZiyaratPlaceIds: pillars.ziyarat
@@ -108,11 +126,13 @@ export function LiveSummaryCard() {
                 ? "Complete Umrah Journey"
                 : presetMode === "visa_only"
                   ? "Umrah Visa Only"
-                  : presetMode === "hotels_only"
-                    ? "Courtyard Hotels"
-                    : presetMode === "transport_only"
-                      ? "VIP Transport Fleet"
-                      : "Bespoke Journey Mix"}
+                  : presetMode === "flights_only"
+                    ? "Flight Ticket Only"
+                    : presetMode === "hotels_only"
+                      ? "Courtyard Hotels"
+                      : presetMode === "transport_only"
+                        ? "VIP Transport Fleet"
+                        : "Custom Package"}
             </h3>
           </div>
           <span className="flex size-7 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059] text-[#8F6E2A]">
@@ -122,17 +142,25 @@ export function LiveSummaryCard() {
 
         {/* Travel Parameters Summary */}
         <div className="mb-4 flex flex-col gap-2 rounded-xl bg-[#FAF7F0] p-3 border border-[#E6DEC8]">
-          <div className="flex items-center justify-between text-xs">
+          <button
+            type="button"
+            onClick={() => goToStep("setup")}
+            className="flex items-center justify-between text-xs text-left w-full hover:opacity-80 transition-opacity"
+          >
             <span className="flex items-center gap-1.5 text-[#686E65]">
               <Calendar className="size-3 text-[#C5A059]" />
               Dates in KSA:
             </span>
             <span className="font-semibold text-[#1A1D1A]">
-              {dates.totalKsaDays} Days ({dates.arrivalDate} → {dates.departureDate})
+              {dates.totalKsaDays} Days ({formatDisplayDate(dates.arrivalDate)} → {formatDisplayDate(dates.departureDate)})
             </span>
-          </div>
+          </button>
 
-          <div className="flex items-center justify-between text-xs">
+          <button
+            type="button"
+            onClick={() => goToStep("setup")}
+            className="flex items-center justify-between text-xs text-left w-full hover:opacity-80 transition-opacity"
+          >
             <span className="flex items-center gap-1.5 text-[#686E65]">
               <Users className="size-3 text-[#C5A059]" />
               Pilgrims:
@@ -140,29 +168,53 @@ export function LiveSummaryCard() {
             <span className="font-semibold text-[#1A1D1A]">
               {travellers.bedAndSeatCount} Beds/Seats ({travellers.totalPassportCount} Passports)
             </span>
-          </div>
+          </button>
+
+          {hasCityLegs && itinerary.citySequence && (
+            <button
+              type="button"
+              onClick={() => goToStep("setup")}
+              className="flex items-center justify-between text-xs text-left w-full hover:opacity-80 transition-opacity"
+            >
+              <span className="flex items-center gap-1.5 text-[#686E65]">
+                <Compass className="size-3 text-[#C5A059]" />
+                Route:
+              </span>
+              <span className="font-semibold text-[#1A1D1A]">
+                {formatCitySequence(itinerary.citySequence)}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Itemized Summary Items */}
         <div className="mb-5 flex flex-col gap-2.5 text-xs">
           {/* Visa Line */}
           {pillars.visa && (
-            <div className="flex items-start justify-between border-b border-[#E6DEC8]/60 pb-2">
+            <button
+              type="button"
+              onClick={() => goToStep("setup")}
+              className="flex items-start justify-between border-b border-[#E6DEC8]/60 pb-2 text-left w-full hover:bg-[#FAF7F0]/40 rounded px-1 transition-colors"
+            >
               <div className="flex items-center gap-1.5">
                 <ShieldCheck className="size-3.5 text-[#0A3622]" />
                 <span className="font-semibold text-[#1A1D1A]">
-                  KSA Umrah eVisa ({visaCalc.tier === "short_term" ? "≤30d" : ">30d"})
+                  Umrah Visa
                 </span>
               </div>
               <span className="text-[11px] text-[#0A3622] font-medium">
                 {travellers.totalPassportCount} Passports
               </span>
-            </div>
+            </button>
           )}
 
           {/* Flights Line */}
           {pillars.flights && (
-            <div className="flex items-start justify-between border-b border-[#E6DEC8]/60 pb-2">
+            <button
+              type="button"
+              onClick={() => goToStep("flights")}
+              className="flex items-start justify-between border-b border-[#E6DEC8]/60 pb-2 text-left w-full hover:bg-[#FAF7F0]/40 rounded px-1 transition-colors"
+            >
               <div className="flex items-center gap-1.5">
                 <Plane className="size-3.5 text-[#0A3622]" />
                 <div>
@@ -177,12 +229,16 @@ export function LiveSummaryCard() {
               <span className="text-[11px] text-[#686E65]">
                 {airline?.iataCode ?? "Best Rate"}
               </span>
-            </div>
+            </button>
           )}
 
           {/* Hotels Line */}
           {pillars.hotels && (
-            <div className="flex flex-col gap-1 border-b border-[#E6DEC8]/60 pb-2">
+            <button
+              type="button"
+              onClick={() => goToStep("hotels")}
+              className="flex flex-col gap-1 border-b border-[#E6DEC8]/60 pb-2 text-left w-full hover:bg-[#FAF7F0]/40 rounded px-1 transition-colors"
+            >
               <div className="flex items-center gap-1.5">
                 <Building className="size-3.5 text-[#0A3622]" />
                 <span className="font-semibold text-[#1A1D1A]">
@@ -205,12 +261,16 @@ export function LiveSummaryCard() {
                   </div>
                 )
               })}
-            </div>
+            </button>
           )}
 
           {/* Transport Line */}
           {pillars.transport && (
-            <div className="flex items-start justify-between border-b border-[#E6DEC8]/60 pb-2">
+            <button
+              type="button"
+              onClick={() => goToStep("transport")}
+              className="flex items-start justify-between border-b border-[#E6DEC8]/60 pb-2 text-left w-full hover:bg-[#FAF7F0]/40 rounded px-1 transition-colors"
+            >
               <div className="flex items-center gap-1.5">
                 <Car className="size-3.5 text-[#0A3622]" />
                 <div>
@@ -218,19 +278,23 @@ export function LiveSummaryCard() {
                     Ground Transport Fleet
                   </span>
                   <p className="text-[10px] text-[#686E65]">
-                    {transport.segments.length} Point-to-Point Leg{transport.segments.length > 1 ? "s" : ""}
+                    {activeSegments.length} Point-to-Point Leg{activeSegments.length !== 1 ? "s" : ""}
                   </p>
                 </div>
               </div>
               <span className="text-[11px] font-medium text-[#0A3622]">
-                {leadVehicle?.name ?? "Chauffeur Fleet"}
+                {leadVehicle?.name ?? "Private Fleet"}
               </span>
-            </div>
+            </button>
           )}
 
           {/* Ziyarat Line */}
           {pillars.ziyarat && (
-            <div className="flex items-start justify-between border-b border-[#E6DEC8]/60 pb-2">
+            <button
+              type="button"
+              onClick={() => goToStep("ziyarat")}
+              className="flex items-start justify-between border-b border-[#E6DEC8]/60 pb-2 text-left w-full hover:bg-[#FAF7F0]/40 rounded px-1 transition-colors"
+            >
               <div className="flex items-center gap-1.5">
                 <Compass className="size-3.5 text-[#0A3622]" />
                 <div>
@@ -238,14 +302,19 @@ export function LiveSummaryCard() {
                     Sacred Historical Ziyarat
                   </span>
                   <p className="text-[10px] text-[#686E65]">
-                    {ziyarat.selectedPlaceIds.length} Sanctuary Sites Selected
+                    {ziyarat.selectedPlaceIds.length} Sanctuary{" "}
+                    {ziyarat.selectedPlaceIds.length === 1 ? "Site" : "Sites"} Selected
                   </p>
                 </div>
               </div>
               <span className="text-[11px] font-medium text-[#0A3622]">
-                {ziyarat.scope.replace("_", " ").toUpperCase()}
+                {ziyarat.scope === "both"
+                  ? "Makkah & Madinah"
+                  : ziyarat.scope === "makkah_only"
+                    ? "Makkah"
+                    : "Madinah"}
               </span>
-            </div>
+            </button>
           )}
         </div>
 
@@ -280,18 +349,37 @@ export function LiveSummaryCard() {
         {/* Action Button */}
         <button
           type="button"
-          onClick={() => setIsDialogOpen(true)}
+          onClick={() => {
+            if (activeStepId !== "review") {
+              goToStep("review")
+            } else {
+              const formElem = document.getElementById("lead-contact-form")
+              if (formElem) {
+                formElem.scrollIntoView({ behavior: "smooth", block: "center" })
+                const inputElem = document.getElementById("lead-full-name")
+                inputElem?.focus()
+              } else {
+                setIsDialogOpen(true)
+              }
+            }
+          }}
           className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#0A3622] py-3 px-4 font-bold text-xs sm:text-sm text-white shadow-md shadow-[#0A3622]/20 transition-all hover:bg-[#0F4C31] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-[#C5A059]"
         >
           <span>
-            {isVisaOnly ? "Confirm Visa Booking" : "Request Official Quote"}
+            {activeStepId !== "review"
+              ? isVisaOnly
+                ? "Proceed to Review & Confirm"
+                : "Proceed to Review & Submit"
+              : isVisaOnly
+                ? "Confirm Visa Booking"
+                : "Request Official Quote"}
           </span>
           <ArrowRight className="size-4 text-[#C5A059] transition-transform group-hover:translate-x-1" />
         </button>
 
-        <p className="text-center text-[10px] text-[#686E65] mt-2">
-          No credit card required • 24/7 VIP Concierge Response via WhatsApp
-        </p>
+        <div className="mt-2.5 text-center text-[10px] text-[#686E65]">
+          <span>No credit card required</span>
+        </div>
       </div>
 
       {/* Lead Capture Dialog */}
@@ -301,6 +389,7 @@ export function LiveSummaryCard() {
         payload={submissionPayload}
         isVisaOnly={isVisaOnly}
         calculatedVisaTotalPkr={visaCalc.totalVisaCostPkr}
+        defaultCity={depCity?.cityName?.split("/")[0]?.trim() || "Lahore"}
       />
     </>
   )

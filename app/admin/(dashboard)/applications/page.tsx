@@ -83,8 +83,11 @@ export default async function AdminApplicationsPage({
 
   // Filter applications in memory for snappy response
   const filteredApplications = allApplications.filter((app) => {
-    // Special SLA overdue filter
-    if (specialFilter === "overdue") {
+    // Special SLA overdue filter: only applies to pending_quote or all
+    if (
+      specialFilter === "overdue" &&
+      (statusFilter === "all" || statusFilter === "pending_quote")
+    ) {
       if (app.status !== "pending_quote") return false
       const createdTime = new Date(app.createdAt).getTime()
       if (nowMs - createdTime <= twentyFourHoursMs) return false
@@ -146,6 +149,7 @@ export default async function AdminApplicationsPage({
         currentQuery={q}
         currentStatus={statusFilter}
         currentSource={sourceFilter}
+        currentFilter={specialFilter}
         countsByStatus={countsByStatus}
       />
 

@@ -2,6 +2,7 @@ import * as React from "react"
 import { db } from "@/db"
 import { contactMessages } from "@/db/schema"
 import { desc } from "drizzle-orm"
+import { requireAdmin } from "@/lib/auth-guard"
 import {
   MessagesClient,
   ContactMessageData,
@@ -12,6 +13,8 @@ export const metadata = {
 }
 
 export default async function AdminMessagesPage() {
+  await requireAdmin()
+
   const allMessages = await db
     .select()
     .from(contactMessages)

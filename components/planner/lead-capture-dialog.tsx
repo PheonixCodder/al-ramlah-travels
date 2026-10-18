@@ -32,6 +32,7 @@ interface LeadCaptureDialogProps {
   payload: Omit<CustomJourneyApplicationInput, "contact">
   isVisaOnly: boolean
   calculatedVisaTotalPkr?: number
+  defaultCity?: string
 }
 
 export function LeadCaptureDialog({
@@ -40,14 +41,22 @@ export function LeadCaptureDialog({
   payload,
   isVisaOnly,
   calculatedVisaTotalPkr,
+  defaultCity = "Lahore",
 }: LeadCaptureDialogProps) {
   const [customerName, setCustomerName] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
   const [customerWhatsapp, setCustomerWhatsapp] = useState("")
-  const [customerCity, setCustomerCity] = useState("Lahore")
+  const [customerCity, setCustomerCity] = useState(defaultCity || "Lahore")
+  const [cityTouched, setCityTouched] = useState(false)
   const [customerEmail, setCustomerEmail] = useState("")
   const [specialRequests, setSpecialRequests] = useState("")
   const [sameAsPhone, setSameAsPhone] = useState(true)
+
+  React.useEffect(() => {
+    if (!cityTouched && defaultCity) {
+      setCustomerCity(defaultCity)
+    }
+  }, [defaultCity, cityTouched])
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -269,7 +278,10 @@ export function LeadCaptureDialog({
                     required
                     placeholder="e.g. Lahore / Islamabad"
                     value={customerCity}
-                    onChange={(e) => setCustomerCity(e.target.value)}
+                    onChange={(e) => {
+                      setCityTouched(true)
+                      setCustomerCity(e.target.value)
+                    }}
                     className="w-full rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-3 py-2 text-xs font-medium text-[#1A1D1A] focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
                   />
                 </div>

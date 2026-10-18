@@ -160,7 +160,7 @@ const DEFAULT_FAQS: FaqPreviewItem[] = [
     category: "transport",
     question: "Can we start our Umrah itinerary directly in Makkah?",
     answer:
-      "Yes. Because Makkah does not have an international airport, itineraries beginning in Makkah automatically designate King Abdulaziz International Airport in Jeddah (JED) as your entry gateway, with immediate private chauffeured transfer directly to your Makkah hotel.",
+      "Yes. Because Makkah does not have an international airport, itineraries beginning in Makkah automatically designate King Abdulaziz International Airport in Jeddah (JED) as your entry gateway, with immediate private transfer directly to your Makkah hotel.",
   },
   {
     id: "f-5",
@@ -252,13 +252,13 @@ export function MarketingSections({
             </p>
           </div>
 
-          {/* Bento Item 4: Private Chauffeured Fleet */}
+          {/* Bento Item 4: Private Fleet */}
           <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs space-y-4">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20">
               <Car className="size-6" />
             </div>
             <h3 className="font-display text-xl font-bold text-foreground">
-              Chauffeured GMC Fleet
+              Private GMC Fleet
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Executive SUVs and Toyota HiAce vans with dedicated English and Urdu speaking drivers waiting for your family upon arrival.
@@ -329,7 +329,7 @@ export function MarketingSections({
                 Craft Your Itinerary
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Choose your travel dates, city sequence, room sharing preferences, preferred airline, and private chauffeured vehicles in our interactive planner.
+                Choose your travel dates, city sequence, room sharing preferences, preferred airline, and private vehicles in our interactive planner.
               </p>
             </div>
 
@@ -368,7 +368,7 @@ export function MarketingSections({
                 Sacred Departure
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Upon quotation approval, electronic visas and flight tickets are issued with complete hotel vouchers and airport chauffeur contact details.
+                Upon quotation approval, electronic visas and flight tickets are issued with complete hotel vouchers and airport driver contact details.
               </p>
             </div>
           </div>

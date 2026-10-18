@@ -1,5 +1,7 @@
+import { relations } from "drizzle-orm"
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -7,6 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core"
@@ -25,16 +28,14 @@ export const hotelAccessTypeEnum = pgEnum("hotel_access_type", [
   "shuttle",
 ])
 
-export const mealPlanTypeEnum = pgEnum("meal_plan_type", [
-  "room_only",
-  "breakfast",
-  "half_board",
-  "full_board",
-])
-
 export const roomCategoryEnum = pgEnum("room_category", ["shared", "private"])
 
-export const roomTypeEnum = pgEnum("room_type", ["double", "triple", "quad"])
+export const roomTypeEnum = pgEnum("room_type", [
+  "sharing",
+  "double",
+  "triple",
+  "quad",
+])
 
 export const vehicleCategoryEnum = pgEnum("vehicle_category", [
   "sedan",
@@ -66,6 +67,12 @@ export const visaRates = pgTable("visa_rates", {
   label: text("label").notNull(),
   maxDays: integer("max_days").notNull(),
   pricePkr: integer("price_pkr").notNull(),
+  priceSar: integer("price_sar").notNull().default(470),
+  withoutMasarPriceSar: integer("without_masar_price_sar").notNull().default(470),
+  withMasar10DaysSar: integer("with_masar_10_days_sar").notNull().default(500),
+  withMasar15DaysSar: integer("with_masar_15_days_sar").notNull().default(515),
+  withMasar21DaysSar: integer("with_masar_21_days_sar").notNull().default(530),
+  withMasar28DaysSar: integer("with_masar_28_days_sar").notNull().default(545),
   notes: text("notes"),
   updatedByUserId: text("updated_by_user_id").references(() => user.id),
   updatedAt: timestamp("updated_at", { withTimezone: true })
@@ -126,7 +133,7 @@ export const departureCities = pgTable(
 )
 
 // ==========================================
-// DYNAMIC HOTELS & MEAL PLANS
+// DYNAMIC HOTELS
 // ==========================================
 
 export const hotels = pgTable(
@@ -148,11 +155,14 @@ export const hotels = pgTable(
       .$type<("double" | "triple" | "quad")[]>()
       .notNull()
       .default(["double", "triple", "quad"]),
-    offersDining: boolean("offers_dining").notNull().default(false),
-    availableMealPlans: jsonb("available_meal_plans")
-      .$type<("room_only" | "breakfast" | "half_board" | "full_board")[]>()
-      .notNull()
-      .default(["room_only"]),
+    sharingPriceSar: integer("sharing_price_sar").notNull().default(0),
+    roomPriceSar: integer("room_price_sar").notNull().default(0),
+    quadPriceSar: integer("quad_price_sar").notNull().default(0),
+    triplePriceSar: integer("triple_price_sar").notNull().default(0),
+    doublePriceSar: integer("double_price_sar").notNull().default(0),
+    validFrom: date("valid_from"),
+    validUntil: date("valid_until"),
+    locationNotes: text("location_notes"),
     isFeatured: boolean("is_featured").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
@@ -187,6 +197,8 @@ export const vehicles = pgTable(
     allowsCustomPickupTime: boolean("allows_custom_pickup_time")
       .notNull()
       .default(false),
+    defaultRateSar: integer("default_rate_sar").notNull().default(250),
+    ziyaratRateSar: integer("ziyarat_rate_sar").notNull().default(200),
     imageUrl: text("imageUrl"),
     description: text("description"),
     isActive: boolean("is_active").notNull().default(true),
@@ -216,6 +228,15 @@ export const transportSectors = pgTable(
     originType: sectorPointTypeEnum("origin_type").notNull(),
     destinationType: sectorPointTypeEnum("destination_type").notNull(),
     supportsTrain: boolean("supports_train").notNull().default(false),
+    sharedBusRateSarPerPax: integer("shared_bus_rate_sar_per_pax")
+      .notNull()
+      .default(20),
+    isSharedBusEligible: boolean("is_shared_bus_eligible")
+      .notNull()
+      .default(false),
+    terminalParkingFeeSar: integer("terminal_parking_fee_sar")
+      .notNull()
+      .default(0),
     approxDistanceKm: integer("approx_distance_km"),
     approxDurationMinutes: integer("approx_duration_minutes"),
     isActive: boolean("is_active").notNull().default(true),
@@ -232,6 +253,59 @@ export const transportSectors = pgTable(
     index("idx_sector_active").on(table.isActive),
   ]
 )
+
+// ==========================================
+// 2D ROUTE SECTOR × VEHICLE RATE MATRIX
+// ==========================================
+
+export const transportRates = pgTable(
+  "transport_rates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sectorId: uuid("sector_id")
+      .notNull()
+      .references(() => transportSectors.id, { onDelete: "cascade" }),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id, { onDelete: "cascade" }),
+    rateSar: integer("rate_sar").notNull(),
+    ratePkrOverride: integer("rate_pkr_override"),
+    notes: text("notes"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_transport_rate_sector_vehicle").on(
+      table.sectorId,
+      table.vehicleId
+    ),
+    index("idx_transport_rate_sector").on(table.sectorId),
+    index("idx_transport_rate_vehicle").on(table.vehicleId),
+  ]
+)
+
+export const transportRatesRelations = relations(transportRates, ({ one }) => ({
+  sector: one(transportSectors, {
+    fields: [transportRates.sectorId],
+    references: [transportSectors.id],
+  }),
+  vehicle: one(vehicles, {
+    fields: [transportRates.vehicleId],
+    references: [vehicles.id],
+  }),
+}))
+
+export const transportSectorsRelations = relations(
+  transportSectors,
+  ({ many }) => ({
+    rates: many(transportRates),
+  })
+)
+
+export const vehiclesRelations = relations(vehicles, ({ many }) => ({
+  rates: many(transportRates),
+}))
 
 // ==========================================
 // SACRED ZIYARAT SITES

@@ -14,12 +14,12 @@ import {
   Star,
   Footprints,
   Bus,
-  Utensils,
   Trash2,
   Edit2,
   CheckCircle2,
   XCircle,
   MapPin,
+  Coins,
 } from "lucide-react"
 
 interface HotelsClientProps {
@@ -29,7 +29,9 @@ interface HotelsClientProps {
 export function HotelsClient({ initialHotels }: HotelsClientProps) {
   const [hotels, setHotels] = useState<HotelData[]>(initialHotels)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCity, setSelectedCity] = useState<"all" | "makkah" | "madinah">("all")
+  const [selectedCity, setSelectedCity] = useState<"all" | "makkah" | "madinah">(
+    "all"
+  )
   const [selectedRating, setSelectedRating] = useState<string>("all")
   const [isPending, startTransition] = useTransition()
 
@@ -40,27 +42,37 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
       selectedRating === "all" || h.starRating.toString() === selectedRating
     const matchesSearch =
       h.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      h.distanceLabel.toLowerCase().includes(searchQuery.toLowerCase())
+      h.distanceLabel.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (h.locationNotes &&
+        h.locationNotes.toLowerCase().includes(searchQuery.toLowerCase()))
     return matchesCity && matchesRating && matchesSearch
   })
 
   function handleToggle(id: string, currentStatus: boolean) {
     const nextStatus = !currentStatus
-    setHotels((prev) =>
-      prev.map((h) => (h.id === id ? { ...h, isActive: nextStatus } : h))
-    )
     startTransition(async () => {
-      await toggleHotelActive(id, nextStatus)
+      const res = await toggleHotelActive(id, nextStatus)
+      if (res.success) {
+        setHotels((prev) =>
+          prev.map((h) => (h.id === id ? { ...h, isActive: nextStatus } : h))
+        )
+      }
     })
   }
 
   function handleDelete(id: string, name: string) {
-    if (!window.confirm(`Are you sure you want to remove "${name}" from the catalog?`)) {
+    if (
+      !window.confirm(`Are you sure you want to remove "${name}" from the catalog?`)
+    ) {
       return
     }
-    setHotels((prev) => prev.filter((h) => h.id !== id))
     startTransition(async () => {
-      await deleteHotel(id)
+      const res = await deleteHotel(id)
+      if (!res.success) {
+        alert(res.error)
+        return
+      }
+      setHotels((prev) => prev.filter((h) => h.id !== id))
     })
   }
 
@@ -86,7 +98,7 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
           <button
             type="button"
             onClick={() => setSelectedCity("all")}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
               selectedCity === "all"
                 ? "bg-card text-foreground shadow-xs font-semibold"
                 : "text-muted-foreground hover:text-foreground"
@@ -97,7 +109,7 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
           <button
             type="button"
             onClick={() => setSelectedCity("makkah")}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
               selectedCity === "makkah"
                 ? "bg-card text-emerald-800 shadow-xs font-semibold"
                 : "text-muted-foreground hover:text-foreground"
@@ -109,7 +121,7 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
           <button
             type="button"
             onClick={() => setSelectedCity("madinah")}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
               selectedCity === "madinah"
                 ? "bg-card text-amber-900 shadow-xs font-semibold"
                 : "text-muted-foreground hover:text-foreground"
@@ -120,36 +132,40 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
           </button>
         </div>
 
-        {/* Rating Filter & Search Query */}
-        <div className="flex items-center gap-3">
+        {/* Search & Stars Filter */}
+        <div className="flex items-center gap-2">
+          <div className="relative w-full sm:w-60">
+            <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search hotel or landmark..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8 text-xs h-9 bg-background"
+            />
+          </div>
           <select
             value={selectedRating}
             onChange={(e) => setSelectedRating(e.target.value)}
-            className="rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground shadow-xs focus-visible:outline-ring"
+            className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-foreground shadow-xs"
           >
             <option value="all">All Stars</option>
-            <option value="5">5-Star Luxury</option>
-            <option value="4">4-Star Premium</option>
-            <option value="3">3-Star Standard</option>
+            <option value="5">5 Stars</option>
+            <option value="4">4 Stars</option>
+            <option value="3">3 Stars</option>
+            <option value="2">2 Stars</option>
+            <option value="1">Economy</option>
           </select>
-
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search hotel by name or gate..."
-              className="pl-8 text-xs h-8"
-            />
-          </div>
         </div>
       </div>
 
-      {/* Hotels Grid */}
+      {/* Grid of Hotels */}
       {filteredHotels.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-16 text-center">
           <Building2 className="size-10 text-muted-foreground/60 mb-2" />
-          <h3 className="text-base font-semibold text-foreground">No hotels found</h3>
+          <h3 className="text-base font-semibold text-foreground">
+            No hotels found
+          </h3>
           <p className="text-xs text-muted-foreground max-w-sm mt-1">
             Try adjusting your search criteria or add a new property to the inventory.
           </p>
@@ -199,10 +215,7 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                   {/* Stars Pill */}
                   <div className="absolute top-2.5 right-2.5 flex items-center gap-0.5 rounded-full bg-black/60 px-2 py-0.5 backdrop-blur-xs">
                     {Array.from({ length: hotel.starRating }).map((_, i) => (
-                      <Star
-                        key={i}
-                        className="size-3 fill-gold text-gold"
-                      />
+                      <Star key={i} className="size-3 fill-gold text-gold" />
                     ))}
                   </div>
 
@@ -230,16 +243,23 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                     </h3>
                   </div>
 
-                  {/* Room Sharing & Dining Badges */}
+                  {hotel.locationNotes && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <MapPin className="size-3 text-gold shrink-0" />
+                      <span className="truncate">{hotel.locationNotes}</span>
+                    </p>
+                  )}
+
+                  {/* Room Sharing Badges */}
                   <div className="flex flex-wrap gap-1.5 text-[11px]">
                     {hotel.allowsPrivateRooms && (
                       <span className="rounded bg-muted px-2 py-0.5 text-muted-foreground font-medium">
-                        Private Rooms
+                        Private
                       </span>
                     )}
                     {hotel.allowsSharedRooms && (
                       <span className="rounded bg-muted px-2 py-0.5 text-muted-foreground font-medium">
-                        Shared Rooms
+                        Shared
                       </span>
                     )}
                     {hotel.availableRoomTypes.map((rt) => (
@@ -250,20 +270,56 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                         {rt}
                       </span>
                     ))}
-                    {hotel.offersDining && (
-                      <span className="flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 font-medium text-amber-800 border border-amber-200">
-                        <Utensils className="size-2.5" />
-                        Dining Options
-                      </span>
-                    )}
                   </div>
 
-                  {/* Amenities Preview */}
-                  {hotel.amenities && hotel.amenities.length > 0 && (
-                    <p className="text-xs text-muted-foreground line-clamp-1">
-                      {hotel.amenities.join(" · ")}
-                    </p>
-                  )}
+                  {/* Seasonal SAR Rates Table Preview */}
+                  <div className="rounded-lg border border-border/80 bg-muted/20 p-2.5 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-foreground border-b border-border/50 pb-1">
+                      <span className="flex items-center gap-1 text-gold">
+                        <Coins className="size-3" />
+                        Rates (SAR / Night)
+                      </span>
+                      {hotel.roomPriceSar ? (
+                        <span className="font-mono text-muted-foreground">
+                          Room: SAR {hotel.roomPriceSar}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-4 gap-1 text-center font-mono text-[11px]">
+                      <div className="rounded bg-background p-1 border border-border/40">
+                        <span className="text-[9px] block text-muted-foreground uppercase font-sans">
+                          Share
+                        </span>
+                        <span className="font-bold text-foreground">
+                          {hotel.sharingPriceSar ? `${hotel.sharingPriceSar}` : "-"}
+                        </span>
+                      </div>
+                      <div className="rounded bg-background p-1 border border-border/40">
+                        <span className="text-[9px] block text-muted-foreground uppercase font-sans">
+                          Quad
+                        </span>
+                        <span className="font-bold text-foreground">
+                          {hotel.quadPriceSar ? `${hotel.quadPriceSar}` : "-"}
+                        </span>
+                      </div>
+                      <div className="rounded bg-background p-1 border border-border/40">
+                        <span className="text-[9px] block text-muted-foreground uppercase font-sans">
+                          Triple
+                        </span>
+                        <span className="font-bold text-foreground">
+                          {hotel.triplePriceSar ? `${hotel.triplePriceSar}` : "-"}
+                        </span>
+                      </div>
+                      <div className="rounded bg-background p-1 border border-border/40">
+                        <span className="text-[9px] block text-muted-foreground uppercase font-sans">
+                          Double
+                        </span>
+                        <span className="font-bold text-foreground">
+                          {hotel.doublePriceSar ? `${hotel.doublePriceSar}` : "-"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -272,13 +328,17 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                 {/* Active Toggle */}
                 <button
                   type="button"
-                  onClick={() => hotel.id && handleToggle(hotel.id, hotel.isActive)}
-                  className="flex items-center gap-1.5 font-medium transition-colors hover:opacity-80"
+                  onClick={() =>
+                    hotel.id && handleToggle(hotel.id, hotel.isActive)
+                  }
+                  className="flex items-center gap-1.5 font-medium transition-colors hover:opacity-80 cursor-pointer"
                 >
                   {hotel.isActive ? (
                     <>
                       <CheckCircle2 className="size-4 text-emerald-600" />
-                      <span className="text-emerald-700 font-semibold">Active</span>
+                      <span className="text-emerald-700 font-semibold">
+                        Active
+                      </span>
                     </>
                   ) : (
                     <>
@@ -296,7 +356,7 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="size-7 text-muted-foreground hover:text-foreground"
+                        className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
                         title="Edit Hotel"
                       >
                         <Edit2 className="size-3.5" />
@@ -306,8 +366,10 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    onClick={() => hotel.id && handleDelete(hotel.id, hotel.name)}
-                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700"
+                    onClick={() =>
+                      hotel.id && handleDelete(hotel.id, hotel.name)
+                    }
+                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
                     title="Delete Hotel"
                   >
                     <Trash2 className="size-3.5" />

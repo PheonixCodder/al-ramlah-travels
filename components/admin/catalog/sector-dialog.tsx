@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertTransportSector } from "@/app/actions/catalog"
-import { Plus, Loader2 } from "lucide-react"
+import { Plus, Loader2, Bus, Coins } from "lucide-react"
 
 export interface SectorData {
   id?: string
@@ -27,6 +27,9 @@ export interface SectorData {
   originType: "airport" | "hotel"
   destinationType: "airport" | "hotel"
   supportsTrain: boolean
+  isSharedBusEligible?: boolean
+  sharedBusRateSarPerPax?: number
+  terminalParkingFeeSar?: number
   approxDistanceKm?: number | null
   approxDurationMinutes?: number | null
   isActive: boolean
@@ -58,6 +61,15 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
   const [supportsTrain, setSupportsTrain] = useState(
     sector?.supportsTrain ?? false
   )
+  const [isSharedBusEligible, setIsSharedBusEligible] = useState(
+    sector?.isSharedBusEligible ?? false
+  )
+  const [sharedBusRateSarPerPax, setSharedBusRateSarPerPax] = useState<number>(
+    sector?.sharedBusRateSarPerPax ?? 20
+  )
+  const [terminalParkingFeeSar, setTerminalParkingFeeSar] = useState<number>(
+    sector?.terminalParkingFeeSar ?? 0
+  )
   const [approxDistanceKm, setApproxDistanceKm] = useState<number | undefined>(
     sector?.approxDistanceKm ?? 95
   )
@@ -82,6 +94,9 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
         originType,
         destinationType,
         supportsTrain,
+        isSharedBusEligible,
+        sharedBusRateSarPerPax,
+        terminalParkingFeeSar,
         approxDistanceKm: approxDistanceKm ?? undefined,
         approxDurationMinutes: approxDurationMinutes ?? undefined,
         isActive,
@@ -106,7 +121,7 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
           trigger ? (
             (trigger as React.ReactElement)
           ) : (
-            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
               <Plus className="size-4" />
               <span>Add Sector</span>
             </Button>
@@ -119,7 +134,7 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
             {sector ? `Edit ${sector.code}` : "Add Point-to-Point Sector"}
           </DialogTitle>
           <DialogDescription>
-            Configure origin, destination, transit time, and bullet-train flags.
+            Configure origin, destination, transit time, bus seat rates, and terminal parking fees.
           </DialogDescription>
         </DialogHeader>
 
@@ -234,6 +249,59 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
             </div>
           </div>
 
+          {/* Shared Bus & Terminal Parking Fees */}
+          <div className="rounded-lg border border-border/80 bg-muted/20 p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Bus className="size-3.5 text-gold" />
+                <span className="text-xs font-semibold text-foreground">
+                  Shared Bus & Parking Parameters
+                </span>
+              </div>
+              <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isSharedBusEligible}
+                  onChange={(e) => setIsSharedBusEligible(e.target.checked)}
+                  className="rounded text-primary"
+                />
+                <span>Shared Bus Eligible</span>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="space-y-1">
+                <Label htmlFor="s-bus-rate" className="text-xs">
+                  Shared Bus Rate (SAR / Pax)
+                </Label>
+                <Input
+                  id="s-bus-rate"
+                  type="number"
+                  min={0}
+                  value={sharedBusRateSarPerPax}
+                  onChange={(e) =>
+                    setSharedBusRateSarPerPax(Number(e.target.value))
+                  }
+                  disabled={!isSharedBusEligible}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="s-parking-fee" className="text-xs">
+                  Terminal Parking Fee (SAR)
+                </Label>
+                <Input
+                  id="s-parking-fee"
+                  type="number"
+                  min={0}
+                  value={terminalParkingFeeSar}
+                  onChange={(e) =>
+                    setTerminalParkingFeeSar(Number(e.target.value))
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between border-t border-border pt-3">
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -244,7 +312,7 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
                   className="rounded text-primary"
                 />
                 <span className="font-medium text-emerald-800">
-                  Supports Haramain Train
+                  Supports Train
                 </span>
               </label>
               <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -278,7 +346,7 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
             <Button
               type="submit"
               disabled={loading}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
             >
               {loading && <Loader2 className="size-4 animate-spin" />}
               <span>{sector ? "Save Changes" : "Create Sector"}</span>

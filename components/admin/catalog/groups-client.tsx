@@ -2,7 +2,10 @@
 
 import * as React from "react"
 import { useState, useTransition } from "react"
-import { GroupPackageData, GroupPackageDialog } from "./group-package-dialog"
+import {
+  GroupPackageData,
+  GroupPackageDialog,
+} from "./group-package-dialog"
 import {
   DepartureBatchData,
   DepartureBatchDialog,
@@ -19,23 +22,40 @@ import {
   Calendar,
   Plane,
   Building2,
+  Clock,
   Trash2,
   Edit2,
   CheckCircle2,
   XCircle,
-  Users,
-  Utensils,
-  Plus,
-  Clock,
-  Sparkles,
+  Gift,
+  Baby,
+  Luggage,
 } from "lucide-react"
 
 export interface PackageWithRelations extends GroupPackageData {
   airline?: { id: string; name: string; iataCode: string } | null
-  makkahHotel?: { id: string; name: string; starRating: number } | null
-  madinahHotel?: { id: string; name: string; starRating: number } | null
+  makkahHotel?: {
+    id: string
+    name: string
+    city: string
+    starRating: number
+    distanceMeters: number
+    distanceLabel: string
+  } | null
+  madinahHotel?: {
+    id: string
+    name: string
+    city: string
+    starRating: number
+    distanceMeters: number
+    distanceLabel: string
+  } | null
   departures: (DepartureBatchData & {
-    departureCity?: { id: string; cityName: string; airportCode: string } | null
+    departureCity?: {
+      id: string
+      cityName: string
+      airportCode: string
+    } | null
   })[]
 }
 
@@ -62,36 +82,46 @@ export function GroupsClient({
 
   function handlePackageToggle(id: string, current: boolean) {
     const next = !current
-    setPackages((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, isActive: next } : p))
-    )
     startTransition(async () => {
-      await toggleGroupPackageActive(id, next)
+      const res = await toggleGroupPackageActive(id, next)
+      if (res.success) {
+        setPackages((prev) =>
+          prev.map((p) => (p.id === id ? { ...p, isActive: next } : p))
+        )
+      }
     })
   }
 
   function handlePackageDelete(id: string, title: string) {
     if (!window.confirm(`Delete package "${title}" and all its batches?`)) return
-    setPackages((prev) => prev.filter((p) => p.id !== id))
     startTransition(async () => {
-      await deleteGroupPackage(id)
+      const res = await deleteGroupPackage(id)
+      if (!res.success) {
+        alert(res.error)
+        return
+      }
+      setPackages((prev) => prev.filter((p) => p.id !== id))
     })
   }
 
   function handleBatchDelete(batchId: string, batchCode: string, pkgId: string) {
     if (!window.confirm(`Delete departure batch "${batchCode}"?`)) return
-    setPackages((prev) =>
-      prev.map((p) =>
-        p.id === pkgId
-          ? {
-              ...p,
-              departures: p.departures.filter((d) => d.id !== batchId),
-            }
-          : p
-      )
-    )
     startTransition(async () => {
-      await deleteGroupDeparture(batchId)
+      const res = await deleteGroupDeparture(batchId)
+      if (!res.success) {
+        alert(res.error)
+        return
+      }
+      setPackages((prev) =>
+        prev.map((p) =>
+          p.id === pkgId
+            ? {
+                ...p,
+                departures: p.departures.filter((d) => d.id !== batchId),
+              }
+            : p
+        )
+      )
     })
   }
 
@@ -104,7 +134,7 @@ export function GroupsClient({
             Pre-Built Group Packages
           </h1>
           <p className="text-sm text-muted-foreground">
-            Configure seasonal Umrah packages, flight allotments, and regional departure batches with real-time seat tracking.
+            Configure seasonal Umrah packages, flight allotments, room pricing matrices, and regional departure batches with real-time seat tracking.
           </p>
         </div>
         <GroupPackageDialog
@@ -113,63 +143,36 @@ export function GroupsClient({
         />
       </div>
 
-      {/* Tier Filter */}
-      <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-muted p-1 text-xs w-fit">
+      {/* Tier Filter Pills */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
         <button
           type="button"
           onClick={() => setSelectedTier("all")}
-          className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+          className={`rounded-lg px-3.5 py-1.5 font-medium transition-colors cursor-pointer ${
             selectedTier === "all"
-              ? "bg-card text-foreground shadow-xs font-semibold"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-primary text-primary-foreground shadow-xs font-semibold"
+              : "border border-border bg-card text-muted-foreground hover:text-foreground"
           }`}
         >
           All Tiers ({packages.length})
         </button>
-        <button
-          type="button"
-          onClick={() => setSelectedTier("vip_5star")}
-          className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
-            selectedTier === "vip_5star"
-              ? "bg-card text-amber-900 shadow-xs font-semibold"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          VIP 5-Star ({packages.filter((p) => p.tier === "vip_5star").length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setSelectedTier("gold")}
-          className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
-            selectedTier === "gold"
-              ? "bg-card text-emerald-900 shadow-xs font-semibold"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Gold ({packages.filter((p) => p.tier === "gold").length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setSelectedTier("silver")}
-          className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
-            selectedTier === "silver"
-              ? "bg-card text-foreground shadow-xs font-semibold"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Silver ({packages.filter((p) => p.tier === "silver").length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setSelectedTier("bronze")}
-          className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
-            selectedTier === "bronze"
-              ? "bg-card text-foreground shadow-xs font-semibold"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Bronze ({packages.filter((p) => p.tier === "bronze").length})
-        </button>
+        {["vip_5star", "gold", "silver", "bronze", "economy"].map((t) => {
+          const count = packages.filter((p) => p.tier === t).length
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setSelectedTier(t)}
+              className={`capitalize rounded-lg px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+                selectedTier === t
+                  ? "bg-primary text-primary-foreground shadow-xs font-semibold"
+                  : "border border-border bg-card text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t.replace("_", " ")} ({count})
+            </button>
+          )
+        })}
       </div>
 
       {/* Packages List */}
@@ -177,24 +180,26 @@ export function GroupsClient({
         {filteredPackages.map((pkg) => (
           <div
             key={pkg.id}
-            className={`overflow-hidden rounded-xl border bg-card shadow-xs transition-all ${
+            className={`overflow-hidden rounded-2xl border bg-card shadow-xs transition-all ${
               pkg.isActive
                 ? "border-border hover:border-gold/60"
-                : "border-border/60 opacity-60 bg-muted/20"
+                : "border-border/60 opacity-60 bg-muted/10"
             }`}
           >
-            {/* Top Package Details Header */}
-            <div className="border-b border-border/80 bg-muted/15 p-5">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
+            {/* Package Header Row */}
+            <div className="border-b border-border/80 bg-muted/30 p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
                     <Badge
-                      className={`font-semibold capitalize text-xs ${
+                      className={`capitalize text-xs font-semibold ${
                         pkg.tier === "vip_5star"
-                          ? "bg-amber-100 text-amber-950 border-amber-300"
+                          ? "bg-gold/20 text-gold-foreground border-gold/40"
                           : pkg.tier === "gold"
-                          ? "bg-emerald-100 text-emerald-950 border-emerald-300"
-                          : "bg-muted text-muted-foreground"
+                          ? "bg-amber-100 text-amber-950 border-amber-300"
+                          : pkg.tier === "silver"
+                          ? "bg-slate-200 text-slate-900 border-slate-300"
+                          : "bg-emerald-100 text-emerald-950 border-emerald-300"
                       }`}
                     >
                       {pkg.tier.replace("_", " ")}
@@ -237,38 +242,67 @@ export function GroupsClient({
                         Madinah: {pkg.madinahHotel.name}
                       </span>
                     )}
-                    <span className="flex items-center gap-1">
-                      <Utensils className="size-3.5 text-primary" />
-                      {pkg.mealPlan.replace("_", " ")}
-                    </span>
                   </div>
+
+                  {/* Gifted Inclusions */}
+                  {pkg.giftedInclusions && pkg.giftedInclusions.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
+                      <span className="text-[11px] font-semibold text-gold flex items-center gap-1">
+                        <Gift className="size-3" /> Gifts:
+                      </span>
+                      {pkg.giftedInclusions.map((gift, idx) => (
+                        <span
+                          key={idx}
+                          className="rounded-full bg-gold/10 px-2 py-0.5 text-[10px] font-medium text-foreground border border-gold/30"
+                        >
+                          {gift}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* Pricing & Package Controls */}
+                {/* Pricing (4 Columns + Infant) & Package Controls */}
                 <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center lg:flex-col lg:items-end">
-                  <div className="flex items-center gap-2 font-mono text-xs">
-                    <div className="rounded-md border border-border bg-card px-2.5 py-1 text-center">
-                      <span className="block text-[10px] text-muted-foreground uppercase">
+                  <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs">
+                    <div className="rounded-md border border-border bg-card px-2 py-1 text-center">
+                      <span className="block text-[9px] text-muted-foreground uppercase font-sans">
+                        Sharing
+                      </span>
+                      <span className="font-bold text-foreground text-xs">
+                        PKR {(pkg.sharingPricePkr ?? 258299).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="rounded-md border border-border bg-card px-2 py-1 text-center">
+                      <span className="block text-[9px] text-muted-foreground uppercase font-sans">
                         Quad
                       </span>
-                      <span className="font-bold text-foreground">
+                      <span className="font-bold text-foreground text-xs">
                         PKR {pkg.quadPricePkr.toLocaleString()}
                       </span>
                     </div>
-                    <div className="rounded-md border border-border bg-card px-2.5 py-1 text-center">
-                      <span className="block text-[10px] text-muted-foreground uppercase">
+                    <div className="rounded-md border border-border bg-card px-2 py-1 text-center">
+                      <span className="block text-[9px] text-muted-foreground uppercase font-sans">
                         Triple
                       </span>
-                      <span className="font-bold text-foreground">
+                      <span className="font-bold text-foreground text-xs">
                         PKR {pkg.triplePricePkr.toLocaleString()}
                       </span>
                     </div>
-                    <div className="rounded-md border border-border bg-card px-2.5 py-1 text-center">
-                      <span className="block text-[10px] text-muted-foreground uppercase">
+                    <div className="rounded-md border border-border bg-card px-2 py-1 text-center">
+                      <span className="block text-[9px] text-muted-foreground uppercase font-sans">
                         Double
                       </span>
-                      <span className="font-bold text-foreground">
+                      <span className="font-bold text-foreground text-xs">
                         PKR {pkg.doublePricePkr.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="rounded-md border border-border bg-card px-2 py-1 text-center">
+                      <span className="block text-[9px] text-muted-foreground uppercase font-sans flex items-center justify-center gap-0.5">
+                        <Baby className="size-2.5" /> Infant
+                      </span>
+                      <span className="font-bold text-foreground text-xs">
+                        PKR {(pkg.infantPricePkr ?? 65000).toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -279,7 +313,7 @@ export function GroupsClient({
                       onClick={() =>
                         pkg.id && handlePackageToggle(pkg.id, pkg.isActive)
                       }
-                      className="flex items-center gap-1 text-xs font-medium hover:opacity-80"
+                      className="flex items-center gap-1 text-xs font-medium hover:opacity-80 cursor-pointer"
                     >
                       {pkg.isActive ? (
                         <>
@@ -301,7 +335,7 @@ export function GroupsClient({
                         <Button
                           variant="ghost"
                           size="icon-xs"
-                          className="size-7"
+                          className="size-7 cursor-pointer"
                           title="Edit Package"
                         >
                           <Edit2 className="size-3.5" />
@@ -314,7 +348,7 @@ export function GroupsClient({
                       onClick={() =>
                         pkg.id && handlePackageDelete(pkg.id, pkg.title)
                       }
-                      className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700"
+                      className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
                       title="Delete Package"
                     >
                       <Trash2 className="size-3.5" />
@@ -332,7 +366,7 @@ export function GroupsClient({
                     Scheduled Departure Batches ({pkg.departures.length})
                   </h3>
                   <span className="text-xs text-muted-foreground">
-                    — Real-time seat occupancy and airport gateway schedules
+                    — Real-time seat occupancy, flight blocks, and gateway schedules
                   </span>
                 </div>
                 {pkg.id && (
@@ -399,6 +433,38 @@ export function GroupsClient({
                           <span>{batch.returnDate}</span>
                         </div>
 
+                        {/* Flight Block Details */}
+                        {(batch.outboundFlightNumber || batch.returnFlightNumber) && (
+                          <div className="rounded-lg bg-muted/40 p-2 text-xs space-y-1 font-mono">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="flex items-center gap-1 font-sans text-muted-foreground">
+                                <Plane className="size-3 text-gold" /> Outbound:
+                              </span>
+                              <span className="font-bold text-foreground">
+                                {batch.outboundFlightNumber ?? "TBA"}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="flex items-center gap-1 font-sans text-muted-foreground">
+                                <Plane className="size-3 text-gold" /> Return:
+                              </span>
+                              <span className="font-bold text-foreground">
+                                {batch.returnFlightNumber ?? "TBA"}
+                              </span>
+                            </div>
+                            {batch.baggageAllowance && (
+                              <div className="flex items-center justify-between text-[10px] pt-0.5 border-t border-border/40 font-sans text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Luggage className="size-3" /> Baggage:
+                                </span>
+                                <span className="font-medium text-foreground">
+                                  {batch.baggageAllowance}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Seat Occupancy Progress Bar */}
                         <div className="space-y-1.5 pt-1">
                           <div className="flex items-center justify-between text-xs font-medium">
@@ -442,7 +508,7 @@ export function GroupsClient({
                                 <Button
                                   variant="ghost"
                                   size="icon-xs"
-                                  className="size-6 text-muted-foreground hover:text-foreground"
+                                  className="size-6 text-muted-foreground hover:text-foreground cursor-pointer"
                                 >
                                   <Edit2 className="size-3" />
                                 </Button>
@@ -461,7 +527,7 @@ export function GroupsClient({
                                 pkg.id
                               )
                             }
-                            className="size-6 text-red-500 hover:bg-red-50 hover:text-red-700"
+                            className="size-6 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
                           >
                             <Trash2 className="size-3" />
                           </Button>

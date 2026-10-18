@@ -47,7 +47,6 @@ export function HajjInquirySection({
   )
   const [customerEmail, setCustomerEmail] = useState("")
   const [adults, setAdults] = useState<number>(2)
-  const [children, setChildren] = useState<number>(0)
   const [infants, setInfants] = useState<number>(0)
   const [notes, setNotes] = useState("")
 
@@ -66,7 +65,7 @@ export function HajjInquirySection({
     try {
       const res = await submitHajjInquiry({
         hajjConsultationType: hajjCategory,
-        passengers: { adults, children, infants },
+        passengers: { adults, infants },
         contact: {
           customerName,
           customerPhone,
@@ -396,15 +395,15 @@ export function HajjInquirySection({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="h-kids" className="text-xs text-white/90">
-                    Kids (&lt;12)
+                  <Label htmlFor="h-infants" className="text-xs text-white/90">
+                    Infants (&lt;2 yrs)
                   </Label>
                   <Input
-                    id="h-kids"
+                    id="h-infants"
                     type="number"
                     min={0}
-                    value={children}
-                    onChange={(e) => setChildren(Number(e.target.value))}
+                    value={infants}
+                    onChange={(e) => setInfants(Number(e.target.value))}
                     className="border-white/20 bg-white/10 text-white focus:border-gold"
                   />
                 </div>

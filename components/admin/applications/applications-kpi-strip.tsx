@@ -56,29 +56,35 @@ export function ApplicationsKpiStrip({ data }: { data: KpiData }) {
       </Card>
 
       {/* 3. Overdue >24h SLA */}
-      <Card className={`border shadow-xs ${data.overdueCount > 0 ? "border-red-300 bg-red-50/50" : "border-border bg-card"}`}>
-        <CardContent className="flex items-center gap-3 p-4">
-          <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg border ${data.overdueCount > 0 ? "border-red-300 bg-red-100 text-red-700 animate-pulse" : "border-border bg-secondary text-muted-foreground"}`}>
-            <AlertTriangle className="size-5" />
-          </div>
-          <div className="flex flex-col overflow-hidden">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">
-                SLA Overdue
-              </span>
-              {data.overdueCount > 0 && (
-                <span className="relative flex size-2">
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex size-2 rounded-full bg-red-600" />
-                </span>
-              )}
+      <a
+        href="/admin/applications?status=pending_quote&filter=overdue"
+        className="block group transition-transform active:scale-[0.98]"
+        title="View overdue inquiries exceeding 24h SLA"
+      >
+        <Card className={`h-full border shadow-xs transition-colors group-hover:border-red-400 ${data.overdueCount > 0 ? "border-red-300 bg-red-50/50" : "border-border bg-card"}`}>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg border ${data.overdueCount > 0 ? "border-red-300 bg-red-100 text-red-700 animate-pulse" : "border-border bg-secondary text-muted-foreground"}`}>
+              <AlertTriangle className="size-5" />
             </div>
-            <span className={`font-display text-xl font-bold ${data.overdueCount > 0 ? "text-red-700" : "text-foreground"}`}>
-              {data.overdueCount} <span className="text-xs font-normal text-muted-foreground">(24h+)</span>
-            </span>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="flex flex-col overflow-hidden">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">
+                  SLA Overdue
+                </span>
+                {data.overdueCount > 0 && (
+                  <span className="relative flex size-2">
+                    <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex size-2 rounded-full bg-red-600" />
+                  </span>
+                )}
+              </div>
+              <span className={`font-display text-xl font-bold ${data.overdueCount > 0 ? "text-red-700" : "text-foreground"}`}>
+                {data.overdueCount} <span className="text-xs font-normal text-muted-foreground">(24h+)</span>
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </a>
 
       {/* 4. Quoted Pipeline PKR */}
       <Card className="border-border bg-card shadow-xs">

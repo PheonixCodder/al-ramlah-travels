@@ -96,12 +96,12 @@ export function PublicHeader() {
         <div className="mx-auto flex h-18 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           {/* Brand Logo & Bilingual Title */}
           <Link href="/" className="group flex shrink-0 items-center gap-3">
-            <div className="relative size-11 shrink-0 overflow-hidden rounded-xl border border-gold/30 bg-card p-1 shadow-xs transition-transform group-hover:scale-105">
+            <div className="relative size-13 shrink-0 overflow-hidden rounded-xl border border-gold/30 bg-card shadow-xs transition-transform group-hover:scale-105">
               <Image
-                src="/logo-icon.png"
+                src="/logo.jpg"
                 alt="Al Ramlah Travels Emblem"
                 width={40}
-                height={40}
+                height={44}
                 className="size-full object-contain"
                 priority
               />
@@ -164,7 +164,7 @@ export function PublicHeader() {
                       <div className="flex items-center gap-3">
                         <div className="size-10 overflow-hidden rounded-lg border border-gold/40 bg-background p-1">
                           <Image
-                            src="/logo-icon.png"
+                            src="/logo.jpg"
                             alt="Al Ramlah Travels Emblem"
                             width={36}
                             height={36}

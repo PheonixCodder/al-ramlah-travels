@@ -22,6 +22,17 @@ const saveQuoteInputSchema = quoteUpdateSchema.extend({
 
 export type SaveQuoteInput = z.infer<typeof saveQuoteInputSchema>
 
+function computeDepartureBatchStatus(
+  bookedSeats: number,
+  totalSeats: number,
+  currentStatus: "open" | "filling_fast" | "sold_out" | "closed"
+): "open" | "filling_fast" | "sold_out" | "closed" {
+  if (currentStatus === "closed") return "closed"
+  if (bookedSeats >= totalSeats) return "sold_out"
+  if (totalSeats > 0 && bookedSeats / totalSeats >= 0.75) return "filling_fast"
+  return "open"
+}
+
 /**
  * Server Action: Saves or updates an application quote.
  * Validates inputs with Zod, calculates grandTotalPkr, upserts application_quotes,
@@ -161,27 +172,62 @@ export async function saveApplicationQuote(rawInput: unknown) {
         appUpdates.quoteSentAt = now
       } else if (input.targetStatus === "approved") {
         appUpdates.decisionAt = now
+      } else if (
+        input.targetStatus === "rejected" ||
+        input.targetStatus === "cancelled"
+      ) {
+        appUpdates.decisionAt = now
+      }
 
-        // Check group booking seat sync
-        if (app.source === "group_booking" && app.groupDepartureId) {
+      // Check group booking seat sync
+      if (app.source === "group_booking" && app.groupDepartureId) {
+        if (input.targetStatus === "approved" && app.status !== "approved") {
           const departure = await db.query.groupDepartures.findFirst({
             where: eq(schema.groupDepartures.id, app.groupDepartureId),
           })
           if (departure) {
-            const newBookedSeats = departure.bookedSeats + app.bedAndSeatCount
-            if (newBookedSeats > departure.totalSeats) {
+            const requestedSeats = app.bedAndSeatCount
+            if (departure.bookedSeats + requestedSeats > departure.totalSeats) {
               return {
                 success: false,
-                error: `Insufficient seats remaining in departure batch (${departure.totalSeats - departure.bookedSeats} available, ${app.bedAndSeatCount} requested).`,
+                error: `Insufficient seats remaining in departure batch (${departure.totalSeats - departure.bookedSeats} available, ${requestedSeats} requested).`,
               }
             }
 
-            let newBatchStatus = departure.status
-            if (newBookedSeats >= departure.totalSeats) {
-              newBatchStatus = "sold_out"
-            } else if (newBookedSeats / departure.totalSeats >= 0.75) {
-              newBatchStatus = "filling_fast"
-            }
+            const newBookedSeats = Math.min(
+              departure.totalSeats,
+              departure.bookedSeats + requestedSeats
+            )
+            const newBatchStatus = computeDepartureBatchStatus(
+              newBookedSeats,
+              departure.totalSeats,
+              departure.status
+            )
+
+            await db
+              .update(schema.groupDepartures)
+              .set({
+                bookedSeats: newBookedSeats,
+                status: newBatchStatus,
+                updatedAt: now,
+              })
+              .where(eq(schema.groupDepartures.id, departure.id))
+          }
+        } else if (app.status === "approved" && input.targetStatus !== "approved") {
+          // Release reserved seats back to batch inventory on cancellation/rejection
+          const departure = await db.query.groupDepartures.findFirst({
+            where: eq(schema.groupDepartures.id, app.groupDepartureId),
+          })
+          if (departure) {
+            const newBookedSeats = Math.max(
+              0,
+              departure.bookedSeats - app.bedAndSeatCount
+            )
+            const newBatchStatus = computeDepartureBatchStatus(
+              newBookedSeats,
+              departure.totalSeats,
+              departure.status
+            )
 
             await db
               .update(schema.groupDepartures)
@@ -210,6 +256,8 @@ export async function saveApplicationQuote(rawInput: unknown) {
     revalidatePath("/admin/applications")
     revalidatePath(`/admin/applications/${input.applicationId}`)
     revalidatePath(`/admin/applications/${input.applicationId}/voucher`)
+    revalidatePath("/groups")
+    revalidatePath("/admin/catalog/groups")
     revalidatePath("/")
 
     return {
@@ -282,41 +330,67 @@ export async function updateApplicationStatus(rawInput: unknown) {
       }
     }
 
-    // Group package seat inventory update
-    if (
-      targetStatus === "approved" &&
-      app.source === "group_booking" &&
-      previousStatus !== "approved" &&
-      app.groupDepartureId
-    ) {
-      const departure = await db.query.groupDepartures.findFirst({
-        where: eq(schema.groupDepartures.id, app.groupDepartureId),
-      })
+    // Group package seat inventory update: increment on approval, decrement on cancellation/rejection
+    if (app.source === "group_booking" && app.groupDepartureId) {
+      if (targetStatus === "approved" && previousStatus !== "approved") {
+        const departure = await db.query.groupDepartures.findFirst({
+          where: eq(schema.groupDepartures.id, app.groupDepartureId),
+        })
 
-      if (departure) {
-        const newBookedSeats = departure.bookedSeats + app.bedAndSeatCount
-        if (newBookedSeats > departure.totalSeats) {
-          return {
-            success: false,
-            error: `Insufficient seats remaining in departure batch (${departure.totalSeats - departure.bookedSeats} available, ${app.bedAndSeatCount} requested).`,
+        if (departure) {
+          const requestedSeats = app.bedAndSeatCount
+          if (departure.bookedSeats + requestedSeats > departure.totalSeats) {
+            return {
+              success: false,
+              error: `Insufficient seats remaining in departure batch (${departure.totalSeats - departure.bookedSeats} available, ${requestedSeats} requested).`,
+            }
           }
-        }
 
-        let newBatchStatus = departure.status
-        if (newBookedSeats >= departure.totalSeats) {
-          newBatchStatus = "sold_out"
-        } else if (newBookedSeats / departure.totalSeats >= 0.75) {
-          newBatchStatus = "filling_fast"
-        }
+          const newBookedSeats = Math.min(
+            departure.totalSeats,
+            departure.bookedSeats + requestedSeats
+          )
+          const newBatchStatus = computeDepartureBatchStatus(
+            newBookedSeats,
+            departure.totalSeats,
+            departure.status
+          )
 
-        await db
-          .update(schema.groupDepartures)
-          .set({
-            bookedSeats: newBookedSeats,
-            status: newBatchStatus,
-            updatedAt: now,
-          })
-          .where(eq(schema.groupDepartures.id, departure.id))
+          await db
+            .update(schema.groupDepartures)
+            .set({
+              bookedSeats: newBookedSeats,
+              status: newBatchStatus,
+              updatedAt: now,
+            })
+            .where(eq(schema.groupDepartures.id, departure.id))
+        }
+      } else if (previousStatus === "approved" && targetStatus !== "approved") {
+        // Release seats back when an approved group booking is cancelled or rejected
+        const departure = await db.query.groupDepartures.findFirst({
+          where: eq(schema.groupDepartures.id, app.groupDepartureId),
+        })
+
+        if (departure) {
+          const newBookedSeats = Math.max(
+            0,
+            departure.bookedSeats - app.bedAndSeatCount
+          )
+          const newBatchStatus = computeDepartureBatchStatus(
+            newBookedSeats,
+            departure.totalSeats,
+            departure.status
+          )
+
+          await db
+            .update(schema.groupDepartures)
+            .set({
+              bookedSeats: newBookedSeats,
+              status: newBatchStatus,
+              updatedAt: now,
+            })
+            .where(eq(schema.groupDepartures.id, departure.id))
+        }
       }
     }
 

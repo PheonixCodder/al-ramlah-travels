@@ -6,7 +6,7 @@ import { MessageSquare, Mail, Printer, ExternalLink } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
-interface QuoteDispatchBarProps {
+export interface QuoteDispatchBarProps {
   application: {
     id: string
     referenceNumber: string
@@ -28,6 +28,21 @@ interface QuoteDispatchBarProps {
     transportTotalPkr: number
     ziyaratTotalPkr: number
     discountPkr: number
+    paymentStatus?: "unpaid" | "partially_paid" | "paid_in_full"
+    amountPaidPkr?: number
+    quoteNotesCustomer?: string | null
+  } | null
+  liveQuote?: {
+    grandTotalPkr: number
+    visaTotalPkr: number
+    flightsTotalPkr: number
+    makkahHotelTotalPkr: number
+    madinahHotelTotalPkr: number
+    transportTotalPkr: number
+    ziyaratTotalPkr: number
+    discountPkr: number
+    paymentStatus?: "unpaid" | "partially_paid" | "paid_in_full"
+    amountPaidPkr?: number
     quoteNotesCustomer?: string | null
   } | null
 }
@@ -35,13 +50,16 @@ interface QuoteDispatchBarProps {
 export function QuoteDispatchBar({
   application,
   latestQuote,
+  liveQuote,
 }: QuoteDispatchBarProps) {
+  const activeQuote = liveQuote ?? latestQuote
+
   const formatPkr = (val: number) =>
     new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 }).format(val)
 
   // Construct WhatsApp Markdown Itemized Quote Message
   const constructWhatsAppMessage = () => {
-    const grandTotal = latestQuote?.grandTotalPkr || 0
+    const grandTotal = activeQuote?.grandTotalPkr || 0
     const lines: string[] = [
       `*AL RAMLAH TRAVELS — OFFICIAL QUOTATION*`,
       `*سفريات الرملة | Umrah & Hajj Services*`,
@@ -60,36 +78,42 @@ export function QuoteDispatchBar({
     lines.push(``)
     lines.push(`*ITEMIZED FINANCIAL BREAKDOWN:*`)
 
-    if (latestQuote) {
-      if (latestQuote.visaTotalPkr > 0) {
-        lines.push(`• Saudi Umrah Visa: PKR ${formatPkr(latestQuote.visaTotalPkr)}`)
+    if (activeQuote) {
+      if (activeQuote.visaTotalPkr > 0) {
+        lines.push(`• Saudi Umrah Visa: PKR ${formatPkr(activeQuote.visaTotalPkr)}`)
       }
-      if (latestQuote.flightsTotalPkr > 0) {
-        lines.push(`• Return Airfare: PKR ${formatPkr(latestQuote.flightsTotalPkr)}`)
+      if (activeQuote.flightsTotalPkr > 0) {
+        lines.push(`• Return Airfare: PKR ${formatPkr(activeQuote.flightsTotalPkr)}`)
       }
-      if (latestQuote.makkahHotelTotalPkr > 0) {
-        lines.push(`• Makkah Hotel Stay: PKR ${formatPkr(latestQuote.makkahHotelTotalPkr)}`)
+      if (activeQuote.makkahHotelTotalPkr > 0) {
+        lines.push(`• Makkah Hotel Stay: PKR ${formatPkr(activeQuote.makkahHotelTotalPkr)}`)
       }
-      if (latestQuote.madinahHotelTotalPkr > 0) {
-        lines.push(`• Madinah Hotel Stay: PKR ${formatPkr(latestQuote.madinahHotelTotalPkr)}`)
+      if (activeQuote.madinahHotelTotalPkr > 0) {
+        lines.push(`• Madinah Hotel Stay: PKR ${formatPkr(activeQuote.madinahHotelTotalPkr)}`)
       }
-      if (latestQuote.transportTotalPkr > 0) {
-        lines.push(`• Ground Transfers: PKR ${formatPkr(latestQuote.transportTotalPkr)}`)
+      if (activeQuote.transportTotalPkr > 0) {
+        lines.push(`• Ground Transfers: PKR ${formatPkr(activeQuote.transportTotalPkr)}`)
       }
-      if (latestQuote.ziyaratTotalPkr > 0) {
-        lines.push(`• Sacred Ziyarat: PKR ${formatPkr(latestQuote.ziyaratTotalPkr)}`)
+      if (activeQuote.ziyaratTotalPkr > 0) {
+        lines.push(`• Sacred Ziyarat: PKR ${formatPkr(activeQuote.ziyaratTotalPkr)}`)
       }
-      if (latestQuote.discountPkr > 0) {
-        lines.push(`• Special Courtesy Discount: -PKR ${formatPkr(latestQuote.discountPkr)}`)
+      if (activeQuote.discountPkr > 0) {
+        lines.push(`• Special Courtesy Discount: -PKR ${formatPkr(activeQuote.discountPkr)}`)
       }
 
       lines.push(`━━━━━━━━━━━━━━━━━━━━`)
       lines.push(`*GRAND TOTAL: PKR ${formatPkr(grandTotal)}*`)
 
-      if (latestQuote.quoteNotesCustomer) {
+      if (activeQuote.amountPaidPkr && activeQuote.amountPaidPkr > 0) {
+        lines.push(`• Amount Received: PKR ${formatPkr(activeQuote.amountPaidPkr)}`)
+        const bal = Math.max(0, grandTotal - activeQuote.amountPaidPkr)
+        lines.push(`• Balance Due: PKR ${formatPkr(bal)}`)
+      }
+
+      if (activeQuote.quoteNotesCustomer) {
         lines.push(``)
         lines.push(`*Notes & Inclusions:*`)
-        lines.push(`${latestQuote.quoteNotesCustomer}`)
+        lines.push(`${activeQuote.quoteNotesCustomer}`)
       }
     } else {
       lines.push(`• Grand Total: Contact agent for confirmed rate`)
@@ -107,7 +131,7 @@ export function QuoteDispatchBar({
     const subject = encodeURIComponent(
       `Al Ramlah Travels Official Quotation — Ref: ${application.referenceNumber}`
     )
-    const grandTotal = latestQuote?.grandTotalPkr || 0
+    const grandTotal = activeQuote?.grandTotalPkr || 0
     const body = encodeURIComponent(
       `Dear ${application.customerName},\n\nThank you for choosing Al Ramlah Travels for your sacred pilgrimage.\n\nPlease find your official quotation for Reference: ${application.referenceNumber}.\nGrand Total: PKR ${formatPkr(grandTotal)}\n\nPlease let us know if you would like to proceed with reservation.\n\nWarm regards,\nAl Ramlah Travels Quoting Team\ninfo@alramlahtravels.com`
     )
@@ -118,7 +142,7 @@ export function QuoteDispatchBar({
   const waUrl = `https://wa.me/${cleanWaNumber}?text=${constructWhatsAppMessage()}`
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gold/30 bg-gold/5 p-3 sm:justify-between">
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gold/30 bg-gold/5 p-3 sm:justify-between shadow-2xs">
       <div className="flex items-center gap-2">
         <span className="text-xs font-semibold text-foreground">
           Dispatch Quote:
@@ -132,6 +156,7 @@ export function QuoteDispatchBar({
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-emerald-700"
+          title="Send real-time itemized quotation via WhatsApp"
         >
           <MessageSquare className="size-3.5" />
           <span>Send on WhatsApp</span>
@@ -141,6 +166,7 @@ export function QuoteDispatchBar({
         <a
           href={constructMailto()}
           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-xs transition-colors hover:border-gold hover:bg-secondary"
+          title="Send real-time quote via email"
         >
           <Mail className="size-3.5 text-muted-foreground" />
           <span>Email Quote</span>
@@ -160,7 +186,7 @@ export function QuoteDispatchBar({
           nativeButton={false}
         >
           <Printer className="size-3.5" />
-          <span>Print Official Voucher</span>
+          <span>Print Voucher</span>
           <ExternalLink className="size-3 text-muted-foreground" />
         </Button>
       </div>

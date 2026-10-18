@@ -182,6 +182,7 @@ export function ContentClient({
                     src={s.imageUrl}
                     alt={s.title}
                     fill
+                    sizes="(max-width: 768px) 100vw, 33vw"
                     className="object-cover"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/30" />

@@ -2,6 +2,7 @@ import * as React from "react"
 import { db } from "@/db"
 import { agencySettings } from "@/db/schema"
 import { eq } from "drizzle-orm"
+import { requireAdmin } from "@/lib/auth-guard"
 import {
   SettingsClient,
   AgencySettingsData,
@@ -12,6 +13,8 @@ export const metadata = {
 }
 
 export default async function AdminSettingsPage() {
+  await requireAdmin()
+
   const [settings] = await db
     .select()
     .from(agencySettings)

@@ -16,12 +16,14 @@ import {
   Sparkles,
   MessageSquare,
   AlertCircle,
+  Package,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { StatusBadge, TabularPrice } from "@/components/layout/status-badge"
+import { formatCitySequence } from "@/lib/domain"
 
 interface HotelStayItem {
   id: string
@@ -33,7 +35,6 @@ interface HotelStayItem {
   roomCategory: "shared" | "private"
   sharedRoomType?: string | null
   privateRoomAllocation?: { double: number; triple: number; quad: number } | null
-  mealPlan: "room_only" | "breakfast" | "half_board" | "full_board"
   hotel: {
     id: string
     name: string
@@ -90,7 +91,6 @@ export interface ApplicationDossierProps {
     customerEmail?: string | null
     specialRequests?: string | null
     adults: number
-    children: number
     infants: number
     totalPassportCount: number
     bedAndSeatCount: number
@@ -114,7 +114,40 @@ export interface ApplicationDossierProps {
     departureCity?: { cityName: string; airportCode: string } | null
     preferredAirline?: { name: string; iataCode: string } | null
     ziyaratVehicle?: { name: string } | null
-    groupPackage?: { title: string; tier: string } | null
+    groupPackage?: {
+      id?: string
+      title: string
+      tier: string
+      durationDays?: number
+      makkahNights?: number
+      madinahNights?: number
+      quadPricePkr?: number
+      triplePricePkr?: number
+      doublePricePkr?: number
+      sharingPricePkr?: number
+      infantPricePkr?: number
+      makkahHotel?: { name: string; starRating?: number; distanceLabel?: string } | null
+      madinahHotel?: { name: string; starRating?: number; distanceLabel?: string } | null
+      airline?: { name: string; iataCode?: string } | null
+    } | null
+    groupDeparture?: {
+      id?: string
+      batchCode: string
+      departureDate: string
+      returnDate: string
+      totalSeats: number
+      bookedSeats: number
+      status: string
+      outboundFlightNumber?: string | null
+      returnFlightNumber?: string | null
+      flightScheduleSummary?: string | null
+      routingNote?: string | null
+      baggageAllowance?: string | null
+      quadPriceOverridePkr?: number | null
+      triplePriceOverridePkr?: number | null
+      doublePriceOverridePkr?: number | null
+      sharingPriceOverridePkr?: number | null
+    } | null
     hotelStays: HotelStayItem[]
     transportSegments: TransportSegmentItem[]
   }
@@ -293,6 +326,17 @@ export function ApplicationDossier({
             </div>
           </div>
 
+          {application.citySequence && (
+            <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-2.5 text-xs">
+              <span className="text-muted-foreground font-medium">Sacred Route Sequence:</span>
+              <span className="font-bold text-primary">
+                {formatCitySequence(application.citySequence)}
+                {application.entryAirport ? ` (In: ${application.entryAirport}` : ""}
+                {application.exitAirport ? ` · Out: ${application.exitAirport})` : application.entryAirport ? ")" : ""}
+              </span>
+            </div>
+          )}
+
           <div className="rounded-lg border border-border bg-card p-3">
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-border">
               <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
@@ -308,20 +352,14 @@ export function ApplicationDossier({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="p-2 bg-secondary/30 rounded-md">
+            <div className="grid grid-cols-2 gap-3 text-center text-xs">
+              <div className="p-2.5 bg-secondary/30 rounded-md">
                 <span className="text-muted-foreground block">Adults (12+ yrs)</span>
                 <span className="font-bold text-foreground text-sm">
                   {application.adults}
                 </span>
               </div>
-              <div className="p-2 bg-secondary/30 rounded-md">
-                <span className="text-muted-foreground block">Children (2–11 yrs)</span>
-                <span className="font-bold text-foreground text-sm">
-                  {application.children}
-                </span>
-              </div>
-              <div className="p-2 bg-secondary/30 rounded-md">
+              <div className="p-2.5 bg-secondary/30 rounded-md">
                 <span className="text-muted-foreground block">Infants (&lt;2 yrs)</span>
                 <span className="font-bold text-foreground text-sm">
                   {application.infants}
@@ -378,6 +416,186 @@ export function ApplicationDossier({
         </Card>
       )}
 
+      {/* Pre-Built Group Package & Flight Seat Block Card */}
+      {application.source === "group_booking" &&
+        (application.groupPackage || application.groupDeparture) && (
+          <Card className="border-border bg-card shadow-xs">
+            <CardHeader className="bg-primary/5 pb-3 border-b border-border">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <Package className="size-4 text-primary" />
+                  <CardTitle className="font-display text-base font-bold text-foreground">
+                    {application.groupPackage?.title || "Pre-Built Group Umrah Package"}
+                  </CardTitle>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {application.groupPackage?.tier && (
+                    <Badge
+                      variant="outline"
+                      className="border-gold/40 bg-gold/10 text-xs font-bold text-gold uppercase"
+                    >
+                      {application.groupPackage.tier.replace(/_/g, " ")} Tier
+                    </Badge>
+                  )}
+                  {application.groupDeparture && (
+                    <Badge
+                      variant="outline"
+                      className="border-primary/30 bg-primary/10 text-xs font-mono font-bold text-primary uppercase"
+                    >
+                      Batch: {application.groupDeparture.batchCode} ({application.groupDeparture.status.replace(/_/g, " ")})
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              <CardDescription className="text-xs text-muted-foreground">
+                Fixed-schedule departure block with confirmed flight allotments & hotel inventory.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-4">
+              {/* Seat Block Accounting */}
+              {application.groupDeparture && (
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-primary/10">
+                    <span className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Users className="size-3.5 text-primary" />
+                      <span>Departure Flight Seat Allotment</span>
+                    </span>
+                    <span className="font-mono font-bold text-primary">
+                      {application.groupDeparture.bookedSeats} / {application.groupDeparture.totalSeats} Seats Confirmed
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                    <span>
+                      Pilgrim Request: <strong className="text-foreground">{application.bedAndSeatCount} Beds / Seats</strong> ({application.totalPassportCount} Passports)
+                    </span>
+                    <span>
+                      Batch Inventory: <strong className="text-emerald-700">{Math.max(0, application.groupDeparture.totalSeats - application.groupDeparture.bookedSeats)} Available</strong>
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Confirmed Flight Details */}
+              <div className="rounded-lg border border-border bg-secondary/20 p-3 text-xs space-y-2">
+                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <Plane className="size-3.5 text-sky-700" />
+                  <span>Group Charter & Flight Routing</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div>
+                    <span className="text-[11px] text-muted-foreground block">Outbound Flight</span>
+                    <span className="font-mono font-bold text-foreground">
+                      {application.groupDeparture?.outboundFlightNumber || "TBD"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-muted-foreground block">Return Flight</span>
+                    <span className="font-mono font-bold text-foreground">
+                      {application.groupDeparture?.returnFlightNumber || "TBD"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-muted-foreground block">Airline Carrier</span>
+                    <span className="font-semibold text-foreground">
+                      {application.groupPackage?.airline?.name || application.preferredAirline?.name || "Direct Carrier"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-muted-foreground block">Baggage Allowance</span>
+                    <span className="font-semibold text-foreground">
+                      {application.groupDeparture?.baggageAllowance || "23-KG Out / 46-KG In"}
+                    </span>
+                  </div>
+                </div>
+                {application.groupDeparture?.flightScheduleSummary && (
+                  <p className="text-[11px] text-muted-foreground border-t border-border/60 pt-1.5 mt-1.5">
+                    <span className="font-medium text-foreground">Flight Schedule:</span> {application.groupDeparture.flightScheduleSummary}
+                  </p>
+                )}
+              </div>
+
+              {/* Pre-Built Hotel Stays */}
+              {application.groupPackage && (
+                <div className="rounded-lg border border-border bg-secondary/20 p-3 text-xs space-y-2">
+                  <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                    <Building2 className="size-3.5 text-amber-700" />
+                    <span>Pre-Arranged Package Accommodations</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded border border-border bg-card p-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs uppercase text-primary">Makkah Hotel</span>
+                        <span className="font-mono text-[11px] font-semibold text-muted-foreground">
+                          {application.groupPackage.makkahNights} Nights
+                        </span>
+                      </div>
+                      <p className="font-semibold text-sm text-foreground mt-1">
+                        {application.groupPackage.makkahHotel?.name || "Makkah 4/5★ Hotel"}
+                      </p>
+                      {application.groupPackage.makkahHotel?.distanceLabel && (
+                        <span className="text-[11px] text-muted-foreground block">
+                          {application.groupPackage.makkahHotel.distanceLabel}
+                        </span>
+                      )}
+                    </div>
+                    <div className="rounded border border-border bg-card p-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs uppercase text-primary">Madinah Hotel</span>
+                        <span className="font-mono text-[11px] font-semibold text-muted-foreground">
+                          {application.groupPackage.madinahNights} Nights
+                        </span>
+                      </div>
+                      <p className="font-semibold text-sm text-foreground mt-1">
+                        {application.groupPackage.madinahHotel?.name || "Madinah 4/5★ Hotel"}
+                      </p>
+                      {application.groupPackage.madinahHotel?.distanceLabel && (
+                        <span className="text-[11px] text-muted-foreground block">
+                          {application.groupPackage.madinahHotel.distanceLabel}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Group Package Pricing Reference */}
+              {application.groupPackage && (
+                <div className="rounded-lg border border-border bg-card p-3 text-xs">
+                  <span className="font-semibold text-foreground block mb-2">
+                    Standard Package Rates (PKR per Pilgrim):
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 text-center font-mono text-xs">
+                    <div className="rounded bg-secondary/40 p-2">
+                      <span className="text-muted-foreground block text-[10px]">Sharing Bed</span>
+                      <span className="font-bold text-primary">
+                        PKR {(application.groupDeparture?.sharingPriceOverridePkr || application.groupPackage.sharingPricePkr || 258299).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="rounded bg-secondary/40 p-2">
+                      <span className="text-muted-foreground block text-[10px]">Quad Room</span>
+                      <span className="font-bold text-foreground">
+                        PKR {(application.groupDeparture?.quadPriceOverridePkr || application.groupPackage.quadPricePkr || 275000).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="rounded bg-secondary/40 p-2">
+                      <span className="text-muted-foreground block text-[10px]">Triple Room</span>
+                      <span className="font-bold text-foreground">
+                        PKR {(application.groupDeparture?.triplePriceOverridePkr || application.groupPackage.triplePricePkr || 295000).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="rounded bg-secondary/40 p-2">
+                      <span className="text-muted-foreground block text-[10px]">Double Room</span>
+                      <span className="font-bold text-foreground">
+                        PKR {(application.groupDeparture?.doublePriceOverridePkr || application.groupPackage.doublePricePkr || 325000).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
       {/* 4. Ordered Hotel Stays */}
       {application.includeHotels && application.hotelStays.length > 0 && (
         <Card className="border-border bg-card shadow-xs">
@@ -417,7 +635,7 @@ export function ApplicationDossier({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-xs">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 text-xs">
                     <div>
                       <span className="text-muted-foreground block">Check-in → Check-out</span>
                       <span className="font-semibold text-foreground">
@@ -434,12 +652,6 @@ export function ApplicationDossier({
                       <span className="text-muted-foreground block">Room Category</span>
                       <span className="font-semibold text-foreground capitalize">
                         {stay.roomCategory === "private" ? "Private Rooms" : "Shared Beds"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block">Meal Plan</span>
-                      <span className="font-semibold text-foreground capitalize">
-                        {stay.mealPlan.replace(/_/g, " ")}
                       </span>
                     </div>
                   </div>

@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertVehicle } from "@/app/actions/catalog"
-import { Plus, Loader2 } from "lucide-react"
+import { Plus, Loader2, Coins } from "lucide-react"
 
 export interface VehicleData {
   id?: string
@@ -26,6 +26,8 @@ export interface VehicleData {
   seatCapacity: number
   luggageCapacity: number
   allowsCustomPickupTime: boolean
+  defaultRateSar?: number
+  ziyaratRateSar?: number
   imageUrl?: string | null
   description?: string | null
   isActive: boolean
@@ -58,12 +60,19 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
   const [allowsCustomPickupTime, setAllowsCustomPickupTime] = useState(
     vehicle?.allowsCustomPickupTime ?? true
   )
+  const [defaultRateSar, setDefaultRateSar] = useState<number>(
+    vehicle?.defaultRateSar ?? 250
+  )
+  const [ziyaratRateSar, setZiyaratRateSar] = useState<number>(
+    vehicle?.ziyaratRateSar ?? 200
+  )
   const [imageUrl, setImageUrl] = useState(
     vehicle?.imageUrl ??
       "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=600"
   )
   const [description, setDescription] = useState(
-    vehicle?.description ?? "Chauffeured GMC Yukon / Toyota Fortuner with English & Urdu speaking drivers."
+    vehicle?.description ??
+      "Private GMC Yukon / Toyota Fortuner with English & Urdu speaking drivers."
   )
   const [isActive, setIsActive] = useState(vehicle?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(vehicle?.sortOrder ?? 0)
@@ -82,6 +91,8 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
         seatCapacity,
         luggageCapacity,
         allowsCustomPickupTime,
+        defaultRateSar,
+        ziyaratRateSar,
         imageUrl: imageUrl || undefined,
         description: description || undefined,
         isActive,
@@ -106,7 +117,7 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
           trigger ? (
             (trigger as React.ReactElement)
           ) : (
-            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
               <Plus className="size-4" />
               <span>Add Vehicle</span>
             </Button>
@@ -119,7 +130,7 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
             {vehicle ? `Edit ${vehicle.name}` : "Add Fleet Vehicle"}
           </DialogTitle>
           <DialogDescription>
-            Configure vehicle category, seat/luggage limits, and booking modes.
+            Configure vehicle category, seat/luggage limits, default SAR rates, and booking modes.
           </DialogDescription>
         </DialogHeader>
 
@@ -215,6 +226,42 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
             </div>
           </div>
 
+          {/* SAR Rate Defaults */}
+          <div className="rounded-lg border border-gold/40 bg-card p-3 space-y-2.5">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <Coins className="size-3.5 text-gold" />
+              <span>Base SAR Rates</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="v-default-rate" className="text-xs">
+                  Default Route Rate (SAR)
+                </Label>
+                <Input
+                  id="v-default-rate"
+                  type="number"
+                  min={0}
+                  value={defaultRateSar}
+                  onChange={(e) => setDefaultRateSar(Number(e.target.value))}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="v-ziyarat-rate" className="text-xs">
+                  Ziyarat Trip Rate (SAR)
+                </Label>
+                <Input
+                  id="v-ziyarat-rate"
+                  type="number"
+                  min={0}
+                  value={ziyaratRateSar}
+                  onChange={(e) => setZiyaratRateSar(Number(e.target.value))}
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="v-image">Image URL</Label>
             <Input
@@ -277,7 +324,7 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
             <Button
               type="submit"
               disabled={loading}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
             >
               {loading && <Loader2 className="size-4 animate-spin" />}
               <span>{vehicle ? "Save Changes" : "Create Vehicle"}</span>

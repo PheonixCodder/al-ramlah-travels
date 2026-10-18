@@ -2,7 +2,7 @@
 
 import React from "react"
 import { usePlanner, type PlannerPresetMode } from "./planner-context"
-import { Sparkles, FileText, Building2, Car, Sliders } from "lucide-react"
+import { Sparkles, FileText, Plane, Building2, Car, Sliders } from "lucide-react"
 import { cn } from "cn"
 
 interface PresetOption {
@@ -15,32 +15,38 @@ interface PresetOption {
 const PRESETS: PresetOption[] = [
   {
     id: "complete_umrah",
-    label: "Complete Umrah Journey",
-    subtitle: "All 5 Pillars Included",
+    label: "Complete Umrah",
+    subtitle: "All 5 Services Included",
     icon: Sparkles,
   },
   {
     id: "visa_only",
     label: "Visa Only",
-    subtitle: "Immediate Fixed PKR Rate",
+    subtitle: "Instant Fixed PKR Rate",
     icon: FileText,
+  },
+  {
+    id: "flights_only",
+    label: "Flight Ticket Only",
+    subtitle: "Return Airfare Only",
+    icon: Plane,
   },
   {
     id: "hotels_only",
     label: "Hotels Only",
-    subtitle: "Courtyard Accommodations",
+    subtitle: "Makkah & Madinah Stays",
     icon: Building2,
   },
   {
     id: "transport_only",
     label: "Transport Only",
-    subtitle: "VIP Private & Chauffeur Fleet",
+    subtitle: "Private Cars, Vans & Buses",
     icon: Car,
   },
   {
     id: "custom_mix",
-    label: "Custom Mix",
-    subtitle: "Personalized Selection",
+    label: "Custom Package",
+    subtitle: "Select Your Own Services",
     icon: Sliders,
   },
 ]
@@ -52,14 +58,14 @@ export function ModePresetPills() {
     <div className="w-full">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-semibold tracking-wider text-[#8F6E2A] uppercase">
-          Step 1 • Choose Your Journey Mode
+          Journey Mode Presets
         </span>
         <span className="text-xs text-[#686E65]">
           Select a curated preset or customize individual services below
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
         {PRESETS.map((preset) => {
           const Icon = preset.icon
           const isActive = presetMode === preset.id

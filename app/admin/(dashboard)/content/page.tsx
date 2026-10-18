@@ -2,6 +2,7 @@ import * as React from "react"
 import { db } from "@/db"
 import { heroSlides, testimonials, faqs } from "@/db/schema"
 import { asc } from "drizzle-orm"
+import { requireAdmin } from "@/lib/auth-guard"
 import { ContentClient } from "@/components/admin/catalog/content-client"
 
 export const metadata = {
@@ -9,6 +10,8 @@ export const metadata = {
 }
 
 export default async function AdminContentPage() {
+  await requireAdmin()
+
   const [allSlides, allReviews, allFaqs] = await Promise.all([
     db
       .select()

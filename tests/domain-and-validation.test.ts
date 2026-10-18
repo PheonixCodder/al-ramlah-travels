@@ -11,7 +11,11 @@ import {
   chainItineraryDates,
   type CitySequence,
 } from "../lib/domain/date-chaining.js"
-import { calculateVehicleQuantity } from "../lib/domain/vehicle-capacity.js"
+import {
+  calculateVehicleQuantity,
+  type VehicleOption,
+} from "../lib/domain/vehicle-capacity.js"
+import { calculateApplicationRateHints } from "../lib/domain/quote-hints.js"
 
 // Validation schemas
 import {
@@ -26,6 +30,12 @@ import {
   quoteUpdateSchema,
   applicationStatusUpdateSchema,
 } from "../lib/validations/quote.js"
+import {
+  airlineSchema,
+  hotelSchema,
+  transportRateSchema,
+  agencySettingsSchema,
+} from "../lib/validations/catalog.js"
 
 describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
   // =========================================================================
@@ -135,6 +145,72 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
         standardRates
       )
       assert.equal(result.totalVisaCostPkr, standardRates.shortTermPricePkr * 1)
+    })
+
+    it("calculates real-world Masar tier brackets accurately (10d, 15d, 21d, 30d)", () => {
+      // <= 10 Days with Masar: 500 SAR @ 75 PKR/SAR = 37,500 PKR
+      const res10 = calculateVisaTierAndCost(
+        "2026-11-01",
+        "2026-11-10",
+        2,
+        standardRates,
+        { withMasar: true, sarToPkrRate: 75 }
+      )
+      assert.equal(res10.totalKsaDays, 10)
+      assert.equal(res10.pricePerPassportSar, 500)
+      assert.equal(res10.bracketLabel, "With Masar ≤10 Days (500 SAR)")
+      assert.equal(res10.pricePerPassportPkr, 37500)
+      assert.equal(res10.totalVisaCostPkr, 75000)
+
+      // <= 15 Days with Masar: 515 SAR @ 75 PKR/SAR = 38,625 PKR
+      const res15 = calculateVisaTierAndCost(
+        "2026-11-01",
+        "2026-11-15",
+        1,
+        standardRates,
+        { withMasar: true, sarToPkrRate: 75 }
+      )
+      assert.equal(res15.totalKsaDays, 15)
+      assert.equal(res15.pricePerPassportSar, 515)
+      assert.equal(res15.bracketLabel, "With Masar ≤15 Days (515 SAR)")
+      assert.equal(res15.pricePerPassportPkr, 38625)
+
+      // <= 21 Days with Masar: 530 SAR @ 75 PKR/SAR = 39,750 PKR
+      const res21 = calculateVisaTierAndCost(
+        "2026-11-01",
+        "2026-11-21",
+        1,
+        standardRates,
+        { withMasar: true, sarToPkrRate: 75 }
+      )
+      assert.equal(res21.totalKsaDays, 21)
+      assert.equal(res21.pricePerPassportSar, 530)
+      assert.equal(res21.bracketLabel, "With Masar ≤21 Days (530 SAR)")
+      assert.equal(res21.pricePerPassportPkr, 39750)
+
+      // <= 30 Days with Masar: 545 SAR @ 75 PKR/SAR = 40,875 PKR
+      const res30 = calculateVisaTierAndCost(
+        "2026-11-01",
+        "2026-11-30",
+        1,
+        standardRates,
+        { withMasar: true, sarToPkrRate: 75 }
+      )
+      assert.equal(res30.totalKsaDays, 30)
+      assert.equal(res30.pricePerPassportSar, 545)
+      assert.equal(res30.bracketLabel, "With Masar ≤30 Days (545 SAR)")
+      assert.equal(res30.pricePerPassportPkr, 40875)
+
+      // Without Masar (470 SAR)
+      const resNoMasar = calculateVisaTierAndCost(
+        "2026-11-01",
+        "2026-11-14",
+        1,
+        standardRates,
+        { withMasar: false }
+      )
+      assert.equal(resNoMasar.pricePerPassportSar, 470)
+      assert.equal(resNoMasar.bracketLabel, "Without Masar (470 SAR)")
     })
   })
 
@@ -272,6 +348,42 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
         }
       }
     })
+
+    it("filters room allocations when allowedRoomTypes is provided (e.g. only double and quad)", () => {
+      const result = calculatePrivateRoomSplits(6, ["double", "quad"])
+      // For 6 beds with only double and quad:
+      // Combinations: 1 Quad + 1 Double (6 beds, 2 rooms) or 3 Doubles (6 beds, 3 rooms)
+      assert.equal(result.primaryAllocation.triple, 0)
+      assert.ok(result.primaryAllocation.double > 0 || result.primaryAllocation.quad > 0)
+      assert.equal(result.primaryAllocation.totalBeds, 6)
+
+      for (const alt of result.validAlternatives) {
+        assert.equal(alt.triple, 0)
+        assert.ok(alt.double > 0 || alt.quad > 0)
+      }
+    })
+
+    it("only allocates doubles when allowedRoomTypes is ['double']", () => {
+      const result = calculatePrivateRoomSplits(4, ["double"])
+      assert.deepEqual(result.primaryAllocation, {
+        double: 2,
+        triple: 0,
+        quad: 0,
+        totalRooms: 2,
+        totalBeds: 4,
+      })
+      for (const alt of result.validAlternatives) {
+        assert.equal(alt.triple, 0)
+        assert.equal(alt.quad, 0)
+      }
+    })
+
+    it("falls back to standard splits if allowedRoomTypes is empty or cannot be matched", () => {
+      // Empty allowedRoomTypes falls back to standard candidate generation
+      const result = calculatePrivateRoomSplits(5, [])
+      assert.ok(result.primaryAllocation.totalBeds >= 5)
+      assert.ok(result.primaryAllocation.totalRooms > 0)
+    })
   })
 
   // =========================================================================
@@ -282,6 +394,7 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
       const makkahFirstSequences: CitySequence[] = [
         "makkah_madinah",
         "makkah_madinah_makkah",
+        "makkah_madinah_jeddah",
         "makkah_only",
       ]
 
@@ -374,6 +487,35 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
       assert.equal(result.chainedStays[2]!.checkOutDate, "2026-12-11")
 
       assert.equal(result.finalDepartureDate, "2026-12-11")
+    })
+
+    it("chains two consecutive stays (makkah_madinah_jeddah) locking entryAirport to JED and ending in Madinah before direct transfer to Jeddah Airport", () => {
+      const result = chainItineraryDates("makkah_madinah_jeddah", "2026-11-10", [
+        { city: "makkah", nights: 7 },
+        { city: "madinah", nights: 7 },
+      ])
+
+      assert.equal(result.entryAirport, "JED")
+      assert.equal(result.chainedStays.length, 2)
+
+      const stay1 = result.chainedStays[0]!
+      const stay2 = result.chainedStays[1]!
+
+      // Stay 1: 7 nights in Makkah
+      assert.equal(stay1.city, "makkah")
+      assert.equal(stay1.checkInDate, "2026-11-10")
+      assert.equal(stay1.checkOutDate, "2026-11-17")
+      assert.equal(stay1.nights, 7)
+
+      // Stay 2: 7 nights in Madinah snaps to Stay 1 checkOutDate
+      assert.equal(stay2.city, "madinah")
+      assert.equal(stay2.checkInDate, stay1.checkOutDate)
+      assert.equal(stay2.checkInDate, "2026-11-17")
+      assert.equal(stay2.checkOutDate, "2026-11-24")
+      assert.equal(stay2.nights, 7)
+
+      // Final departure matches last stay checkout
+      assert.equal(result.finalDepartureDate, "2026-11-24")
     })
   })
 
@@ -476,6 +618,43 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
       assert.equal(result.suggestUpgrade, true)
       assert.equal(result.recommendedCategory, "van")
     })
+
+    it("dynamically returns sorted larger road vehicles when allVehicles catalog is passed", () => {
+      const mockCatalogVehicles: VehicleOption[] = [
+        { name: "Toyota Camry", category: "sedan", seatCapacity: 4 },
+        { name: "Ford Taurus", category: "sedan", seatCapacity: 4 },
+        { name: "Hyundai Staria", category: "van", seatCapacity: 7 },
+        { name: "GMC Yukon XL", category: "suv", seatCapacity: 7 },
+        { name: "Toyota HiAce", category: "minibus", seatCapacity: 11 },
+        { name: "Toyota Coaster", category: "minibus", seatCapacity: 17 },
+        { name: "Bus Service", category: "bus", seatCapacity: 49 },
+        {
+          name: "Haramain High-Speed Train",
+          category: "train",
+          seatCapacity: 1,
+        },
+      ]
+
+      // For a party of 6 in a 4-seat sedan:
+      const result = calculateVehicleQuantity(
+        6,
+        { seatCapacity: 4, bookingMode: "private_only" },
+        mockCatalogVehicles
+      )
+
+      assert.equal(result.requiredQuantity, 2)
+      assert.equal(result.suggestUpgrade, true)
+      assert.ok(result.recommendedLargerVehicles)
+      // Must exclude train and sedans with seatCapacity < 6
+      assert.ok(
+        result.recommendedLargerVehicles.every((v) => v.seatCapacity >= 6)
+      )
+      assert.ok(
+        result.recommendedLargerVehicles.every((v) => v.category !== "train")
+      )
+      // First recommended vehicle should be 7-seater (Staria or Yukon)
+      assert.equal(result.recommendedLargerVehicles[0]!.seatCapacity, 7)
+    })
   })
 
   // =========================================================================
@@ -486,25 +665,22 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
       it("validates a standard family party", () => {
         const parsed = passengerCountsSchema.parse({
           adults: 2,
-          children: 2,
           infants: 1,
         })
         assert.equal(parsed.adults, 2)
-        assert.equal(parsed.children, 2)
         assert.equal(parsed.infants, 1)
       })
 
-      it("defaults children and infants to 0 when omitted", () => {
+      it("defaults infants to 0 when omitted", () => {
         const parsed = passengerCountsSchema.parse({ adults: 1 })
         assert.equal(parsed.adults, 1)
-        assert.equal(parsed.children, 0)
         assert.equal(parsed.infants, 0)
       })
 
       it("rejects 0 adults with a descriptive error", () => {
         const result = passengerCountsSchema.safeParse({
           adults: 0,
-          children: 2,
+          infants: 1,
         })
         assert.equal(result.success, false)
         if (!result.success) {
@@ -582,7 +758,6 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
 
       const validPassengers = {
         adults: 2,
-        children: 1,
         infants: 0,
       }
 
@@ -611,7 +786,6 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
               nights: 5,
               roomCategory: "private" as const,
               privateRoomAllocation: { double: 0, triple: 1, quad: 0 },
-              mealPlan: "breakfast" as const,
             },
             {
               stayOrder: 2,
@@ -620,7 +794,6 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
               nights: 5,
               roomCategory: "private" as const,
               privateRoomAllocation: { double: 0, triple: 1, quad: 0 },
-              mealPlan: "breakfast" as const,
             },
           ],
           transportSegments: [
@@ -648,6 +821,29 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
         assert.equal(parsed.selectedZiyaratPlaceIds?.length, 2)
       })
 
+      it("validates a custom journey payload with citySequence 'makkah_madinah_jeddah'", () => {
+        const payload = {
+          presetMode: "complete_umrah" as const,
+          includeVisa: true,
+          includeFlights: true,
+          includeHotels: true,
+          includeTransport: true,
+          includeZiyarat: false,
+          passengers: validPassengers,
+          contact: validContact,
+          ksaArrivalDate: "2026-11-10",
+          ksaDepartureDate: "2026-11-24",
+          citySequence: "makkah_madinah_jeddah" as const,
+          entryAirport: "JED" as const,
+          exitAirport: "JED" as const,
+        }
+
+        const parsed = customJourneyApplicationSchema.parse(payload)
+        assert.equal(parsed.citySequence, "makkah_madinah_jeddah")
+        assert.equal(parsed.entryAirport, "JED")
+        assert.equal(parsed.exitAirport, "JED")
+      })
+
       it("validates a lean Visa-Only payload", () => {
         const visaOnlyPayload = {
           presetMode: "visa_only" as const,
@@ -656,7 +852,7 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
           includeHotels: false,
           includeTransport: false,
           includeZiyarat: false,
-          passengers: { adults: 3, children: 0, infants: 1 },
+          passengers: { adults: 3, infants: 1 },
           contact: validContact,
           ksaArrivalDate: "2026-12-01",
           ksaDepartureDate: "2026-12-15",
@@ -666,6 +862,34 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
         assert.equal(parsed.presetMode, "visa_only")
         assert.equal(parsed.includeVisa, true)
         assert.equal(parsed.includeFlights, false)
+      })
+
+      it("validates a Flight-Ticket-Only (flights_only) payload", () => {
+        const flightsOnlyPayload = {
+          presetMode: "flights_only" as const,
+          includeVisa: false,
+          includeFlights: true,
+          includeHotels: false,
+          includeTransport: false,
+          includeZiyarat: false,
+          passengers: { adults: 2, infants: 0 },
+          contact: validContact,
+          ksaArrivalDate: "2026-12-01",
+          ksaDepartureDate: "2026-12-15",
+          entryAirport: "JED" as const,
+          exitAirport: "MED" as const,
+          departureCityId: "a1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d",
+          preferredAirlineId: "b2c3d4e5-f6a1-4b2c-9d3e-4f5a6b7c8d9e",
+          flightRouteType: "direct" as const,
+          cabinClass: "economy" as const,
+        }
+
+        const parsed = customJourneyApplicationSchema.parse(flightsOnlyPayload)
+        assert.equal(parsed.presetMode, "flights_only")
+        assert.equal(parsed.includeFlights, true)
+        assert.equal(parsed.includeVisa, false)
+        assert.equal(parsed.entryAirport, "JED")
+        assert.equal(parsed.exitAirport, "MED")
       })
 
       it("rejects invalid date format (e.g. DD-MM-YYYY instead of YYYY-MM-DD)", () => {
@@ -700,7 +924,7 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
           includeHotels: false,
           includeTransport: false,
           includeZiyarat: false,
-          passengers: { adults: 0, children: 2, infants: 0 },
+          passengers: { adults: 0, infants: 0 },
           contact: validContact,
         }
 
@@ -726,7 +950,6 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
               hotelId: "not-a-valid-uuid",
               nights: 3,
               roomCategory: "shared" as const,
-              mealPlan: "room_only" as const,
             },
           ],
         }
@@ -750,16 +973,27 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
           groupPackageId: "123e4567-e89b-12d3-a456-426614174000",
           groupDepartureId: "223e4567-e89b-12d3-a456-426614174000",
           selectedRoomType: "triple",
-          passengers: { adults: 3, children: 0, infants: 0 },
+          passengers: { adults: 3, infants: 0 },
           contact: validContact,
         })
         assert.equal(parsed.selectedRoomType, "triple")
       })
 
+      it("validates a group booking payload with sharing room type", () => {
+        const parsed = groupBookingSchema.parse({
+          groupPackageId: "123e4567-e89b-12d3-a456-426614174000",
+          groupDepartureId: "223e4567-e89b-12d3-a456-426614174000",
+          selectedRoomType: "sharing",
+          passengers: { adults: 1, infants: 0 },
+          contact: validContact,
+        })
+        assert.equal(parsed.selectedRoomType, "sharing")
+      })
+
       it("validates a Hajj consultation inquiry", () => {
         const parsed = hajjInquirySchema.parse({
           hajjConsultationType: "VIP Shifted Hajj Package",
-          passengers: { adults: 2, children: 0, infants: 0 },
+          passengers: { adults: 2, infants: 0 },
           contact: validContact,
           notes: "Need executive tent accommodation in Mina",
         })
@@ -783,6 +1017,55 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
           }).success,
           false
         )
+      })
+    })
+
+    describe("catalog schemas (airlineSchema, transportRateSchema, agencySettingsSchema)", () => {
+      it("accepts 2-letter and 3-letter IATA airline codes and uppercases them", () => {
+        const sv = airlineSchema.parse({
+          name: "Saudia",
+          iataCode: "sv",
+        })
+        assert.equal(sv.iataCode, "SV")
+
+        const pk = airlineSchema.parse({
+          name: "Pakistan International Airlines",
+          iataCode: "PK",
+        })
+        assert.equal(pk.iataCode, "PK")
+
+        const paa = airlineSchema.parse({
+          name: "Pan American",
+          iataCode: "paa",
+        })
+        assert.equal(paa.iataCode, "PAA")
+
+        assert.equal(
+          airlineSchema.safeParse({ name: "Bad", iataCode: "S" }).success,
+          false
+        )
+        assert.equal(
+          airlineSchema.safeParse({ name: "Bad", iataCode: "TOOLONG" }).success,
+          false
+        )
+      })
+
+      it("validates transportRateSchema and agencySettingsSchema", () => {
+        const rate = transportRateSchema.parse({
+          sectorId: "123e4567-e89b-12d3-a456-426614174000",
+          vehicleId: "223e4567-e89b-12d3-a456-426614174000",
+          rateSar: 350,
+          currency: "SAR",
+          isActive: true,
+        })
+        assert.equal(rate.rateSar, 350)
+
+        const settings = agencySettingsSchema.parse({
+          agencyName: "Al Ramlah Travels",
+          sarToPkrRate: 75,
+          contactPhone: "+92 300 1234567",
+        })
+        assert.equal(settings.sarToPkrRate, 75)
       })
     })
 
@@ -883,6 +1166,214 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
         assert.equal(env.NODE_ENV, "test")
         assert.equal(env.BETTER_AUTH_URL, "http://localhost:3000")
       })
+    })
+  })
+
+  // =========================================
+  // 6. Application Rate Hints (calculateApplicationRateHints)
+  // =========================================================================
+  describe("6. Application Rate Hints & Admin Worksheet Pre-computation", () => {
+    const mockHotels = [
+      {
+        id: "hotel-makkah-1",
+        name: "Nada Al Deafah",
+        city: "makkah" as const,
+        sharingPriceSar: 120,
+        roomPriceSar: 300,
+        quadPriceSar: 280,
+        triplePriceSar: 320,
+        doublePriceSar: 380,
+      },
+      {
+        id: "hotel-madinah-1",
+        name: "Markaz Al Eiman",
+        city: "madinah" as const,
+        sharingPriceSar: 100,
+        roomPriceSar: 250,
+        quadPriceSar: 240,
+        triplePriceSar: 270,
+        doublePriceSar: 320,
+      },
+    ]
+
+    const mockVehicles = [
+      {
+        id: "veh-sedan",
+        name: "Toyota Camry",
+        category: "sedan" as const,
+        seatCapacity: 4,
+        defaultRateSar: 350,
+        ziyaratRateSar: 250,
+      },
+      {
+        id: "veh-bus",
+        name: "Bus Service",
+        category: "bus" as const,
+        seatCapacity: 49,
+        defaultRateSar: 600,
+        ziyaratRateSar: 500,
+      },
+    ]
+
+    const mockSectors = [
+      {
+        id: "sec-jed-mak",
+        name: "Jeddah Airport to Makkah Hotel",
+        code: "JED_MAK",
+        sharedBusRateSarPerPax: 60,
+        isSharedBusEligible: true,
+      },
+      {
+        id: "sec-mak-med",
+        name: "Makkah Hotel to Madinah Hotel",
+        code: "MAK_MED",
+        sharedBusRateSarPerPax: 70,
+        isSharedBusEligible: true,
+      },
+      {
+        id: "sec-med-jed",
+        name: "Madinah Hotel to Jeddah Airport",
+        code: "MED_JED",
+        sharedBusRateSarPerPax: 80,
+        isSharedBusEligible: true,
+      },
+    ]
+
+    const mockTransportRates = [
+      {
+        sectorId: "sec-jed-mak",
+        vehicleId: "veh-sedan",
+        rateSar: 350,
+      },
+    ]
+
+    const mockVisaRates = [
+      {
+        tier: "short_term" as const,
+        pricePkr: 40875,
+        priceSar: 545,
+        withoutMasarPriceSar: 470,
+        withMasar10DaysSar: 500,
+        withMasar15DaysSar: 515,
+        withMasar21DaysSar: 530,
+        withMasar28DaysSar: 545,
+      },
+    ]
+
+    it("calculates rate hints for full package with shared bus bundle and hotel sharing", () => {
+      const application = {
+        includeVisa: true,
+        includeHotels: true,
+        includeTransport: true,
+        includeZiyarat: true,
+        totalPassportCount: 3,
+        bedAndSeatCount: 3,
+        ksaArrivalDate: "2026-11-01",
+        ksaDepartureDate: "2026-11-10", // 10 days
+        hotelStays: [
+          {
+            hotelId: "hotel-makkah-1",
+            city: "makkah" as const,
+            roomCategory: "shared" as const,
+            nights: 5,
+          },
+          {
+            hotelId: "hotel-madinah-1",
+            city: "madinah" as const,
+            roomCategory: "shared" as const,
+            nights: 4,
+          },
+        ],
+        transportSegments: [
+          {
+            sectorId: "sec-jed-mak",
+            vehicleId: "veh-bus",
+            serviceType: "shared" as const,
+          },
+          {
+            sectorId: "sec-mak-med",
+            vehicleId: "veh-bus",
+            serviceType: "shared" as const,
+          },
+          {
+            sectorId: "sec-med-jed",
+            vehicleId: "veh-bus",
+            serviceType: "shared" as const,
+          },
+        ],
+        ziyaratScope: "both" as const,
+        ziyaratVehicleId: "veh-sedan",
+      }
+
+      const catalog = {
+        visaRates: mockVisaRates,
+        hotels: mockHotels,
+        vehicles: mockVehicles,
+        transportSectors: mockSectors,
+        transportRates: mockTransportRates,
+      }
+
+      const hints = calculateApplicationRateHints(application, catalog, 75)
+
+      assert.equal(hints.sarToPkrRate, 75)
+      // Visa: 3 passengers * 10 days bracket (500 SAR) = 1500 SAR -> 112,500 PKR
+      assert.equal(hints.visaHint.totalSar, 1500)
+      assert.equal(hints.visaHint.totalPkr, 112500)
+
+      // Hotels:
+      // Makkah: 3 pax * 5 nights * 120 SAR = 1800 SAR
+      // Madinah: 3 pax * 4 nights * 100 SAR = 1200 SAR
+      // Total hotel SAR = 3000 SAR -> 225,000 PKR
+      assert.equal(hints.makkahHotelHint.totalSar, 1800)
+      assert.equal(hints.makkahHotelHint.totalPkr, 135000)
+      assert.equal(hints.madinahHotelHint.totalSar, 1200)
+      assert.equal(hints.madinahHotelHint.totalPkr, 90000)
+
+      // Shared Transport 3-sector bundle:
+      // 3 pax * 60 SAR = 180 SAR -> 13,500 PKR
+      assert.equal(hints.transportHint.totalSar, 180)
+      assert.equal(hints.transportHint.totalPkr, 13500)
+
+      // Ziyarat: both (Makkah + Madinah) -> default private rates 2 * 250 = 500 SAR -> 37,500 PKR
+      assert.equal(hints.ziyaratHint.totalSar, 500)
+      assert.equal(hints.ziyaratHint.totalPkr, 37500)
+
+      // Grand Total: 1500 + 1800 + 1200 + 180 + 500 = 5180 SAR -> 388,500 PKR
+      assert.equal(hints.estimatedGrandTotalSar, 5180)
+      assert.equal(hints.estimatedGrandTotalPkr, 388500)
+    })
+
+    it("calculates rate hints for private vehicle transport with exact 2D matrix rate", () => {
+      const application = {
+        includeVisa: false,
+        includeHotels: false,
+        includeTransport: true,
+        includeZiyarat: false,
+        totalPassportCount: 2,
+        bedAndSeatCount: 2,
+        transportSegments: [
+          {
+            sectorId: "sec-jed-mak",
+            vehicleId: "veh-sedan",
+            serviceType: "private" as const,
+            vehicleQuantity: 1,
+          },
+        ],
+      }
+
+      const catalog = {
+        transportRates: mockTransportRates,
+        vehicles: mockVehicles,
+        transportSectors: mockSectors,
+      }
+
+      const hints = calculateApplicationRateHints(application, catalog, 75)
+
+      // Private transport segment from 2D matrix = 350 SAR -> 26,250 PKR
+      assert.equal(hints.transportHint.totalSar, 350)
+      assert.equal(hints.transportHint.totalPkr, 26250)
+      assert.equal(hints.estimatedGrandTotalSar, 350)
+      assert.equal(hints.estimatedGrandTotalPkr, 26250)
     })
   })
 })

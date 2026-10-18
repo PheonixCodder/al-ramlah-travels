@@ -20,19 +20,21 @@ Several critical technical forces shape the foundational architectural choices:
 - **Complex relational data model**: Umrah packages exhibit deep relational interdependencies. An itinerary links multiple hotel stays with specific room configurations and meal plans, ground transit sectors with vehicle capacity constraints, dynamic visa tiers calculated from calendar durations, and flight routing rules (such as Jeddah airport arrival mandates for Makkah first itineraries). Relational integrity and transactions are mandatory.
 - **Serverless database connection management**: In modern serverless hosting environments, sudden traffic surges create hundreds of concurrent compute instances. Direct persistent PostgreSQL connections rapidly exhaust database pool limits. The data tier must leverage managed connection pooling for application queries while retaining direct connections for schema migrations.
 - **Administrative security and role isolation**: Financial margins, negotiated hotel wholesale contracts, and customer passport details must be shielded by strict authentication boundaries. The system requires two distinct administrative tiers: `super_admin` (full system access including staff user management and agency settings) and `staff` (operational quoting and catalog management).
-- **Single luxury visual identity**: The platform represents an upscale pilgrimage brand inspired by the Haramain and the agency crest (`public/logo-icon.png`). Dark mode toggling is explicitly forbidden; the design system enforces a single palette of Deep Haramain Emerald, Warm Ivory, and Metallic Haramain Gold.
+- **Single luxury visual identity**: The platform represents an upscale pilgrimage brand inspired by the Haramain and the agency crest (`public/logo.jpg`). Dark mode toggling is explicitly forbidden; the design system enforces a single palette of Deep Haramain Emerald, Warm Ivory, and Metallic Haramain Gold.
 
 Failing to lock these foundational choices leads to fragmented codebases, inconsistent database drivers, authentication session leaks across server actions, and costly rewrites during feature development.
 
 ## Requirements
 
 **User stories**:
+
 - As an intending pilgrim, I want a fast, responsive journey planner so that I can configure my pilgrimage dates and services without delay or broken layouts.
 - As a travel agency administrator, I want a secure back office dashboard with role based access control so that I can manage applications, quote dynamic rates, and update travel inventory safely.
 - As an agency super admin, I want strict permission boundaries so that only authorized personnel can access sensitive financial margins, staff credentials, and agency settings.
 - As a software engineer, I want an end to end type safe architecture from the database schema to the user interface so that runtime bugs are caught at compile time.
 
 **Acceptance criteria**:
+
 - **AC-1**: Next.js 16 App Router foundation boots cleanly with TypeScript 5, React 19, and Tailwind CSS v4, supporting both customer facing public route groups (`app/(public)/`) and protected administrative dashboard route groups (`app/admin/(dashboard)/`).
 - **AC-2**: Dual connection Neon Serverless PostgreSQL configuration is wired through Drizzle ORM, routing runtime application queries through the pooled connection string (`DATABASE_URL_POOLED`) and migration or push commands through the direct connection string (`DATABASE_URL`).
 - **AC-3**: Better Auth is initialized with the Drizzle PostgreSQL adapter, credential email and password authentication, Next.js cookie integration (`nextCookies`), and two explicit administrative roles (`super_admin` and `staff`).
@@ -47,6 +49,7 @@ Failing to lock these foundational choices leads to fragmented codebases, incons
 This architecture uses Next.js 16 App Router with React 19 Server Components and Server Actions as the unified application engine. Data persistence relies on Neon Serverless PostgreSQL managed via Drizzle ORM, combining HTTP and WebSocket connection pooling for zero cold start latency. Authentication uses Better Auth backed by Drizzle PostgreSQL tables, supporting native role based access control without external identity providers. User interface primitives leverage `@base-ui/react` styled with Tailwind CSS v4 via shadcn (`base-nova` preset), enforcing a single luxury theme.
 
 **Pros**:
+
 - Unified TypeScript codebase eliminates API glue code and provides end to end type safety from database columns to form inputs.
 - Drizzle ORM generates zero runtime query overhead and outputs clean SQL queries without hidden engine binaries.
 - Neon Serverless PostgreSQL provides automated scaling, instant database branch previews, and built in connection pooling via PgBouncer.
@@ -54,6 +57,7 @@ This architecture uses Next.js 16 App Router with React 19 Server Components and
 - `@base-ui/react` primitives use render prop composition, avoiding Radix UI compatibility friction in React 19.
 
 **Cons**:
+
 - Requires disciplined modularization to prevent monolithic Server Action sprawl.
 - Neon WebSocket drivers require careful configuration in local testing environments.
 
@@ -62,10 +66,12 @@ This architecture uses Next.js 16 App Router with React 19 Server Components and
 This approach replaces self managed auth and ORM configuration with Supabase BaaS (Backend as a Service). Next.js acts as the frontend, delegating authentication, database hosting, and row level security policies to Supabase cloud infrastructure.
 
 **Pros**:
+
 - Preconfigured authentication dashboard and user management portal out of the box.
 - Built in database studio for rapid administrative data inspection.
 
 **Cons**:
+
 - Tight vendor lock-in to Supabase proprietary client libraries, auth cookies, and gateway infrastructure.
 - Row level security (RLS) policies written in SQL separate authorization logic from TypeScript application code, increasing debugging friction.
 - Next.js Server Actions frequently suffer cookie synchronization mismatches with Supabase SSR helpers across framework releases.
@@ -75,10 +81,12 @@ This approach replaces self managed auth and ORM configuration with Supabase Baa
 This architecture pairs Next.js 16 with Prisma ORM and NextAuth (Auth.js v5) connected to traditional containerized PostgreSQL.
 
 **Pros**:
+
 - Prisma schema syntax is familiar across the Node.js ecosystem.
 - Large community tutorial base for basic authentication flows.
 
 **Cons**:
+
 - Prisma Rust query engine binary adds substantial cold start latency and memory overhead in serverless runtimes.
 - Auth.js v5 has undergone frequent breaking API redesigns and lacks native role based access control plugins, requiring custom database schema monkey patching.
 - Lacks native connection pooling optimizations for serverless PostgreSQL without external proxy infrastructure.
@@ -104,7 +112,7 @@ Base UI (`@base-ui/react`) with shadcn (`base-nova` preset) ensures full compati
 ## Proposed stack
 
 | Layer | Choice | Reason |
-|---|---|---|
+| --- | --- | --- |
 | Language / Runtime | TypeScript 5, Node.js 20+ | Strict type safety and predictable execution across server and client boundaries. |
 | Web Framework | Next.js 16.3.4 (App Router) | React 19 Server Components for instant initial rendering and Server Actions for secure mutations. |
 | Primary Database | Neon Serverless PostgreSQL | Managed relational storage with instant branching, automated scaling, and PgBouncer connection pooling. |
@@ -249,7 +257,7 @@ export default async function ApplicationDetailPage({ params, searchParams }: Ap
 Environment variables are validated at startup using Zod. Missing or malformed keys halt execution immediately with an explicit error message:
 
 | Variable Name | Type | Purpose | Validation Rule |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `DATABASE_URL` | String | Direct unpooled PostgreSQL connection string for Drizzle Kit migrations and pushes | Must begin with `postgres://` or `postgresql://` |
 | `DATABASE_URL_POOLED` | String | Connection pooled Neon endpoint (PgBouncer) for runtime queries | Must begin with `postgres://` or `postgresql://` |
 | `BETTER_AUTH_SECRET` | String | Cryptographic secret for signing session tokens and cookies | String, minimum 32 characters |
@@ -288,16 +296,19 @@ The foundational stack is built through an ordered Tracer Bullet sequence. Each 
 ## Consequences
 
 **Positive**:
+
 - Eliminates architectural ambiguity early, providing solid ground for data modeling (Foundation 3) and design tokens (Foundation 4).
 - Dual connection pooling prevents connection starvation in serverless environments while allowing reliable schema migrations.
 - Complete data ownership: All user accounts, sessions, customer inquiries, and quotes reside inside a single Neon PostgreSQL database.
 - Next.js 16 App Router Server Components maximize performance by delivering zero client bundle overhead for static landing content.
 
 **Negative / tradeoffs**:
+
 - Drizzle migrations require a direct connection string (`DATABASE_URL`) without transaction pooling, necessitating two distinct connection URIs in deployment settings.
 - Developers must strictly adhere to Next.js 16 asynchronous `params` and `searchParams` conventions to prevent runtime build breaks.
 
 **Neutral**:
+
 - The codebase relies exclusively on Base UI and Tailwind CSS v4; existing Radix UI habits must be redirected to render prop composition.
 - Dark mode support is completely disabled across all layouts and components.
 
@@ -310,6 +321,7 @@ The foundational stack is built through an ordered Tracer Bullet sequence. Each 
 ## References
 
 **Project sources**:
+
 - `AGENTS.md`: Stack definition, workflow rules, and luxury theme constraints
 - `docs/scope/scope.md`: Feature 1 Foundation scope requirements
 - `.agents/skills/better-auth-best-practices/SKILL.md`: Better Auth server, client, and Drizzle adapter setup
@@ -319,6 +331,7 @@ The foundational stack is built through an ordered Tracer Bullet sequence. Each 
 - `.agents/skills/migrate-radix-to-base/SKILL.md`: Base UI render prop patterns
 
 **Practices & standards**:
+
 - Next.js 16 Proxy specification (`node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md`)
 - Next.js 16 Asynchronous Page Props contract (`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/page.md`)
 - Defense in Depth application authorization: Edge proxy, layout session guard, and Server Action role assertions

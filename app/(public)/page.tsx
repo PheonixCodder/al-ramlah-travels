@@ -177,15 +177,18 @@ export default async function HomePage() {
     durationDays: pkg.durationDays,
     makkahNights: pkg.makkahNights,
     madinahNights: pkg.madinahNights,
+    sharingPricePkr: pkg.sharingPricePkr,
     quadPricePkr: pkg.quadPricePkr,
     triplePricePkr: pkg.triplePricePkr,
     doublePricePkr: pkg.doublePricePkr,
+    infantPricePkr: pkg.infantPricePkr,
+    giftedInclusions: pkg.giftedInclusions ?? [],
+    multiHotelOptions: pkg.multiHotelOptions ?? [],
     highlights: pkg.highlights ?? [],
     bannerUrl: pkg.bannerUrl,
     includesVisa: pkg.includesVisa,
     includesTransport: pkg.includesTransport,
     includesZiyarat: pkg.includesZiyarat,
-    mealPlan: pkg.mealPlan,
     airline: pkg.airline
       ? { name: pkg.airline.name, iataCode: pkg.airline.iataCode }
       : null,
@@ -219,9 +222,15 @@ export default async function HomePage() {
             airportCode: d.departureCity.airportCode,
           }
         : null,
+      sharingPriceOverridePkr: d.sharingPriceOverridePkr,
       quadPriceOverridePkr: d.quadPriceOverridePkr,
       triplePriceOverridePkr: d.triplePriceOverridePkr,
       doublePriceOverridePkr: d.doublePriceOverridePkr,
+      outboundFlightNumber: d.outboundFlightNumber,
+      returnFlightNumber: d.returnFlightNumber,
+      flightScheduleSummary: d.flightScheduleSummary,
+      baggageAllowance: d.baggageAllowance,
+      routingNote: d.routingNote,
     })),
   }))
 

@@ -26,6 +26,7 @@ export const agencySettings = pgTable("agency_settings", {
     .notNull()
     .default("Monday to Saturday, 9:00 AM to 8:00 PM PKT"),
   slaOverdueHours: integer("sla_overdue_hours").notNull().default(24),
+  sarToPkrRate: integer("sar_to_pkr_rate").notNull().default(75),
   updatedByUserId: text("updated_by_user_id").references(() => user.id),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()

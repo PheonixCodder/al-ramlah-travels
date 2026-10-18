@@ -8,8 +8,10 @@ This document is the canonical design system reference for **Al Ramlah Travels**
 
 Al Ramlah Travels (`سفريات الرملة`) delivers premium, bespoke pilgrimage travel experiences for Hajj, Umrah, and Ziyarat. The visual identity embodies **Sacred Luxury**: a dignified blend of timeless Islamic heritage, the serenity of the Two Holy Mosques (Haramain), and the polish of modern luxury hospitality.
 
-### Visual Anchor: `public/logo-icon.png`
+### Visual Anchor: `public/logo.jpg`
+
 The brand emblem depicts:
+
 - The Holy Kaaba draped in the deep charcoal Kiswah with its illuminated gold band and door.
 - A golden minaret evoking the Prophet's Mosque in Madinah and the Haram in Makkah.
 - A golden crescent cradling the sanctuary.
@@ -22,9 +24,11 @@ Every color, elevation layer, and typographic choice throughout the application 
 ## 2. Color Palette & Theme Tokens
 
 ### Single Luxury Theme (Zero Dark Mode)
+
 Al Ramlah Travels enforces a **single, locked luxury theme**. There is no dark mode toggle or `.dark` class switching. The application renders exclusively in the **Haramain Luxury Palette** across all viewports and user sessions.
 
 ### Primary Colors
+
 - **Deep Haramain Emerald (`--primary`)**: Rich, authoritative emerald green evoking the sacred dome of Madinah and royal sanctuary architecture.
   - Hex: `#0A3622` (deep) / `#0F4C31` (base primary)
   - OKLCH: `oklch(0.26 0.08 155)`
@@ -38,6 +42,7 @@ Al Ramlah Travels enforces a **single, locked luxury theme**. There is no dark m
   - Usage: Accent pills, highlights, gold dividers, star ratings, CTA borders, luxury icons.
 
 ### Canvas & Surface Layers
+
 - **Warm Ivory Canvas (`--background`)**: Soft, welcoming ivory reminiscent of fine Arabic parchment and alabaster courtyard marble.
   - Hex: `#FAF7F0`
   - OKLCH: `oklch(0.975 0.012 85)`
@@ -59,6 +64,7 @@ Al Ramlah Travels enforces a **single, locked luxury theme**. There is no dark m
   - Usage: Card outlines, divider lines, table cell borders.
 
 ### Text & Neutral Tokens
+
 - **Deep Slate Charcoal (`--foreground`)**: Authoritative, legible, high-contrast dark charcoal.
   - Hex: `#1A1D1A`
   - OKLCH: `oklch(0.18 0.015 155)`
@@ -70,10 +76,11 @@ Al Ramlah Travels enforces a **single, locked luxury theme**. There is no dark m
   - Contrast on `#FAF7F0`: $> 4.8:1$ (exceeds WCAG AA).
 
 ### Semantic Status Colors (5-Stage Application Pipeline)
+
 The quoting and booking pipeline uses 5 standardized semantic statuses:
 
 | Status | Hex | OKLCH | Background | Text | Description |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | **Pending Quote** | `#D97706` | `oklch(0.68 0.16 75)` | `#FEF3C7` | `#92400E` | Request submitted by pilgrim, awaiting admin rates |
 | **Quoted** | `#0284C7` | `oklch(0.58 0.16 230)` | `#E0F2FE` | `#0369A1` | Admin sent itemized quote to pilgrim |
 | **Approved** | `#059669` | `oklch(0.60 0.16 155)` | `#D1FAE5` | `#065F46` | Pilgrim accepted & deposit received |
@@ -283,6 +290,7 @@ export const fontArabic = Amiri({
 ## 5. Spacing, Elevation & Geometric Accents
 
 ### Border Radius Scale
+
 - `rounded-sm`: 6px (micro badges, inline tags)
 - `rounded-md`: 8px (form inputs, buttons, dropdown items)
 - `rounded-lg`: 10px (default card elements, dialogs)
@@ -291,12 +299,15 @@ export const fontArabic = Amiri({
 - `rounded-3xl`: 22px (marketing bento grid cards)
 
 ### Elevation & Soft Shadows
+
 To maintain a high-end editorial feel, avoid harsh black shadows. Use soft, ambient warm-tinted shadows:
+
 - **Card Rest**: `box-shadow: 0 1px 3px 0 rgba(10, 54, 34, 0.04), 0 1px 2px -1px rgba(10, 54, 34, 0.04);`
 - **Card Hover**: `box-shadow: 0 10px 25px -5px rgba(10, 54, 34, 0.08), 0 8px 10px -6px rgba(10, 54, 34, 0.04);`
 - **Elevated Sticky Summary / Dialog**: `box-shadow: 0 20px 30px -10px rgba(10, 54, 34, 0.12);`
 
 ### Islamic Geometric Accents
+
 Subtle Islamic geometric watermarks (8-point star / arabesque lattice) are applied at 4%–6% opacity on deep emerald banners and the admin sidebar to reinforce sacred heritage without visual clutter.
 
 ---
@@ -306,6 +317,7 @@ Subtle Islamic geometric watermarks (8-point star / arabesque lattice) are appli
 This repository uses shadcn's `base-nova` preset built on `@base-ui/react`.
 
 ### 1. The `render` Prop Composition Rule (NO Radix `asChild`)
+
 Radix's legacy `asChild` prop is strictly forbidden. Base UI uses the `render` prop:
 
 ```tsx
@@ -330,6 +342,7 @@ When rendering an anchor tag (`<a>`) or non-button element as a trigger, pass `n
 ```
 
 ### 2. Form Layouts with `FieldGroup` + `Field`
+
 Never use raw `div` with `space-y-*` for forms:
 
 ```tsx
@@ -344,6 +357,7 @@ Never use raw `div` with `space-y-*` for forms:
 ```
 
 ### 3. Button Icons
+
 Buttons use the `data-icon` attribute instead of manual sizing classes:
 
 ```tsx
@@ -358,6 +372,7 @@ Buttons use the `data-icon` attribute instead of manual sizing classes:
 ```
 
 ### 4. Layout Rules
+
 - **No `space-x-*` or `space-y-*`**: Always use `flex flex-col gap-*` or `flex items-center gap-*`.
 - **Square dimensions**: Use `size-10` rather than `w-10 h-10`.
 - **Text truncation**: Use `truncate` rather than manual overflow classes.
@@ -398,7 +413,7 @@ The public layout wraps all pilgrim-facing views (Home, Custom Journey Builder, 
 
 2. **Sticky Header**:
    - Frosted warm-ivory backdrop blur (`bg-background/90 backdrop-blur-md border-b border-border`).
-   - Brand logo (`public/logo-icon.png`, 44px height) paired with bold luxury typography.
+   - Brand logo (`public/logo.jpg`, 44px height) paired with bold luxury typography.
    - Desktop navigation items with smooth hover underline in metallic gold.
    - Primary action: `"Plan Your Journey"` button (`bg-primary text-primary-foreground hover:bg-primary/90`).
    - Mobile sheet navigation on screens $<1024\text{px}$.
@@ -482,27 +497,35 @@ The admin portal provides an executive, distraction-free environment for quote c
 ## 8. High-Converting Interactive UI Patterns
 
 ### 8.1 Custom Journey Builder: Interactive Option Cards
+
 Cards representing packages, room sharing (Quad, Triple, Double), vehicle types, and meal plans share an interactive token state:
+
 - **Default / Unselected**: White card, subtle border (`#E6DEC8`), muted gray/taupe icon, gray price subtitle.
 - **Hover**: Subtle lift (`translate-y-[-2px]`), border color transitions to soft gold (`#C5A059`).
 - **Selected**: Emerald border (`2px solid #0F4C31`), soft emerald/gold glow, emerald checkmark badge at top-right corner, bold title.
 
 ### 8.2 Sticky Live Itinerary Summary Card
+
 Positioned alongside the builder steps on desktop viewports (`sticky top-24`):
+
 - **Deep Emerald Luxury Theme**: Deep emerald backdrop (`#0A3622`), white headings, and metallic gold accents.
 - **Dual-Mode Price Display**:
   - **Mode A (Visa Only)**: Displays calculated fixed price in prominent tabular numbers: `PKR 85,000` with subtext: *"Guaranteed immediate rate including insurance"*.
   - **Mode B (Volatile Services Enabled)**: Displays itemized breakdown (Package Base, Hotel Nights, Transport, Ziyarat) and bold estimated headline:
+
     ```
     ESTIMATED TOTAL
     PKR 1,126,400
     "Live Rate — Confirmed upon submission"
     ```
+
 - **Primary Action**: Full-width gold/emerald gradient button: `Apply for this Journey` or `Get details on WhatsApp`.
 - **Trust Reassurance**: Micro-copy footer: *"Our team approves requests within 24 hours. Final price is confirmed at approval."*
 
 ### 8.3 Dense Admin Quoting Worksheet & Data Tables
+
 Inspired by the Al-Safa executive operational layout:
+
 - **Status Pills**: 5 standardized status styles with colored dot indicator.
 - **Tabular Alignment**: All amounts formatted as `PKR NNN,NNN` in `font-mono tabular-nums text-right`.
 - **Quick Action Bar**: Top-right row actions on application detail: `Call`, `WhatsApp`, `Email`, `Print Voucher`, `Approve`, `Reject`, `Under Review`, `Cancel`.
@@ -513,6 +536,7 @@ Inspired by the Al-Safa executive operational layout:
 ## 9. Do's and Don'ts for UI Builders
 
 ### Do
+
 - **DO** use the single luxury palette tokens (`bg-primary`, `text-primary`, `border-border`, `bg-background`).
 - **DO** use `tabular-nums` and `font-mono` for all prices, reference codes, and distance metrics.
 - **DO** use Base UI `render` prop composition for all triggers and dialogs.
@@ -520,6 +544,7 @@ Inspired by the Al-Safa executive operational layout:
 - **DO** test contrast ratios on primary emerald and warm ivory backgrounds.
 
 ### Don't
+
 - **DON'T** expose a dark mode toggle or write `dark:` class overrides.
 - **DON'T** use raw Tailwind colors (e.g. `bg-blue-600`, `text-gray-500`, `bg-green-500`) for status indicators; use the standardized status classes or Badge tokens.
 - **DON'T** use Radix's `asChild` prop.

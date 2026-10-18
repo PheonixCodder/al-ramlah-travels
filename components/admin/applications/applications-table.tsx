@@ -39,7 +39,6 @@ export interface ApplicationRowItem {
   customerWhatsapp: string
   customerCity: string
   adults: number
-  children: number
   infants: number
   totalPassportCount: number
   bedAndSeatCount: number

@@ -38,37 +38,49 @@ export function FlightsClient({
 
   function handleAirlineToggle(id: string, current: boolean) {
     const next = !current
-    setAirlines((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, isActive: next } : a))
-    )
     startTransition(async () => {
-      await toggleAirlineActive(id, next)
+      const res = await toggleAirlineActive(id, next)
+      if (res.success) {
+        setAirlines((prev) =>
+          prev.map((a) => (a.id === id ? { ...a, isActive: next } : a))
+        )
+      }
     })
   }
 
   function handleAirlineDelete(id: string, name: string) {
     if (!window.confirm(`Delete airline "${name}"?`)) return
-    setAirlines((prev) => prev.filter((a) => a.id !== id))
     startTransition(async () => {
-      await deleteAirline(id)
+      const res = await deleteAirline(id)
+      if (!res.success) {
+        alert(res.error)
+        return
+      }
+      setAirlines((prev) => prev.filter((a) => a.id !== id))
     })
   }
 
   function handleCityToggle(id: string, current: boolean) {
     const next = !current
-    setCities((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, isActive: next } : c))
-    )
     startTransition(async () => {
-      await toggleDepartureCityActive(id, next)
+      const res = await toggleDepartureCityActive(id, next)
+      if (res.success) {
+        setCities((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, isActive: next } : c))
+        )
+      }
     })
   }
 
   function handleCityDelete(id: string, name: string) {
     if (!window.confirm(`Delete departure city "${name}"?`)) return
-    setCities((prev) => prev.filter((c) => c.id !== id))
     startTransition(async () => {
-      await deleteDepartureCity(id)
+      const res = await deleteDepartureCity(id)
+      if (!res.success) {
+        alert(res.error)
+        return
+      }
+      setCities((prev) => prev.filter((c) => c.id !== id))
     })
   }
 

@@ -28,7 +28,7 @@ export function PublicFooter() {
             <Link href="/" className="flex items-center gap-3">
               <div className="size-12 overflow-hidden rounded-xl border border-gold/40 bg-card p-1 shadow-md">
                 <Image
-                  src="/logo-icon.png"
+                  src="/logo.jpg"
                   alt="Al Ramlah Travels Emblem"
                   width={44}
                   height={44}

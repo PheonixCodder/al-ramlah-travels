@@ -58,7 +58,7 @@ export function HeroSlideDialog({
   )
   const [subtitle, setSubtitle] = useState(
     slide?.subtitle ??
-      "Bespoke Umrah packages, verified Haramain luxury hotels, and private chauffeured transfers for your family."
+      "Bespoke Umrah packages, verified Haramain luxury hotels, and private transfers for your family."
   )
   const [imageUrl, setImageUrl] = useState(
     slide?.imageUrl ??

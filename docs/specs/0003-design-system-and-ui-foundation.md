@@ -12,6 +12,7 @@ This specification establishes the luxury design system and user interface found
 Al Ramlah Travels caters to high-intent pilgrims and families embarking on sacred journeys (Umrah and Hajj) from Pakistan and overseas. A generic software template or stark corporate dashboard undermines the emotional gravity, sanctity, and trust required for spiritual travel. The visual identity must evoke reverent luxury, precision, and tranquility, harmonized with the brand emblem depicting the Holy Kaaba, golden minaret, golden crescent, and gold calligraphy.
 
 Reference benchmarks reveal two complementary strengths that must be merged:
+
 1. **Al-Safa conversion clarity**: high-converting interactive planner cards, sticky live itinerary summary card, clear travel parameters (nights in Makkah/Madinah, hotel distances, room sharing, passenger counter), and a dense, data-rich executive admin portal with clear status pills and 24h service level agreement warnings.
 2. **Haramain Safar sacred elegance**: warm ivory canvas, deep emerald green headers, metallic gold borders and accents, Islamic geometric watermarks, and Arabic calligraphy flourishes.
 
@@ -20,11 +21,13 @@ Previous defaults relied on generic neutral grayscale tokens and unconfigured da
 ## Requirements
 
 **User stories**:
+
 - As a pilgrim, I want an aesthetically serene, legible, and culturally respectful journey builder with live itemized pricing feedback so that I feel immediate confidence and spiritual peace planning my sacred pilgrimage.
 - As an agency administrator, I want an organized, high-density dashboard with clear status indicators and 24h SLA overdue warnings so that I can manage high-volume quote worksheets without eye fatigue or confusion.
 - As a frontend engineer, I want a single authoritative design token system, Base UI render-prop patterns, and shared public/admin shell layouts so that I can construct UI slices rapidly without guessing colors, margins, or component APIs.
 
 **Acceptance criteria**:
+
 - **AC-1**: Single luxury theme tokens (Deep Haramain Emerald, Metallic Gold, Warm Ivory canvas, Crisp Alabaster card surface, Sand hairline borders) are defined in CSS variables and Tailwind v4 `@theme inline` with WCAG 2.1 AA/AAA contrast compliance across all text and interactive states.
 - **AC-2**: Dark mode switching is explicitly eliminated from the application; the HTML root and layout render a single permanent luxury theme without hydration mismatch or theme toggle artifacts.
 - **AC-3**: A four-tier typography hierarchy is established: Editorial Display (`Playfair Display` or `Cormorant Garamond`), UI/Body Sans (`Plus Jakarta Sans`), Monospace/Tabular (`JetBrains Mono` with `tabular-nums`), and Sacred Arabic Calligraphy (`Amiri` or `Noto Naskh Arabic`).
@@ -37,37 +40,46 @@ Previous defaults relied on generic neutral grayscale tokens and unconfigured da
 ## Options considered
 
 ### Option 1: Standard shadcn dual-theme (light and dark) with default neutral palette
+
 Retain standard slate/neutral grayscale tokens and provide a user-facing dark mode toggle via `next-themes`.
 
 **Pros**:
+
 - Off-the-shelf defaults requiring minimal token customization.
 - Familiar developer ergonomics for generic SaaS applications.
 
 **Cons**:
-- Fails the brand identity requirement: completely lacks the spiritual, sacred character of the Haramain and does not harmonize with `public/logo-icon.png`.
+
+- Fails the brand identity requirement: completely lacks the spiritual, sacred character of the Haramain and does not harmonize with `public/logo.jpg`.
 - Doubles testing surface across two themes for every feature slice while diluting the prestige of the travel agency.
 - Violates the strict project instruction forbidding dark mode toggles.
 
 ### Option 2: Pure bespoke CSS stylesheets without design token abstractions
+
 Author custom CSS classes and stylesheets per component without mapping tokens to Tailwind v4 theme variables or shadcn primitives.
 
 **Pros**:
+
 - Full pixel-level control without conforming to framework schemas.
 
 **Cons**:
+
 - Severe maintenance overhead, high likelihood of color drift, and broken integration with shadcn CLI components (`base-nova` preset).
 - Incompatible with automated subagent UI development across subsequent slices.
 
 ### Option 3 (Chosen): Single locked Haramain Luxury theme with Base UI `base-nova` tokens and dedicated Public/Admin shells
+
 Define a comprehensive, single-theme token system in `app/globals.css` and `design.md`, remove dark mode switching, configure Next.js fonts, implement Base UI render-prop patterns, and construct dedicated layout shells for public visitors and agency administrators.
 
 **Pros**:
-- Flawlessly captures the luxury, dignity, and sacred heritage of Al Ramlah Travels directly matched to `public/logo-icon.png`.
+
+- Flawlessly captures the luxury, dignity, and sacred heritage of Al Ramlah Travels directly matched to `public/logo.jpg`.
 - Establishes a permanent, unbreakable design contract for all subsequent feature slices (Builder, Quotes, Inventory, CMS, Dashboard).
 - Base UI integration ensures full compatibility with React 19, Next.js 16, and modern accessible headless primitives.
 - High-converting, tested layout patterns from Al-Safa and Haramain Safar are systematized.
 
 **Cons**:
+
 - Requires deliberate color pairing and contrast verification for all custom semantic tokens.
 
 ## Decision
@@ -80,7 +92,7 @@ Al Ramlah Travels is locked to a single luxury palette inspired by the Holy Kaab
 
 ## Rationale
 
-A pilgrimage to Makkah and Madinah is often a once-in-a-lifetime spiritual milestone. The visual medium through which a pilgrim configures their sacred journey must reflect reverent luxury, transparency, and dependability. By locking the design system to a single cohesive aesthetic harmonized with `public/logo-icon.png` (Deep Haramain Emerald, Metallic Gold, Warm Ivory, Alabaster White), we eliminate visual inconsistency and create an unmistakable identity.
+A pilgrimage to Makkah and Madinah is often a once-in-a-lifetime spiritual milestone. The visual medium through which a pilgrim configures their sacred journey must reflect reverent luxury, transparency, and dependability. By locking the design system to a single cohesive aesthetic harmonized with `public/logo.jpg` (Deep Haramain Emerald, Metallic Gold, Warm Ivory, Alabaster White), we eliminate visual inconsistency and create an unmistakable identity.
 
 On the operational side, agency staff spend hours reviewing complex hotel, airline, and visa pricing. The Al-Safa reference demonstrates that an ivory canvas paired with crisp card surfaces, a deep emerald sidebar, bold tabular typography for currency, and clear semantic status pills maximizes scanning efficiency and eliminates administrative errors. Adopting Base UI with shadcn `base-nova` gives us headless accessibility, native React 19 compatibility, and robust render-prop composition.
 
@@ -134,6 +146,7 @@ The visual presentation of quote requests maps directly to the 5-stage applicati
 ```
 
 Visual state mapping:
+
 - **`Pending Quote`**: Warm Amber border & pill (`#D97706` / bg `#FEF3C7` / text `#92400E`). If creation timestamp $>24$ hours ago, prepend pulsing red SLA overdue dot (`animate-pulse text-red-600`).
 - **`Quoted`**: Royal Sky Blue border & pill (`#0284C7` / bg `#E0F2FE` / text `#0369A1`).
 - **`Approved`**: Sacred Emerald Green border & pill (`#059669` / bg `#D1FAE5` / text `#065F46`).
@@ -143,7 +156,7 @@ Visual state mapping:
 ### API surface & Component architecture
 
 | Component / Layout | File Path | Key Inputs / Props | Output / Surface | Auth | Key Errors / Behavior |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | Root Layout | `app/layout.tsx` | `children: ReactNode` | Global fonts, TooltipProvider, No ThemeProvider | Public | Suppress hydration warnings |
 | Public Shell Layout | `app/(public)/layout.tsx` | `children: ReactNode` | Top Utility Strip, Sticky Header, Main Container, Footer, WhatsApp FAB | Public | SSR cached header links |
 | Admin Shell Layout | `app/admin/(dashboard)/layout.tsx` | `children: ReactNode` | Collapsible Emerald Sidebar, Header with Search & Notifications, Dashboard Area | Session (`super_admin` \| `staff`) | 401 redirect to `/admin/login` |
@@ -156,7 +169,7 @@ Visual state mapping:
 ### Value sourcing
 
 | Action / Surface | Value produced / displayed | Source |
-|---|---|---|
+| --- | --- | --- |
 | Admin Sidebar | Pending Quotes Count Badge | Live count query: `applications` table where `status = 'pending_quote'` |
 | Admin Header | Unread Contact Messages Count | Live count query: `contact_messages` table where `is_read = false` |
 | Admin Header | Staff Name & Avatar Initials | Better Auth active session object (`session.user.name`) |
@@ -205,16 +218,19 @@ No new external environment variables or third-party API keys are required for t
 ## Consequences
 
 **Positive**:
+
 - Unmistakable spiritual elegance and prestige that elevates Al Ramlah Travels above generic competitors.
 - Clear, unambiguous design and component rules for all future feature subagents, preventing UI drift.
 - Accessible, high-contrast layouts tailored specifically for high-conversion journey planning and dense administrative quote operations.
 - Native React 19 and Next.js 16 compatibility using modern Base UI headless primitives.
 
 **Negative / tradeoffs**:
+
 - Removal of dark mode may disappoint users who prefer dark backgrounds for late-night viewing, but aligns strictly with luxury travel and religious agency brand standards.
 - Custom typography imports require initial font asset caching by the browser (mitigated by Next.js font optimization).
 
 **Neutral**:
+
 - Requires ongoing discipline when adding new shadcn components to ensure they conform to Base UI `render` prop rules rather than Radix `asChild`.
 
 ## Follow-up
@@ -225,13 +241,15 @@ No new external environment variables or third-party API keys are required for t
 ## References
 
 **Project sources**:
+
 - `c:\dev\al-ramlah-travels\AGENTS.md`: Project stack, Next.js 16 rules, single luxury theme policy, and subagent orchestration rules.
 - `c:\dev\al-ramlah-travels\docs\scope\scope.md`: Living scope, Feature 4 requirements and deliverables.
-- `c:\dev\al-ramlah-travels\public\logo-icon.png`: Visual gold standard for brand colors and iconography.
+- `c:\dev\al-ramlah-travels\public\logo.jpg`: Visual gold standard for brand colors and iconography.
 - `c:\dev\al-ramlah-travels\.agents\skills\shadcn\`: Component styling and composition rules.
 - `c:\dev\al-ramlah-travels\.agents\skills\migrate-radix-to-base\`: Base UI `render` prop and wrapper migration standards.
 
 **Practices & standards**:
+
 - Web Content Accessibility Guidelines (WCAG) 2.1: AA/AAA contrast ratios for luxury warm palettes.
 - Base UI Headless Architecture (`@base-ui/react`): Render-prop pattern and accessible overlay primitives.
 - Al-Safa & Haramain Safar visual design analysis: Reference layouts for Umrah planner cards and executive CRM dashboards.

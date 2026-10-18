@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertGroupPackage } from "@/app/actions/groups"
-import { Plus, Loader2 } from "lucide-react"
+import { Plus, Loader2, Gift, Baby } from "lucide-react"
 
 export interface GroupPackageData {
   id?: string
@@ -32,10 +32,24 @@ export interface GroupPackageData {
   includesVisa: boolean
   includesTransport: boolean
   includesZiyarat: boolean
-  mealPlan: "room_only" | "breakfast" | "half_board" | "full_board"
+  sharingPricePkr?: number
   quadPricePkr: number
   triplePricePkr: number
   doublePricePkr: number
+  infantPricePkr?: number
+  giftedInclusions?: string[]
+  multiHotelOptions?: Array<{
+    pkgCode: string
+    label: string
+    makkahHotelName: string
+    makkahDistance: string
+    madinahHotelName: string
+    madinahDistance: string
+    sharingPricePkr: number
+    quadPricePkr: number
+    triplePricePkr: number
+    doublePricePkr: number
+  }>
   highlights: string[]
   bannerUrl?: string | null
   isFeatured: boolean
@@ -78,18 +92,32 @@ export function GroupPackageDialog({
   const [includesZiyarat, setIncludesZiyarat] = useState(
     pkg?.includesZiyarat ?? true
   )
-  const [mealPlan, setMealPlan] = useState<
-    "room_only" | "breakfast" | "half_board" | "full_board"
-  >(pkg?.mealPlan ?? "breakfast")
-  const [quadPricePkr, setQuadPricePkr] = useState(pkg?.quadPricePkr ?? 385000)
-  const [triplePricePkr, setTriplePricePkr] = useState(
+
+  // Pricing
+  const [sharingPricePkr, setSharingPricePkr] = useState<number>(
+    pkg?.sharingPricePkr ?? 258299
+  )
+  const [quadPricePkr, setQuadPricePkr] = useState<number>(
+    pkg?.quadPricePkr ?? 385000
+  )
+  const [triplePricePkr, setTriplePricePkr] = useState<number>(
     pkg?.triplePricePkr ?? 425000
   )
-  const [doublePricePkr, setDoublePricePkr] = useState(
+  const [doublePricePkr, setDoublePricePkr] = useState<number>(
     pkg?.doublePricePkr ?? 495000
   )
+  const [infantPricePkr, setInfantPricePkr] = useState<number>(
+    pkg?.infantPricePkr ?? 65000
+  )
+
+  const [giftedInclusionsStr, setGiftedInclusionsStr] = useState(
+    pkg?.giftedInclusions && pkg.giftedInclusions.length > 0
+      ? pkg.giftedInclusions.join(", ")
+      : "5L Zamzam Water Canister, Luxury Al-Ramlah Pilgrim Backpack, Haramain Bullet Train Ticket"
+  )
+
   const [highlightsStr, setHighlightsStr] = useState(
-    pkg?.highlights
+    pkg?.highlights && pkg.highlights.length > 0
       ? pkg.highlights.join(", ")
       : "Direct Saudi Airlines, 50m Clock Tower Hotel, Dedicated Scholar Guide, Private Ziyarat Coach"
   )
@@ -124,6 +152,11 @@ export function GroupPackageDialog({
       .map((s) => s.trim())
       .filter(Boolean)
 
+    const giftedInclusions = giftedInclusionsStr
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+
     try {
       await upsertGroupPackage({
         id: pkg?.id,
@@ -139,10 +172,13 @@ export function GroupPackageDialog({
         includesVisa,
         includesTransport,
         includesZiyarat,
-        mealPlan,
+        sharingPricePkr,
         quadPricePkr,
         triplePricePkr,
         doublePricePkr,
+        infantPricePkr,
+        giftedInclusions,
+        multiHotelOptions: pkg?.multiHotelOptions ?? [],
         highlights,
         bannerUrl: bannerUrl || undefined,
         isFeatured,
@@ -171,7 +207,7 @@ export function GroupPackageDialog({
           trigger ? (
             (trigger as React.ReactElement)
           ) : (
-            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
               <Plus className="size-4" />
               <span>Create Package</span>
             </Button>
@@ -181,10 +217,10 @@ export function GroupPackageDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {pkg ? `Edit ${pkg.title}` : "Create Pre-Built Group Package"}
+            {pkg ? `Edit ${pkg.title}` : "Create Group Package"}
           </DialogTitle>
           <DialogDescription>
-            Pair holy sanctuary hotels, airline flights, and quad/triple/double rates.
+            Configure package tier, hotel stays, airline partner, room sharing price matrix, and gifted inclusions.
           </DialogDescription>
         </DialogHeader>
 
@@ -203,7 +239,7 @@ export function GroupPackageDialog({
                 id="gp-title"
                 value={title}
                 onChange={(e) => handleTitleChange(e.target.value)}
-                placeholder="e.g. VIP 5-Star Executive Umrah"
+                placeholder="e.g. 14 Days Super Deluxe Executive Umrah"
                 required
               />
             </div>
@@ -213,16 +249,16 @@ export function GroupPackageDialog({
                 id="gp-slug"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                placeholder="vip-5-star-executive-umrah"
+                placeholder="14-days-executive-umrah"
                 required
               />
             </div>
           </div>
 
           {/* Tier & Duration */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="space-y-1.5">
-              <Label htmlFor="gp-tier">Package Tier</Label>
+              <Label htmlFor="gp-tier">Tier</Label>
               <select
                 id="gp-tier"
                 value={tier}
@@ -236,13 +272,13 @@ export function GroupPackageDialog({
                       | "vip_5star"
                   )
                 }
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
+                className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs shadow-xs focus-visible:outline-ring"
               >
-                <option value="vip_5star">VIP 5-Star Royal</option>
-                <option value="gold">Gold 5-Star Luxury</option>
-                <option value="silver">Silver 4-Star Premium</option>
-                <option value="bronze">Bronze 3-Star Standard</option>
-                <option value="economy">Economy Saver</option>
+                <option value="economy">Economy Standard</option>
+                <option value="bronze">Bronze Comfort</option>
+                <option value="silver">Silver Executive</option>
+                <option value="gold">Gold Elite</option>
+                <option value="vip_5star">VIP 5-Star Luxury</option>
               </select>
             </div>
             <div className="space-y-1.5">
@@ -250,16 +286,16 @@ export function GroupPackageDialog({
               <Input
                 id="gp-duration"
                 type="number"
-                min={1}
+                min={3}
                 value={durationDays}
                 onChange={(e) => setDurationDays(Number(e.target.value))}
                 required
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="gp-makkah-n">Makkah Nights</Label>
+              <Label htmlFor="gp-makkah">Makkah Nights</Label>
               <Input
-                id="gp-makkah-n"
+                id="gp-makkah"
                 type="number"
                 min={0}
                 value={makkahNights}
@@ -268,9 +304,9 @@ export function GroupPackageDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="gp-madinah-n">Madinah Nights</Label>
+              <Label htmlFor="gp-madinah">Madinah Nights</Label>
               <Input
-                id="gp-madinah-n"
+                id="gp-madinah"
                 type="number"
                 min={0}
                 value={madinahNights}
@@ -280,7 +316,7 @@ export function GroupPackageDialog({
             </div>
           </div>
 
-          {/* Airline & Hotel Selections */}
+          {/* Partner Airline & Hotels */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="gp-airline">Partner Airline</Label>
@@ -288,7 +324,7 @@ export function GroupPackageDialog({
                 id="gp-airline"
                 value={airlineId}
                 onChange={(e) => setAirlineId(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
+                className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs shadow-xs focus-visible:outline-ring"
               >
                 <option value="">Select Airline...</option>
                 {airlines.map((a) => (
@@ -299,14 +335,14 @@ export function GroupPackageDialog({
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="gp-makkah-h">Makkah Hotel</Label>
+              <Label htmlFor="gp-makkah-hotel">Makkah Hotel</Label>
               <select
-                id="gp-makkah-h"
+                id="gp-makkah-hotel"
                 value={makkahHotelId}
                 onChange={(e) => setMakkahHotelId(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
+                className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs shadow-xs focus-visible:outline-ring"
               >
-                <option value="">Select Makkah Hotel...</option>
+                <option value="">Select Makkah Property...</option>
                 {makkahHotels.map((h) => (
                   <option key={h.id} value={h.id}>
                     {h.name} ({h.starRating}★)
@@ -315,14 +351,14 @@ export function GroupPackageDialog({
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="gp-madinah-h">Madinah Hotel</Label>
+              <Label htmlFor="gp-madinah-hotel">Madinah Hotel</Label>
               <select
-                id="gp-madinah-h"
+                id="gp-madinah-hotel"
                 value={madinahHotelId}
                 onChange={(e) => setMadinahHotelId(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
+                className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs shadow-xs focus-visible:outline-ring"
               >
-                <option value="">Select Madinah Hotel...</option>
+                <option value="">Select Madinah Property...</option>
                 {madinahHotels.map((h) => (
                   <option key={h.id} value={h.id}>
                     {h.name} ({h.starRating}★)
@@ -332,15 +368,29 @@ export function GroupPackageDialog({
             </div>
           </div>
 
-          {/* Pricing by Room Category */}
-          <div className="rounded-xl border border-border/80 bg-muted/20 p-3 space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Base Per-Pilgrim Price by Room Sharing Tier (PKR)
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {/* Pricing Matrix (All 4 Room Categories + Infant) */}
+          <div className="rounded-xl border border-gold/40 bg-card p-4 space-y-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-foreground">
+              Rate per Pilgrim by Room Category (PKR)
+            </span>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="space-y-1">
-                <Label htmlFor="gp-quad" className="text-xs">
-                  Quad Sharing (4 Beds)
+                <Label htmlFor="gp-sharing" className="text-xs font-medium">
+                  Sharing (PKR)
+                </Label>
+                <Input
+                  id="gp-sharing"
+                  type="number"
+                  min={0}
+                  value={sharingPricePkr}
+                  onChange={(e) => setSharingPricePkr(Number(e.target.value))}
+                  className="font-mono text-sm font-semibold"
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="gp-quad" className="text-xs font-medium">
+                  Quad (4 Beds)
                 </Label>
                 <Input
                   id="gp-quad"
@@ -353,8 +403,8 @@ export function GroupPackageDialog({
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="gp-triple" className="text-xs">
-                  Triple Sharing (3 Beds)
+                <Label htmlFor="gp-triple" className="text-xs font-medium">
+                  Triple (3 Beds)
                 </Label>
                 <Input
                   id="gp-triple"
@@ -367,8 +417,8 @@ export function GroupPackageDialog({
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="gp-double" className="text-xs">
-                  Double Sharing (2 Beds)
+                <Label htmlFor="gp-double" className="text-xs font-medium">
+                  Double (2 Beds)
                 </Label>
                 <Input
                   id="gp-double"
@@ -381,10 +431,42 @@ export function GroupPackageDialog({
                 />
               </div>
             </div>
+
+            <div className="pt-2 border-t border-border/60">
+              <div className="space-y-1 w-full sm:w-1/2">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                  <Baby className="size-3.5 text-gold" />
+                  <Label htmlFor="gp-infant">Infant Price (&lt;2 yrs) (PKR)</Label>
+                </div>
+                <Input
+                  id="gp-infant"
+                  type="number"
+                  min={0}
+                  value={infantPricePkr}
+                  onChange={(e) => setInfantPricePkr(Number(e.target.value))}
+                  className="font-mono text-sm"
+                  required
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Inclusions & Meal Plan */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 items-center">
+          {/* Gifted Inclusions */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Gift className="size-3.5 text-gold" />
+              <Label htmlFor="gp-gifted">Gifted Inclusions & Complimentary Amenities</Label>
+            </div>
+            <Input
+              id="gp-gifted"
+              value={giftedInclusionsStr}
+              onChange={(e) => setGiftedInclusionsStr(e.target.value)}
+              placeholder="e.g. 5L Zamzam Water, Luxury Pilgrim Kit & Ihram, Haramain High-Speed Train"
+            />
+          </div>
+
+          {/* Inclusions */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 items-center">
             <label className="flex items-center gap-2 text-xs cursor-pointer">
               <input
                 type="checkbox"
@@ -412,30 +494,6 @@ export function GroupPackageDialog({
               />
               <span>Includes Ziyarat</span>
             </label>
-            <div className="space-y-1">
-              <Label htmlFor="gp-meal" className="text-xs">
-                Meal Plan
-              </Label>
-              <select
-                id="gp-meal"
-                value={mealPlan}
-                onChange={(e) =>
-                  setMealPlan(
-                    e.target.value as
-                      | "room_only"
-                      | "breakfast"
-                      | "half_board"
-                      | "full_board"
-                  )
-                }
-                className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs shadow-xs focus-visible:outline-ring"
-              >
-                <option value="room_only">Room Only</option>
-                <option value="breakfast">Breakfast Included</option>
-                <option value="half_board">Half Board (B+D)</option>
-                <option value="full_board">Full Board (B+L+D)</option>
-              </select>
-            </div>
           </div>
 
           {/* Highlights & Banner */}
@@ -502,7 +560,7 @@ export function GroupPackageDialog({
             <Button
               type="submit"
               disabled={loading}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
             >
               {loading && <Loader2 className="size-4 animate-spin" />}
               <span>{pkg ? "Save Changes" : "Create Package"}</span>

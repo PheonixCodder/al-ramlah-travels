@@ -19,7 +19,6 @@ import {
   cityNameEnum,
   departureCities,
   hotels,
-  mealPlanTypeEnum,
   roomCategoryEnum,
   roomTypeEnum,
   transportSectors,
@@ -49,6 +48,7 @@ export const applicationStatusEnum = pgEnum("application_status", [
 export const builderPresetModeEnum = pgEnum("builder_preset_mode", [
   "complete_umrah",
   "visa_only",
+  "flights_only",
   "hotels_only",
   "transport_only",
   "custom_mix",
@@ -60,6 +60,7 @@ export const citySequenceEnum = pgEnum("city_sequence", [
   "makkah_madinah",
   "madinah_makkah",
   "makkah_madinah_makkah",
+  "makkah_madinah_jeddah",
   "makkah_only",
   "madinah_only",
 ])
@@ -113,10 +114,9 @@ export const applications = pgTable(
 
     // Traveller Counts
     adults: integer("adults").notNull().default(1),
-    children: integer("children").notNull().default(0),
     infants: integer("infants").notNull().default(0),
-    totalPassportCount: integer("total_passport_count").notNull(),
-    bedAndSeatCount: integer("bed_and_seat_count").notNull(),
+    totalPassportCount: integer("total_passport_count").notNull(), // Adults + Infants
+    bedAndSeatCount: integer("bed_and_seat_count").notNull(), // Adults only (Infants occupy 0 beds / 0 seats)
 
     // Selected Service Pillars
     includeVisa: boolean("include_visa").notNull().default(true),
@@ -211,7 +211,6 @@ export const applicationHotelStays = pgTable(
     privateRoomAllocation: jsonb("private_room_allocation")
       .$type<{ double: number; triple: number; quad: number }>()
       .default({ double: 0, triple: 0, quad: 0 }),
-    mealPlan: mealPlanTypeEnum("meal_plan").notNull().default("room_only"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

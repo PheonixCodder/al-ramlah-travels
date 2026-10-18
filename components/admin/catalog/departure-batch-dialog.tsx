@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertGroupDeparture } from "@/app/actions/groups"
-import { Plus, Loader2 } from "lucide-react"
+import { Plus, Loader2, Plane, Luggage } from "lucide-react"
 
 export interface DepartureBatchData {
   id?: string
@@ -28,9 +28,15 @@ export interface DepartureBatchData {
   totalSeats: number
   bookedSeats: number
   status: "open" | "filling_fast" | "sold_out" | "closed"
+  sharingPriceOverridePkr?: number | null
   quadPriceOverridePkr?: number | null
   triplePriceOverridePkr?: number | null
   doublePriceOverridePkr?: number | null
+  outboundFlightNumber?: string | null
+  returnFlightNumber?: string | null
+  flightScheduleSummary?: string | null
+  routingNote?: string | null
+  baggageAllowance?: string | null
 }
 
 interface DepartureBatchDialogProps {
@@ -68,6 +74,10 @@ export function DepartureBatchDialog({
     "open" | "filling_fast" | "sold_out" | "closed"
   >(batch?.status ?? "open")
 
+  // Overrides
+  const [sharingOverride, setSharingOverride] = useState<number | undefined>(
+    batch?.sharingPriceOverridePkr ?? undefined
+  )
   const [quadOverride, setQuadOverride] = useState<number | undefined>(
     batch?.quadPriceOverridePkr ?? undefined
   )
@@ -76,6 +86,23 @@ export function DepartureBatchDialog({
   )
   const [doubleOverride, setDoubleOverride] = useState<number | undefined>(
     batch?.doublePriceOverridePkr ?? undefined
+  )
+
+  // Flight block fields
+  const [outboundFlightNumber, setOutboundFlightNumber] = useState<string>(
+    batch?.outboundFlightNumber ?? "SV-739"
+  )
+  const [returnFlightNumber, setReturnFlightNumber] = useState<string>(
+    batch?.returnFlightNumber ?? "SV-738"
+  )
+  const [baggageAllowance, setBaggageAllowance] = useState<string>(
+    batch?.baggageAllowance ?? "23-KG Outbound / 46-KG Return"
+  )
+  const [routingNote, setRoutingNote] = useState<string>(
+    batch?.routingNote ?? "Direct Flights (LHE <-> JED)"
+  )
+  const [flightScheduleSummary, setFlightScheduleSummary] = useState<string>(
+    batch?.flightScheduleSummary ?? "SV-739 (04:15 - 08:30) / SV-738 (21:00 - 03:15)"
   )
 
   async function handleSubmit(e: React.FormEvent) {
@@ -94,9 +121,15 @@ export function DepartureBatchDialog({
         totalSeats,
         bookedSeats,
         status,
+        sharingPriceOverridePkr: sharingOverride ?? undefined,
         quadPriceOverridePkr: quadOverride ?? undefined,
         triplePriceOverridePkr: tripleOverride ?? undefined,
         doublePriceOverridePkr: doubleOverride ?? undefined,
+        outboundFlightNumber: outboundFlightNumber || undefined,
+        returnFlightNumber: returnFlightNumber || undefined,
+        flightScheduleSummary: flightScheduleSummary || undefined,
+        routingNote: routingNote || undefined,
+        baggageAllowance: baggageAllowance || undefined,
       })
       setOpen(false)
     } catch (err: unknown) {
@@ -120,7 +153,7 @@ export function DepartureBatchDialog({
             <Button
               variant="outline"
               size="xs"
-              className="gap-1.5 border-border bg-card text-foreground hover:bg-muted"
+              className="gap-1.5 border-border bg-card text-foreground hover:bg-muted cursor-pointer"
             >
               <Plus className="size-3.5" />
               <span>Add Batch</span>
@@ -128,13 +161,13 @@ export function DepartureBatchDialog({
           )
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
             {batch ? `Edit Batch ${batch.batchCode}` : "Schedule Departure Batch"}
           </DialogTitle>
           <DialogDescription>
-            Assign gateway airport, travel dates, seat allotment, and optional rate overrides.
+            Assign gateway airport, travel dates, seat allotment, flight blocks, and rate overrides.
           </DialogDescription>
         </DialogHeader>
 
@@ -244,12 +277,88 @@ export function DepartureBatchDialog({
             </div>
           </div>
 
+          {/* Flight Block Configuration */}
+          <div className="rounded-lg border border-gold/40 bg-card p-3 space-y-2.5">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <Plane className="size-3.5 text-gold" />
+              <span>Flight Block & Schedule</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="space-y-1">
+                <Label htmlFor="b-outbound">Outbound Flight #</Label>
+                <Input
+                  id="b-outbound"
+                  value={outboundFlightNumber}
+                  onChange={(e) => setOutboundFlightNumber(e.target.value)}
+                  placeholder="e.g. SV-739"
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="b-return">Return Flight #</Label>
+                <Input
+                  id="b-return"
+                  value={returnFlightNumber}
+                  onChange={(e) => setReturnFlightNumber(e.target.value)}
+                  placeholder="e.g. SV-738"
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="space-y-1">
+                <Label htmlFor="b-baggage">Baggage Allowance</Label>
+                <Input
+                  id="b-baggage"
+                  value={baggageAllowance}
+                  onChange={(e) => setBaggageAllowance(e.target.value)}
+                  placeholder="23-KG / 46-KG"
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="b-routing">Routing Note</Label>
+                <Input
+                  id="b-routing"
+                  value={routingNote}
+                  onChange={(e) => setRoutingNote(e.target.value)}
+                  placeholder="Direct Karachi <-> Jeddah"
+                  className="h-8 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1 text-xs">
+              <Label htmlFor="b-schedule">Schedule Summary</Label>
+              <Input
+                id="b-schedule"
+                value={flightScheduleSummary}
+                onChange={(e) => setFlightScheduleSummary(e.target.value)}
+                placeholder="SV-739 (04:15 - 08:30) / SV-738 (21:00 - 03:15)"
+                className="h-8 text-xs"
+              />
+            </div>
+          </div>
+
           {/* Optional overrides */}
           <div className="rounded-lg border border-border/80 bg-muted/20 p-2.5 space-y-2">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Optional Batch Price Overrides (PKR)
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Input
+                placeholder="Sharing Override"
+                type="number"
+                value={sharingOverride ?? ""}
+                onChange={(e) =>
+                  setSharingOverride(
+                    e.target.value ? Number(e.target.value) : undefined
+                  )
+                }
+                className="text-xs"
+              />
               <Input
                 placeholder="Quad Override"
                 type="number"
@@ -293,7 +402,7 @@ export function DepartureBatchDialog({
             <Button
               type="submit"
               disabled={loading}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
             >
               {loading && <Loader2 className="size-4 animate-spin" />}
               <span>{batch ? "Save Changes" : "Create Batch"}</span>

@@ -1,5 +1,5 @@
 import "dotenv/config"
-import { eq } from "drizzle-orm"
+import { eq, or } from "drizzle-orm"
 import { db } from "./index"
 import * as schema from "./schema"
 import { auth } from "../lib/auth"
@@ -105,6 +105,7 @@ async function seed() {
       tiktokUrl: "https://tiktok.com/@alramlahtravels",
       workingHours: "Monday to Saturday, 9:00 AM to 8:00 PM PKT",
       slaOverdueHours: 24,
+      sarToPkrRate: 75,
       updatedByUserId: adminUserId,
     })
     .onConflictDoUpdate({
@@ -115,9 +116,10 @@ async function seed() {
         officeAddress:
           "Suite 402, Al-Hafeez Heights, Main Boulevard, Gulberg III, Lahore, Pakistan",
         slaOverdueHours: 24,
+        sarToPkrRate: 75,
       },
     })
-  console.log("   ✅ Agency settings configured.")
+  console.log("   ✅ Agency settings configured (SAR to PKR: 75).")
 
   // ==========================================
   // 3. DYNAMIC VISA RATES
@@ -131,6 +133,12 @@ async function seed() {
         label: "Standard Tourist / Umrah Visa (30 Days or Fewer)",
         maxDays: 30,
         pricePkr: 42500,
+        priceSar: 470,
+        withoutMasarPriceSar: 470,
+        withMasar10DaysSar: 500,
+        withMasar15DaysSar: 515,
+        withMasar21DaysSar: 530,
+        withMasar28DaysSar: 545,
         notes:
           "Valid for single or multiple entry within 30 days of arrival. Includes mandatory Saudi health insurance.",
         updatedByUserId: adminUserId,
@@ -140,6 +148,12 @@ async function seed() {
         label: "Extended Tourist / Umrah Visa (Up to 90 Days)",
         maxDays: 90,
         pricePkr: 68000,
+        priceSar: 750,
+        withoutMasarPriceSar: 750,
+        withMasar10DaysSar: 750,
+        withMasar15DaysSar: 750,
+        withMasar21DaysSar: 750,
+        withMasar28DaysSar: 750,
         notes:
           "Valid for comprehensive pilgrimage and tourism stays up to 90 days. Includes full medical insurance coverage.",
         updatedByUserId: adminUserId,
@@ -148,12 +162,18 @@ async function seed() {
     .onConflictDoUpdate({
       target: schema.visaRates.tier,
       set: {
-        pricePkr: schema.visaRates.pricePkr,
-        maxDays: schema.visaRates.maxDays,
+        pricePkr: 42500,
+        priceSar: 470,
+        withoutMasarPriceSar: 470,
+        withMasar10DaysSar: 500,
+        withMasar15DaysSar: 515,
+        withMasar21DaysSar: 530,
+        withMasar28DaysSar: 545,
+        maxDays: 30,
       },
     })
   console.log(
-    "   ✅ Visa rates configured (Short: PKR 42,500, Long: PKR 68,000)."
+    "   ✅ Visa rates configured (Short: 470 SAR / PKR 42,500, Long: 750 SAR / PKR 68,000)."
   )
 
   // ==========================================
@@ -295,7 +315,7 @@ async function seed() {
   console.log("   ✅ 6 major carriers seeded.")
 
   // ==========================================
-  // 6. HOTELS (MAKKAH & MADINAH 3★, 4★, 5★)
+  // 6. HOTELS (MAKKAH & MADINAH 1★, 2★, 3★, 4★, 5★)
   // ==========================================
   console.log("🏨 Seeding hotels...")
   const hotelsData = [
@@ -322,15 +342,18 @@ async function seed() {
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: true,
-      availableMealPlans: [
-        "room_only",
-        "breakfast",
-        "half_board",
-        "full_board",
-      ] as ("room_only" | "breakfast" | "half_board" | "full_board")[],
+      sharingPriceSar: 450,
+      roomPriceSar: 1250,
+      quadPriceSar: 1650,
+      triplePriceSar: 1450,
+      doublePriceSar: 1250,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Direct Clock Tower Courtyard (Ajyad Gate)",
       isFeatured: true,
       sortOrder: 1,
     },
@@ -348,21 +371,24 @@ async function seed() {
       ],
       amenities: [
         "Direct Mall & Haram Access",
-        "Al Khairat Dining Hall",
+        "Al Khairat Executive Lounge",
         "Soundproof Rooms",
       ],
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: true,
-      availableMealPlans: [
-        "room_only",
-        "breakfast",
-        "half_board",
-        "full_board",
-      ] as ("room_only" | "breakfast" | "half_board" | "full_board")[],
+      sharingPriceSar: 380,
+      roomPriceSar: 980,
+      quadPriceSar: 1350,
+      triplePriceSar: 1150,
+      doublePriceSar: 980,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Abraj Al Bait Complex - Direct Mall & Courtyard Access",
       isFeatured: true,
       sortOrder: 2,
     },
@@ -386,12 +412,18 @@ async function seed() {
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: true,
-      availableMealPlans: ["room_only", "breakfast", "half_board"] as (
-        "room_only" | "breakfast" | "half_board"
-      )[],
+      sharingPriceSar: 350,
+      roomPriceSar: 900,
+      quadPriceSar: 1200,
+      triplePriceSar: 1050,
+      doublePriceSar: 900,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Ibrahim Al Khalil Rd, King Fahad Gate Facing",
       isFeatured: true,
       sortOrder: 3,
     },
@@ -410,12 +442,18 @@ async function seed() {
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: true,
-      availableMealPlans: ["room_only", "breakfast", "half_board"] as (
-        "room_only" | "breakfast" | "half_board"
-      )[],
+      sharingPriceSar: 260,
+      roomPriceSar: 680,
+      quadPriceSar: 960,
+      triplePriceSar: 820,
+      doublePriceSar: 680,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Hajar Tower - Haram Courtyard Frontage",
       isFeatured: false,
       sortOrder: 4,
     },
@@ -432,25 +470,31 @@ async function seed() {
       amenities: [
         "Continuous Shuttle to Kudai & Haram",
         "Complimentary High-Speed WiFi",
-        "Spacious Dining Halls",
+        "Spacious Prayer & Assembly Halls",
       ],
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: true,
-      availableMealPlans: ["room_only", "breakfast", "half_board"] as (
-        "room_only" | "breakfast" | "half_board"
-      )[],
+      sharingPriceSar: 95,
+      roomPriceSar: 260,
+      quadPriceSar: 360,
+      triplePriceSar: 310,
+      doublePriceSar: 260,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Kudai Side - 24/7 Dedicated Luxury Shuttle to Haram",
       isFeatured: false,
       sortOrder: 5,
     },
-    // Makkah 3-Star (offersDining: false)
+    // Makkah 3-Star, 2-Star & Economy Allotments
     {
       name: "Al Kiswah Towers Hotel",
       city: "makkah" as const,
-      starRating: 3,
+      starRating: 2,
       distanceMeters: 1500,
       distanceLabel: "1.5 km (Continuous 24-Hour Shuttle Service)",
       accessType: "shuttle" as const,
@@ -465,10 +509,18 @@ async function seed() {
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: false,
-      availableMealPlans: ["room_only"] as "room_only"[],
+      sharingPriceSar: 42,
+      roomPriceSar: 140,
+      quadPriceSar: 170,
+      triplePriceSar: 155,
+      doublePriceSar: 140,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "At-Taysir Sector - 24/7 Continuous Shuttle Terminal",
       isFeatured: false,
       sortOrder: 6,
     },
@@ -490,12 +542,107 @@ async function seed() {
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: false,
-      availableMealPlans: ["room_only"] as "room_only"[],
+      sharingPriceSar: 55,
+      roomPriceSar: 180,
+      quadPriceSar: 220,
+      triplePriceSar: 200,
+      doublePriceSar: 180,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Ibrahim Al Khalil Road - 750m Direct Walkway",
       isFeatured: false,
       sortOrder: 7,
+    },
+    {
+      name: "Nada Al Deafah",
+      city: "makkah" as const,
+      starRating: 3,
+      distanceMeters: 450,
+      distanceLabel: "450m Walk to Outer Courtyard (Ajyad Sector)",
+      accessType: "walking" as const,
+      imageUrl:
+        "https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800",
+      galleryUrls: [],
+      amenities: ["Ajyad Walkway", "Air Conditioned", "Lift Access"],
+      allowsSharedRooms: true,
+      allowsPrivateRooms: true,
+      availableRoomTypes: ["double", "triple", "quad"] as (
+        | "double"
+        | "triple"
+        | "quad"
+      )[],
+      sharingPriceSar: 47,
+      roomPriceSar: 140,
+      quadPriceSar: 190,
+      triplePriceSar: 165,
+      doublePriceSar: 140,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Top 10 Side - Ajyad Sector - 450m Walk",
+      isFeatured: false,
+      sortOrder: 8,
+    },
+    {
+      name: "Emaar Al Khalil",
+      city: "makkah" as const,
+      starRating: 2,
+      distanceMeters: 650,
+      distanceLabel: "650m Walk via Ibrahim Al Khalil Road",
+      accessType: "walking" as const,
+      imageUrl:
+        "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800",
+      galleryUrls: [],
+      amenities: ["Ibrahim Al Khalil Walkway", "Elevator Access"],
+      allowsSharedRooms: true,
+      allowsPrivateRooms: true,
+      availableRoomTypes: ["double", "triple", "quad"] as (
+        | "double"
+        | "triple"
+        | "quad"
+      )[],
+      sharingPriceSar: 42,
+      roomPriceSar: 130,
+      quadPriceSar: 170,
+      triplePriceSar: 150,
+      doublePriceSar: 130,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Ibrahim Al Khalil Road - 650m Walk",
+      isFeatured: false,
+      sortOrder: 9,
+    },
+    {
+      name: "Fundaqiba",
+      city: "makkah" as const,
+      starRating: 1,
+      distanceMeters: 900,
+      distanceLabel: "900m Walk via Misfalah Street",
+      accessType: "walking" as const,
+      imageUrl:
+        "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800",
+      galleryUrls: [],
+      amenities: ["Misfalah Commercial Strip", "Clean Economy Rooms"],
+      allowsSharedRooms: true,
+      allowsPrivateRooms: true,
+      availableRoomTypes: ["double", "triple", "quad"] as (
+        | "double"
+        | "triple"
+        | "quad"
+      )[],
+      sharingPriceSar: 34,
+      roomPriceSar: 110,
+      quadPriceSar: 140,
+      triplePriceSar: 120,
+      doublePriceSar: 110,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Misfalah Sector - 900m Walk",
+      isFeatured: false,
+      sortOrder: 10,
     },
 
     // Madinah 5-Star
@@ -514,22 +661,25 @@ async function seed() {
       amenities: [
         "Unobstructed Green Dome Views",
         "Mughal & Al-Ansar Restaurants",
-        "Luxury Chauffeur",
+        "Private Transport",
       ],
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: true,
-      availableMealPlans: [
-        "room_only",
-        "breakfast",
-        "half_board",
-        "full_board",
-      ] as ("room_only" | "breakfast" | "half_board" | "full_board")[],
+      sharingPriceSar: 490,
+      roomPriceSar: 1400,
+      quadPriceSar: 1900,
+      triplePriceSar: 1650,
+      doublePriceSar: 1400,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Northern Courtyard - Direct Facing Green Dome",
       isFeatured: true,
-      sortOrder: 8,
+      sortOrder: 11,
     },
     {
       name: "Dar Al Taqwa Hotel Madinah",
@@ -543,20 +693,26 @@ async function seed() {
       galleryUrls: [],
       amenities: [
         "Direct Gate Entrance",
-        "Al Marwa Dining Hall",
+        "Al Marwa Executive Lounge",
         "Courtyard Views",
       ],
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: true,
-      availableMealPlans: ["room_only", "breakfast", "half_board"] as (
-        "room_only" | "breakfast" | "half_board"
-      )[],
+      sharingPriceSar: 420,
+      roomPriceSar: 1200,
+      quadPriceSar: 1600,
+      triplePriceSar: 1400,
+      doublePriceSar: 1200,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Direct Ladies Gate 25 Entrance",
       isFeatured: true,
-      sortOrder: 9,
+      sortOrder: 12,
     },
     {
       name: "Madinah Hilton Hotel",
@@ -576,14 +732,20 @@ async function seed() {
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: true,
-      availableMealPlans: ["room_only", "breakfast", "half_board"] as (
-        "room_only" | "breakfast" | "half_board"
-      )[],
+      sharingPriceSar: 360,
+      roomPriceSar: 950,
+      quadPriceSar: 1280,
+      triplePriceSar: 1100,
+      doublePriceSar: 950,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "King Fahad Gate - Southern Courtyard",
       isFeatured: true,
-      sortOrder: 10,
+      sortOrder: 13,
     },
     // Madinah 4-Star
     {
@@ -604,14 +766,20 @@ async function seed() {
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: true,
-      availableMealPlans: ["room_only", "breakfast", "half_board"] as (
-        "room_only" | "breakfast" | "half_board"
-      )[],
+      sharingPriceSar: 180,
+      roomPriceSar: 480,
+      quadPriceSar: 650,
+      triplePriceSar: 560,
+      doublePriceSar: 480,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Southern Courtyard - Central Area",
       isFeatured: false,
-      sortOrder: 11,
+      sortOrder: 14,
     },
     {
       name: "Leader Al Muna Kareem Hotel",
@@ -631,16 +799,22 @@ async function seed() {
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: true,
-      availableMealPlans: ["room_only", "breakfast", "half_board"] as (
-        "room_only" | "breakfast" | "half_board"
-      )[],
+      sharingPriceSar: 170,
+      roomPriceSar: 450,
+      quadPriceSar: 620,
+      triplePriceSar: 530,
+      doublePriceSar: 450,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Central Area Northern Side - 150m Walk",
       isFeatured: false,
-      sortOrder: 12,
+      sortOrder: 15,
     },
-    // Madinah 3-Star (offersDining: false)
+    // Madinah 3-Star, 2-Star & Economy Allotments
     {
       name: "Emaar Elite Hotel Madinah",
       city: "madinah" as const,
@@ -659,12 +833,78 @@ async function seed() {
       allowsSharedRooms: true,
       allowsPrivateRooms: true,
       availableRoomTypes: ["double", "triple", "quad"] as (
-        "double" | "triple" | "quad"
+        | "double"
+        | "triple"
+        | "quad"
       )[],
-      offersDining: false,
-      availableMealPlans: ["room_only"] as "room_only"[],
+      sharingPriceSar: 60,
+      roomPriceSar: 190,
+      quadPriceSar: 240,
+      triplePriceSar: 215,
+      doublePriceSar: 190,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Markaziyah Shamaliyah (Northern Central Area)",
       isFeatured: false,
-      sortOrder: 13,
+      sortOrder: 16,
+    },
+    {
+      name: "Markaz Al Eiman",
+      city: "madinah" as const,
+      starRating: 1,
+      distanceMeters: 300,
+      distanceLabel: "300m Walk (Masjid Bilal Side)",
+      accessType: "walking" as const,
+      imageUrl:
+        "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800",
+      galleryUrls: [],
+      amenities: ["Masjid Bilal Proximity", "Clean Allotment Rooms"],
+      allowsSharedRooms: true,
+      allowsPrivateRooms: true,
+      availableRoomTypes: ["double", "triple", "quad"] as (
+        | "double"
+        | "triple"
+        | "quad"
+      )[],
+      sharingPriceSar: 45,
+      roomPriceSar: 140,
+      quadPriceSar: 180,
+      triplePriceSar: 160,
+      doublePriceSar: 140,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Markaziyah Janubiyah (Masjid Bilal Side) - 300m Walk",
+      isFeatured: false,
+      sortOrder: 17,
+    },
+    {
+      name: "Worth Elite",
+      city: "madinah" as const,
+      starRating: 2,
+      distanceMeters: 250,
+      distanceLabel: "250m Walk behind Bilal Market",
+      accessType: "walking" as const,
+      imageUrl:
+        "https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800",
+      galleryUrls: [],
+      amenities: ["Bilal Market Strip", "Air Conditioned", "24/7 Desk"],
+      allowsSharedRooms: true,
+      allowsPrivateRooms: true,
+      availableRoomTypes: ["double", "triple", "quad"] as (
+        | "double"
+        | "triple"
+        | "quad"
+      )[],
+      sharingPriceSar: 50,
+      roomPriceSar: 150,
+      quadPriceSar: 200,
+      triplePriceSar: 175,
+      doublePriceSar: 150,
+      validFrom: "2026-09-01",
+      validUntil: "2026-12-31",
+      locationNotes: "Behind Bilal Market - 250m Walk",
+      isFeatured: false,
+      sortOrder: 18,
     },
   ]
 
@@ -681,58 +921,104 @@ async function seed() {
           distanceMeters: h.distanceMeters,
           distanceLabel: h.distanceLabel,
           starRating: h.starRating,
-          offersDining: h.offersDining,
+          sharingPriceSar: h.sharingPriceSar,
+          roomPriceSar: h.roomPriceSar,
+          quadPriceSar: h.quadPriceSar,
+          triplePriceSar: h.triplePriceSar,
+          doublePriceSar: h.doublePriceSar,
+          validFrom: h.validFrom,
+          validUntil: h.validUntil,
+          locationNotes: h.locationNotes,
+          amenities: h.amenities,
         })
         .where(eq(schema.hotels.id, existing.id))
     }
   }
-  console.log("   ✅ 13 named hotels seeded across 3★, 4★, 5★ tiers.")
+  console.log(
+    "   ✅ 18 named hotels seeded across 1★, 2★, 3★, 4★, 5★ and real-world allotment tiers."
+  )
 
   // ==========================================
-  // 7. VEHICLES (8 ROAD MODELS + HARAMAIN TRAIN)
+  // 7. VEHICLES (10 ROAD MODELS + HARAMAIN TRAIN)
   // ==========================================
   console.log("🚐 Seeding vehicles fleet...")
   const vehiclesData = [
     // Private Sedans
     {
+      name: "Toyota Camry",
+      category: "sedan" as const,
+      bookingMode: "private_only" as const,
+      seatCapacity: 4,
+      luggageCapacity: 3,
+      allowsCustomPickupTime: true,
+      defaultRateSar: 230,
+      ziyaratRateSar: 200,
+      imageUrl:
+        "https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=800",
+      description:
+        "Standard luxury executive sedan for up to 4 pilgrims. Includes air conditioning and chilled mineral water.",
+      sortOrder: 1,
+    },
+    {
       name: "Ford Taurus",
       category: "sedan" as const,
       bookingMode: "private_only" as const,
-      seatCapacity: 3,
-      luggageCapacity: 2,
+      seatCapacity: 4,
+      luggageCapacity: 3,
       allowsCustomPickupTime: true,
+      defaultRateSar: 230,
+      ziyaratRateSar: 200,
       imageUrl:
         "https://images.unsplash.com/photo-1550355291-bbee04a92027?w=800",
       description:
         "Comfortable executive sedan for solo pilgrims and couples. Includes chilled mineral water.",
-      sortOrder: 1,
+      sortOrder: 2,
     },
     {
       name: "Hyundai Sonata",
       category: "sedan" as const,
       bookingMode: "private_only" as const,
-      seatCapacity: 3,
-      luggageCapacity: 2,
+      seatCapacity: 4,
+      luggageCapacity: 3,
       allowsCustomPickupTime: true,
+      defaultRateSar: 230,
+      ziyaratRateSar: 200,
       imageUrl:
         "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=800",
       description:
         "Modern private sedan with air conditioning, optimal for airport transfers and intimate travel.",
-      sortOrder: 2,
+      sortOrder: 3,
     },
-    // Private SUV
+    // Private SUVs
     {
-      name: "GMC Yukon",
+      name: "GMC Yukon XL",
       category: "suv" as const,
       bookingMode: "private_only" as const,
-      seatCapacity: 5,
-      luggageCapacity: 4,
+      seatCapacity: 7,
+      luggageCapacity: 7,
       allowsCustomPickupTime: true,
+      defaultRateSar: 400,
+      ziyaratRateSar: 350,
       imageUrl:
         "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=800",
       description:
-        "Luxury VIP large-body SUV with leather seating and exceptional comfort on highways.",
-      sortOrder: 3,
+        "Luxury VIP large-body SUV with leather seating and 7-passenger capacity with ample luggage.",
+      sortOrder: 4,
+    },
+    {
+      name: "Chevrolet Suburban",
+      category: "suv" as const,
+      bookingMode: "private_only" as const,
+      seatCapacity: 7,
+      luggageCapacity: 7,
+      allowsCustomPickupTime: true,
+      defaultRateSar: 400,
+      ziyaratRateSar: 350,
+      imageUrl:
+        "https://images.unsplash.com/photo-1563720223185-11003d516935?w=800",
+      description:
+        "Executive 7-seater American SUV with massive luggage compartment for family comfort.",
+      sortOrder: 5,
     },
     // Private Vans
     {
@@ -742,11 +1028,13 @@ async function seed() {
       seatCapacity: 7,
       luggageCapacity: 6,
       allowsCustomPickupTime: true,
+      defaultRateSar: 280,
+      ziyaratRateSar: 250,
       imageUrl:
         "https://images.unsplash.com/photo-1559297434-fae8a1916a79?w=800",
       description:
         "Futuristic VIP 7-seater family van with captain chairs, climate control, and ample luggage space.",
-      sortOrder: 4,
+      sortOrder: 6,
     },
     {
       name: "Hyundai Starex",
@@ -755,11 +1043,13 @@ async function seed() {
       seatCapacity: 7,
       luggageCapacity: 5,
       allowsCustomPickupTime: true,
+      defaultRateSar: 280,
+      ziyaratRateSar: 250,
       imageUrl:
         "https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?w=800",
       description:
         "Reliable medium-size family van designed for intercity transfers between holy cities.",
-      sortOrder: 5,
+      sortOrder: 7,
     },
     // Shared and Private Minibuses & Coaches
     {
@@ -767,26 +1057,30 @@ async function seed() {
       category: "minibus" as const,
       bookingMode: "shared_and_private" as const,
       seatCapacity: 11,
-      luggageCapacity: 10,
+      luggageCapacity: 15,
       allowsCustomPickupTime: true,
+      defaultRateSar: 350,
+      ziyaratRateSar: 300,
       imageUrl:
         "https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=800",
       description:
-        "Spacious 11-seater minibus popular for extended family groups and custom travel parties.",
-      sortOrder: 6,
+        "Spacious 11-seater minibus popular for extended family groups and custom travel parties with 15 luggage capacity.",
+      sortOrder: 8,
     },
     {
-      name: "Coaster (Toyota Coaster Minibus)",
+      name: "Toyota Coaster",
       category: "minibus" as const,
       bookingMode: "shared_and_private" as const,
-      seatCapacity: 21,
-      luggageCapacity: 20,
+      seatCapacity: 17,
+      luggageCapacity: 25,
       allowsCustomPickupTime: true,
+      defaultRateSar: 550,
+      ziyaratRateSar: 450,
       imageUrl:
         "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800",
       description:
-        "21-seater mid-size coach ideal for medium groups, ziyarat tours, and group arrivals.",
-      sortOrder: 7,
+        "17-seater mid-size luxury coach ideal for medium groups, ziyarat tours, and group arrivals.",
+      sortOrder: 9,
     },
     {
       name: "Bus Service (Full-size Coach Bus)",
@@ -795,11 +1089,13 @@ async function seed() {
       seatCapacity: 49,
       luggageCapacity: 50,
       allowsCustomPickupTime: false,
+      defaultRateSar: 850,
+      ziyaratRateSar: 650,
       imageUrl:
         "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800",
       description:
         "49-passenger luxury touring coach with undercarriage cargo, PA system, and air conditioning.",
-      sortOrder: 8,
+      sortOrder: 10,
     },
     // Train (shared only)
     {
@@ -809,28 +1105,52 @@ async function seed() {
       seatCapacity: 1,
       luggageCapacity: 1,
       allowsCustomPickupTime: false,
+      defaultRateSar: 75,
+      ziyaratRateSar: 0,
       imageUrl:
         "https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=800",
       description:
         "300 km/h high-speed rail transit connecting Makkah, Jeddah Airport, and Madinah in comfort.",
-      sortOrder: 9,
+      sortOrder: 11,
     },
   ]
 
   for (const v of vehiclesData) {
     const existing = await db.query.vehicles.findFirst({
-      where: eq(schema.vehicles.name, v.name),
+      where: or(
+        eq(schema.vehicles.name, v.name),
+        v.name === "GMC Yukon XL"
+          ? eq(schema.vehicles.name, "GMC Yukon")
+          : undefined,
+        v.name === "Toyota Coaster"
+          ? eq(schema.vehicles.name, "Coaster (Toyota Coaster Minibus)")
+          : undefined
+      ),
     })
     if (!existing) {
       await db.insert(schema.vehicles).values(v)
+    } else {
+      await db
+        .update(schema.vehicles)
+        .set({
+          name: v.name,
+          category: v.category,
+          bookingMode: v.bookingMode,
+          seatCapacity: v.seatCapacity,
+          luggageCapacity: v.luggageCapacity,
+          defaultRateSar: v.defaultRateSar,
+          ziyaratRateSar: v.ziyaratRateSar,
+          description: v.description,
+        })
+        .where(eq(schema.vehicles.id, existing.id))
     }
   }
   console.log(
-    "   ✅ 8 locked road vehicles + Haramain High-Speed Train seeded."
+    "   ✅ 10 locked road vehicles + Haramain High-Speed Train seeded."
   )
 
   // ==========================================
-  // 8. TRANSPORT SECTORS (7 LOCKED SECTORS)
+  // 8. TRANSPORT SECTORS (12 LOCKED SECTORS)
   // ==========================================
   console.log("🛣️ Seeding transport sectors...")
   const sectorsData = [
@@ -842,6 +1162,9 @@ async function seed() {
       originType: "airport" as const,
       destinationType: "hotel" as const,
       supportsTrain: true,
+      isSharedBusEligible: true,
+      sharedBusRateSarPerPax: 20,
+      terminalParkingFeeSar: 90,
       approxDistanceKm: 95,
       approxDurationMinutes: 75,
       sortOrder: 1,
@@ -854,6 +1177,9 @@ async function seed() {
       originType: "hotel" as const,
       destinationType: "hotel" as const,
       supportsTrain: true,
+      isSharedBusEligible: true,
+      sharedBusRateSarPerPax: 20,
+      terminalParkingFeeSar: 0,
       approxDistanceKm: 440,
       approxDurationMinutes: 270,
       sortOrder: 2,
@@ -866,33 +1192,12 @@ async function seed() {
       originType: "hotel" as const,
       destinationType: "hotel" as const,
       supportsTrain: true,
+      isSharedBusEligible: true,
+      sharedBusRateSarPerPax: 20,
+      terminalParkingFeeSar: 0,
       approxDistanceKm: 440,
       approxDurationMinutes: 270,
       sortOrder: 3,
-    },
-    {
-      code: "MED_AIR",
-      label: "Madinah Hotel to Madinah Airport (MED)",
-      originCity: "Madinah",
-      destinationCity: "Madinah",
-      originType: "hotel" as const,
-      destinationType: "airport" as const,
-      supportsTrain: false,
-      approxDistanceKm: 25,
-      approxDurationMinutes: 30,
-      sortOrder: 4,
-    },
-    {
-      code: "AIR_MED",
-      label: "Madinah Airport (MED) to Madinah Hotel",
-      originCity: "Madinah",
-      destinationCity: "Madinah",
-      originType: "airport" as const,
-      destinationType: "hotel" as const,
-      supportsTrain: false,
-      approxDistanceKm: 25,
-      approxDurationMinutes: 30,
-      sortOrder: 5,
     },
     {
       code: "MAK_JED",
@@ -902,8 +1207,41 @@ async function seed() {
       originType: "hotel" as const,
       destinationType: "airport" as const,
       supportsTrain: true,
+      isSharedBusEligible: true,
+      sharedBusRateSarPerPax: 20,
+      terminalParkingFeeSar: 0,
       approxDistanceKm: 95,
       approxDurationMinutes: 75,
+      sortOrder: 4,
+    },
+    {
+      code: "MED_AIR",
+      label: "Madinah Hotel to Madinah Airport (MED)",
+      originCity: "Madinah",
+      destinationCity: "Madinah",
+      originType: "hotel" as const,
+      destinationType: "airport" as const,
+      supportsTrain: false,
+      isSharedBusEligible: false,
+      sharedBusRateSarPerPax: 20,
+      terminalParkingFeeSar: 0,
+      approxDistanceKm: 25,
+      approxDurationMinutes: 30,
+      sortOrder: 5,
+    },
+    {
+      code: "AIR_MED",
+      label: "Madinah Airport (MED) to Madinah Hotel",
+      originCity: "Madinah",
+      destinationCity: "Madinah",
+      originType: "airport" as const,
+      destinationType: "hotel" as const,
+      supportsTrain: false,
+      isSharedBusEligible: false,
+      sharedBusRateSarPerPax: 20,
+      terminalParkingFeeSar: 0,
+      approxDistanceKm: 25,
+      approxDurationMinutes: 30,
       sortOrder: 6,
     },
     {
@@ -914,9 +1252,87 @@ async function seed() {
       originType: "airport" as const,
       destinationType: "hotel" as const,
       supportsTrain: true,
+      isSharedBusEligible: false,
+      sharedBusRateSarPerPax: 30,
+      terminalParkingFeeSar: 90,
       approxDistanceKm: 410,
       approxDurationMinutes: 260,
       sortOrder: 7,
+    },
+    {
+      code: "MED_JED",
+      label: "Madinah Hotel to Jeddah Airport (JED)",
+      originCity: "Madinah",
+      destinationCity: "Jeddah",
+      originType: "hotel" as const,
+      destinationType: "airport" as const,
+      supportsTrain: true,
+      isSharedBusEligible: false,
+      sharedBusRateSarPerPax: 30,
+      terminalParkingFeeSar: 0,
+      approxDistanceKm: 410,
+      approxDurationMinutes: 260,
+      sortOrder: 8,
+    },
+    {
+      code: "MAK_BADR_MED",
+      label: "Makkah to Madinah via Badr Ziyarat",
+      originCity: "Makkah",
+      destinationCity: "Madinah",
+      originType: "hotel" as const,
+      destinationType: "hotel" as const,
+      supportsTrain: false,
+      isSharedBusEligible: false,
+      sharedBusRateSarPerPax: 40,
+      terminalParkingFeeSar: 0,
+      approxDistanceKm: 490,
+      approxDurationMinutes: 360,
+      sortOrder: 9,
+    },
+    {
+      code: "MAK_TAIF_MAK",
+      label: "Makkah ↔ Taif Ziyarat & Return",
+      originCity: "Makkah",
+      destinationCity: "Makkah",
+      originType: "hotel" as const,
+      destinationType: "hotel" as const,
+      supportsTrain: false,
+      isSharedBusEligible: false,
+      sharedBusRateSarPerPax: 40,
+      terminalParkingFeeSar: 0,
+      approxDistanceKm: 180,
+      approxDurationMinutes: 180,
+      sortOrder: 10,
+    },
+    {
+      code: "MAK_TRN",
+      label: "Makkah Hotel ↔ Makkah Haramain Train Station",
+      originCity: "Makkah",
+      destinationCity: "Makkah",
+      originType: "hotel" as const,
+      destinationType: "hotel" as const,
+      supportsTrain: false,
+      isSharedBusEligible: false,
+      sharedBusRateSarPerPax: 15,
+      terminalParkingFeeSar: 0,
+      approxDistanceKm: 10,
+      approxDurationMinutes: 20,
+      sortOrder: 11,
+    },
+    {
+      code: "MED_TRN",
+      label: "Madinah Hotel ↔ Madinah Haramain Train Station",
+      originCity: "Madinah",
+      destinationCity: "Madinah",
+      originType: "hotel" as const,
+      destinationType: "hotel" as const,
+      supportsTrain: false,
+      isSharedBusEligible: false,
+      sharedBusRateSarPerPax: 15,
+      terminalParkingFeeSar: 0,
+      approxDistanceKm: 10,
+      approxDurationMinutes: 20,
+      sortOrder: 12,
     },
   ]
 
@@ -931,10 +1347,253 @@ async function seed() {
           supportsTrain: s.supportsTrain,
           approxDistanceKm: s.approxDistanceKm,
           approxDurationMinutes: s.approxDurationMinutes,
+          sharedBusRateSarPerPax: s.sharedBusRateSarPerPax,
+          isSharedBusEligible: s.isSharedBusEligible,
+          terminalParkingFeeSar: s.terminalParkingFeeSar,
         },
       })
   }
-  console.log("   ✅ 7 locked transport sectors seeded.")
+  console.log("   ✅ 12 locked transport sectors seeded.")
+
+  // ==========================================
+  // 8b. TRANSPORT RATES 2D MATRIX (SECTOR × VEHICLE)
+  // ==========================================
+  console.log("📊 Seeding 2D Sector × Vehicle transport rate matrix...")
+  const allSectors = await db.query.transportSectors.findMany()
+  const allVehicles = await db.query.vehicles.findMany()
+
+  const sectorMap = new Map(allSectors.map((s) => [s.code, s.id]))
+  const vehicleMap = new Map(allVehicles.map((v) => [v.name, v.id]))
+
+  // Real world rate sheets from Basma Emaar, Zain Travel 2026, and Zahoor Tours 1448
+  const matrixDefs: Array<{
+    sectorCode: string
+    rates: Record<string, number>
+  }> = [
+    {
+      sectorCode: "JED_MAK",
+      rates: {
+        "Toyota Camry": 230,
+        "Ford Taurus": 230,
+        "Hyundai Sonata": 230,
+        "Hyundai Staria": 280,
+        "Hyundai Starex": 280,
+        "Toyota HiAce": 350,
+        "GMC Yukon XL": 400,
+        "Chevrolet Suburban": 400,
+        "Toyota Coaster": 550,
+        "Bus Service (Full-size Coach Bus)": 850,
+        "Haramain High-Speed Train": 75,
+      },
+    },
+    {
+      sectorCode: "MAK_MED",
+      rates: {
+        "Toyota Camry": 450,
+        "Ford Taurus": 450,
+        "Hyundai Sonata": 450,
+        "Hyundai Staria": 550,
+        "Hyundai Starex": 550,
+        "Toyota HiAce": 620,
+        "GMC Yukon XL": 700,
+        "Chevrolet Suburban": 700,
+        "Toyota Coaster": 850,
+        "Bus Service (Full-size Coach Bus)": 1150,
+        "Haramain High-Speed Train": 175,
+      },
+    },
+    {
+      sectorCode: "MED_MAK",
+      rates: {
+        "Toyota Camry": 450,
+        "Ford Taurus": 450,
+        "Hyundai Sonata": 450,
+        "Hyundai Staria": 550,
+        "Hyundai Starex": 550,
+        "Toyota HiAce": 620,
+        "GMC Yukon XL": 700,
+        "Chevrolet Suburban": 700,
+        "Toyota Coaster": 850,
+        "Bus Service (Full-size Coach Bus)": 1150,
+        "Haramain High-Speed Train": 175,
+      },
+    },
+    {
+      sectorCode: "MAK_JED",
+      rates: {
+        "Toyota Camry": 200,
+        "Ford Taurus": 200,
+        "Hyundai Sonata": 200,
+        "Hyundai Staria": 220,
+        "Hyundai Starex": 220,
+        "Toyota HiAce": 320,
+        "GMC Yukon XL": 330,
+        "Chevrolet Suburban": 330,
+        "Toyota Coaster": 500,
+        "Bus Service (Full-size Coach Bus)": 750,
+        "Haramain High-Speed Train": 75,
+      },
+    },
+    {
+      sectorCode: "MED_AIR",
+      rates: {
+        "Toyota Camry": 150,
+        "Ford Taurus": 150,
+        "Hyundai Sonata": 150,
+        "Hyundai Staria": 200,
+        "Hyundai Starex": 200,
+        "Toyota HiAce": 270,
+        "GMC Yukon XL": 300,
+        "Chevrolet Suburban": 300,
+        "Toyota Coaster": 400,
+        "Bus Service (Full-size Coach Bus)": 650,
+        "Haramain High-Speed Train": 50,
+      },
+    },
+    {
+      sectorCode: "AIR_MED",
+      rates: {
+        "Toyota Camry": 150,
+        "Ford Taurus": 150,
+        "Hyundai Sonata": 150,
+        "Hyundai Staria": 200,
+        "Hyundai Starex": 200,
+        "Toyota HiAce": 270,
+        "GMC Yukon XL": 300,
+        "Chevrolet Suburban": 300,
+        "Toyota Coaster": 400,
+        "Bus Service (Full-size Coach Bus)": 650,
+        "Haramain High-Speed Train": 50,
+      },
+    },
+    {
+      sectorCode: "JED_MED",
+      rates: {
+        "Toyota Camry": 500,
+        "Ford Taurus": 500,
+        "Hyundai Sonata": 500,
+        "Hyundai Staria": 600,
+        "Hyundai Starex": 600,
+        "Toyota HiAce": 700,
+        "GMC Yukon XL": 800,
+        "Chevrolet Suburban": 800,
+        "Toyota Coaster": 1000,
+        "Bus Service (Full-size Coach Bus)": 1300,
+        "Haramain High-Speed Train": 225,
+      },
+    },
+    {
+      sectorCode: "MED_JED",
+      rates: {
+        "Toyota Camry": 500,
+        "Ford Taurus": 500,
+        "Hyundai Sonata": 500,
+        "Hyundai Staria": 600,
+        "Hyundai Starex": 600,
+        "Toyota HiAce": 700,
+        "GMC Yukon XL": 800,
+        "Chevrolet Suburban": 800,
+        "Toyota Coaster": 1000,
+        "Bus Service (Full-size Coach Bus)": 1300,
+        "Haramain High-Speed Train": 225,
+      },
+    },
+    {
+      sectorCode: "MAK_BADR_MED",
+      rates: {
+        "Toyota Camry": 600,
+        "Ford Taurus": 600,
+        "Hyundai Sonata": 600,
+        "Hyundai Staria": 750,
+        "Hyundai Starex": 750,
+        "Toyota HiAce": 900,
+        "GMC Yukon XL": 1000,
+        "Chevrolet Suburban": 1000,
+        "Toyota Coaster": 1150,
+        "Bus Service (Full-size Coach Bus)": 1500,
+      },
+    },
+    {
+      sectorCode: "MAK_TAIF_MAK",
+      rates: {
+        "Toyota Camry": 400,
+        "Ford Taurus": 400,
+        "Hyundai Sonata": 400,
+        "Hyundai Staria": 550,
+        "Hyundai Starex": 550,
+        "Toyota HiAce": 650,
+        "GMC Yukon XL": 750,
+        "Chevrolet Suburban": 750,
+        "Toyota Coaster": 850,
+        "Bus Service (Full-size Coach Bus)": 1200,
+      },
+    },
+    {
+      sectorCode: "MAK_TRN",
+      rates: {
+        "Toyota Camry": 100,
+        "Ford Taurus": 100,
+        "Hyundai Sonata": 100,
+        "Hyundai Staria": 150,
+        "Hyundai Starex": 150,
+        "Toyota HiAce": 200,
+        "GMC Yukon XL": 250,
+        "Chevrolet Suburban": 250,
+        "Toyota Coaster": 350,
+        "Bus Service (Full-size Coach Bus)": 500,
+      },
+    },
+    {
+      sectorCode: "MED_TRN",
+      rates: {
+        "Toyota Camry": 100,
+        "Ford Taurus": 100,
+        "Hyundai Sonata": 100,
+        "Hyundai Staria": 150,
+        "Hyundai Starex": 150,
+        "Toyota HiAce": 200,
+        "GMC Yukon XL": 250,
+        "Chevrolet Suburban": 250,
+        "Toyota Coaster": 350,
+        "Bus Service (Full-size Coach Bus)": 500,
+      },
+    },
+  ]
+
+  let rateMatrixCount = 0
+  for (const def of matrixDefs) {
+    const sectorId = sectorMap.get(def.sectorCode)
+    if (!sectorId) continue
+
+    for (const [vehicleName, rateSar] of Object.entries(def.rates)) {
+      const vehicleId = vehicleMap.get(vehicleName)
+      if (!vehicleId) continue
+
+      await db
+        .insert(schema.transportRates)
+        .values({
+          sectorId,
+          vehicleId,
+          rateSar,
+          ratePkrOverride: null,
+          notes: `${def.sectorCode} rate for ${vehicleName}`,
+        })
+        .onConflictDoUpdate({
+          target: [
+            schema.transportRates.sectorId,
+            schema.transportRates.vehicleId,
+          ],
+          set: {
+            rateSar,
+            updatedAt: new Date(),
+          },
+        })
+      rateMatrixCount++
+    }
+  }
+  console.log(
+    `   ✅ ${rateMatrixCount} transport rate cells seeded across 12 sectors and 11 vehicle models.`
+  )
 
   // ==========================================
   // 9. SACRED ZIYARAT SITES
@@ -1125,6 +1784,65 @@ async function seed() {
     where: eq(schema.departureCities.airportCode, "KHI"),
   })
 
+  // Shared multi-hotel combinations from 21-Day Saudia Flyer (Resource 2)
+  const sharedMultiHotelOptions = [
+    {
+      pkgCode: "PKG 1",
+      label: "Package 1 — Nada Al Deafah & Markaz Al Eiman",
+      makkahHotelName: "Nada Al Deafah",
+      makkahDistance: "450m Walk",
+      madinahHotelName: "Markaz Al Eiman",
+      madinahDistance: "300m Walk (Masjid Bilal Side)",
+      sharingPricePkr: 258299,
+      quadPricePkr: 262099,
+      triplePricePkr: 268399,
+      doublePricePkr: 280999,
+    },
+    {
+      pkgCode: "PKG 2",
+      label: "Package 2 — Emaar Al Khalil & Worth Elite",
+      makkahHotelName: "Emaar Al Khalil",
+      makkahDistance: "650m Walk",
+      madinahHotelName: "Worth Elite",
+      madinahDistance: "250m Walk",
+      sharingPricePkr: 264999,
+      quadPricePkr: 269999,
+      triplePricePkr: 276999,
+      doublePricePkr: 289999,
+    },
+    {
+      pkgCode: "PKG 3",
+      label: "Package 3 — Voco Makkah & Crowne Plaza Madinah",
+      makkahHotelName: "Voco Makkah (IHG)",
+      makkahDistance: "Dedicated Luxury Shuttle",
+      madinahHotelName: "Crowne Plaza Madinah",
+      madinahDistance: "200m Southern Courtyard",
+      sharingPricePkr: 289999,
+      quadPricePkr: 299999,
+      triplePricePkr: 314999,
+      doublePricePkr: 334999,
+    },
+    {
+      pkgCode: "PKG 4",
+      label: "Package 4 — Swissôtel Al Maqam & Oberoi Madinah",
+      makkahHotelName: "Swissôtel Al Maqam",
+      makkahDistance: "Direct Courtyard Access",
+      madinahHotelName: "The Oberoi Madina",
+      madinahDistance: "Facing Green Dome",
+      sharingPricePkr: 419999,
+      quadPricePkr: 449999,
+      triplePricePkr: 489999,
+      doublePricePkr: 549999,
+    },
+  ]
+
+  const giftedInclusions = [
+    "Gifted Taif Ziyarat",
+    "Gifted Umrah from Taif",
+    "Gifted Makkah Ziyarat",
+    "Gifted Madinah Ziyarat",
+  ]
+
   // Package 1: Royal VIP
   const pkg1Slug = "royal-ramadan-15-day-luxury-umrah"
   let pkg1 = await db.query.groupPackages.findFirst({
@@ -1147,16 +1865,19 @@ async function seed() {
         includesVisa: true,
         includesTransport: true,
         includesZiyarat: true,
-        mealPlan: "breakfast",
         quadPricePkr: 485000,
         triplePricePkr: 545000,
         doublePricePkr: 635000,
+        sharingPricePkr: 419999,
+        infantPricePkr: 65000,
+        giftedInclusions,
+        multiHotelOptions: sharedMultiHotelOptions,
         highlights: [
           "Direct Haram Courtyard Clock Tower Accommodations",
           "Unobstructed Green Dome Oberoi Suite Stays",
           "Haramain High-Speed Train Business Class Tickets",
-          "Private GMC Yukon Ziyarat Chauffeur",
-          "Daily Five-Star International Buffet Breakfast",
+          "Private GMC Yukon Ziyarat Transport",
+          "VIP Executive Haram Lounge Access",
         ],
         bannerUrl:
           "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=1200",
@@ -1165,6 +1886,23 @@ async function seed() {
       })
       .returning()
     pkg1 = created
+  } else {
+    await db
+      .update(schema.groupPackages)
+      .set({
+        sharingPricePkr: 419999,
+        infantPricePkr: 65000,
+        giftedInclusions,
+        multiHotelOptions: sharedMultiHotelOptions,
+        highlights: [
+          "Direct Haram Courtyard Clock Tower Accommodations",
+          "Unobstructed Green Dome Oberoi Suite Stays",
+          "Haramain High-Speed Train Business Class Tickets",
+          "Private GMC Yukon Ziyarat Transport",
+          "VIP Executive Haram Lounge Access",
+        ],
+      })
+      .where(eq(schema.groupPackages.id, pkg1.id))
   }
 
   // Package 2: Executive Gold
@@ -1189,10 +1927,13 @@ async function seed() {
         includesVisa: true,
         includesTransport: true,
         includesZiyarat: true,
-        mealPlan: "breakfast",
         quadPricePkr: 385000,
         triplePricePkr: 425000,
         doublePricePkr: 485000,
+        sharingPricePkr: 345000,
+        infantPricePkr: 65000,
+        giftedInclusions,
+        multiHotelOptions: sharedMultiHotelOptions,
         highlights: [
           "100m Walking Distance to King Fahad Gate",
           "Five-Star Walking Proximity in Madinah Central",
@@ -1206,6 +1947,16 @@ async function seed() {
       })
       .returning()
     pkg2 = created
+  } else {
+    await db
+      .update(schema.groupPackages)
+      .set({
+        sharingPricePkr: 345000,
+        infantPricePkr: 65000,
+        giftedInclusions,
+        multiHotelOptions: sharedMultiHotelOptions,
+      })
+      .where(eq(schema.groupPackages.id, pkg2.id))
   }
 
   // Package 3: Classic Silver
@@ -1230,10 +1981,13 @@ async function seed() {
         includesVisa: true,
         includesTransport: true,
         includesZiyarat: true,
-        mealPlan: "breakfast",
         quadPricePkr: 310000,
         triplePricePkr: 345000,
         doublePricePkr: 395000,
+        sharingPricePkr: 289999,
+        infantPricePkr: 65000,
+        giftedInclusions,
+        multiHotelOptions: sharedMultiHotelOptions,
         highlights: [
           "Walking Proximity in Makkah & Madinah Courtyards",
           "Family Quad & Triple Friendly Rooms",
@@ -1247,6 +2001,16 @@ async function seed() {
       })
       .returning()
     pkg3 = created
+  } else {
+    await db
+      .update(schema.groupPackages)
+      .set({
+        sharingPricePkr: 289999,
+        infantPricePkr: 65000,
+        giftedInclusions,
+        multiHotelOptions: sharedMultiHotelOptions,
+      })
+      .where(eq(schema.groupPackages.id, pkg3.id))
   }
 
   // Package 4: Economy Bronze
@@ -1271,14 +2035,17 @@ async function seed() {
         includesVisa: true,
         includesTransport: true,
         includesZiyarat: true,
-        mealPlan: "room_only",
-        quadPricePkr: 235000,
-        triplePricePkr: 260000,
-        doublePricePkr: 295000,
+        quadPricePkr: 262099,
+        triplePricePkr: 268399,
+        doublePricePkr: 280999,
+        sharingPricePkr: 258299,
+        infantPricePkr: 65000,
+        giftedInclusions,
+        multiHotelOptions: sharedMultiHotelOptions,
         highlights: [
           "21 Days Extended Spiritual Immersion",
           "24-Hour Shuttle Service Direct to Haram",
-          "Ideal for Retired Pilgrims & Budget Long Stays",
+          "Includes 4 Gifted Ziyarat Excursions (Taif, Makkah, Madinah)",
           "Comprehensive Saudi Visa & Health Insurance",
         ],
         bannerUrl:
@@ -1288,6 +2055,19 @@ async function seed() {
       })
       .returning()
     pkg4 = created
+  } else {
+    await db
+      .update(schema.groupPackages)
+      .set({
+        quadPricePkr: 262099,
+        triplePricePkr: 268399,
+        doublePricePkr: 280999,
+        sharingPricePkr: 258299,
+        infantPricePkr: 65000,
+        giftedInclusions,
+        multiHotelOptions: sharedMultiHotelOptions,
+      })
+      .where(eq(schema.groupPackages.id, pkg4.id))
   }
 
   // Seed Departures for Package 1
@@ -1304,6 +2084,12 @@ async function seed() {
           totalSeats: 30,
           bookedSeats: 26,
           status: "filling_fast",
+          sharingPriceOverridePkr: 419999,
+          outboundFlightNumber: "SV-739",
+          returnFlightNumber: "SV-738",
+          flightScheduleSummary: "ISB-JED 03:15–06:20 | JED-ISB 18:30–01:10",
+          routingNote: "Direct Non-Stop (Saudi Airlines)",
+          baggageAllowance: "23-KG Outbound / 46-KG Return",
         },
         {
           packageId: pkg1.id,
@@ -1314,6 +2100,12 @@ async function seed() {
           totalSeats: 35,
           bookedSeats: 12,
           status: "open",
+          sharingPriceOverridePkr: 419999,
+          outboundFlightNumber: "SV-737",
+          returnFlightNumber: "SV-734",
+          flightScheduleSummary: "LHE-RUH-JED 04:00–09:30 | JED-LHE 16:00–22:45",
+          routingNote: "Via Riyadh (Saudi Airlines)",
+          baggageAllowance: "23-KG Outbound / 46-KG Return",
         },
       ])
       .onConflictDoNothing()
@@ -1333,6 +2125,12 @@ async function seed() {
           totalSeats: 40,
           bookedSeats: 15,
           status: "open",
+          sharingPriceOverridePkr: 345000,
+          outboundFlightNumber: "SV-701",
+          returnFlightNumber: "SV-700",
+          flightScheduleSummary: "KHI-JED 06:00–08:45 | JED-KHI 20:00–02:30",
+          routingNote: "Direct Non-Stop (Saudi Airlines)",
+          baggageAllowance: "23-KG Outbound / 46-KG Return",
         },
         {
           packageId: pkg2.id,
@@ -1343,6 +2141,40 @@ async function seed() {
           totalSeats: 30,
           bookedSeats: 30,
           status: "sold_out",
+          sharingPriceOverridePkr: 345000,
+          outboundFlightNumber: "SV-739",
+          returnFlightNumber: "SV-738",
+          flightScheduleSummary: "ISB-JED 03:15–06:20 | JED-ISB 18:30–01:10",
+          routingNote: "Direct Non-Stop (Saudi Airlines)",
+          baggageAllowance: "23-KG Outbound / 46-KG Return",
+        },
+      ])
+      .onConflictDoNothing()
+  }
+
+  // Seed Departures for Package 4 (21-Day Long Stay with SV-739 / SV-738 Flyer schedule)
+  if (pkg4 && lheCity) {
+    await db
+      .insert(schema.groupDepartures)
+      .values([
+        {
+          packageId: pkg4.id,
+          batchCode: "ART-BRZ-LHE-21",
+          departureCityId: lheCity.id,
+          departureDate: "2026-11-05",
+          returnDate: "2026-11-26",
+          totalSeats: 45,
+          bookedSeats: 18,
+          status: "open",
+          sharingPriceOverridePkr: 258299,
+          quadPriceOverridePkr: 262099,
+          triplePriceOverridePkr: 268399,
+          doublePriceOverridePkr: 280999,
+          outboundFlightNumber: "SV-739",
+          returnFlightNumber: "SV-738",
+          flightScheduleSummary: "LHE-JED 02:40–05:45 | JED-LHE 17:15–23:55",
+          routingNote: "Direct Non-Stop (Saudi Airlines 21-Day Schedule)",
+          baggageAllowance: "23-KG Outbound / 46-KG Return",
         },
       ])
       .onConflictDoNothing()
@@ -1357,7 +2189,10 @@ async function seed() {
   )
 
   const yukon = await db.query.vehicles.findFirst({
-    where: eq(schema.vehicles.name, "GMC Yukon"),
+    where: or(
+      eq(schema.vehicles.name, "GMC Yukon XL"),
+      eq(schema.vehicles.name, "GMC Yukon")
+    ),
   })
   const hiace = await db.query.vehicles.findFirst({
     where: eq(schema.vehicles.name, "Toyota HiAce"),
@@ -1394,10 +2229,9 @@ async function seed() {
         specialRequests:
           "Traveling with elderly mother; ground floor or close to elevator preferred.",
         adults: 2,
-        children: 1,
         infants: 1,
-        totalPassportCount: 4,
-        bedAndSeatCount: 3, // 2 adults + 1 child
+        totalPassportCount: 3,
+        bedAndSeatCount: 2, // 2 adults (infants occupy 0 beds / 0 seats)
         includeVisa: true,
         includeFlights: true,
         includeHotels: true,
@@ -1437,7 +2271,6 @@ async function seed() {
           nights: 8,
           roomCategory: "private",
           privateRoomAllocation: { double: 0, triple: 1, quad: 0 },
-          mealPlan: "breakfast",
         },
         {
           applicationId: app1.id,
@@ -1449,7 +2282,6 @@ async function seed() {
           nights: 6,
           roomCategory: "private",
           privateRoomAllocation: { double: 0, triple: 1, quad: 0 },
-          mealPlan: "breakfast",
         },
       ])
     }
@@ -1513,7 +2345,6 @@ async function seed() {
         customerEmail: "ayesha.siddiqua@shifa.com.pk",
         specialRequests: "High floor Haram view rooms if possible.",
         adults: 4,
-        children: 0,
         infants: 0,
         totalPassportCount: 4,
         bedAndSeatCount: 4,
@@ -1557,7 +2388,7 @@ async function seed() {
       discountPkr: 20000,
       grandTotalPkr: 1570000,
       quoteNotesCustomer:
-        "Package includes 4x Saudia direct return tickets, 5 nights Swissôtel Makkah + 5 nights Madinah Hilton with daily breakfast, private HiAce transport, and complete visa processing.",
+        "Package includes 4x Saudia direct return tickets, 5 nights Swissôtel Makkah + 5 nights Madinah Hilton with luxury amenities, private HiAce transport, and complete visa processing.",
       internalNotesAdmin:
         "Wholesale flight cost PKR 420,000. Margin PKR 60,000 on tickets.",
       paymentStatus: "partially_paid",
@@ -1592,7 +2423,6 @@ async function seed() {
         customerCity: "Rawalpindi",
         customerEmail: "zahid.mehmood@gmail.com",
         adults: 2,
-        children: 0,
         infants: 0,
         totalPassportCount: 2,
         bedAndSeatCount: 2,
@@ -1650,9 +2480,9 @@ async function seed() {
       imageUrl:
         "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=1600",
       primaryCtaLabel: "Plan Custom Journey",
-      primaryCtaUrl: "/custom-journey",
+      primaryCtaUrl: "#custom-journey",
       secondaryCtaLabel: "Explore Group Packages",
-      secondaryCtaUrl: "/packages",
+      secondaryCtaUrl: "#group-packages",
       sortOrder: 1,
     },
     {
@@ -1663,9 +2493,9 @@ async function seed() {
       imageUrl:
         "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=1600",
       primaryCtaLabel: "View Madinah Hotels",
-      primaryCtaUrl: "/custom-journey#step-hotels",
+      primaryCtaUrl: "#custom-journey",
       secondaryCtaLabel: "Browse Packages",
-      secondaryCtaUrl: "/packages",
+      secondaryCtaUrl: "#group-packages",
       sortOrder: 2,
     },
     {
@@ -1676,7 +2506,7 @@ async function seed() {
       imageUrl:
         "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=1600",
       primaryCtaLabel: "Request Hajj Consultation",
-      primaryCtaUrl: "/hajj-inquiry",
+      primaryCtaUrl: "#hajj-inquiry",
       secondaryCtaLabel: "WhatsApp Consultant",
       secondaryCtaUrl: "https://wa.me/923008456789",
       sortOrder: 3,
@@ -1689,6 +2519,16 @@ async function seed() {
     })
     if (!existing) {
       await db.insert(schema.heroSlides).values(s)
+    } else {
+      await db
+        .update(schema.heroSlides)
+        .set({
+          primaryCtaUrl: s.primaryCtaUrl,
+          secondaryCtaUrl: s.secondaryCtaUrl,
+          primaryCtaLabel: s.primaryCtaLabel,
+          secondaryCtaLabel: s.secondaryCtaLabel,
+        })
+        .where(eq(schema.heroSlides.id, existing.id))
     }
   }
 
@@ -1771,7 +2611,7 @@ async function seed() {
       category: "general" as const,
       question: "How do infants affect our hotel room and vehicle bookings?",
       answer:
-        "Infants under 2 years of age require a valid passport, Saudi visa, and infant airline ticket. However, they occupy zero hotel beds and zero vehicle seats. When booking private rooms or vehicles, our capacity calculations count adults and children only, saving you unnecessary room charges.",
+        "Infants under 2 years of age require a valid passport, Saudi visa, and infant airline ticket. However, they occupy zero hotel beds and zero vehicle seats. When booking private rooms or vehicles, our capacity calculations count adults only, saving you unnecessary room charges.",
       sortOrder: 4,
     },
     {

@@ -2,6 +2,7 @@ import * as React from "react"
 import { db } from "@/db"
 import { ziyaratPlaces } from "@/db/schema"
 import { asc } from "drizzle-orm"
+import { requireAdmin } from "@/lib/auth-guard"
 import { ZiyaratClient } from "@/components/admin/catalog/ziyarat-client"
 
 export const metadata = {
@@ -9,6 +10,8 @@ export const metadata = {
 }
 
 export default async function AdminZiyaratPage() {
+  await requireAdmin()
+
   const allPlaces = await db
     .select()
     .from(ziyaratPlaces)

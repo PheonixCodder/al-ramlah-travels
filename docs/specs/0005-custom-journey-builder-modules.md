@@ -312,7 +312,38 @@ The feature is constructed through an ordered five-milestone Tracer Bullet plan:
    - Build `LiveSummaryCard` with sticky desktop layout and responsive mobile drawer.
    - Enforce pricing visibility rules: exact PKR total for `Visa Only`, `"Live Rate — Confirmed upon submission"` when volatile services are active.
    - Build `LeadCaptureDialog` with Zod validation, connecting to `submitCustomApplicationAction`.
-   - Render confirmation screen with reference code `ART-YYYY-XXXX` and one-click WhatsApp dispatch link.
+6. **Milestone 6: Dynamic Step-by-Step Journey Wizard with in-place stepper and synchronized summary card**, satisfies **Feature 12**
+   - Restructure `CustomJourneyBuilder` into an in-place dynamic stepper showing strictly one active step at a time in the left column (`lg:col-span-8`).
+   - Retain sticky `LiveSummaryCard` in right column (`lg:col-span-4`) with live two-way synchronization.
+   - Build `WizardStepperHeader` with visual progress bar (Emerald & Gold gradient), step progress count, and clickable step tabs with completed checkmarks (`✓`).
+   - Build `WizardBottomNav` with Previous / Next step navigation and automatic smooth scrolling to `#custom-journey`.
+   - Build `ReviewAndSubmitStep` displaying high-fidelity itinerary recap, fixed visa total vs live rate notice, and in-page lead capture form with instant reference code and WhatsApp dispatch.
+
+## Dynamic Step-by-Step Journey Wizard Architecture
+
+### 1. In-Place Single-Step Display
+To eliminate infinite vertical page scrolling while preserving comprehensive, uncompromised cards for hotels, vehicles, and ziyarat sanctuaries, the builder renders strictly **one active step at a time** in the main column.
+
+The active steps array is computed dynamically via `wizardSteps` in `planner-context.tsx`:
+- **Step 1 (`id: "setup"`, title: `"Journey & Dates"`)**: Always present. Renders `ModePresetPills`, `ServicePillarToggles`, `DatesAndTravellersBar`, and `CitySequenceModule`.
+- **Dynamic Middle Steps**:
+  - `flights`: Renders `FlightPreferencesModule` (active only when `pillars.flights === true`).
+  - `hotels`: Renders `HotelSelectionModule` (active only when `pillars.hotels === true`).
+  - `transport`: Renders `TransportSelectionModule` (active only when `pillars.transport === true`).
+  - `ziyarat`: Renders `ZiyaratSelectionModule` (active only when `pillars.ziyarat === true`).
+- **Final Step (`id: "review"`, title: `"Review & Submit"`)**: Always present. Renders `ReviewAndSubmitStep` with comprehensive journey recap, price guarantee notes, and the inline lead capture form.
+
+### 2. Dynamic Step Counts by Journey Preset
+- **Visa Only (`visa_only`)**: **2 steps** (`1. Setup & Dates` → `2. Review & Submit`).
+- **Hotels Only (`hotels_only`)**: **3 steps** (`1. Setup & Dates` → `2. Haramain Hotels` → `3. Review & Submit`).
+- **Transport Only (`transport_only`)**: **3 steps** (`1. Setup & Dates` → `2. Ground Transport` → `3. Review & Submit`).
+- **Complete Umrah (`complete_umrah`)**: **6 steps** (`1. Setup & Dates` → `2. Flights & Route` → `3. Haramain Hotels` → `4. Ground Transport` → `5. Sacred Ziyarat` → `6. Review & Submit`).
+- **Custom Mix (`custom_mix`)**: Dynamically adjusts to only the active pillars.
+
+### 3. Stepper Synchronization & Navigation
+- **Header Progress Stepper**: Shows `Step X of Y`, completion percentage, and clickable step pills with checkmarks for past steps.
+- **Bottom Navigation Bar**: Left button returns to previous step; right CTA button advances to next step and scrolls smoothly to `#custom-journey`.
+- **Sticky Live Summary Card**: Fully synchronized with the wizard. Line items allow jumping directly to their corresponding step. The primary CTA button dynamically advances to the Review step, or focuses the lead form if already on the final step.
 
 ## Consequences
 

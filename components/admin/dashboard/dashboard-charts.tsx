@@ -62,8 +62,8 @@ export function DashboardCharts({
           </div>
         </CardHeader>
         <CardContent className="pt-2">
-          <div className="h-[280px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[280px] min-w-0 w-full">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
               <BarChart
                 data={statusData}
                 margin={{ top: 20, right: 20, left: 0, bottom: 20 }}
@@ -156,8 +156,8 @@ export function DashboardCharts({
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-2">
-          <div className="h-[280px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[280px] min-w-0 w-full">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
               <BarChart
                 data={pillarData}
                 layout="vertical"

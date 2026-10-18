@@ -31,6 +31,8 @@ import {
   XCircle,
   Mail,
   UserCheck,
+  KeyRound,
+  Sparkles,
 } from "lucide-react"
 
 export interface UserAccountData {
@@ -61,9 +63,20 @@ export function UsersClient({
   // New staff form state
   const [newName, setNewName] = useState("")
   const [newEmail, setNewEmail] = useState("")
+  const [newPassword, setNewPassword] = useState("")
   const [newRole, setNewRole] = useState<"staff" | "super_admin">("staff")
 
   const [isPending, startTransition] = useTransition()
+
+  const generateStrongPassword = () => {
+    const chars =
+      "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*"
+    let pass = ""
+    for (let i = 0; i < 12; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    setNewPassword(pass)
+  }
 
   async function handleCreateUser(e: React.FormEvent) {
     e.preventDefault()
@@ -74,6 +87,7 @@ export function UsersClient({
       const res = await createStaffUser({
         name: newName,
         email: newEmail,
+        password: newPassword,
         role: newRole,
       })
       if (res.data) {
@@ -82,6 +96,7 @@ export function UsersClient({
       setOpenAdd(false)
       setNewName("")
       setNewEmail("")
+      setNewPassword("")
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message)
       else setError("Failed to create user.")
@@ -92,12 +107,14 @@ export function UsersClient({
 
   function handleToggleActive(userId: string, current: boolean) {
     const next = !current
-    setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, isActive: next } : u))
-    )
     startTransition(async () => {
       try {
-        await toggleUserActive(userId, next)
+        const res = await toggleUserActive(userId, next)
+        if (res.success) {
+          setUsers((prev) =>
+            prev.map((u) => (u.id === userId ? { ...u, isActive: next } : u))
+          )
+        }
       } catch (err: unknown) {
         alert(err instanceof Error ? err.message : "Action failed")
       }
@@ -105,12 +122,14 @@ export function UsersClient({
   }
 
   function handleRoleChange(userId: string, role: "staff" | "super_admin") {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, role } : u))
-    )
     startTransition(async () => {
       try {
-        await updateUserRole(userId, role)
+        const res = await updateUserRole(userId, role)
+        if (res.success) {
+          setUsers((prev) =>
+            prev.map((u) => (u.id === userId ? { ...u, role } : u))
+          )
+        }
       } catch (err: unknown) {
         alert(err instanceof Error ? err.message : "Action failed")
       }
@@ -136,7 +155,7 @@ export function UsersClient({
           <Dialog open={openAdd} onOpenChange={setOpenAdd}>
             <DialogTrigger
               render={
-                <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+                <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
                   <UserPlus className="size-4" />
                   <span>Add Staff Account</span>
                 </Button>
@@ -151,7 +170,7 @@ export function UsersClient({
               </DialogHeader>
 
               {error && (
-                <div className="rounded-lg bg-red-50 p-2 text-xs text-red-800">
+                <div className="rounded-lg bg-red-50 p-2.5 text-xs text-red-800 border border-red-200">
                   {error}
                 </div>
               )}
@@ -181,6 +200,32 @@ export function UsersClient({
                 </div>
 
                 <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="u-password">Temporary Password</Label>
+                    <button
+                      type="button"
+                      onClick={generateStrongPassword}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-gold hover:underline cursor-pointer"
+                    >
+                      <Sparkles className="size-3 text-gold" />
+                      <span>Generate Strong Password</span>
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      id="u-password"
+                      type="text"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Minimum 8 characters"
+                      minLength={8}
+                      required
+                      className="font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
                   <Label htmlFor="u-role">Role Assignment</Label>
                   <select
                     id="u-role"
@@ -190,7 +235,9 @@ export function UsersClient({
                     }
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
                   >
-                    <option value="staff">Staff Operator (Quotes & Inquiries)</option>
+                    <option value="staff">
+                      Staff Operator (Quotes & Inquiries)
+                    </option>
                     <option value="super_admin">
                       Super Admin (Full System Access)
                     </option>
@@ -204,7 +251,7 @@ export function UsersClient({
                   <Button
                     type="submit"
                     disabled={loading}
-                    className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                    className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
                   >
                     {loading && <Loader2 className="size-4 animate-spin" />}
                     <span>Create Account</span>
@@ -318,8 +365,8 @@ export function UsersClient({
                             onClick={() => handleToggleActive(u.id, u.isActive)}
                             className={
                               u.isActive
-                                ? "text-amber-700 hover:bg-amber-50"
-                                : "text-emerald-700 hover:bg-emerald-50"
+                                ? "text-amber-700 hover:bg-amber-50 cursor-pointer"
+                                : "text-emerald-700 hover:bg-emerald-50 cursor-pointer"
                             }
                           >
                             {u.isActive ? "Deactivate" : "Activate"}

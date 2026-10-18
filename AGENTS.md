@@ -1,7 +1,11 @@
 <!-- BEGIN:nextjs-agent-rules -->
+
 # This is NOT the Next.js you know
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
 <!-- END:nextjs-agent-rules -->
 
 # Al Ramlah Travels
@@ -78,14 +82,14 @@ Living project scope lives in `docs/scope/scope.md`.
 
 - **Verify Next.js 16 APIs first**: Always check `node_modules/next/dist/docs/` before writing Next.js 16 routes, `proxy.ts` / middleware, caching, or dynamic `params` / `searchParams` (which are asynchronous Promises in Next.js 16).
 - **Verify Drizzle ORM & Better Auth from local source repos**: Never guess ORM or Auth APIs. Always inspect the official reference clones in `services/drizzle-orm/` and `services/better-auth/` plus the installed `.agents/skills/better-auth-*` skills before writing database or auth code.
-- **Single luxury theme only**: No dark mode or theme toggle (`next-themes` switching must not be exposed). Enforce a single luxury palette inspired by the Haramain and matched to `public/logo-icon.png`: Deep Haramain Emerald, Warm Ivory / Alabaster Cream, and Metallic Haramain Gold.
+- **Single luxury theme only**: No dark mode or theme toggle (`next-themes` switching must not be exposed). Enforce a single luxury palette inspired by the Haramain and matched to `public/logo.jpg`: Deep Haramain Emerald, Warm Ivory / Alabaster Cream, and Metallic Haramain Gold.
 - **Base UI (`@base-ui/react`) primitives**: `components/ui/*` uses `shadcn` (`base-nova` preset) built on `@base-ui/react`, not Radix UI. Use `render` prop composition instead of Radix's `asChild`.
 - **Strict validation & type safety**: Validate every Server Action, Route Handler, and form payload with `zod`. Never use `any` or unvalidated `FormData`.
 - **Business domain invariants**:
   - Visa duration tier (`short_term` $\le 30$ days vs `long_term` $> 30$ days) is auto-calculated on the server from KSA Arrival Date and KSA Departure Date; never expose a manual visa-tier selector to customers.
   - Only `Visa Only` mode displays an immediate fixed PKR total to the customer; whenever volatile services (`Flights`, `Hotels`, `Transport`, `Ziyarat`) are enabled, display the itemized Live Itinerary Summary Card (`"Live Rate — Confirmed upon submission"`) and pre-fill the calculated visa rate in the Admin Quote Worksheet.
   - Makkah has no airport; itineraries starting in Makkah lock Entry Airport to Jeddah (`JED`) with immediate ground transfer to Makkah.
-  - Hotel beds and vehicle seat capacities count `Adults + Children`; `Infants (<2 yrs)` require a visa and infant air ticket but take 0 hotel beds and 0 vehicle seats.
+  - Hotel beds and vehicle seat capacities count `Adults` only; `Infants (<2 yrs)` require a visa and infant air ticket but take 0 hotel beds and 0 vehicle seats. Total passport count includes `Adults + Infants`.
 
 ## Reference repositories (`services/`)
 
@@ -109,4 +113,3 @@ Living project scope lives in `docs/scope/scope.md`.
 <!-- Nested AGENTS.md files are listed here as they are created -->
 
 _Drafted by /audit from the repo, worth a quick human pass. Edit freely: once a line stops matching this draft, later runs treat it as curated and will flag rather than overwrite it._
-

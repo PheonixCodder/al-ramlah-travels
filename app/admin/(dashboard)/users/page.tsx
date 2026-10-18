@@ -2,7 +2,7 @@ import * as React from "react"
 import { db } from "@/db"
 import { user } from "@/db/schema"
 import { desc } from "drizzle-orm"
-import { requireAdmin } from "@/lib/auth-guard"
+import { requireSuperAdmin } from "@/lib/auth-guard"
 import { UsersClient, UserAccountData } from "@/components/admin/catalog/users-client"
 
 export const metadata = {
@@ -10,7 +10,7 @@ export const metadata = {
 }
 
 export default async function AdminUsersPage() {
-  const session = await requireAdmin()
+  const session = await requireSuperAdmin()
   const allUsers = await db
     .select({
       id: user.id,

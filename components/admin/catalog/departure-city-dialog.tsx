@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Dialog,
   DialogContent,
@@ -36,6 +37,7 @@ export function DepartureCityDialog({
   city,
   trigger,
 }: DepartureCityDialogProps) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -52,7 +54,7 @@ export function DepartureCityDialog({
     setError(null)
 
     try {
-      await upsertDepartureCity({
+      const res = await upsertDepartureCity({
         id: city?.id,
         cityName,
         airportCode: airportCode.toUpperCase(),
@@ -60,7 +62,12 @@ export function DepartureCityDialog({
         isActive,
         sortOrder,
       })
-      setOpen(false)
+      if (res.success) {
+        setOpen(false)
+        router.refresh()
+      } else {
+        setError("Failed to save departure gateway.")
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message)

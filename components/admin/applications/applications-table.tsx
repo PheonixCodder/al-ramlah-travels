@@ -12,7 +12,6 @@ import {
   ArrowUpRight,
   MapPin,
   Clock,
-  Phone,
 } from "lucide-react"
 
 import {
@@ -26,7 +25,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { StatusBadge, TabularPrice } from "@/components/layout/status-badge"
-import type * as schema from "@/db/schema"
+import { formatWhatsAppPhone } from "./quote-dispatch-bar"
 
 export interface ApplicationRowItem {
   id: string
@@ -39,6 +38,7 @@ export interface ApplicationRowItem {
   customerWhatsapp: string
   customerCity: string
   adults: number
+  children: number
   infants: number
   totalPassportCount: number
   bedAndSeatCount: number
@@ -141,7 +141,7 @@ export function ApplicationsTable({
                 : null
 
               // Sanitize WhatsApp link
-              const cleanWaPhone = app.customerWhatsapp.replace(/\D/g, "")
+              const cleanWaPhone = formatWhatsAppPhone(app.customerWhatsapp || app.customerPhone)
               const waLink = `https://wa.me/${cleanWaPhone}`
 
               return (

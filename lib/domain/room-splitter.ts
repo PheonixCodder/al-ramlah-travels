@@ -13,18 +13,29 @@ export interface PrivateRoomSplitsResult {
 
 /**
  * Calculates optimal private hotel room combinations (Quad=4, Triple=3, Double=2)
- * for a given bed/passenger count (Adults).
+ * for a given bed/passenger count (Adults + Children).
  * Infants do not occupy hotel beds.
  */
 export function calculatePrivateRoomSplits(
   bedCount: number,
   allowedRoomTypes?: Array<"double" | "triple" | "quad">
 ): PrivateRoomSplitsResult {
+  if (bedCount <= 0) {
+    const empty: RoomSplitOption = {
+      double: 0,
+      triple: 0,
+      quad: 0,
+      totalRooms: 0,
+      totalBeds: 0,
+    }
+    return { primaryAllocation: empty, validAlternatives: [] }
+  }
+
   const allowDouble = !allowedRoomTypes || allowedRoomTypes.includes("double")
   const allowTriple = !allowedRoomTypes || allowedRoomTypes.includes("triple")
   const allowQuad = !allowedRoomTypes || allowedRoomTypes.includes("quad")
 
-  if (bedCount <= 1) {
+  if (bedCount === 1) {
     let solo: RoomSplitOption
     if (allowDouble) {
       solo = { double: 1, triple: 0, quad: 0, totalRooms: 1, totalBeds: 2 }
@@ -84,8 +95,10 @@ export function calculatePrivateRoomSplits(
     totalBeds: Math.ceil(bedCount / 4) * 4,
   }
 
+  const alternatives = validSplits.slice(1, 4)
+
   return {
     primaryAllocation: primary,
-    validAlternatives: validSplits.slice(1, 4),
+    validAlternatives: alternatives,
   }
 }

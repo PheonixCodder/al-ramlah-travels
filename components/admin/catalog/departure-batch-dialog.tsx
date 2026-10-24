@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertGroupDeparture } from "@/app/actions/groups"
-import { Plus, Loader2, Plane, Luggage } from "lucide-react"
+import { Plus, Loader2, Plane } from "lucide-react"
+
+function generateDefaultBatchCode(): string {
+  return `BATCH-${Math.floor(1000 + Math.random() * 9000)}`
+}
 
 export interface DepartureBatchData {
   id?: string
@@ -52,12 +57,13 @@ export function DepartureBatchDialog({
   cities,
   trigger,
 }: DepartureBatchDialogProps) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [batchCode, setBatchCode] = useState(
-    batch?.batchCode ?? `BATCH-${Math.floor(1000 + Math.random() * 9000)}`
+    () => batch?.batchCode ?? generateDefaultBatchCode()
   )
   const [departureCityId, setDepartureCityId] = useState(
     batch?.departureCityId ?? (cities[0]?.id || "")
@@ -111,7 +117,7 @@ export function DepartureBatchDialog({
     setError(null)
 
     try {
-      await upsertGroupDeparture({
+      const res = await upsertGroupDeparture({
         id: batch?.id,
         packageId,
         batchCode,
@@ -131,7 +137,12 @@ export function DepartureBatchDialog({
         routingNote: routingNote || undefined,
         baggageAllowance: baggageAllowance || undefined,
       })
-      setOpen(false)
+      if (res.success) {
+        setOpen(false)
+        router.refresh()
+      } else {
+        setError("Failed to save departure batch.")
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message)

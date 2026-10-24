@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import {
   GroupPackageData,
   GroupPackageDialog,
@@ -18,7 +19,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
-  Boxes,
   Calendar,
   Plane,
   Building2,
@@ -72,9 +72,14 @@ export function GroupsClient({
   hotels,
   departureCities,
 }: GroupsClientProps) {
+  const router = useRouter()
   const [packages, setPackages] = useState<PackageWithRelations[]>(initialPackages)
   const [selectedTier, setSelectedTier] = useState<string>("all")
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
+
+  useEffect(() => {
+    setPackages(initialPackages)
+  }, [initialPackages])
 
   const filteredPackages = packages.filter(
     (p) => selectedTier === "all" || p.tier === selectedTier
@@ -96,11 +101,20 @@ export function GroupsClient({
     if (!window.confirm(`Delete package "${title}" and all its batches?`)) return
     startTransition(async () => {
       const res = await deleteGroupPackage(id)
+      if (res.softDeleted) {
+        setPackages((prev) =>
+          prev.map((p) => (p.id === id ? { ...p, isActive: false } : p))
+        )
+        router.refresh()
+        alert(res.error)
+        return
+      }
       if (!res.success) {
         alert(res.error)
         return
       }
       setPackages((prev) => prev.filter((p) => p.id !== id))
+      router.refresh()
     })
   }
 
@@ -108,6 +122,23 @@ export function GroupsClient({
     if (!window.confirm(`Delete departure batch "${batchCode}"?`)) return
     startTransition(async () => {
       const res = await deleteGroupDeparture(batchId)
+      if (res.softDeleted) {
+        setPackages((prev) =>
+          prev.map((p) =>
+            p.id === pkgId
+              ? {
+                  ...p,
+                  departures: p.departures.map((d) =>
+                    d.id === batchId ? { ...d, status: "closed" } : d
+                  ),
+                }
+              : p
+          )
+        )
+        router.refresh()
+        alert(res.error)
+        return
+      }
       if (!res.success) {
         alert(res.error)
         return
@@ -122,6 +153,7 @@ export function GroupsClient({
             : p
         )
       )
+      router.refresh()
     })
   }
 

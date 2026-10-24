@@ -100,7 +100,7 @@ export const verification = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
-  (table) => [index("idx_verification_identifier").on(table.identifier)]
+  (table) => [index("verification_identifier_idx").on(table.identifier)]
 )
 
 export const userRelations = relations(user, ({ many }) => ({

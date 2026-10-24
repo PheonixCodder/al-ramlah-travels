@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import Image from "next/image"
 import {
   HeroSlideData,
@@ -28,8 +29,6 @@ import {
   Star,
   Trash2,
   Edit2,
-  CheckCircle2,
-  XCircle,
 } from "lucide-react"
 
 interface ContentClientProps {
@@ -43,6 +42,7 @@ export function ContentClient({
   initialTestimonials,
   initialFaqs,
 }: ContentClientProps) {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<"slides" | "reviews" | "faqs">(
     "slides"
   )
@@ -50,7 +50,19 @@ export function ContentClient({
   const [testimonials, setTestimonials] =
     useState<TestimonialData[]>(initialTestimonials)
   const [faqs, setFaqs] = useState<FaqData[]>(initialFaqs)
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
+
+  useEffect(() => {
+    setSlides(initialSlides)
+  }, [initialSlides])
+
+  useEffect(() => {
+    setTestimonials(initialTestimonials)
+  }, [initialTestimonials])
+
+  useEffect(() => {
+    setFaqs(initialFaqs)
+  }, [initialFaqs])
 
   // Slides Handlers
   function handleSlideToggle(id: string, current: boolean) {
@@ -67,6 +79,7 @@ export function ContentClient({
     setSlides((prev) => prev.filter((s) => s.id !== id))
     startTransition(async () => {
       await deleteHeroSlide(id)
+      router.refresh()
     })
   }
 
@@ -85,6 +98,7 @@ export function ContentClient({
     setTestimonials((prev) => prev.filter((t) => t.id !== id))
     startTransition(async () => {
       await deleteTestimonial(id)
+      router.refresh()
     })
   }
 
@@ -103,6 +117,7 @@ export function ContentClient({
     setFaqs((prev) => prev.filter((f) => f.id !== id))
     startTransition(async () => {
       await deleteFaq(id)
+      router.refresh()
     })
   }
 

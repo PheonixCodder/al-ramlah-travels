@@ -60,6 +60,12 @@ export interface StatusBadgeProps {
   className?: string
 }
 
+function isCreatedOverdue(createdAt: Date | string): boolean {
+  const createdTime = new Date(createdAt).getTime()
+  const now = new Date().getTime()
+  return now - createdTime > 24 * 60 * 60 * 1000
+}
+
 export function StatusBadge({
   status,
   createdAt,
@@ -79,11 +85,7 @@ export function StatusBadge({
     if (normalizedStatus !== "pending_quote") return false
     if (isOverdueProp !== undefined) return isOverdueProp
     if (!createdAt) return false
-
-    const createdTime = new Date(createdAt).getTime()
-    const now = Date.now()
-    const twentyFourHoursMs = 24 * 60 * 60 * 1000
-    return now - createdTime > twentyFourHoursMs
+    return isCreatedOverdue(createdAt)
   }, [normalizedStatus, isOverdueProp, createdAt])
 
   return (

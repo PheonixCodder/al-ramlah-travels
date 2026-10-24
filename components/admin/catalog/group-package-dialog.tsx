@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Dialog,
   DialogContent,
@@ -70,6 +71,7 @@ export function GroupPackageDialog({
   hotels,
   trigger,
 }: GroupPackageDialogProps) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -158,7 +160,7 @@ export function GroupPackageDialog({
       .filter(Boolean)
 
     try {
-      await upsertGroupPackage({
+      const res = await upsertGroupPackage({
         id: pkg?.id,
         title,
         slug,
@@ -185,7 +187,12 @@ export function GroupPackageDialog({
         isActive,
         sortOrder,
       })
-      setOpen(false)
+      if (res.success) {
+        setOpen(false)
+        router.refresh()
+      } else {
+        setError("Failed to save package.")
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message)

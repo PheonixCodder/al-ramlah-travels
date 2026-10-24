@@ -1,13 +1,10 @@
 "use client"
 
 import React, { useMemo } from "react"
-import {
-  calculatePrivateRoomSplits,
-  type RoomSplitOption,
-} from "@/lib/domain/room-splitter"
+import { calculatePrivateRoomSplits } from "@/lib/domain/room-splitter"
 import type * as schema from "@/db/schema"
 import { usePlanner } from "./planner-context"
-import { BedDouble, Users2, Check } from "lucide-react"
+import { BedDouble, Users2 } from "lucide-react"
 import { cn } from "cn"
 
 interface RoomAllocatorProps {
@@ -44,7 +41,6 @@ function formatRoomSplitLabel(opt: {
 export function RoomAllocator({
   hotel,
   roomCategory,
-  sharedRoomType = "sharing",
   privateRoomAllocation,
   bedAndSeatCount,
   onCategoryChange,
@@ -144,11 +140,11 @@ export function RoomAllocator({
             ) : null}
           </div>
 
-          {travellers.infants > 0 && (
+          {(travellers.children > 0 || travellers.infants > 0) && (
             <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#FAF7F0] border border-[#E6DEC8] p-2.5 text-[11px] text-[#8F6E2A] leading-relaxed">
               <span className="font-bold shrink-0">Note for Families:</span>
               <span>
-                You are travelling with {travellers.infants} infant(s). For comfort and family privacy together, <strong>Private Rooms</strong> are strongly recommended.
+                You are travelling with {travellers.children > 0 ? `${travellers.children} child(ren)` : ""}{travellers.children > 0 && travellers.infants > 0 ? " and " : ""}{travellers.infants > 0 ? `${travellers.infants} infant(s)` : ""}. For comfort and family privacy together, <strong>Private Rooms</strong> are strongly recommended.
               </span>
             </div>
           )}

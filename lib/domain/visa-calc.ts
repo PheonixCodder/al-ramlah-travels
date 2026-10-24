@@ -17,9 +17,18 @@ export interface VisaCalculationResult {
   pricePerPassportSar: number
 }
 
+function parseIsoDateUtc(dateStr: string): number {
+  if (dateStr.includes("T")) {
+    const d = new Date(dateStr)
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+  }
+  const parts = dateStr.split("-").map(Number)
+  return Date.UTC(parts[0] || 2026, (parts[1] || 1) - 1, parts[2] || 1)
+}
+
 /**
  * Calculates the visa duration tier (<= 30 days is short_term, > 30 days is long_term)
- * and total cost across all passports (Adults + Infants).
+ * and total cost across all passports (Adults + Children + Infants).
  * Supports real-world Masar tier brackets (10d, 15d, 21d, 30d) and SAR currency conversion.
  */
 export function calculateVisaTierAndCost(
@@ -29,9 +38,9 @@ export function calculateVisaTierAndCost(
   rates: VisaRateTiers,
   options?: VisaCalculationOptions
 ): VisaCalculationResult {
-  const arrival = new Date(arrivalDateStr)
-  const departure = new Date(departureDateStr)
-  const diffTime = departure.getTime() - arrival.getTime()
+  const arrivalUtc = parseIsoDateUtc(arrivalDateStr)
+  const departureUtc = parseIsoDateUtc(departureDateStr)
+  const diffTime = departureUtc - arrivalUtc
   const diffDays = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1)
 
   const tier = diffDays <= 30 ? "short_term" : "long_term"

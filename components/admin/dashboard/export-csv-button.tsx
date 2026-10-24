@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Download, FileSpreadsheet } from "lucide-react"
+import { Download } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 

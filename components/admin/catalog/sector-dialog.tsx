@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertTransportSector } from "@/app/actions/catalog"
-import { Plus, Loader2, Bus, Coins } from "lucide-react"
+import { Plus, Loader2, Bus } from "lucide-react"
 
 export interface SectorData {
   id?: string
@@ -42,6 +43,7 @@ interface SectorDialogProps {
 }
 
 export function SectorDialog({ sector, trigger }: SectorDialogProps) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -85,7 +87,7 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
     setError(null)
 
     try {
-      await upsertTransportSector({
+      const res = await upsertTransportSector({
         id: sector?.id,
         code,
         label,
@@ -102,7 +104,12 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
         isActive,
         sortOrder,
       })
-      setOpen(false)
+      if (res.success) {
+        setOpen(false)
+        router.refresh()
+      } else {
+        setError("Failed to save sector.")
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message)

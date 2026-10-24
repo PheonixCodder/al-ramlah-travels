@@ -1,6 +1,6 @@
 import * as React from "react"
 import Link from "next/link"
-import { ArrowUpRight, ArrowRight, Clock, Users } from "lucide-react"
+import { ArrowUpRight, ArrowRight } from "lucide-react"
 
 import {
   Table,

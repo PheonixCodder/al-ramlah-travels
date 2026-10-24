@@ -40,10 +40,6 @@ export function TransportSelectionModule() {
     toggleTrainStationTransfers,
   } = usePlanner()
 
-  if (!pillars.transport) {
-    return null
-  }
-
   const { useSameVehicle, globalVehicleId, segments } = transport
   const { vehicles, transportSectors } = catalog
 
@@ -64,11 +60,18 @@ export function TransportSelectionModule() {
     )
   }, [segments, presetMode])
 
-  const hasStationTransfers = segments.some(
-    (s) =>
-      (s.sectorId === "MAK_TRN" || s.sectorId === "MED_TRN") &&
-      s.enabled !== false
-  )
+  if (!pillars.transport) {
+    return null
+  }
+
+  const hasStationTransfers = segments.some((s) => {
+    if (s.enabled === false) return false
+    if (s.sectorId === "MAK_TRN" || s.sectorId === "MED_TRN") return true
+    const sec = transportSectors.find(
+      (ts) => ts.id === s.sectorId || ts.code === s.sectorId
+    )
+    return sec?.code === "MAK_TRN" || sec?.code === "MED_TRN"
+  })
 
   const AIRPORT_SECTOR_IDS = new Set([
     "JED_MAK",
@@ -81,13 +84,13 @@ export function TransportSelectionModule() {
   const INTERCITY_SECTOR_IDS = new Set(["MAK_MED", "MAK_BADR_MED", "MED_MAK"])
 
   const airportSectors = transportSectors.filter((s) =>
-    AIRPORT_SECTOR_IDS.has(s.id)
+    AIRPORT_SECTOR_IDS.has(s.code)
   )
   const intercitySectors = transportSectors.filter((s) =>
-    INTERCITY_SECTOR_IDS.has(s.id)
+    INTERCITY_SECTOR_IDS.has(s.code)
   )
   const ziyaratRailSectors = transportSectors.filter(
-    (s) => !AIRPORT_SECTOR_IDS.has(s.id) && !INTERCITY_SECTOR_IDS.has(s.id)
+    (s) => !AIRPORT_SECTOR_IDS.has(s.code) && !INTERCITY_SECTOR_IDS.has(s.code)
   )
 
   const bedAndSeatCount = travellers.bedAndSeatCount
@@ -215,7 +218,9 @@ export function TransportSelectionModule() {
                   </h5>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
                     {group.sectors.map((sec) => {
-                      const seg = segments.find((s) => s.sectorId === sec.id)
+                      const seg = segments.find(
+                        (s) => s.sectorId === sec.id || s.sectorId === sec.code
+                      )
                       const isEnabled = seg?.enabled ?? false
                       return (
                         <button
@@ -417,7 +422,7 @@ export function TransportSelectionModule() {
           <div className="flex flex-col gap-4">
             {activeSegments.map((segment) => {
               const sector = transportSectors.find(
-                (s) => s.id === segment.sectorId
+                (s) => s.id === segment.sectorId || s.code === segment.sectorId
               )
               return (
                 <SegmentCard

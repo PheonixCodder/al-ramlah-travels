@@ -6,7 +6,7 @@ import {
   calculateVehicleQuantity,
   type VehicleCapacitySpec,
 } from "@/lib/domain/vehicle-capacity"
-import { Users, AlertTriangle, Sparkles } from "lucide-react"
+import { Users, Sparkles } from "lucide-react"
 
 interface VehicleCapacityPillProps {
   bedAndSeatCount: number

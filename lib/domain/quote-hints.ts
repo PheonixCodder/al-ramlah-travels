@@ -1,4 +1,5 @@
 import { calculateVisaTierAndCost } from "./visa-calc"
+import { addDays } from "./date-chaining"
 
 export interface RateHintBreakdown {
   totalSar: number
@@ -63,6 +64,7 @@ export interface RateHintCatalogInput {
   vehicles?: Array<{
     id: string
     name: string
+    category?: string
     defaultRateSar?: number
     ziyaratRateSar?: number
     seatCapacity?: number
@@ -93,6 +95,18 @@ export interface RateHintCatalogInput {
 }
 
 /**
+ * Calculates the number of nights between two ISO YYYY-MM-DD date strings
+ * using UTC arithmetic, avoiding timezone skew and DST anomalies.
+ */
+export function nightsBetween(checkInIso: string, checkOutIso: string): number {
+  const p1 = checkInIso.split("T")[0]!.split("-").map(Number)
+  const p2 = checkOutIso.split("T")[0]!.split("-").map(Number)
+  const t1 = Date.UTC(p1[0] || 2026, (p1[1] || 1) - 1, p1[2] || 1)
+  const t2 = Date.UTC(p2[0] || 2026, (p2[1] || 1) - 1, p2[2] || 1)
+  return Math.max(0, Math.round((t2 - t1) / (1000 * 60 * 60 * 24)))
+}
+
+/**
  * Calculates itemized real-world reference rate hints in SAR and PKR for an application
  * based on live catalog matrices, Masar visa tiers, hotel sharing/private rates,
  * sector-vehicle transport rates, and Ziyarat excursions.
@@ -119,12 +133,7 @@ export function calculateApplicationRateHints(
   } else {
     let days = application.totalKsaDays
     if (!days && application.ksaArrivalDate && application.ksaDepartureDate) {
-      const arr = new Date(application.ksaArrivalDate)
-      const dep = new Date(application.ksaDepartureDate)
-      days = Math.max(
-        1,
-        Math.round((dep.getTime() - arr.getTime()) / (1000 * 60 * 60 * 24)) + 1
-      )
+      days = nightsBetween(application.ksaArrivalDate, application.ksaDepartureDate) + 1
     }
     const totalDays = days ?? 14
     const withMasar = Boolean(application.includeHotels)
@@ -136,9 +145,7 @@ export function calculateApplicationRateHints(
 
     const arrivalStr =
       application.ksaArrivalDate || new Date().toISOString().split("T")[0]!
-    const depDate = new Date(arrivalStr)
-    depDate.setDate(depDate.getDate() + totalDays - 1)
-    const departureStr = depDate.toISOString().split("T")[0]!
+    const departureStr = addDays(arrivalStr, totalDays - 1)
 
     const visaRes = calculateVisaTierAndCost(
       arrivalStr,
@@ -200,44 +207,32 @@ export function calculateApplicationRateHints(
         const staySar = sharingPrice * beds * nights
         cityTotalSar += staySar
         labels.push(
-          `${hotel?.name || "Hotel"}: ${beds} bed(s) × ${nights}N @ ${sharingPrice} SAR/bed`
+          `${hotel?.name || "Hotel"}: ${beds} beds × ${sharingPrice} SAR × ${nights} nights = ${staySar} SAR`
         )
       } else {
-        const quadCount = stay.privateRoomAllocation?.quad ?? 0
-        const tripleCount = stay.privateRoomAllocation?.triple ?? 0
-        const doubleCount = stay.privateRoomAllocation?.double ?? 0
-        const roomCount = quadCount + tripleCount + doubleCount
+        const alloc = stay.privateRoomAllocation || {
+          double: 0,
+          triple: 0,
+          quad: 0,
+        }
+        const doubleRate = hotel?.doublePriceSar ?? 200
+        const tripleRate = hotel?.triplePriceSar ?? 250
+        const quadRate = hotel?.quadPriceSar ?? 300
 
-        let dailyRoomCost = 0
-        if (quadCount > 0) {
-          dailyRoomCost +=
-            quadCount *
-            (hotel?.quadPriceSar && hotel.quadPriceSar > 0
-              ? hotel.quadPriceSar
-              : hotel?.roomPriceSar || 140)
-        }
-        if (tripleCount > 0) {
-          dailyRoomCost +=
-            tripleCount *
-            (hotel?.triplePriceSar && hotel.triplePriceSar > 0
-              ? hotel.triplePriceSar
-              : hotel?.roomPriceSar || 140)
-        }
-        if (doubleCount > 0) {
-          dailyRoomCost +=
-            doubleCount *
-            (hotel?.doublePriceSar && hotel.doublePriceSar > 0
-              ? hotel.doublePriceSar
-              : hotel?.roomPriceSar || 140)
-        }
-        if (roomCount === 0) {
-          dailyRoomCost = hotel?.roomPriceSar || 140
-        }
+        const doubleTotal = (alloc.double || 0) * doubleRate * nights
+        const tripleTotal = (alloc.triple || 0) * tripleRate * nights
+        const quadTotal = (alloc.quad || 0) * quadRate * nights
 
-        const staySar = dailyRoomCost * nights
+        const staySar = doubleTotal + tripleTotal + quadTotal
         cityTotalSar += staySar
+
+        const roomParts: string[] = []
+        if (alloc.double) roomParts.push(`${alloc.double} Double`)
+        if (alloc.triple) roomParts.push(`${alloc.triple} Triple`)
+        if (alloc.quad) roomParts.push(`${alloc.quad} Quad`)
+
         labels.push(
-          `${hotel?.name || "Hotel"}: ${Math.max(1, roomCount)} room(s) × ${nights}N @ ${dailyRoomCost} SAR/night`
+          `${hotel?.name || "Hotel"}: ${roomParts.join(" + ")} × ${nights} nights = ${staySar} SAR`
         )
       }
     }
@@ -245,7 +240,7 @@ export function calculateApplicationRateHints(
     return {
       totalSar: cityTotalSar,
       totalPkr: cityTotalSar * conversionRate,
-      breakdownLabel: labels.join("; ") || "0 SAR",
+      breakdownLabel: labels.join(" | ") || `${city} Accommodation`,
     }
   }
 
@@ -256,77 +251,62 @@ export function calculateApplicationRateHints(
   // 3. TRANSPORT HINT
   // ==========================================
   let transportHint: RateHintBreakdown
-  const segments = application.transportSegments || []
-
   if (!application.includeTransport) {
     transportHint = {
       totalSar: 0,
       totalPkr: 0,
       breakdownLabel: "Transport not included in application",
     }
-  } else if (segments.length === 0) {
-    transportHint = {
-      totalSar: 0,
-      totalPkr: 0,
-      breakdownLabel: "No transport segments configured",
-    }
   } else {
-    // Check for 3-Sector Shared Bus bundle rule (Resource 5: MAK-MAD, MAD-MAK, MAK-JED / 60 SAR)
-    const isAllShared = segments.every((s) => s.serviceType === "shared")
-    const isThreeSectorBus =
-      isAllShared &&
-      segments.length >= 3 &&
-      segments.every((s) => {
-        const sec = catalog.transportSectors?.find((t) => t.id === s.sectorId)
-        return sec?.isSharedBusEligible
-      })
-
-    if (isThreeSectorBus) {
-      const bundleSarPerPax = 60
-      const totalSar = bundleSarPerPax * beds
+    const segments = application.transportSegments || []
+    if (segments.length === 0) {
       transportHint = {
-        totalSar,
-        totalPkr: totalSar * conversionRate,
-        breakdownLabel: `3-Sector Sharing By Bus Bundle: ${beds} pax @ 60 SAR/pax`,
+        totalSar: 0,
+        totalPkr: 0,
+        breakdownLabel: "No transport sectors selected",
       }
     } else {
-      let totalSar = 0
+      let transportTotalSar = 0
       const labels: string[] = []
 
       for (const seg of segments) {
         const sector = catalog.transportSectors?.find(
-          (s) => s.id === seg.sectorId
+          (s) => s.id === seg.sectorId || s.code === seg.sectorId
         )
         const vehicle = catalog.vehicles?.find((v) => v.id === seg.vehicleId)
-        const matrixRate = catalog.transportRates?.find(
-          (r) => r.sectorId === seg.sectorId && r.vehicleId === seg.vehicleId
-        )
 
         if (seg.serviceType === "shared") {
-          const perPaxSar = sector?.sharedBusRateSarPerPax ?? 20
-          const segSar = perPaxSar * beds
-          totalSar += segSar
-          labels.push(
-            `${sector?.code || "Sector"} (Shared Bus): ${beds} pax @ ${perPaxSar} SAR`
-          )
+          const ratePerPax = sector?.sharedBusRateSarPerPax ?? 60
+          const segSar = ratePerPax * beds
+          transportTotalSar += segSar
+          labels.push(`${sector?.code || "Leg"}: Bus (${segSar} SAR)`)
         } else {
-          const baseRateSar =
-            matrixRate?.rateSar ?? vehicle?.defaultRateSar ?? 250
-          const fee = sector?.terminalParkingFeeSar ?? 0
+          const matrixRate = catalog.transportRates?.find(
+            (r) => r.sectorId === seg.sectorId && r.vehicleId === seg.vehicleId
+          )?.rateSar
+
+          const defaultRate =
+            matrixRate ??
+            vehicle?.defaultRateSar ??
+            (vehicle?.category === "sedan"
+              ? 220
+              : vehicle?.category === "suv"
+                ? 300
+                : 380)
+
           const qty = Math.max(1, seg.vehicleQuantity || 1)
-          const segSar = (baseRateSar + fee) * qty
-          totalSar += segSar
+          const segSar = defaultRate * qty
+          transportTotalSar += segSar
           labels.push(
-            `${sector?.code || "Sector"} (${vehicle?.name || "Vehicle"}): ${qty}x @ ${baseRateSar} SAR` +
-              (fee > 0 ? ` + ${fee} SAR terminal fee` : "")
+            `${sector?.code || "Leg"}: ${qty > 1 ? `${qty}× ` : ""}${vehicle?.name || "Vehicle"} (${segSar} SAR)`
           )
         }
       }
 
       transportHint = {
-        totalSar,
-        totalPkr: totalSar * conversionRate,
-        breakdownLabel: labels.join("; "),
+        totalSar: transportTotalSar,
+        totalPkr: transportTotalSar * conversionRate,
+        breakdownLabel: labels.join(" | ") || "Ground Fleet Transfers",
       }
     }
   }

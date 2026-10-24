@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import {
   updateContactMessageStatus,
   deleteContactMessage,
@@ -11,13 +12,11 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  Inbox,
   Phone,
   MessageCircle,
   Mail,
   Calendar,
   CheckCircle,
-  Clock,
   Archive,
   Trash2,
   Save,
@@ -42,6 +41,7 @@ interface MessagesClientProps {
 }
 
 export function MessagesClient({ initialMessages }: MessagesClientProps) {
+  const router = useRouter()
   const [messages, setMessages] =
     useState<ContactMessageData[]>(initialMessages)
   const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -51,7 +51,11 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
   const [adminNotes, setAdminNotes] = useState(
     selectedMessage?.adminNotes ?? ""
   )
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
+
+  useEffect(() => {
+    setMessages(initialMessages)
+  }, [initialMessages])
 
   // Filter messages
   const filteredMessages = messages.filter((m) => {

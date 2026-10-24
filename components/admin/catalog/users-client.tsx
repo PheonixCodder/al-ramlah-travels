@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import {
   createStaffUser,
   toggleUserActive,
@@ -22,16 +23,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import {
-  Users,
   Shield,
-  ShieldAlert,
   UserPlus,
   Loader2,
   CheckCircle2,
   XCircle,
   Mail,
   UserCheck,
-  KeyRound,
   Sparkles,
 } from "lucide-react"
 
@@ -55,6 +53,7 @@ export function UsersClient({
   currentUserId,
   currentUserRole,
 }: UsersClientProps) {
+  const router = useRouter()
   const [users, setUsers] = useState<UserAccountData[]>(initialUsers)
   const [openAdd, setOpenAdd] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -66,7 +65,11 @@ export function UsersClient({
   const [newPassword, setNewPassword] = useState("")
   const [newRole, setNewRole] = useState<"staff" | "super_admin">("staff")
 
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
+
+  useEffect(() => {
+    setUsers(initialUsers)
+  }, [initialUsers])
 
   const generateStrongPassword = () => {
     const chars =

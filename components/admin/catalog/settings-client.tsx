@@ -6,14 +6,10 @@ import { updateAgencySettings } from "@/app/actions/catalog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Building2,
   Phone,
-  Mail,
   MapPin,
-  Clock,
-  ShieldAlert,
   Save,
   Loader2,
   CheckCircle2,

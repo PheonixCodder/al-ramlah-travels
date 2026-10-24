@@ -1,4 +1,4 @@
-import { describe, it, before } from "node:test"
+import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 
 // Domain logic
@@ -9,13 +9,17 @@ import {
 import { calculatePrivateRoomSplits } from "../lib/domain/room-splitter.js"
 import {
   chainItineraryDates,
+  addDays,
   type CitySequence,
 } from "../lib/domain/date-chaining.js"
 import {
   calculateVehicleQuantity,
   type VehicleOption,
 } from "../lib/domain/vehicle-capacity.js"
-import { calculateApplicationRateHints } from "../lib/domain/quote-hints.js"
+import {
+  calculateApplicationRateHints,
+  nightsBetween,
+} from "../lib/domain/quote-hints.js"
 
 // Validation schemas
 import {
@@ -32,7 +36,6 @@ import {
 } from "../lib/validations/quote.js"
 import {
   airlineSchema,
-  hotelSchema,
   transportRateSchema,
   agencySettingsSchema,
 } from "../lib/validations/catalog.js"
@@ -384,6 +387,17 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
       assert.ok(result.primaryAllocation.totalBeds >= 5)
       assert.ok(result.primaryAllocation.totalRooms > 0)
     })
+
+    it("safely handles 0 or negative bedCount returning empty allocation", () => {
+      const res0 = calculatePrivateRoomSplits(0)
+      assert.equal(res0.primaryAllocation.totalRooms, 0)
+      assert.equal(res0.primaryAllocation.totalBeds, 0)
+      assert.deepEqual(res0.validAlternatives, [])
+
+      const resNeg = calculatePrivateRoomSplits(-3)
+      assert.equal(resNeg.primaryAllocation.totalRooms, 0)
+      assert.equal(resNeg.primaryAllocation.totalBeds, 0)
+    })
   })
 
   // =========================================================================
@@ -517,6 +531,20 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
       // Final departure matches last stay checkout
       assert.equal(result.finalDepartureDate, "2026-11-24")
     })
+
+    it("handles addDays correctly across month and year boundaries in UTC", () => {
+      assert.equal(addDays("2026-02-28", 1), "2026-03-01")
+      assert.equal(addDays("2026-12-31", 1), "2027-01-01")
+      assert.equal(addDays("2026-01-01", 30), "2026-01-31")
+      assert.equal(addDays("2026-01-01", 31), "2026-02-01")
+    })
+
+    it("calculates nightsBetween accurately with UTC arithmetic", () => {
+      assert.equal(nightsBetween("2026-11-10", "2026-11-15"), 5)
+      assert.equal(nightsBetween("2026-12-28", "2027-01-03"), 6)
+      assert.equal(nightsBetween("2026-11-10", "2026-11-10"), 0)
+      assert.equal(nightsBetween("2026-11-15", "2026-11-10"), 0)
+    })
   })
 
   // =========================================================================
@@ -603,11 +631,28 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
       assert.equal(result.suggestUpgrade, false)
     })
 
+    it("safely handles 0 or negative seatCount returning 0 requiredQuantity", () => {
+      const res0 = calculateVehicleQuantity(0, {
+        seatCapacity: 4,
+        bookingMode: "private_only",
+      })
+      assert.equal(res0.requiredQuantity, 0)
+      assert.equal(res0.suggestUpgrade, false)
+
+      const resNeg = calculateVehicleQuantity(-2, {
+        seatCapacity: 4,
+        bookingMode: "private_only",
+      })
+      assert.equal(resNeg.requiredQuantity, 0)
+      assert.equal(resNeg.suggestUpgrade, false)
+    })
+
     it("verifies seat count invariant: Adults + Children count toward seats, Infants do NOT", () => {
       const adults = 4
       const children = 2
       const infants = 2 // Does not count toward vehicle seats
 
+      assert.equal(adults + children + infants, 8) // Total passport count
       const bedAndSeatCount = adults + children // 6 seats
       const result = calculateVehicleQuantity(bedAndSeatCount, {
         seatCapacity: 4,
@@ -662,24 +707,28 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
   // =========================================================================
   describe("5. Zod Runtime Validation Contracts (lib/validations/)", () => {
     describe("passengerCountsSchema", () => {
-      it("validates a standard family party", () => {
+      it("validates a standard family party with adults, children, and infants", () => {
         const parsed = passengerCountsSchema.parse({
           adults: 2,
+          children: 2,
           infants: 1,
         })
         assert.equal(parsed.adults, 2)
+        assert.equal(parsed.children, 2)
         assert.equal(parsed.infants, 1)
       })
 
-      it("defaults infants to 0 when omitted", () => {
+      it("defaults children and infants to 0 when omitted", () => {
         const parsed = passengerCountsSchema.parse({ adults: 1 })
         assert.equal(parsed.adults, 1)
+        assert.equal(parsed.children, 0)
         assert.equal(parsed.infants, 0)
       })
 
       it("rejects 0 adults with a descriptive error", () => {
         const result = passengerCountsSchema.safeParse({
           adults: 0,
+          children: 1,
           infants: 1,
         })
         assert.equal(result.success, false)
@@ -699,6 +748,14 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
         )
         assert.equal(
           passengerCountsSchema.safeParse({ adults: 1.5 }).success,
+          false
+        )
+        assert.equal(
+          passengerCountsSchema.safeParse({ adults: 1, children: -1 }).success,
+          false
+        )
+        assert.equal(
+          passengerCountsSchema.safeParse({ adults: 1, children: 1.5 }).success,
           false
         )
       })
@@ -1330,17 +1387,17 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
       assert.equal(hints.madinahHotelHint.totalPkr, 90000)
 
       // Shared Transport 3-sector bundle:
-      // 3 pax * 60 SAR = 180 SAR -> 13,500 PKR
-      assert.equal(hints.transportHint.totalSar, 180)
-      assert.equal(hints.transportHint.totalPkr, 13500)
+      // (60 + 70 + 80) SAR * 3 pax = 630 SAR -> 47,250 PKR
+      assert.equal(hints.transportHint.totalSar, 630)
+      assert.equal(hints.transportHint.totalPkr, 47250)
 
       // Ziyarat: both (Makkah + Madinah) -> default private rates 2 * 250 = 500 SAR -> 37,500 PKR
       assert.equal(hints.ziyaratHint.totalSar, 500)
       assert.equal(hints.ziyaratHint.totalPkr, 37500)
 
-      // Grand Total: 1500 + 1800 + 1200 + 180 + 500 = 5180 SAR -> 388,500 PKR
-      assert.equal(hints.estimatedGrandTotalSar, 5180)
-      assert.equal(hints.estimatedGrandTotalPkr, 388500)
+      // Grand Total: 1500 + 1800 + 1200 + 630 + 500 = 5630 SAR -> 422,250 PKR
+      assert.equal(hints.estimatedGrandTotalSar, 5630)
+      assert.equal(hints.estimatedGrandTotalPkr, 422250)
     })
 
     it("calculates rate hints for private vehicle transport with exact 2D matrix rate", () => {

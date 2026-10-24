@@ -2229,9 +2229,10 @@ async function seed() {
         specialRequests:
           "Traveling with elderly mother; ground floor or close to elevator preferred.",
         adults: 2,
+        children: 1,
         infants: 1,
-        totalPassportCount: 3,
-        bedAndSeatCount: 2, // 2 adults (infants occupy 0 beds / 0 seats)
+        totalPassportCount: 4,
+        bedAndSeatCount: 3, // 3 pilgrims (adults + children; infants occupy 0 beds / 0 seats)
         includeVisa: true,
         includeFlights: true,
         includeHotels: true,
@@ -2322,6 +2323,17 @@ async function seed() {
         },
       ])
     }
+  } else {
+    await db
+      .update(schema.applications)
+      .set({
+        adults: 2,
+        children: 1,
+        infants: 1,
+        totalPassportCount: 4,
+        bedAndSeatCount: 3,
+      })
+      .where(eq(schema.applications.id, app1.id))
   }
 
   // Application 2: Custom Journey, Quoted & Partially Paid
@@ -2345,6 +2357,7 @@ async function seed() {
         customerEmail: "ayesha.siddiqua@shifa.com.pk",
         specialRequests: "High floor Haram view rooms if possible.",
         adults: 4,
+        children: 0,
         infants: 0,
         totalPassportCount: 4,
         bedAndSeatCount: 4,
@@ -2397,6 +2410,17 @@ async function seed() {
       quotedAt: new Date(),
       validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     })
+  } else {
+    await db
+      .update(schema.applications)
+      .set({
+        adults: 4,
+        children: 0,
+        infants: 0,
+        totalPassportCount: 4,
+        bedAndSeatCount: 4,
+      })
+      .where(eq(schema.applications.id, app2.id))
   }
 
   // Application 3: Group Booking, Approved & Paid in Full
@@ -2423,6 +2447,7 @@ async function seed() {
         customerCity: "Rawalpindi",
         customerEmail: "zahid.mehmood@gmail.com",
         adults: 2,
+        children: 0,
         infants: 0,
         totalPassportCount: 2,
         bedAndSeatCount: 2,
@@ -2460,6 +2485,17 @@ async function seed() {
       quotedAt: new Date(),
       approvedAt: new Date(),
     })
+  } else if (app3) {
+    await db
+      .update(schema.applications)
+      .set({
+        adults: 2,
+        children: 0,
+        infants: 0,
+        totalPassportCount: 2,
+        bedAndSeatCount: 2,
+      })
+      .where(eq(schema.applications.id, app3.id))
   }
   console.log(
     "   ✅ Rich sample applications, stays, transport segments, and quotes seeded."
@@ -2609,9 +2645,10 @@ async function seed() {
     },
     {
       category: "general" as const,
-      question: "How do infants affect our hotel room and vehicle bookings?",
+      question:
+        "How do children and infants affect our hotel room and vehicle bookings?",
       answer:
-        "Infants under 2 years of age require a valid passport, Saudi visa, and infant airline ticket. However, they occupy zero hotel beds and zero vehicle seats. When booking private rooms or vehicles, our capacity calculations count adults only, saving you unnecessary room charges.",
+        "Adults (12+ yrs) and children (2–11 yrs) count toward hotel beds and vehicle seats. Infants under 2 years of age require a valid passport, Saudi visa, and infant airline ticket, but occupy zero hotel beds and zero vehicle seats. When booking private rooms or vehicles, our capacity calculations count adults and children, saving you unnecessary room charges.",
       sortOrder: 4,
     },
     {
@@ -2623,12 +2660,24 @@ async function seed() {
     },
   ]
 
+  // Clean up legacy infant FAQ if present
+  await db
+    .delete(schema.faqs)
+    .where(
+      eq(
+        schema.faqs.question,
+        "How do infants affect our hotel room and vehicle bookings?"
+      )
+    )
+
   for (const f of faqsData) {
     const existing = await db.query.faqs.findFirst({
       where: eq(schema.faqs.question, f.question),
     })
     if (!existing) {
       await db.insert(schema.faqs).values(f)
+    } else {
+      await db.update(schema.faqs).set(f).where(eq(schema.faqs.id, existing.id))
     }
   }
 

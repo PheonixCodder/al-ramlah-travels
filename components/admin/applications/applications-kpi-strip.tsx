@@ -1,4 +1,5 @@
 import * as React from "react"
+import Link from "next/link"
 import {
   FileText,
   Clock,
@@ -56,7 +57,7 @@ export function ApplicationsKpiStrip({ data }: { data: KpiData }) {
       </Card>
 
       {/* 3. Overdue >24h SLA */}
-      <a
+      <Link
         href="/admin/applications?status=pending_quote&filter=overdue"
         className="block group transition-transform active:scale-[0.98]"
         title="View overdue inquiries exceeding 24h SLA"
@@ -84,7 +85,7 @@ export function ApplicationsKpiStrip({ data }: { data: KpiData }) {
             </div>
           </CardContent>
         </Card>
-      </a>
+      </Link>
 
       {/* 4. Quoted Pipeline PKR */}
       <Card className="border-border bg-card shadow-xs">

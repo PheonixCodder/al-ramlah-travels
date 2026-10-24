@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { ZiyaratData, ZiyaratDialog } from "./ziyarat-dialog"
 import { toggleZiyaratActive, deleteZiyaratPlace } from "@/app/actions/catalog"
@@ -21,9 +22,14 @@ interface ZiyaratClientProps {
 }
 
 export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
+  const router = useRouter()
   const [places, setPlaces] = useState<ZiyaratData[]>(initialPlaces)
   const [activeCity, setActiveCity] = useState<"all" | "makkah" | "madinah">("all")
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
+
+  useEffect(() => {
+    setPlaces(initialPlaces)
+  }, [initialPlaces])
 
   const filteredPlaces = places.filter(
     (p) => activeCity === "all" || p.city === activeCity
@@ -45,11 +51,20 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
     if (!window.confirm(`Delete Ziyarat place "${name}"?`)) return
     startTransition(async () => {
       const res = await deleteZiyaratPlace(id)
+      if (res.softDeleted) {
+        setPlaces((prev) =>
+          prev.map((p) => (p.id === id ? { ...p, isActive: false } : p))
+        )
+        router.refresh()
+        alert(res.error)
+        return
+      }
       if (!res.success) {
         alert(res.error)
         return
       }
       setPlaces((prev) => prev.filter((p) => p.id !== id))
+      router.refresh()
     })
   }
 

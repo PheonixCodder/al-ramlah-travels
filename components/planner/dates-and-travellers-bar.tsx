@@ -18,7 +18,8 @@ export function DatesAndTravellersBar() {
   } = usePlanner()
 
   const { totalKsaDays } = dates
-  const { adults, infants, totalPassportCount, bedAndSeatCount } = travellers
+  const { adults, children, infants, totalPassportCount, bedAndSeatCount } =
+    travellers
 
   const todayIso = React.useMemo(
     () => new Date().toISOString().split("T")[0]!,
@@ -52,8 +53,8 @@ export function DatesAndTravellersBar() {
             </div>
           </div>
 
-          {/* 2-Column Pilgrims Grid: Adults & Infants */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* 3-Column Pilgrims Grid: Adults, Children & Infants */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Adults Counter */}
             <div className="flex items-center justify-between rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] p-3 sm:p-3.5">
               <div className="flex flex-col">
@@ -80,6 +81,38 @@ export function DatesAndTravellersBar() {
                   onClick={() => setTravellers({ adults: adults + 1 })}
                   className="flex size-7 items-center justify-center rounded-md border border-[#E6DEC8] bg-white text-[#1A1D1A] hover:bg-[#F5EFE6] transition-colors"
                   title="Increase Adults"
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Children Counter */}
+            <div className="flex items-center justify-between rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] p-3 sm:p-3.5">
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-[#1A1D1A]">Children</span>
+                <span className="text-[10px] text-[#686E65]">
+                  2–11 yrs · Bed &amp; Seat
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={children <= 0}
+                  onClick={() => setTravellers({ children: children - 1 })}
+                  className="flex size-7 items-center justify-center rounded-md border border-[#E6DEC8] bg-white text-[#1A1D1A] disabled:opacity-40 hover:bg-[#F5EFE6] transition-colors"
+                  title="Decrease Children"
+                >
+                  <Minus className="size-3.5" />
+                </button>
+                <span className="w-6 text-center font-mono font-bold text-sm text-[#0A3622]">
+                  {children}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setTravellers({ children: children + 1 })}
+                  className="flex size-7 items-center justify-center rounded-md border border-[#E6DEC8] bg-white text-[#1A1D1A] hover:bg-[#F5EFE6] transition-colors"
+                  title="Increase Children"
                 >
                   <Plus className="size-3.5" />
                 </button>

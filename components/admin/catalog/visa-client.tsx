@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { updateVisaRate } from "@/app/actions/catalog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,7 +16,6 @@ import {
   CheckCircle2,
   Info,
   Coins,
-  ShieldAlert,
 } from "lucide-react"
 
 export interface VisaRateData {
@@ -39,12 +39,17 @@ interface VisaClientProps {
 }
 
 export function VisaClient({ initialRates }: VisaClientProps) {
+  const router = useRouter()
   const [rates, setRates] = useState<VisaRateData[]>(initialRates)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [savedSuccessId, setSavedSuccessId] = useState<string | null>(null)
   const [errorId, setErrorId] = useState<{ id: string; message: string } | null>(
     null
   )
+
+  useEffect(() => {
+    setRates(initialRates)
+  }, [initialRates])
 
   const shortTerm = rates.find((r) => r.tier === "short_term")
   const longTerm = rates.find((r) => r.tier === "long_term")
@@ -68,6 +73,7 @@ export function VisaClient({ initialRates }: VisaClientProps) {
         notes: rate.notes || undefined,
       })
       setSavedSuccessId(rate.id)
+      router.refresh()
       setTimeout(() => setSavedSuccessId(null), 3000)
     } catch (err: unknown) {
       if (err instanceof Error) {

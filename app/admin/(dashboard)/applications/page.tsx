@@ -1,5 +1,5 @@
 import * as React from "react"
-import { desc, eq, ilike, or, and, sql } from "drizzle-orm"
+import { desc } from "drizzle-orm"
 
 import { db } from "@/db"
 import * as schema from "@/db/schema"
@@ -7,6 +7,10 @@ import { requireAdmin } from "@/lib/auth-guard"
 import { ApplicationsKpiStrip } from "@/components/admin/applications/applications-kpi-strip"
 import { ApplicationsFilters } from "@/components/admin/applications/applications-filters"
 import { ApplicationsTable } from "@/components/admin/applications/applications-table"
+
+function getNowMs(): number {
+  return Date.now()
+}
 
 interface ApplicationsPageProps {
   searchParams: Promise<{
@@ -43,7 +47,7 @@ export default async function AdminApplicationsPage({
     orderBy: [desc(schema.applications.createdAt)],
   })
 
-  const nowMs = Date.now()
+  const nowMs = getNowMs()
   const twentyFourHoursMs = 24 * 60 * 60 * 1000
 
   // Calculate status counts

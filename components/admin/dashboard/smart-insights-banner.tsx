@@ -4,8 +4,6 @@ import {
   Sparkles,
   AlertTriangle,
   Building2,
-  Plane,
-  Users,
   ArrowRight,
   TrendingUp,
 } from "lucide-react"

@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { AirlineData, AirlineDialog } from "./airline-dialog"
 import { DepartureCityData, DepartureCityDialog } from "./departure-city-dialog"
 import {
@@ -17,8 +18,6 @@ import {
   Building,
   Trash2,
   Edit2,
-  CheckCircle2,
-  XCircle,
   Check,
 } from "lucide-react"
 
@@ -31,10 +30,19 @@ export function FlightsClient({
   initialAirlines,
   initialCities,
 }: FlightsClientProps) {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<"airlines" | "cities">("airlines")
   const [airlines, setAirlines] = useState<AirlineData[]>(initialAirlines)
   const [cities, setCities] = useState<DepartureCityData[]>(initialCities)
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
+
+  useEffect(() => {
+    setAirlines(initialAirlines)
+  }, [initialAirlines])
+
+  useEffect(() => {
+    setCities(initialCities)
+  }, [initialCities])
 
   function handleAirlineToggle(id: string, current: boolean) {
     const next = !current
@@ -52,11 +60,20 @@ export function FlightsClient({
     if (!window.confirm(`Delete airline "${name}"?`)) return
     startTransition(async () => {
       const res = await deleteAirline(id)
+      if (res.softDeleted) {
+        setAirlines((prev) =>
+          prev.map((a) => (a.id === id ? { ...a, isActive: false } : a))
+        )
+        router.refresh()
+        alert(res.error)
+        return
+      }
       if (!res.success) {
         alert(res.error)
         return
       }
       setAirlines((prev) => prev.filter((a) => a.id !== id))
+      router.refresh()
     })
   }
 
@@ -76,11 +93,20 @@ export function FlightsClient({
     if (!window.confirm(`Delete departure city "${name}"?`)) return
     startTransition(async () => {
       const res = await deleteDepartureCity(id)
+      if (res.softDeleted) {
+        setCities((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, isActive: false } : c))
+        )
+        router.refresh()
+        alert(res.error)
+        return
+      }
       if (!res.success) {
         alert(res.error)
         return
       }
       setCities((prev) => prev.filter((c) => c.id !== id))
+      router.refresh()
     })
   }
 

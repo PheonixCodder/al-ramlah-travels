@@ -150,6 +150,7 @@ export async function deleteHotel(id: string) {
       } catch {}
       return {
         success: false,
+        softDeleted: true,
         error:
           "This hotel is referenced by existing pilgrim applications or packages and cannot be permanently deleted. It has been deactivated instead.",
       }
@@ -249,6 +250,7 @@ export async function deleteVehicle(id: string) {
       } catch {}
       return {
         success: false,
+        softDeleted: true,
         error:
           "This vehicle is referenced by existing transport rates or bookings and cannot be permanently deleted. It has been deactivated instead.",
       }
@@ -259,6 +261,8 @@ export async function deleteVehicle(id: string) {
     }
   }
 }
+
+export const deleteTransportVehicle = deleteVehicle
 
 export async function upsertTransportSector(rawInput: unknown) {
   await requireAdmin()
@@ -348,6 +352,7 @@ export async function deleteTransportSector(id: string) {
       } catch {}
       return {
         success: false,
+        softDeleted: true,
         error:
           "This transport sector is referenced by existing transport rates or itineraries and cannot be permanently deleted. It has been deactivated instead.",
       }
@@ -524,6 +529,7 @@ export async function deleteZiyaratPlace(id: string) {
       } catch {}
       return {
         success: false,
+        softDeleted: true,
         error:
           "This Ziyarat site is referenced by existing pilgrimage itineraries and cannot be permanently deleted. It has been deactivated instead.",
       }
@@ -535,6 +541,8 @@ export async function deleteZiyaratPlace(id: string) {
     }
   }
 }
+
+export const deleteZiyaratPoi = deleteZiyaratPlace
 
 // ==========================================
 // AIRLINES & DEPARTURE CITIES ACTIONS
@@ -614,6 +622,7 @@ export async function deleteAirline(id: string) {
       } catch {}
       return {
         success: false,
+        softDeleted: true,
         error:
           "This airline is referenced by existing packages or flights and cannot be permanently deleted. It has been deactivated instead.",
       }
@@ -696,6 +705,7 @@ export async function deleteDepartureCity(id: string) {
       } catch {}
       return {
         success: false,
+        softDeleted: true,
         error:
           "This departure city is referenced by departure batches or pilgrim applications and cannot be permanently deleted. It has been deactivated instead.",
       }
@@ -774,7 +784,7 @@ const agencySettingsActionSchema = z.object({
 })
 
 export async function updateAgencySettings(rawInput: unknown) {
-  const session = await requireAdmin()
+  const session = await requireSuperAdmin()
   const validated = agencySettingsActionSchema.parse(rawInput)
 
   const existing = await db

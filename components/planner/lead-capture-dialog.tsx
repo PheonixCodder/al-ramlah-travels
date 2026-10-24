@@ -21,7 +21,6 @@ import {
   ExternalLink,
   MessageCircle,
   Loader2,
-  ShieldCheck,
   AlertCircle,
   Search,
 } from "lucide-react"
@@ -40,7 +39,7 @@ export function LeadCaptureDialog({
   onClose,
   payload,
   isVisaOnly,
-  calculatedVisaTotalPkr,
+  calculatedVisaTotalPkr: _calculatedVisaTotalPkr,
   defaultCity = "Lahore",
 }: LeadCaptureDialogProps) {
   const [customerName, setCustomerName] = useState("")
@@ -229,13 +228,13 @@ export function LeadCaptureDialog({
               {/* Full Name */}
               <div>
                 <label
-                  htmlFor="lead-full-name"
+                  htmlFor="dialog-lead-full-name"
                   className="block text-[11px] font-medium text-[#686E65] mb-1"
                 >
                   Lead Pilgrim Full Name *
                 </label>
                 <input
-                  id="lead-full-name"
+                  id="dialog-lead-full-name"
                   type="text"
                   required
                   placeholder="e.g. Muhammad Usman Farooq"
@@ -249,13 +248,13 @@ export function LeadCaptureDialog({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label
-                    htmlFor="lead-phone"
+                    htmlFor="dialog-lead-phone"
                     className="block text-[11px] font-medium text-[#686E65] mb-1"
                   >
                     Phone Number *
                   </label>
                   <input
-                    id="lead-phone"
+                    id="dialog-lead-phone"
                     type="tel"
                     required
                     placeholder="+92 300 1234567"
@@ -267,13 +266,13 @@ export function LeadCaptureDialog({
 
                 <div>
                   <label
-                    htmlFor="lead-city"
+                    htmlFor="dialog-lead-city"
                     className="block text-[11px] font-medium text-[#686E65] mb-1"
                   >
                     City in Pakistan *
                   </label>
                   <input
-                    id="lead-city"
+                    id="dialog-lead-city"
                     type="text"
                     required
                     placeholder="e.g. Lahore / Islamabad"
@@ -290,14 +289,14 @@ export function LeadCaptureDialog({
               {/* WhatsApp number if different */}
               <div className="flex items-center gap-2">
                 <input
-                  id="lead-same-whatsapp"
+                  id="dialog-lead-same-whatsapp"
                   type="checkbox"
                   checked={sameAsPhone}
                   onChange={(e) => setSameAsPhone(e.target.checked)}
                   className="size-3.5 accent-[#0A3622] rounded"
                 />
                 <label
-                  htmlFor="lead-same-whatsapp"
+                  htmlFor="dialog-lead-same-whatsapp"
                   className="text-[11px] text-[#686E65]"
                 >
                   WhatsApp is same as phone number
@@ -307,13 +306,13 @@ export function LeadCaptureDialog({
               {!sameAsPhone && (
                 <div>
                   <label
-                    htmlFor="lead-whatsapp"
+                    htmlFor="dialog-lead-whatsapp"
                     className="block text-[11px] font-medium text-[#686E65] mb-1"
                   >
                     WhatsApp Number *
                   </label>
                   <input
-                    id="lead-whatsapp"
+                    id="dialog-lead-whatsapp"
                     type="tel"
                     required
                     placeholder="+92 300 1234567"
@@ -327,13 +326,13 @@ export function LeadCaptureDialog({
               {/* Email Address (Optional) */}
               <div>
                 <label
-                  htmlFor="lead-email"
+                  htmlFor="dialog-lead-email"
                   className="block text-[11px] font-medium text-[#686E65] mb-1"
                 >
                   Email Address (Optional)
                 </label>
                 <input
-                  id="lead-email"
+                  id="dialog-lead-email"
                   type="email"
                   placeholder="name@example.com"
                   value={customerEmail}
@@ -345,13 +344,13 @@ export function LeadCaptureDialog({
               {/* Special Requests */}
               <div>
                 <label
-                  htmlFor="lead-special-requests"
+                  htmlFor="dialog-lead-special-requests"
                   className="block text-[11px] font-medium text-[#686E65] mb-1"
                 >
                   Special Requests / Elderly Care / Hotel Floor Preferences
                 </label>
                 <textarea
-                  id="lead-special-requests"
+                  id="dialog-lead-special-requests"
                   rows={2}
                   placeholder="e.g. Traveling with elderly parents; wheelchair assistance requested."
                   value={specialRequests}

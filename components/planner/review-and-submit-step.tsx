@@ -174,6 +174,7 @@ export function ReviewAndSubmitStep() {
         includeZiyarat: pillars.ziyarat,
         passengers: {
           adults: travellers.adults,
+          children: travellers.children,
           infants: travellers.infants,
         },
         ksaArrivalDate: dates.arrivalDate,
@@ -205,8 +206,8 @@ export function ReviewAndSubmitStep() {
         transportSegments: pillars.transport
           ? transport.segments
               .filter((s) => s.enabled !== false)
-              .map((s) => ({
-                segmentOrder: s.segmentOrder,
+              .map((s, idx) => ({
+                segmentOrder: idx + 1,
                 sectorId: s.sectorId,
                 serviceType: s.serviceType,
                 vehicleId: s.vehicleId,
@@ -216,12 +217,14 @@ export function ReviewAndSubmitStep() {
           : undefined,
         ziyaratScope: pillars.ziyarat ? ziyarat.scope : undefined,
         ziyaratVehicleId: pillars.ziyarat
-          ? pillars.transport && leadVehicle && leadVehicle.category !== "train"
-            ? leadVehicle.id
-            : ziyarat.fallbackVehicleId
+          ? (pillars.transport && leadVehicle && leadVehicle.category !== "train"
+              ? leadVehicle.id
+              : ziyarat.fallbackVehicleId) || undefined
           : undefined,
         selectedZiyaratPlaceIds: pillars.ziyarat
-          ? ziyarat.selectedPlaceIds
+          ? (ziyarat.selectedPlaceIds || []).filter((id) =>
+              Boolean(id && typeof id === "string" && id.trim())
+            )
           : undefined,
         contact: {
           customerName: customerName.trim(),
@@ -442,7 +445,12 @@ export function ReviewAndSubmitStep() {
               </div>
               <p className="text-xs sm:text-sm font-bold text-[#1A1D1A] mt-0.5">
                 {travellers.adults} Adults
-                {travellers.infants > 0 ? `, ${travellers.infants} Infants` : ""}
+                {travellers.children > 0
+                  ? `, ${travellers.children} Children`
+                  : ""}
+                {travellers.infants > 0
+                  ? `, ${travellers.infants} Infants`
+                  : ""}
               </p>
             </div>
           </div>

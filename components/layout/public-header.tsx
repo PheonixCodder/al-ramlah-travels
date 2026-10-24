@@ -12,7 +12,6 @@ import {
   Sparkles,
   Menu,
   Compass,
-  CalendarCheck,
   Package,
   Layers,
   ArrowRight,
@@ -36,8 +35,24 @@ const NAV_LINKS = [
   { title: "Concierge", href: "#contact", icon: MessageCircle },
 ]
 
-export function PublicHeader() {
+interface PublicHeaderProps {
+  agencyPhone?: string
+  whatsappNumber?: string
+  officeAddress?: string
+}
+
+export function PublicHeader({
+  agencyPhone = "+92 300 1234567",
+  whatsappNumber = "+923001234567",
+  officeAddress = "Lahore Head Office · Gulberg III",
+}: PublicHeaderProps = {}) {
   const [mobileOpen, setMobileOpen] = React.useState(false)
+
+  const normalizedWhatsapp = whatsappNumber
+    .replace(/\D/g, "")
+    .replace(/^03/, "923")
+  const telHref = `tel:${agencyPhone.replace(/\s+/g, "")}`
+  const waHref = `https://wa.me/${normalizedWhatsapp || "923001234567"}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
 
   return (
     <div className="w-full">
@@ -47,17 +62,17 @@ export function PublicHeader() {
           {/* Left: Contact Hotlines */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <a
-              href="tel:+923001234567"
+              href={telHref}
               className="inline-flex items-center gap-1.5 transition-colors hover:text-gold"
             >
               <Phone className="size-3.5 shrink-0 text-gold" />
-              <span className="font-mono tabular-nums">+92 300 1234567</span>
+              <span className="font-mono tabular-nums">{agencyPhone}</span>
             </a>
             <span className="hidden text-primary-foreground/30 sm:inline">
               |
             </span>
             <a
-              href="https://wa.me/923001234567?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages."
+              href={waHref}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 transition-colors hover:text-gold"
@@ -70,7 +85,7 @@ export function PublicHeader() {
             </span>
             <span className="hidden items-center gap-1 text-primary-foreground/80 md:inline-flex">
               <MapPin className="size-3.5 shrink-0 text-gold" />
-              <span>Lahore Head Office · Gulberg III</span>
+              <span>{officeAddress}</span>
             </span>
           </div>
 
@@ -214,7 +229,7 @@ export function PublicHeader() {
                     </Button>
 
                     <a
-                      href="https://wa.me/923001234567?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages."
+                      href={waHref}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted"

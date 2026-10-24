@@ -31,14 +31,45 @@ const envSchema = z.object({
     .default("development"),
 })
 
+const isSkip =
+  process.env.SKIP_ENV_VALIDATION === "1" ||
+  process.env.NEXT_PHASE === "phase-production-build"
+
 const parsedEnv = envSchema.safeParse(process.env)
 
+let envData: z.infer<typeof envSchema>
+
 if (!parsedEnv.success) {
-  console.error(
-    "❌ Invalid environment variables:",
-    JSON.stringify(parsedEnv.error.format(), null, 2)
-  )
-  throw new Error("Invalid environment variables. See console above.")
+  if (isSkip) {
+    console.warn(
+      "⚠️ Skipping strict environment validation (SKIP_ENV_VALIDATION=1 or phase-production-build)"
+    )
+    envData = {
+      DATABASE_URL:
+        process.env.DATABASE_URL ||
+        "postgresql://placeholder:placeholder@localhost:5432/placeholder",
+      DATABASE_URL_POOLED:
+        process.env.DATABASE_URL_POOLED ||
+        "postgresql://placeholder:placeholder@localhost:5432/placeholder",
+      BETTER_AUTH_SECRET:
+        process.env.BETTER_AUTH_SECRET ||
+        "build_placeholder_secret_at_least_32_characters_long",
+      BETTER_AUTH_URL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
+      NEXT_PUBLIC_APP_URL:
+        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+      NODE_ENV:
+        (process.env.NODE_ENV as "development" | "test" | "production") ||
+        "development",
+    }
+  } else {
+    console.error(
+      "❌ Invalid environment variables:",
+      JSON.stringify(parsedEnv.error.format(), null, 2)
+    )
+    throw new Error("Invalid environment variables. See console above.")
+  }
+} else {
+  envData = parsedEnv.data
 }
 
-export const env = parsedEnv.data
+export const env = envData

@@ -6,17 +6,12 @@ import {
   Calculator,
   Save,
   CheckCircle,
-  XCircle,
   AlertCircle,
-  FileText,
-  DollarSign,
-  ShieldCheck,
   Send,
   Loader2,
   Lock,
   Sparkles,
   ArrowDownToLine,
-  Check,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -26,7 +21,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { TabularPrice } from "@/components/layout/status-badge"
 import { saveApplicationQuote, updateApplicationStatus } from "@/app/actions/quotes"
 import { QuoteDispatchBar } from "./quote-dispatch-bar"
 import type { ApplicationRateHintsResult } from "@/lib/domain/quote-hints"
@@ -112,7 +106,7 @@ export function QuoteWorksheetForm({
   const [amountPaid, setAmountPaid] = React.useState<number>(
     initialQuote?.amountPaidPkr || 0
   )
-  const [validDays, setValidDays] = React.useState<number>(7)
+  const [validDays] = React.useState<number>(7)
 
   // Notes
   const [customerNotes, setCustomerNotes] = React.useState<string>(

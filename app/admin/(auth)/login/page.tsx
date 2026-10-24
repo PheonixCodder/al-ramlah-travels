@@ -12,7 +12,7 @@ import {
   ArrowRight,
   Loader2,
   AlertCircle,
-  Sparkles,
+  Clock,
 } from "lucide-react"
 
 import { authClient } from "@/lib/auth-client"
@@ -26,7 +26,12 @@ import { Badge } from "@/components/ui/badge"
 function AdminLoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get("callbackUrl") || "/admin"
+  const rawTarget = searchParams.get("callbackUrl") || searchParams.get("from") || "/admin"
+  const callbackUrl =
+    rawTarget.startsWith("/admin") && !rawTarget.startsWith("//")
+      ? rawTarget
+      : "/admin"
+  const isSessionExpired = searchParams.get("session_expired") === "1"
 
   const [email, setEmail] = React.useState("")
   const [password, setPassword] = React.useState("")
@@ -129,6 +134,16 @@ function AdminLoginForm() {
           </CardHeader>
 
           <CardContent className="space-y-4 pt-2">
+            {isSessionExpired && !errorMessage && (
+              <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                <Clock className="size-4 shrink-0" />
+                <AlertTitle className="text-xs font-semibold">Session Expired</AlertTitle>
+                <AlertDescription className="text-xs">
+                  Your session has ended or is invalid. Please sign in again.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {errorMessage && (
               <Alert variant="destructive" className="border-destructive/30 bg-destructive/10 text-destructive">
                 <AlertCircle className="size-4 shrink-0" />
@@ -201,57 +216,59 @@ function AdminLoginForm() {
               </Button>
             </form>
 
-            {/* One-Click Demo Credentials Quick Fill */}
-            <div className="pt-2">
-              <div className="relative flex items-center justify-center py-2">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-border" />
+            {/* One-Click Demo Credentials Quick Fill — Development Environment Only */}
+            {process.env.NODE_ENV === "development" && (
+              <div className="pt-2">
+                <div className="relative flex items-center justify-center py-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-border" />
+                  </div>
+                  <span className="relative bg-card px-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                    One-Click Demo Access
+                  </span>
                 </div>
-                <span className="relative bg-card px-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-                  One-Click Demo Access
-                </span>
-              </div>
 
-              <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    fillCredentials("admin@alramlahtravels.com", "Admin@123456")
-                  }
-                  className="flex flex-col items-start rounded-lg border border-gold/40 bg-gold/5 p-2.5 text-left transition-colors hover:border-gold hover:bg-gold/10"
-                >
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                    <ShieldCheck className="size-3.5 text-gold" />
-                    <span>Super Admin</span>
-                  </div>
-                  <span className="mt-0.5 font-mono text-[11px] text-muted-foreground truncate w-full">
-                    admin@alramlahtravels.com
-                  </span>
-                  <span className="mt-0.5 text-[10px] text-gold-foreground/70">
-                    Full Executive Access
-                  </span>
-                </button>
+                <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      fillCredentials("admin@alramlahtravels.com", "Admin@123456")
+                    }
+                    className="flex flex-col items-start rounded-lg border border-gold/40 bg-gold/5 p-2.5 text-left transition-colors hover:border-gold hover:bg-gold/10"
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <ShieldCheck className="size-3.5 text-gold" />
+                      <span>Super Admin</span>
+                    </div>
+                    <span className="mt-0.5 font-mono text-[11px] text-muted-foreground truncate w-full">
+                      admin@alramlahtravels.com
+                    </span>
+                    <span className="mt-0.5 text-[10px] text-gold-foreground/70">
+                      Full Executive Access
+                    </span>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    fillCredentials("staff@alramlahtravels.com", "Staff@123456")
-                  }
-                  className="flex flex-col items-start rounded-lg border border-primary/20 bg-primary/5 p-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/10"
-                >
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                    <UserCheck className="size-3.5 text-primary" />
-                    <span>Quoting Staff</span>
-                  </div>
-                  <span className="mt-0.5 font-mono text-[11px] text-muted-foreground truncate w-full">
-                    staff@alramlahtravels.com
-                  </span>
-                  <span className="mt-0.5 text-[10px] text-muted-foreground">
-                    Worksheet & CRM
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      fillCredentials("staff@alramlahtravels.com", "Staff@123456")
+                    }
+                    className="flex flex-col items-start rounded-lg border border-primary/20 bg-primary/5 p-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/10"
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <UserCheck className="size-3.5 text-primary" />
+                      <span>Quoting Staff</span>
+                    </div>
+                    <span className="mt-0.5 font-mono text-[11px] text-muted-foreground truncate w-full">
+                      staff@alramlahtravels.com
+                    </span>
+                    <span className="mt-0.5 text-[10px] text-muted-foreground">
+                      Worksheet & CRM
+                    </span>
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
 
           <CardFooter className="flex flex-col items-center justify-center border-t border-border pt-4 pb-4">

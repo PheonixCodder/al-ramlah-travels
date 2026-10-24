@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
 export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl
+  const { pathname, searchParams } = request.nextUrl
 
   const sessionCookie =
     request.cookies.get("better-auth.session_token")?.value ||
@@ -14,6 +14,15 @@ export function proxy(request: NextRequest) {
 
   if (isAdminRoute) {
     if (isLoginRoute) {
+      const isSessionExpired = searchParams.get("session_expired") === "1"
+      if (isSessionExpired) {
+        // Clear stale session cookies so expired sessions do not get redirected back to /admin in an infinite loop
+        const response = NextResponse.next()
+        response.cookies.delete("better-auth.session_token")
+        response.cookies.delete("__Secure-better-auth.session_token")
+        return response
+      }
+
       if (sessionCookie) {
         return NextResponse.redirect(new URL("/admin", request.url))
       }
@@ -22,6 +31,7 @@ export function proxy(request: NextRequest) {
 
     if (!sessionCookie) {
       const loginUrl = new URL("/admin/login", request.url)
+      loginUrl.searchParams.set("callbackUrl", pathname)
       loginUrl.searchParams.set("from", pathname)
       return NextResponse.redirect(loginUrl)
     }

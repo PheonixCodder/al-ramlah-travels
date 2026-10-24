@@ -1,4 +1,7 @@
+"use client"
+
 import * as React from "react"
+import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import {
@@ -12,9 +15,39 @@ import {
   Compass,
   ArrowUpRight,
 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
 
-export function PublicFooter() {
+interface PublicFooterProps {
+  agencyPhone?: string
+  whatsappNumber?: string
+  agencyName?: string
+  supportEmail?: string
+  officeAddress?: string
+}
+
+export function PublicFooter({
+  agencyPhone = "+92 300 1234567",
+  whatsappNumber = "+923001234567",
+  agencyName = "Al Ramlah Travels",
+  supportEmail = "info@alramlahtravels.com",
+  officeAddress = "Suite 402, Al-Hafeez Heights, Gulberg III, Lahore, Pakistan",
+}: PublicFooterProps = {}) {
   const currentYear = new Date().getFullYear()
+  const [modalType, setModalType] = useState<
+    "privacy" | "terms" | "disclaimer" | null
+  >(null)
+
+  const normalizedWhatsapp = whatsappNumber
+    .replace(/\D/g, "")
+    .replace(/^03/, "923")
+  const telHref = `tel:${agencyPhone.replace(/\s+/g, "")}`
+  const waHref = `https://wa.me/${normalizedWhatsapp || "923001234567"}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
 
   return (
     <footer className="relative overflow-hidden border-t border-primary-foreground/10 bg-primary text-primary-foreground">
@@ -29,7 +62,7 @@ export function PublicFooter() {
               <div className="size-12 overflow-hidden rounded-xl border border-gold/40 bg-card p-1 shadow-md">
                 <Image
                   src="/logo.jpg"
-                  alt="Al Ramlah Travels Emblem"
+                  alt={`${agencyName} Emblem`}
                   width={44}
                   height={44}
                   className="size-full object-contain"
@@ -37,7 +70,7 @@ export function PublicFooter() {
               </div>
               <div className="flex flex-col">
                 <span className="font-display text-xl font-bold tracking-tight text-primary-foreground">
-                  Al Ramlah Travels
+                  {agencyName}
                 </span>
                 <span className="font-arabic text-xs font-medium text-gold">
                   سفريات الرملة · خادم ضيوف الرحمن
@@ -141,7 +174,7 @@ export function PublicFooter() {
               </li>
               <li>
                 <Link
-                  href="#hotels"
+                  href="#journey-builder"
                   className="transition-colors hover:text-gold"
                 >
                   Makkah Clock Tower Hotels
@@ -149,7 +182,7 @@ export function PublicFooter() {
               </li>
               <li>
                 <Link
-                  href="#hotels"
+                  href="#journey-builder"
                   className="transition-colors hover:text-gold"
                 >
                   Madinah Markaziah Stays
@@ -157,7 +190,7 @@ export function PublicFooter() {
               </li>
               <li>
                 <Link
-                  href="#contact"
+                  href="#journey-builder"
                   className="transition-colors hover:text-gold"
                 >
                   VIP Ground Transport
@@ -181,14 +214,14 @@ export function PublicFooter() {
             </h3>
             <div className="flex flex-col gap-2.5 text-sm text-primary-foreground/80">
               <a
-                href="tel:+923001234567"
+                href={telHref}
                 className="flex items-center gap-2 transition-colors hover:text-gold"
               >
                 <Phone className="size-4 shrink-0 text-gold" />
-                <span className="font-mono tabular-nums">+92 300 1234567</span>
+                <span className="font-mono tabular-nums">{agencyPhone}</span>
               </a>
               <a
-                href="https://wa.me/923001234567"
+                href={waHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 transition-colors hover:text-gold"
@@ -197,15 +230,15 @@ export function PublicFooter() {
                 <span>WhatsApp: 24/7 Ground Team</span>
               </a>
               <a
-                href="mailto:concierge@alramlahtravels.com"
+                href={`mailto:${supportEmail}`}
                 className="flex items-center gap-2 transition-colors hover:text-gold"
               >
                 <Mail className="size-4 shrink-0 text-gold" />
-                <span>concierge@alramlahtravels.com</span>
+                <span>{supportEmail}</span>
               </a>
               <div className="flex items-start gap-2 pt-1 text-xs text-primary-foreground/70">
                 <MapPin className="mt-0.5 size-4 shrink-0 text-gold" />
-                <span>Al Hafeez Heights, Gulberg III, Lahore, Pakistan</span>
+                <span>{officeAddress}</span>
               </div>
               <div className="flex items-start gap-2 text-xs text-primary-foreground/70">
                 <Compass className="mt-0.5 size-4 shrink-0 text-gold" />
@@ -239,27 +272,151 @@ export function PublicFooter() {
         {/* Bottom Bar: Copyright & Legal */}
         <div className="flex flex-col items-center justify-between gap-4 pt-6 text-xs text-primary-foreground/60 sm:flex-row">
           <div>
-            &copy; {currentYear} Al Ramlah Travels Pvt. Ltd. All rights
-            reserved.
+            &copy; {currentYear} {agencyName} Pvt. Ltd. All rights reserved.
           </div>
           <div className="flex items-center gap-4">
-            <Link href="#privacy" className="transition-colors hover:text-gold">
+            <button
+              type="button"
+              onClick={() => setModalType("privacy")}
+              className="transition-colors hover:text-gold focus:outline-none"
+            >
               Privacy Policy
-            </Link>
+            </button>
             <span>·</span>
-            <Link href="#terms" className="transition-colors hover:text-gold">
+            <button
+              type="button"
+              onClick={() => setModalType("terms")}
+              className="transition-colors hover:text-gold focus:outline-none"
+            >
               Terms of Pilgrimage
-            </Link>
+            </button>
             <span>·</span>
-            <Link
-              href="#disclaimer"
-              className="transition-colors hover:text-gold"
+            <button
+              type="button"
+              onClick={() => setModalType("disclaimer")}
+              className="transition-colors hover:text-gold focus:outline-none"
             >
               Visa Regulations
-            </Link>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Informational Legal Dialogs */}
+      <Dialog
+        open={Boolean(modalType)}
+        onOpenChange={(open) => !open && setModalType(null)}
+      >
+        <DialogContent className="sm:max-w-lg bg-white text-[#1A1D1A] border-[#E6DEC8] p-6 max-h-[85vh] overflow-y-auto">
+          {modalType === "privacy" && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-lg font-bold text-[#0A3622]">
+                  Privacy Policy &amp; Pilgrim Data Protection
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[#686E65]">
+                  Last updated: October 2026 · Ministry of Hajj &amp; Umrah Compliance
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 pt-3 text-xs leading-relaxed text-[#1A1D1A]">
+                <p>
+                  At <strong>{agencyName}</strong>, the sanctity of your personal
+                  data and travel documents is handled with utmost reverence and
+                  strict technical safeguards.
+                </p>
+                <h4 className="font-bold text-[#0A3622]">1. Passport &amp; Identification</h4>
+                <p>
+                  Passport scans, national identity numbers, and biometric
+                  records collected for Umrah visa issuance are transmitted
+                  directly to the Saudi Ministry of Foreign Affairs (MOFA) and
+                  Masar platform via 256-bit SSL encrypted channels.
+                </p>
+                <h4 className="font-bold text-[#0A3622]">2. Payment Confidentiality</h4>
+                <p>
+                  We do not sell, barter, or disclose pilgrim contact details,
+                  payment records, or itinerary schedules to any third-party
+                  marketing entities.
+                </p>
+                <h4 className="font-bold text-[#0A3622]">3. Data Retention</h4>
+                <p>
+                  In accordance with IATA and regulatory requirements, flight
+                  and hotel booking vouchers are archived securely for audit and
+                  tax verification purposes.
+                </p>
+              </div>
+            </>
+          )}
+
+          {modalType === "terms" && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-lg font-bold text-[#0A3622]">
+                  Terms of Pilgrimage &amp; Service Agreement
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[#686E65]">
+                  Standard Pilgrimage Service Terms &amp; Conditions
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 pt-3 text-xs leading-relaxed text-[#1A1D1A]">
+                <h4 className="font-bold text-[#0A3622]">1. Quotation &amp; Provisional Holds</h4>
+                <p>
+                  Submissions through our Custom Journey Builder and Group
+                  Booking modules constitute a provisional reservation request.
+                  Final pricing and seat confirmation become binding upon
+                  review and official quotation issuance by our executive desk.
+                </p>
+                <h4 className="font-bold text-[#0A3622]">2. Hotel Check-In &amp; Occupancy</h4>
+                <p>
+                  Check-in and check-out times follow standard Saudi hospitality
+                  protocols (typically 4:00 PM check-in and 12:00 PM check-out).
+                  Room allocations strictly count Adults and Children for beds;
+                  infants are accommodated on existing bedding.
+                </p>
+                <h4 className="font-bold text-[#0A3622]">3. Flight &amp; Transit Schedules</h4>
+                <p>
+                  Airline schedule adjustments, baggage allowances, and flight
+                  timing revisions are governed by the respective operating
+                  carrier under IATA conditions of carriage.
+                </p>
+              </div>
+            </>
+          )}
+
+          {modalType === "disclaimer" && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-lg font-bold text-[#0A3622]">
+                  Saudi Umrah &amp; Hajj Visa Regulations
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[#686E65]">
+                  Statutory guidelines enforced by the Ministry of Foreign Affairs (KSA)
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 pt-3 text-xs leading-relaxed text-[#1A1D1A]">
+                <h4 className="font-bold text-[#0A3622]">1. Passport Validity</h4>
+                <p>
+                  All pilgrims (including infants and children) must hold a
+                  machine-readable passport with a minimum validity of 6 months
+                  from the intended date of arrival in the Kingdom of Saudi Arabia.
+                </p>
+                <h4 className="font-bold text-[#0A3622]">2. Duration Tiers</h4>
+                <p>
+                  Saudi tourist/electronic visas and Umrah visas issued for stays
+                  up to 30 days qualify for short-term rate tiers. Stays exceeding
+                  30 days require extended authorization tiers subject to MOFA
+                  approvals.
+                </p>
+                <h4 className="font-bold text-[#0A3622]">3. Mandatory Insurance</h4>
+                <p>
+                  Every issued visa incorporates compulsory comprehensive health
+                  and emergency medical insurance covering COVID-19 and emergency
+                  hospitalization across licensed healthcare facilities in KSA.
+                </p>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </footer>
   )
 }

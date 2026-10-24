@@ -15,12 +15,7 @@ import {
 } from "@/lib/domain/date-chaining"
 import {
   calculatePrivateRoomSplits,
-  type RoomSplitOption,
 } from "@/lib/domain/room-splitter"
-import {
-  calculateVehicleQuantity,
-  type VehicleQuantityResult,
-} from "@/lib/domain/vehicle-capacity"
 import {
   calculateVisaTierAndCost,
   type VisaCalculationResult,
@@ -110,6 +105,7 @@ export interface PlannerContextValue {
   }
   travellers: {
     adults: number
+    children: number
     infants: number
     totalPassportCount: number
     bedAndSeatCount: number
@@ -158,6 +154,7 @@ export interface PlannerContextValue {
   setDepartureDate: (date: string) => void
   setTravellers: (counts: {
     adults?: number
+    children?: number
     infants?: number
   }) => void
   setCitySequence: (seq: CitySequence) => void
@@ -187,28 +184,41 @@ const PlannerContext = createContext<PlannerContextValue | null>(null)
 
 // Helper date math
 export function addDaysToDateString(dateStr: string, days: number): string {
-  const d = new Date(dateStr)
-  d.setDate(d.getDate() + days)
-  return d.toISOString().split("T")[0]!
+  const parts = dateStr.split("-").map(Number)
+  const y = parts[0] || 2026
+  const m = parts[1] || 1
+  const d = parts[2] || 1
+  const date = new Date(Date.UTC(y, m - 1, d + days))
+  const resY = String(date.getUTCFullYear()).padStart(4, "0")
+  const resM = String(date.getUTCMonth() + 1).padStart(2, "0")
+  const resD = String(date.getUTCDate()).padStart(2, "0")
+  return `${resY}-${resM}-${resD}`
 }
 
 export function getDaysBetween(startStr: string, endStr: string): number {
-  const d1 = new Date(startStr)
-  const d2 = new Date(endStr)
-  const diffTime = d2.getTime() - d1.getTime()
-  return Math.round(diffTime / (1000 * 60 * 60 * 24))
+  const p1 = startStr.split("-").map(Number)
+  const p2 = endStr.split("-").map(Number)
+  const t1 = Date.UTC(p1[0] || 2026, (p1[1] || 1) - 1, p1[2] || 1)
+  const t2 = Date.UTC(p2[0] || 2026, (p2[1] || 1) - 1, p2[2] || 1)
+  return Math.round((t2 - t1) / (1000 * 60 * 60 * 24))
 }
 
 // Initial default dates (14 days from now, 14 days duration)
 function getInitialArrivalDate(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + 14)
-  return d.toISOString().split("T")[0]!
+  const now = new Date()
+  const y = now.getUTCFullYear()
+  const m = now.getUTCMonth()
+  const d = now.getUTCDate()
+  const target = new Date(Date.UTC(y, m, d + 14))
+  const resY = String(target.getUTCFullYear()).padStart(4, "0")
+  const resM = String(target.getUTCMonth() + 1).padStart(2, "0")
+  const resD = String(target.getUTCDate()).padStart(2, "0")
+  return `${resY}-${resM}-${resD}`
 }
 
 export function PlannerProvider({
   catalog,
-  children,
+  children: reactChildren,
 }: {
   catalog: PlannerCatalogData
   children: React.ReactNode
@@ -317,15 +327,16 @@ export function PlannerProvider({
     useState<string>(initialDeparture)
 
   const [adults, setAdults] = useState<number>(2)
+  const [children, setChildren] = useState<number>(0)
   const [infants, setInfants] = useState<number>(0)
 
   const bedAndSeatCount = useMemo(
-    () => Math.max(1, adults),
-    [adults]
+    () => Math.max(1, adults + children),
+    [adults, children]
   )
   const totalPassportCount = useMemo(
-    () => adults + infants,
-    [adults, infants]
+    () => adults + children + infants,
+    [adults, children, infants]
   )
 
   const [citySequence, setCitySequenceState] =
@@ -542,8 +553,6 @@ export function PlannerProvider({
 
       const chained = chainItineraryDates(seq, arrDate, stayCities)
 
-      const split = calculatePrivateRoomSplits(bedAndSeatCount).primaryAllocation
-
       const newStays: StayConfig[] = chained.chainedStays.map((cs, idx) => {
         const existing = currentStays[idx]
         const hotelId =
@@ -589,6 +598,8 @@ export function PlannerProvider({
       // Airport locking
       if (chained.entryAirport === "JED") {
         setEntryAirportState("JED")
+      } else {
+        setEntryAirportState("MED")
       }
     },
     [bedAndSeatCount, catalog.hotels, defaultMakkahHotel, defaultMadinahHotel]
@@ -624,6 +635,18 @@ export function PlannerProvider({
       recomputeStays(targetSeq, arrivalDate, stays)
     },
     [arrivalDate, pillars.visa, recomputeStays, stays]
+  )
+
+  const setEntryAirport = useCallback(
+    (airport: "JED" | "MED") => {
+      // Invariant: Makkah has no civilian airport; sequences starting in Makkah lock entryAirport to JED
+      if (citySequence.startsWith("makkah")) {
+        setEntryAirportState("JED")
+        return
+      }
+      setEntryAirportState(airport)
+    },
+    [citySequence]
   )
 
   const setArrivalDate = useCallback(
@@ -1090,8 +1113,10 @@ export function PlannerProvider({
   )
 
   const setTravellers = useCallback(
-    (counts: { adults?: number; infants?: number }) => {
+    (counts: { adults?: number; children?: number; infants?: number }) => {
       if (counts.adults !== undefined) setAdults(Math.max(1, counts.adults))
+      if (counts.children !== undefined)
+        setChildren(Math.max(0, counts.children))
       if (counts.infants !== undefined) setInfants(Math.max(0, counts.infants))
     },
     []
@@ -1633,6 +1658,7 @@ export function PlannerProvider({
     },
     travellers: {
       adults,
+      children,
       infants,
       totalPassportCount,
       bedAndSeatCount,
@@ -1672,7 +1698,7 @@ export function PlannerProvider({
     setDepartureDate,
     setTravellers,
     setCitySequence,
-    setEntryAirport: setEntryAirportState,
+    setEntryAirport,
     setExitAirport: setExitAirportState,
     updateStay,
     updateFlights,
@@ -1689,7 +1715,9 @@ export function PlannerProvider({
   }
 
   return (
-    <PlannerContext.Provider value={value}>{children}</PlannerContext.Provider>
+    <PlannerContext.Provider value={value}>
+      {reactChildren}
+    </PlannerContext.Provider>
   )
 }
 

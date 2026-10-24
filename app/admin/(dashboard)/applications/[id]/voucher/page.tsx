@@ -4,13 +4,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { eq, desc, asc } from "drizzle-orm"
 import {
-  Printer,
   ArrowLeft,
-  ShieldCheck,
-  CheckCircle2,
-  Phone,
-  Mail,
-  MapPin,
   Plane,
   Building2,
   Car,
@@ -157,7 +151,7 @@ export default async function ApplicationVoucherPage({
             <p className="text-slate-600 font-mono mt-0.5">{application.customerPhone}</p>
             <p className="text-slate-600">{application.customerCity}, Pakistan</p>
             <div className="mt-2 font-semibold text-slate-800">
-              {application.totalPassportCount} Total Pilgrims ({application.adults} Adults, {application.infants} Infants)
+              {application.totalPassportCount} Total Pilgrims ({application.adults} Adults, {application.children} Children, {application.infants} Infants)
             </div>
             <div className="text-slate-500 text-[11px] mt-0.5">
               Occupying {application.bedAndSeatCount} Confirmed Beds & Coach Seats

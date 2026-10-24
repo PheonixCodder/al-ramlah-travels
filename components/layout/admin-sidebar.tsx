@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   FileText,
@@ -159,6 +159,7 @@ export function AdminSidebar({
   ...props
 }: AdminSidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
 
   const handleSignOut = async () => {
     try {
@@ -166,7 +167,7 @@ export function AdminSidebar({
     } catch (err) {
       console.error("Sign out error:", err)
     }
-    window.location.href = "/admin/login"
+    router.push("/admin/login")
   }
 
   const isSuperAdmin = user?.role === "super_admin"
@@ -174,7 +175,7 @@ export function AdminSidebar({
   return (
     <Sidebar
       collapsible="icon"
-      className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+      className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground print:hidden"
       {...props}
     >
       {/* Sidebar Header: Brand Emblem & Portal Title */}

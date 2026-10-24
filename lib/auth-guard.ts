@@ -14,13 +14,13 @@ export async function getServerSession(): Promise<Session | null> {
 
 /**
  * Asserts that the incoming request has a valid, active administrative session (staff or super_admin).
- * Throws an Error if unauthorized.
+ * Throws an Error if unauthorized or forbidden.
  */
 export async function requireAdmin(): Promise<Session> {
   const session = await getServerSession()
 
   if (!session || !session.user) {
-    throw new Error("Unauthorized: Authentication required")
+    throw new Error("Unauthorized: Admin access required")
   }
 
   const user = session.user as Session["user"] & {
@@ -41,7 +41,7 @@ export async function requireAdmin(): Promise<Session> {
 
 /**
  * Asserts that the incoming request has a valid, active super_admin session.
- * Throws an Error if unauthorized.
+ * Throws an Error if unauthorized or forbidden.
  */
 export async function requireSuperAdmin(): Promise<Session> {
   const session = await requireAdmin()

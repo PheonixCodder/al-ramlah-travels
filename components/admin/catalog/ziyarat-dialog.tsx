@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,7 @@ export function ZiyaratDialog({
   defaultCity = "makkah",
   trigger,
 }: ZiyaratDialogProps) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -61,7 +63,7 @@ export function ZiyaratDialog({
     setError(null)
 
     try {
-      await upsertZiyaratPlace({
+      const res = await upsertZiyaratPlace({
         id: place?.id,
         city,
         name,
@@ -71,7 +73,12 @@ export function ZiyaratDialog({
         isActive,
         sortOrder,
       })
-      setOpen(false)
+      if (res.success) {
+        setOpen(false)
+        router.refresh()
+      } else {
+        setError("Failed to save Ziyarat place.")
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message)

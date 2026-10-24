@@ -2,6 +2,7 @@ import { z } from "zod"
 
 export const passengerCountsSchema = z.object({
   adults: z.number().int().min(1, "At least 1 adult is required"),
+  children: z.number().int().min(0).max(50).default(0),
   infants: z.number().int().min(0).default(0),
 })
 
@@ -64,8 +65,8 @@ export const customJourneyApplicationSchema = z.object({
     .optional(),
   entryAirport: z.enum(["JED", "MED"]).optional(),
   exitAirport: z.enum(["JED", "MED"]).optional(),
-  departureCityId: z.string().uuid().optional(),
-  preferredAirlineId: z.string().uuid().optional(),
+  departureCityId: z.string().uuid().optional().nullable().or(z.literal("")),
+  preferredAirlineId: z.string().uuid().optional().nullable().or(z.literal("")),
   flightRouteType: z.enum(["direct", "connecting"]).optional(),
   cabinClass: z.enum(["economy", "business"]).optional(),
 
@@ -120,7 +121,7 @@ export const customJourneyApplicationSchema = z.object({
     .optional(),
 
   ziyaratScope: z.enum(["makkah_only", "madinah_only", "both"]).optional(),
-  ziyaratVehicleId: z.string().uuid().optional(),
+  ziyaratVehicleId: z.string().uuid().optional().nullable().or(z.literal("")),
   selectedZiyaratPlaceIds: z.array(z.string().uuid()).optional(),
 })
 

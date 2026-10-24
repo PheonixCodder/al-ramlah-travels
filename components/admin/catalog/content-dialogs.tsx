@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ export function HeroSlideDialog({
   slide?: HeroSlideData
   trigger?: React.ReactNode
 }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -85,7 +87,7 @@ export function HeroSlideDialog({
     setError(null)
 
     try {
-      await upsertHeroSlide({
+      const res = await upsertHeroSlide({
         id: slide?.id,
         badge: badge || undefined,
         title,
@@ -98,7 +100,12 @@ export function HeroSlideDialog({
         isActive,
         sortOrder,
       })
-      setOpen(false)
+      if (res.success) {
+        setOpen(false)
+        router.refresh()
+      } else {
+        setError("Failed to save slide.")
+      }
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message)
       else setError("Failed to save slide.")
@@ -284,6 +291,7 @@ export function TestimonialDialog({
   testimonial?: TestimonialData
   trigger?: React.ReactNode
 }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -310,7 +318,7 @@ export function TestimonialDialog({
     setError(null)
 
     try {
-      await upsertTestimonial({
+      const res = await upsertTestimonial({
         id: testimonial?.id,
         pilgrimName,
         city,
@@ -322,7 +330,12 @@ export function TestimonialDialog({
         isActive,
         sortOrder,
       })
-      setOpen(false)
+      if (res.success) {
+        setOpen(false)
+        router.refresh()
+      } else {
+        setError("Failed to save testimonial.")
+      }
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message)
       else setError("Failed to save testimonial.")
@@ -507,6 +520,7 @@ export function FaqDialog({
   faq?: FaqData
   trigger?: React.ReactNode
 }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -525,7 +539,7 @@ export function FaqDialog({
     setError(null)
 
     try {
-      await upsertFaq({
+      const res = await upsertFaq({
         id: faq?.id,
         category,
         question,
@@ -533,7 +547,12 @@ export function FaqDialog({
         isActive,
         sortOrder,
       })
-      setOpen(false)
+      if (res.success) {
+        setOpen(false)
+        router.refresh()
+      } else {
+        setError("Failed to save FAQ.")
+      }
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message)
       else setError("Failed to save FAQ.")

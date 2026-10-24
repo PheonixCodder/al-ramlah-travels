@@ -17,16 +17,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { submitGroupBooking } from "@/app/actions/groups"
+import { submitGroupBooking } from "@/app/actions/applications"
 import {
-  Users,
-  Calendar,
   CheckCircle2,
   AlertCircle,
   Loader2,
   MessageCircle,
-  Clock,
-  Sparkles,
 } from "lucide-react"
 
 export interface BookingModalPackage {
@@ -76,12 +72,14 @@ interface GroupBookingModalProps {
   pkg: BookingModalPackage
   selectedBatchId?: string
   trigger?: React.ReactNode
+  agencyWhatsapp?: string
 }
 
 export function GroupBookingModal({
   pkg,
   selectedBatchId,
   trigger,
+  agencyWhatsapp = "+923001234567",
 }: GroupBookingModalProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -89,6 +87,7 @@ export function GroupBookingModal({
   const [successResult, setSuccessResult] = useState<{
     referenceNumber: string
     grandTotalPkr: number
+    whatsappUrl?: string
   } | null>(null)
 
   // Filter available batches
@@ -105,6 +104,7 @@ export function GroupBookingModal({
 
   // Passengers
   const [adults, setAdults] = useState<number>(2)
+  const [children, setChildren] = useState<number>(0)
   const [infants, setInfants] = useState<number>(0)
 
   // Contact
@@ -119,7 +119,8 @@ export function GroupBookingModal({
   const remainingSeats = activeBatch
     ? activeBatch.totalSeats - activeBatch.bookedSeats
     : 0
-  const partySeatCount = adults
+  const partySeatCount = adults + children
+  const totalPassports = adults + children + infants
   const isOverCapacity = partySeatCount > remainingSeats
 
   // Price calculation
@@ -161,7 +162,7 @@ export function GroupBookingModal({
         groupPackageId: pkg.id,
         groupDepartureId: batchId,
         selectedRoomType: roomType,
-        passengers: { adults, infants },
+        passengers: { adults, children, infants },
         contact: {
           customerName,
           customerPhone,
@@ -171,10 +172,11 @@ export function GroupBookingModal({
           specialRequests: specialRequests || undefined,
         },
       })
-      if (res.success) {
+      if (res.success && res.referenceNumber) {
         setSuccessResult({
           referenceNumber: res.referenceNumber,
-          grandTotalPkr: res.grandTotalPkr,
+          grandTotalPkr: res.grandTotalPkr ?? estimatedTotal,
+          whatsappUrl: res.whatsappUrl,
         })
       }
     } catch (err: unknown) {
@@ -242,9 +244,12 @@ export function GroupBookingModal({
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
               <a
-                href={`https://wa.me/923001234567?text=${encodeURIComponent(
-                  `Assalam-o-Alaikum, I just reserved group booking ${successResult.referenceNumber} for ${pkg.title}. Please guide me on payment and passport submission.`
-                )}`}
+                href={
+                  successResult.whatsappUrl ||
+                  `https://wa.me/${agencyWhatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
+                    `Assalam-o-Alaikum, I just reserved group booking ${successResult.referenceNumber} for ${pkg.title}. Please guide me on payment and passport submission.`
+                  )}`
+                }
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg bg-emerald-700 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-800"
@@ -412,9 +417,11 @@ export function GroupBookingModal({
               <div className="rounded-xl border border-border/80 bg-muted/20 p-3 space-y-2">
                 <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   <span>Passenger Demographics</span>
-                  <span>Seats: {partySeatCount}</span>
+                  <span>
+                    Seats: {partySeatCount} · Passports: {totalPassports}
+                  </span>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label htmlFor="gb-adults" className="text-xs">
                       Adults (12+ yrs)
@@ -425,8 +432,25 @@ export function GroupBookingModal({
                       min={1}
                       max={20}
                       value={adults}
-                      onChange={(e) => setAdults(Number(e.target.value))}
+                      onChange={(e) =>
+                        setAdults(Math.max(1, Number(e.target.value) || 1))
+                      }
                       required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="gb-children" className="text-xs">
+                      Children (2–11 yrs)
+                    </Label>
+                    <Input
+                      id="gb-children"
+                      type="number"
+                      min={0}
+                      max={20}
+                      value={children}
+                      onChange={(e) =>
+                        setChildren(Math.max(0, Number(e.target.value) || 0))
+                      }
                     />
                   </div>
                   <div className="space-y-1">
@@ -439,7 +463,9 @@ export function GroupBookingModal({
                       min={0}
                       max={5}
                       value={infants}
-                      onChange={(e) => setInfants(Number(e.target.value))}
+                      onChange={(e) =>
+                        setInfants(Math.max(0, Number(e.target.value) || 0))
+                      }
                     />
                   </div>
                 </div>

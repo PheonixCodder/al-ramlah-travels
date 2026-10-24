@@ -16,9 +16,7 @@ import {
   Compass,
   Sparkles,
   ArrowRight,
-  Info,
 } from "lucide-react"
-import { cn } from "cn"
 
 export function LiveSummaryCard() {
   const {
@@ -61,6 +59,7 @@ export function LiveSummaryCard() {
     includeZiyarat: pillars.ziyarat,
     passengers: {
       adults: travellers.adults,
+      children: travellers.children,
       infants: travellers.infants,
     },
     ksaArrivalDate: dates.arrivalDate,
@@ -92,8 +91,8 @@ export function LiveSummaryCard() {
     transportSegments: pillars.transport
       ? transport.segments
           .filter((s) => s.enabled !== false)
-          .map((s) => ({
-            segmentOrder: s.segmentOrder,
+          .map((s, idx) => ({
+            segmentOrder: idx + 1,
             sectorId: s.sectorId,
             serviceType: s.serviceType,
             vehicleId: s.vehicleId,
@@ -103,12 +102,14 @@ export function LiveSummaryCard() {
       : undefined,
     ziyaratScope: pillars.ziyarat ? ziyarat.scope : undefined,
     ziyaratVehicleId: pillars.ziyarat
-      ? pillars.transport && leadVehicle && leadVehicle.category !== "train"
-        ? leadVehicle.id
-        : ziyarat.fallbackVehicleId
+      ? (pillars.transport && leadVehicle && leadVehicle.category !== "train"
+          ? leadVehicle.id
+          : ziyarat.fallbackVehicleId) || undefined
       : undefined,
     selectedZiyaratPlaceIds: pillars.ziyarat
-      ? ziyarat.selectedPlaceIds
+      ? (ziyarat.selectedPlaceIds || []).filter((id) =>
+          Boolean(id && typeof id === "string" && id.trim())
+        )
       : undefined,
   }
 

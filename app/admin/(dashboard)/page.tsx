@@ -1,7 +1,6 @@
 import * as React from "react"
 import Link from "next/link"
-import { desc, asc, eq } from "drizzle-orm"
-import { Calendar, Filter } from "lucide-react"
+import { desc, asc } from "drizzle-orm"
 
 import { db } from "@/db"
 import * as schema from "@/db/schema"
@@ -12,6 +11,10 @@ import { DashboardCharts } from "@/components/admin/dashboard/dashboard-charts"
 import { RecentApplicationsTable } from "@/components/admin/dashboard/recent-applications-table"
 import { GroupOccupancyCard } from "@/components/admin/dashboard/group-occupancy-card"
 import { ExportCsvButton } from "@/components/admin/dashboard/export-csv-button"
+
+function getNowTimestamp(): number {
+  return Date.now()
+}
 
 interface AdminDashboardPageProps {
   searchParams: Promise<{
@@ -57,7 +60,7 @@ export default async function AdminDashboardPage({
   ])
 
   // Filter by time range if specified
-  const now = Date.now()
+  const now = getNowTimestamp()
   const filteredApps = applications.filter((app) => {
     if (range === "all") return true
     const createdTime = new Date(app.createdAt).getTime()
@@ -74,6 +77,8 @@ export default async function AdminDashboardPage({
   let paidRevenuePkr = 0
   let unpaidRevenuePkr = 0
   let quotedPipelinePkr = 0
+  let pendingPipelinePkr = 0
+  let quotedRevenuePkr = 0
   let customCount = 0
   let groupCount = 0
   let hajjCount = 0
@@ -129,9 +134,9 @@ export default async function AdminDashboardPage({
       if (now - createdTime > twentyFourHoursMs) {
         overdueSlaCount++
       }
-      quotedPipelinePkr += grandTotal
+      pendingPipelinePkr += grandTotal
     } else if (app.status === "quoted") {
-      quotedPipelinePkr += grandTotal
+      quotedRevenuePkr += grandTotal
     } else if (app.status === "approved") {
       approvedCount++
       approvedRevenuePkr += grandTotal
@@ -146,6 +151,8 @@ export default async function AdminDashboardPage({
       cancelledCount++
     }
   }
+
+  quotedPipelinePkr = pendingPipelinePkr + quotedRevenuePkr
 
   const totalDecidedCount = approvedCount + rejectedCount + cancelledCount
   const approvalRatePercent =
@@ -194,7 +201,7 @@ export default async function AdminDashboardPage({
 
   // Check group departure batch occupancy alert
   const nearFullBatch = groupDepartures.find(
-    (b) => b.bookedSeats / b.totalSeats >= 0.75
+    (b) => b.bookedSeats / b.totalSeats >= 0.8
   )
   if (nearFullBatch) {
     const pct = Math.round(
@@ -228,13 +235,13 @@ export default async function AdminDashboardPage({
     {
       name: "Pending",
       count: pendingActionCount,
-      pkrValue: Math.round(quotedPipelinePkr * 0.4),
+      pkrValue: pendingPipelinePkr,
       color: "#D97706",
     },
     {
       name: "Quoted",
       count: filteredApps.filter((a) => a.status === "quoted").length,
-      pkrValue: Math.round(quotedPipelinePkr * 0.6),
+      pkrValue: quotedRevenuePkr,
       color: "#0284C7",
     },
     {

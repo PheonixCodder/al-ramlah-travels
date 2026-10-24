@@ -16,13 +16,10 @@ import {
   Building2,
   Clock,
   Car,
-  Award,
-  Users,
   Compass,
   FileCheck,
   Star,
   ArrowRight,
-  Sparkles,
   CheckCircle2,
   MapPin,
 } from "lucide-react"

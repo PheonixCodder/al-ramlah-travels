@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,7 @@ interface AirlineDialogProps {
 }
 
 export function AirlineDialog({ airline, trigger }: AirlineDialogProps) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -57,7 +59,7 @@ export function AirlineDialog({ airline, trigger }: AirlineDialogProps) {
     setError(null)
 
     try {
-      await upsertAirline({
+      const res = await upsertAirline({
         id: airline?.id,
         name,
         iataCode: iataCode.toUpperCase(),
@@ -67,7 +69,12 @@ export function AirlineDialog({ airline, trigger }: AirlineDialogProps) {
         isActive,
         sortOrder,
       })
-      setOpen(false)
+      if (res.success) {
+        setOpen(false)
+        router.refresh()
+      } else {
+        setError("Failed to save airline.")
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message)

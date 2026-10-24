@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Dialog,
   DialogContent,
@@ -15,9 +16,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { upsertHotel } from "@/app/actions/catalog"
-import { Plus, Edit2, Loader2, Coins, Calendar, MapPin } from "lucide-react"
+import { Plus, Loader2, Coins, Calendar, MapPin } from "lucide-react"
 
 export interface HotelData {
   id?: string
@@ -52,6 +52,7 @@ interface HotelDialogProps {
 }
 
 export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -137,7 +138,7 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
       .filter(Boolean)
 
     try {
-      await upsertHotel({
+      const res = await upsertHotel({
         id: hotel?.id,
         name,
         city,
@@ -164,7 +165,12 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
         isActive,
         sortOrder,
       })
-      setOpen(false)
+      if (res.success) {
+        setOpen(false)
+        router.refresh()
+      } else {
+        setError("Failed to save hotel. Please check your inputs.")
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message)

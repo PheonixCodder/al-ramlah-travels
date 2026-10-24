@@ -37,6 +37,8 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 24 | Deep removal of children count, full width pilgrims bar, bottom travel window & explicit airport route copy | Slice 20 | done |
 | 25 | Makkah to Madinah to Jeddah route sequence | Slice 21 | done |
 | 26 | Deep removal of dining & meal plans across database, backend, admin & public UI | Slice 22 | done |
+| 27 | Restore children passenger count across database, domain, admin & public UI | Slice 23 | done |
+| 28 | Production deployment readiness, security hardening & full stack bug fixes | Slice 24 | done |
 
 ## Foundations
 
@@ -352,6 +354,27 @@ Completely remove all hotel dining and meal plan features across the PostgreSQL 
 code in `db/schema/`, `db/seed.ts`, `lib/domain/quote-hints.ts`, `lib/validations/`, `app/actions/`, `components/planner/`, `components/public/`, `components/admin/`, `app/admin/`
 - [x] Build it: `/develop deep removal of dining & meal plans across database, backend, admin & public UI`
 - [x] Verify it: `/check verify deep removal of dining & meal plans across database, backend, admin & public UI`
+
+## Slice 23: Restore children passenger count across database, domain, admin & public UI
+
+### 27. Restore children passenger count across database, domain, admin & public UI · done
+
+Restore the `Children` (`children` / `childrenCount`, ages 2 to 11 years) passenger counter across the Neon PostgreSQL `applications` schema, seed data, domain helpers, Zod validation contracts, Server Actions, Public Custom Journey Builder (`Pilgrims & Room Capacity` 3 column grid with `Adults`, `Children`, and `Infants`), Group Booking modal, Hajj Inquiry form, Status Tracker, Admin Applications Dossier, and Printable Voucher, where `bedAndSeatCount = adults + children` and `totalPassportCount = adults + children + infants`.
+**Done when:** `children` is restored in the Neon PostgreSQL `applications` table, Drizzle schema, seed data, validators, server actions, and all public and admin components, with `Adults + Children` counting toward hotel beds and vehicle seats and `Adults + Children + Infants` counting toward total passports.
+code in `db/schema/applications.ts`, `db/seed.ts`, `lib/validations/application.ts`, `app/actions/`, `components/planner/`, `components/public/`, `components/admin/`, `app/admin/`
+- [x] Build it: `/develop restore children passenger count across database, domain, admin & public UI`
+- [x] Verify it: `/check verify restore children passenger count across database, domain, admin & public UI`
+
+## Slice 24: Production deployment readiness, security hardening & full stack bug fixes
+
+### 28. Production deployment readiness, security hardening & full stack bug fixes · done · Beta
+
+Resolve all 31 issues identified in the independent deployment readiness code review (`docs/reviews/review-deployment-readiness.md`) across infrastructure, Next.js 16 configuration, authentication, Neon PostgreSQL schema constraints, domain calculators, Public Custom Journey Builder, and Admin Portal CRUD & Quoting CRM.
+**Done when:** all 31 issues in `docs/reviews/review-deployment-readiness.md` are fixed, `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build` pass with zero errors, and Docker / Nginx production artifacts (`Dockerfile`, `.dockerignore`, `.env.example`, `drizzle/` SQL migrations) are in place.
+code in `tsconfig.json`, `next.config.ts`, `lib/`, `db/`, `app/`, `components/`, `nginx/`
+- [x] Build it: `/develop production deployment readiness, security hardening & full stack bug fixes`
+- [x] Verify it: `/check verify production deployment readiness, security hardening & full stack bug fixes`
+- [x] Test it: `/test production deployment readiness, security hardening & full stack bug fixes`
 
 ## Deferred
 

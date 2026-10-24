@@ -3,9 +3,17 @@
 import * as React from "react"
 import { MessageCircle } from "lucide-react"
 
-export function WhatsAppFab() {
-  const whatsappUrl =
-    "https://wa.me/923001234567?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages."
+interface WhatsAppFabProps {
+  whatsappNumber?: string
+}
+
+export function WhatsAppFab({
+  whatsappNumber = "+923001234567",
+}: WhatsAppFabProps = {}) {
+  const normalizedWhatsapp = whatsappNumber
+    .replace(/\D/g, "")
+    .replace(/^03/, "923")
+  const whatsappUrl = `https://wa.me/${normalizedWhatsapp || "923001234567"}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
 
   return (
     <div className="group fixed right-6 bottom-6 z-50 flex items-center">

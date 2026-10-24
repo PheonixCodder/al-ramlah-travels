@@ -1,6 +1,6 @@
 import * as React from "react"
 import Link from "next/link"
-import { Boxes, Calendar, Users, ArrowRight } from "lucide-react"
+import { Boxes, Calendar, ArrowRight } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"

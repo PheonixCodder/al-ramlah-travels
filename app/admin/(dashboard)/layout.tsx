@@ -1,4 +1,5 @@
 import * as React from "react"
+import { redirect } from "next/navigation"
 import { eq, count, and, lt } from "drizzle-orm"
 import { db } from "@/db"
 import { applications, contactMessages, agencySettings } from "@/db/schema"
@@ -7,12 +8,21 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AdminSidebar } from "@/components/layout/admin-sidebar"
 import { AdminTopbar } from "@/components/layout/admin-topbar"
 
+function getSlaThreshold(slaHours: number): Date {
+  return new Date(Date.now() - slaHours * 3600 * 1000)
+}
+
 export default async function AdminDashboardLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const session = await requireAdmin()
+  let session: Awaited<ReturnType<typeof requireAdmin>>
+  try {
+    session = await requireAdmin()
+  } catch {
+    redirect("/admin/login?session_expired=1")
+  }
 
   let pendingQuoteCount = 0
   let overdueCount = 0
@@ -26,7 +36,7 @@ export default async function AdminDashboardLayout({
       .limit(1)
 
     const slaHours = settings?.slaOverdueHours ?? 24
-    const slaThreshold = new Date(Date.now() - slaHours * 3600 * 1000)
+    const slaThreshold = getSlaThreshold(slaHours)
 
     const [quotesRes, overdueRes, messagesRes] = await Promise.all([
       db
@@ -63,7 +73,7 @@ export default async function AdminDashboardLayout({
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background">
+      <div className="flex min-h-screen w-full bg-background print:block print:bg-white">
         <AdminSidebar
           user={user}
           pendingQuotesCount={pendingQuoteCount}
@@ -76,7 +86,7 @@ export default async function AdminDashboardLayout({
             overdueCount={overdueCount}
             unreadMessagesCount={unreadMessagesCount}
           />
-          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 print:p-0 print:bg-white">
             {children}
           </main>
         </SidebarInset>

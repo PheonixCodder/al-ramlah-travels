@@ -10,20 +10,16 @@ import {
   Building2,
   Car,
   Compass,
-  FileCheck,
   Star,
-  Clock,
-  Sparkles,
   MessageSquare,
-  AlertCircle,
   Package,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { StatusBadge, TabularPrice } from "@/components/layout/status-badge"
+import { StatusBadge } from "@/components/layout/status-badge"
 import { formatCitySequence } from "@/lib/domain"
+import { formatWhatsAppPhone } from "./quote-dispatch-bar"
 
 interface HotelStayItem {
   id: string
@@ -91,6 +87,7 @@ export interface ApplicationDossierProps {
     customerEmail?: string | null
     specialRequests?: string | null
     adults: number
+    children: number
     infants: number
     totalPassportCount: number
     bedAndSeatCount: number
@@ -158,8 +155,7 @@ export function ApplicationDossier({
   application,
   ziyaratPlaces = [],
 }: ApplicationDossierProps) {
-  const cleanPhone = application.customerPhone.replace(/\D/g, "")
-  const cleanWa = application.customerWhatsapp.replace(/\D/g, "")
+  const cleanWa = formatWhatsAppPhone(application.customerWhatsapp || application.customerPhone)
 
   return (
     <div className="flex flex-col gap-6">
@@ -352,11 +348,17 @@ export function ApplicationDossier({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-center text-xs">
+            <div className="grid grid-cols-3 gap-3 text-center text-xs">
               <div className="p-2.5 bg-secondary/30 rounded-md">
                 <span className="text-muted-foreground block">Adults (12+ yrs)</span>
                 <span className="font-bold text-foreground text-sm">
                   {application.adults}
+                </span>
+              </div>
+              <div className="p-2.5 bg-secondary/30 rounded-md">
+                <span className="text-muted-foreground block">Children (2–11 yrs)</span>
+                <span className="font-bold text-foreground text-sm">
+                  {application.children}
                 </span>
               </div>
               <div className="p-2.5 bg-secondary/30 rounded-md">
@@ -367,7 +369,7 @@ export function ApplicationDossier({
               </div>
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
-              * Note: Infants require individual visa and air ticket but occupy 0 hotel beds and 0 vehicle seats.
+              * Note: Adults &amp; Children count toward hotel beds and vehicle seats. Infants require individual visa and air ticket but occupy 0 hotel beds and 0 vehicle seats.
             </p>
           </div>
         </CardContent>

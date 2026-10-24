@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Dialog,
   DialogContent,
@@ -40,6 +41,7 @@ interface VehicleDialogProps {
 }
 
 export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -83,7 +85,7 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
     setError(null)
 
     try {
-      await upsertVehicle({
+      const res = await upsertVehicle({
         id: vehicle?.id,
         name,
         category,
@@ -98,7 +100,12 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
         isActive,
         sortOrder,
       })
-      setOpen(false)
+      if (res.success) {
+        setOpen(false)
+        router.refresh()
+      } else {
+        setError("Failed to save vehicle.")
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message)

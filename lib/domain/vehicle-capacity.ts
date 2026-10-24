@@ -24,7 +24,7 @@ export interface VehicleQuantityResult {
 }
 
 /**
- * Calculates the required quantity of vehicles for a given passenger count (Adults).
+ * Calculates the required quantity of vehicles for a given passenger count (Adults + Children).
  * Infants do not occupy vehicle seats. Suggests vehicle class upgrades when multiple smaller
  * vehicles would be needed for medium-sized groups. When allVehicles catalog is provided,
  * returns sorted recommended larger vehicles capable of accommodating the party in a single vehicle.
@@ -34,6 +34,15 @@ export function calculateVehicleQuantity(
   vehicle: VehicleCapacitySpec,
   allVehicles?: VehicleOption[]
 ): VehicleQuantityResult {
+  if (seatCount <= 0) {
+    return {
+      requiredQuantity: 0,
+      suggestUpgrade: false,
+      recommendedCategory: undefined,
+      ...(allVehicles ? { recommendedLargerVehicles: [] } : {}),
+    }
+  }
+
   if (vehicle.bookingMode === "shared_only") {
     return { requiredQuantity: seatCount, suggestUpgrade: false }
   }

@@ -50,20 +50,17 @@ export function HotelSelectionModule() {
     })
   }
 
-  if (!pillars.hotels) {
-    return null
-  }
-
   const { stays } = itinerary
   const activeStay = stays[activeStayIndex] ?? stays[0]
-  if (!activeStay) return null
 
-  const currentStarFilter =
-    starFilters[activeStay.stayOrder] ?? activeStay.starFilter ?? 0
+  const currentStarFilter = activeStay
+    ? (starFilters[activeStay.stayOrder] ?? activeStay.starFilter ?? 0)
+    : 0
 
-  const allCityHotels = catalog.hotels.filter(
-    (h) => h.city === activeStay.city
-  )
+  const allCityHotels = useMemo(() => {
+    if (!activeStay) return []
+    return catalog.hotels.filter((h) => h.city === activeStay.city)
+  }, [catalog.hotels, activeStay?.city])
 
   const starCounts = useMemo(() => {
     return {
@@ -79,13 +76,18 @@ export function HotelSelectionModule() {
   // Auto-reset starFilter to 0 if the selected star filter has 0 hotels in that city
   useEffect(() => {
     if (
+      activeStay &&
       currentStarFilter > 0 &&
       starCounts[currentStarFilter as keyof typeof starCounts] === 0
     ) {
       setStarFilters((prev) => ({ ...prev, [activeStay.stayOrder]: 0 }))
       updateStay(activeStay.stayOrder, { starFilter: 0 })
     }
-  }, [currentStarFilter, starCounts, activeStay.stayOrder, updateStay])
+  }, [currentStarFilter, starCounts, activeStay?.stayOrder, updateStay])
+
+  if (!pillars.hotels || !activeStay) {
+    return null
+  }
 
   // Filter hotels by city of active stay and optional star rating
   const cityHotels = allCityHotels.filter((h) => {

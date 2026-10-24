@@ -114,9 +114,10 @@ export const applications = pgTable(
 
     // Traveller Counts
     adults: integer("adults").notNull().default(1),
+    children: integer("children").notNull().default(0),
     infants: integer("infants").notNull().default(0),
-    totalPassportCount: integer("total_passport_count").notNull(), // Adults + Infants
-    bedAndSeatCount: integer("bed_and_seat_count").notNull(), // Adults only (Infants occupy 0 beds / 0 seats)
+    totalPassportCount: integer("total_passport_count").notNull(), // Adults + Children + Infants
+    bedAndSeatCount: integer("bed_and_seat_count").notNull(), // Adults + Children (Infants occupy 0 beds / 0 seats)
 
     // Selected Service Pillars
     includeVisa: boolean("include_visa").notNull().default(true),
@@ -164,7 +165,8 @@ export const applications = pgTable(
 
     // Administrative Pipeline Tracking
     assignedStaffUserId: text("assigned_staff_user_id").references(
-      () => user.id
+      () => user.id,
+      { onDelete: "set null" }
     ),
     lastContactedAt: timestamp("last_contacted_at", { withTimezone: true }),
     quoteSentAt: timestamp("quote_sent_at", { withTimezone: true }),
@@ -291,7 +293,9 @@ export const applicationQuotes = pgTable(
       .notNull()
       .default("unpaid"),
     amountPaidPkr: integer("amount_paid_pkr").notNull().default(0),
-    quotedByUserId: text("quoted_by_user_id").references(() => user.id),
+    quotedByUserId: text("quoted_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
     quotedAt: timestamp("quoted_at", { withTimezone: true }),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     validUntil: timestamp("valid_until", { withTimezone: true }),

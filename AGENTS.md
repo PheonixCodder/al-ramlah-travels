@@ -89,7 +89,7 @@ Living project scope lives in `docs/scope/scope.md`.
   - Visa duration tier (`short_term` $\le 30$ days vs `long_term` $> 30$ days) is auto-calculated on the server from KSA Arrival Date and KSA Departure Date; never expose a manual visa-tier selector to customers.
   - Only `Visa Only` mode displays an immediate fixed PKR total to the customer; whenever volatile services (`Flights`, `Hotels`, `Transport`, `Ziyarat`) are enabled, display the itemized Live Itinerary Summary Card (`"Live Rate — Confirmed upon submission"`) and pre-fill the calculated visa rate in the Admin Quote Worksheet.
   - Makkah has no airport; itineraries starting in Makkah lock Entry Airport to Jeddah (`JED`) with immediate ground transfer to Makkah.
-  - Hotel beds and vehicle seat capacities count `Adults` only; `Infants (<2 yrs)` require a visa and infant air ticket but take 0 hotel beds and 0 vehicle seats. Total passport count includes `Adults + Infants`.
+  - Hotel beds and vehicle seat capacities count `Adults + Children`; `Infants (<2 yrs)` require a visa and infant air ticket but take 0 hotel beds and 0 vehicle seats. Total passport count includes `Adults + Children + Infants`.
 
 ## Reference repositories (`services/`)
 

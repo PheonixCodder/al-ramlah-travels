@@ -38,6 +38,9 @@ const fontArabic = Amiri({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+  ),
   title: {
     default: "Al Ramlah Travels — Bespoke Umrah, Hajj & Haramain Journeys",
     template: "%s | Al Ramlah Travels",
@@ -55,8 +58,14 @@ export const metadata: Metadata = {
     "Custom Umrah Calculator",
   ],
   icons: {
-    icon: "/logo.jpg",
+    icon: "/favicon.ico",
     apple: "/logo.jpg",
+  },
+  openGraph: {
+    title: "Al Ramlah Travels — Bespoke Umrah, Hajj & Haramain Journeys",
+    description:
+      "Pakistan's premier luxury pilgrimage concierge. Ministry of Hajj & Umrah Licensed Operator (#4082) offering customized Umrah packages, transparent live rates, luxury hotels in Makkah and Madinah, and dedicated 24/7 on-ground pilgrim care.",
+    images: ["/logo.jpg"],
   },
 }
 

@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { HotelData, HotelDialog } from "./hotel-dialog"
 import { toggleHotelActive, deleteHotel } from "@/app/actions/catalog"
@@ -27,13 +28,18 @@ interface HotelsClientProps {
 }
 
 export function HotelsClient({ initialHotels }: HotelsClientProps) {
+  const router = useRouter()
   const [hotels, setHotels] = useState<HotelData[]>(initialHotels)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCity, setSelectedCity] = useState<"all" | "makkah" | "madinah">(
     "all"
   )
   const [selectedRating, setSelectedRating] = useState<string>("all")
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
+
+  useEffect(() => {
+    setHotels(initialHotels)
+  }, [initialHotels])
 
   // Filter logic
   const filteredHotels = hotels.filter((h) => {
@@ -68,11 +74,20 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
     }
     startTransition(async () => {
       const res = await deleteHotel(id)
+      if (res.softDeleted) {
+        setHotels((prev) =>
+          prev.map((h) => (h.id === id ? { ...h, isActive: false } : h))
+        )
+        router.refresh()
+        alert(res.error)
+        return
+      }
       if (!res.success) {
         alert(res.error)
         return
       }
       setHotels((prev) => prev.filter((h) => h.id !== id))
+      router.refresh()
     })
   }
 

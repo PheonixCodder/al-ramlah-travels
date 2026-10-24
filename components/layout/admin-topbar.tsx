@@ -97,7 +97,7 @@ export function AdminTopbar({
     const parts = user.name.trim().split(/\s+/)
     if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-  }, [user?.name])
+  }, [user])
 
   const displayName = user?.name || "Admin User"
   const displayEmail = user?.email || "admin@alramlahtravels.com"
@@ -110,7 +110,7 @@ export function AdminTopbar({
     } catch (err) {
       console.error("Sign out error:", err)
     }
-    window.location.href = "/admin/login"
+    router.push("/admin/login")
   }
 
   const handleQuickSearch = () => {
@@ -123,7 +123,7 @@ export function AdminTopbar({
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center justify-between border-b border-border bg-card px-4 sm:px-6">
+    <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center justify-between border-b border-border bg-card px-4 sm:px-6 print:hidden">
       {/* Left: Sidebar Trigger & Breadcrumb */}
       <div className="flex items-center gap-3">
         <SidebarTrigger />

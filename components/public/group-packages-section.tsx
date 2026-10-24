@@ -7,20 +7,15 @@ import {
   BookingModalPackage,
   GroupBookingModal,
 } from "./group-booking-modal"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
   Calendar,
   Plane,
   Building2,
   Clock,
-  Users,
   Footprints,
-  Utensils,
   Check,
   Sparkles,
-  ArrowRight,
-  ShieldCheck,
 } from "lucide-react"
 
 export interface PublicGroupPackageItem extends BookingModalPackage {
@@ -50,10 +45,12 @@ export interface PublicGroupPackageItem extends BookingModalPackage {
 
 interface GroupPackagesSectionProps {
   packages?: PublicGroupPackageItem[]
+  agencyWhatsapp?: string
 }
 
 export function GroupPackagesSection({
   packages = [],
+  agencyWhatsapp,
 }: GroupPackagesSectionProps) {
   const activePackages = packages
   const [selectedTier, setSelectedTier] = useState<string>("all")
@@ -519,6 +516,7 @@ export function GroupPackagesSection({
                   <GroupBookingModal
                     pkg={pkg}
                     selectedBatchId={primaryBatch?.id}
+                    agencyWhatsapp={agencyWhatsapp}
                   />
                 </div>
               </div>

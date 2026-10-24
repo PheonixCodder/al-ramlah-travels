@@ -2,24 +2,19 @@
 
 import * as React from "react"
 import { useState } from "react"
-import Image from "next/image"
-import { submitHajjInquiry } from "@/app/actions/groups"
+import { submitHajjInquiry } from "@/app/actions/applications"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import {
-  ShieldCheck,
   CheckCircle2,
   Tent,
   Building,
   Sparkles,
-  Phone,
   MessageCircle,
   Loader2,
-  Users,
-  Compass,
 } from "lucide-react"
 
 export interface HajjInquirySectionProps {
@@ -33,7 +28,10 @@ export function HajjInquirySection({
 }: HajjInquirySectionProps = {}) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [confirmedRef, setConfirmedRef] = useState<string | null>(null)
+  const [confirmedResult, setConfirmedResult] = useState<{
+    referenceNumber: string
+    whatsappUrl?: string
+  } | null>(null)
 
   // Form State
   const [hajjCategory, setHajjCategory] = useState<string>(
@@ -47,6 +45,7 @@ export function HajjInquirySection({
   )
   const [customerEmail, setCustomerEmail] = useState("")
   const [adults, setAdults] = useState<number>(2)
+  const [children, setChildren] = useState<number>(0)
   const [infants, setInfants] = useState<number>(0)
   const [notes, setNotes] = useState("")
 
@@ -65,7 +64,7 @@ export function HajjInquirySection({
     try {
       const res = await submitHajjInquiry({
         hajjConsultationType: hajjCategory,
-        passengers: { adults, infants },
+        passengers: { adults, children, infants },
         contact: {
           customerName,
           customerPhone,
@@ -76,8 +75,11 @@ export function HajjInquirySection({
         notes: notes || undefined,
       })
 
-      if (res.success) {
-        setConfirmedRef(res.referenceNumber)
+      if (res.success && res.referenceNumber) {
+        setConfirmedResult({
+          referenceNumber: res.referenceNumber,
+          whatsappUrl: res.whatsappUrl,
+        })
       }
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message)
@@ -223,7 +225,7 @@ export function HajjInquirySection({
 
         {/* Consultation Callback Form */}
         <div className="mx-auto max-w-3xl rounded-3xl border border-gold/30 bg-black/50 p-6 sm:p-10 backdrop-blur-xl shadow-2xl">
-          {confirmedRef ? (
+          {confirmedResult ? (
             <div className="space-y-6 py-6 text-center">
               <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-gold/20 text-gold border border-gold/40">
                 <CheckCircle2 className="size-8" />
@@ -243,7 +245,7 @@ export function HajjInquirySection({
                   Confidential Inquiry Reference
                 </span>
                 <div className="font-mono text-2xl font-extrabold text-white">
-                  {confirmedRef}
+                  {confirmedResult.referenceNumber}
                 </div>
               </div>
 
@@ -253,9 +255,12 @@ export function HajjInquirySection({
 
               <div className="pt-2 flex justify-center">
                 <a
-                  href={`https://wa.me/${agencyWhatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
-                    `Assalam-o-Alaikum, I submitted Hajj inquiry ${confirmedRef} for ${hajjCategory}. Please connect me with the Hajj Director.`
-                  )}`}
+                  href={
+                    confirmedResult.whatsappUrl ||
+                    `https://wa.me/${agencyWhatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
+                      `Assalam-o-Alaikum, I submitted Hajj inquiry ${confirmedResult.referenceNumber} for ${hajjCategory}. Please connect me with the Hajj Director.`
+                    )}`
+                  }
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rounded-xl bg-gold px-6 py-3 text-sm font-bold text-emerald-950 hover:bg-gold/90 shadow-lg"
@@ -365,21 +370,23 @@ export function HajjInquirySection({
                 </div>
               </div>
 
-              {/* Email & Travellers */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-                <div className="sm:col-span-2 space-y-1.5">
-                  <Label htmlFor="h-email" className="text-xs text-white/90">
-                    Email Address (Optional)
-                  </Label>
-                  <Input
-                    id="h-email"
-                    type="email"
-                    value={customerEmail}
-                    onChange={(e) => setCustomerEmail(e.target.value)}
-                    placeholder="tariq@example.com"
-                    className="border-white/20 bg-white/10 text-white placeholder:text-white/40 focus:border-gold"
-                  />
-                </div>
+              {/* Email */}
+              <div className="space-y-1.5">
+                <Label htmlFor="h-email" className="text-xs text-white/90">
+                  Email Address (Optional)
+                </Label>
+                <Input
+                  id="h-email"
+                  type="email"
+                  value={customerEmail}
+                  onChange={(e) => setCustomerEmail(e.target.value)}
+                  placeholder="tariq@example.com"
+                  className="border-white/20 bg-white/10 text-white placeholder:text-white/40 focus:border-gold"
+                />
+              </div>
+
+              {/* Travellers Grid: Adults, Children, Infants */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="h-adults" className="text-xs text-white/90">
                     Adults (12+)
@@ -392,6 +399,19 @@ export function HajjInquirySection({
                     onChange={(e) => setAdults(Number(e.target.value))}
                     className="border-white/20 bg-white/10 text-white focus:border-gold"
                     required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="h-children" className="text-xs text-white/90">
+                    Children (2–11 yrs)
+                  </Label>
+                  <Input
+                    id="h-children"
+                    type="number"
+                    min={0}
+                    value={children}
+                    onChange={(e) => setChildren(Number(e.target.value))}
+                    className="border-white/20 bg-white/10 text-white focus:border-gold"
                   />
                 </div>
                 <div className="space-y-1.5">

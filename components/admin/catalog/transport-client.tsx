@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { VehicleData, VehicleDialog } from "./vehicle-dialog"
 import { SectorData, SectorDialog } from "./sector-dialog"
@@ -40,7 +41,6 @@ import {
   Coins,
   Bus,
   Table,
-  Plus,
   Loader2,
 } from "lucide-react"
 
@@ -64,13 +64,26 @@ export function TransportClient({
   initialSectors,
   initialRates = [],
 }: TransportClientProps) {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<
     "vehicles" | "sectors" | "matrix"
   >("vehicles")
   const [vehicles, setVehicles] = useState<VehicleData[]>(initialVehicles)
   const [sectors, setSectors] = useState<SectorData[]>(initialSectors)
   const [rates, setRates] = useState<TransportRateData[]>(initialRates)
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
+
+  useEffect(() => {
+    setVehicles(initialVehicles)
+  }, [initialVehicles])
+
+  useEffect(() => {
+    setSectors(initialSectors)
+  }, [initialSectors])
+
+  useEffect(() => {
+    setRates(initialRates)
+  }, [initialRates])
 
   // Matrix cell edit modal state
   const [editingCell, setEditingCell] = useState<{
@@ -101,11 +114,20 @@ export function TransportClient({
     if (!window.confirm(`Delete vehicle "${name}"?`)) return
     startTransition(async () => {
       const res = await deleteVehicle(id)
+      if (res.softDeleted) {
+        setVehicles((prev) =>
+          prev.map((v) => (v.id === id ? { ...v, isActive: false } : v))
+        )
+        router.refresh()
+        alert(res.error)
+        return
+      }
       if (!res.success) {
         alert(res.error)
         return
       }
       setVehicles((prev) => prev.filter((v) => v.id !== id))
+      router.refresh()
     })
   }
 
@@ -125,11 +147,20 @@ export function TransportClient({
     if (!window.confirm(`Delete sector "${code}"?`)) return
     startTransition(async () => {
       const res = await deleteTransportSector(id)
+      if (res.softDeleted) {
+        setSectors((prev) =>
+          prev.map((s) => (s.id === id ? { ...s, isActive: false } : s))
+        )
+        router.refresh()
+        alert(res.error)
+        return
+      }
       if (!res.success) {
         alert(res.error)
         return
       }
       setSectors((prev) => prev.filter((s) => s.id !== id))
+      router.refresh()
     })
   }
 
@@ -177,6 +208,7 @@ export function TransportClient({
           return [...filtered, res.data as TransportRateData]
         })
         setEditingCell(null)
+        router.refresh()
       }
     } catch (err: unknown) {
       if (err instanceof Error) {

@@ -47,6 +47,16 @@ export interface QuoteDispatchBarProps {
   } | null
 }
 
+export function formatWhatsAppPhone(raw: string): string {
+  let cleaned = raw.replace(/\D/g, "")
+  if (cleaned.startsWith("0092")) {
+    cleaned = cleaned.slice(2)
+  } else if (cleaned.startsWith("03") && cleaned.length === 11) {
+    cleaned = `92${cleaned.slice(1)}`
+  }
+  return cleaned
+}
+
 export function QuoteDispatchBar({
   application,
   latestQuote,
@@ -138,7 +148,7 @@ export function QuoteDispatchBar({
     return `mailto:${application.customerEmail || ""}?subject=${subject}&body=${body}`
   }
 
-  const cleanWaNumber = application.customerWhatsapp.replace(/\D/g, "")
+  const cleanWaNumber = formatWhatsAppPhone(application.customerWhatsapp || application.customerPhone)
   const waUrl = `https://wa.me/${cleanWaNumber}?text=${constructWhatsAppMessage()}`
 
   return (

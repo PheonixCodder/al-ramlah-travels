@@ -9,19 +9,13 @@ import {
   Search,
   CheckCircle2,
   Clock,
-  Check,
   XCircle,
   AlertCircle,
-  ShieldCheck,
   Building,
   Car,
-  Compass,
   MessageCircle,
   ExternalLink,
   Loader2,
-  Calendar,
-  Users,
-  MapPin,
   Sparkles,
   Plane,
   Gift,
@@ -574,7 +568,7 @@ export function StatusTracker({ agencyWhatsapp: propWhatsapp }: StatusTrackerPro
                     <div className="flex items-center justify-between text-xs py-1 border-b border-[#E6DEC8]/40">
                       <span className="text-[#686E65]">Pilgrim Count:</span>
                       <span className="font-semibold text-[#1A1D1A]">
-                        {app.adults} Adults, {app.infants} Infants ({app.bedAndSeatCount} Beds/Seats)
+                        {app.adults} Adults, {app.children} Children, {app.infants} Infants ({app.bedAndSeatCount} Beds/Seats)
                       </span>
                     </div>
 

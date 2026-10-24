@@ -10,9 +10,6 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
-  PieChart,
-  Pie,
-  Legend,
 } from "recharts"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -97,6 +94,7 @@ export function DashboardCharts({
                   allowDecimals={false}
                 />
                 <Tooltip
+                  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
                   formatter={(value: any, name: any) => {
                     if (name === "pkrValue") {
                       return [
@@ -185,6 +183,7 @@ export function DashboardCharts({
                   width={75}
                 />
                 <Tooltip
+                  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
                   formatter={(val: any) => [`${val} Inquiries`, "Demand"]}
                   contentStyle={{
                     backgroundColor: "#FFFFFF",

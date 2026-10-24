@@ -15,9 +15,8 @@ import {
   type CustomJourneyApplicationInput,
   type GroupBookingInput,
   type HajjInquiryInput,
-  type StatusLookupInput,
 } from "@/lib/validations/application"
-import { and, desc, eq, ilike } from "drizzle-orm"
+import { eq, ilike } from "drizzle-orm"
 
 // ==========================================
 // REFERENCE NUMBER GENERATOR
@@ -50,7 +49,11 @@ export async function generateApplicationReference(): Promise<string> {
 }
 
 function cleanPhoneNumber(phone: string): string {
-  return phone.replace(/\D/g, "")
+  const digits = phone.replace(/\D/g, "")
+  if (digits.startsWith("03")) {
+    return `92${digits.slice(1)}`
+  }
+  return digits
 }
 
 function formatWhatsAppUrl(agencyPhone: string, message: string): string {
@@ -86,9 +89,11 @@ export async function submitCustomApplication(
 
     const data: CustomJourneyApplicationInput = parseResult.data
 
-    const totalPassportCount =
-      data.passengers.adults + data.passengers.infants
-    const bedAndSeatCount = data.passengers.adults
+    const adults = data.passengers.adults
+    const children = data.passengers.children ?? 0
+    const infants = data.passengers.infants ?? 0
+    const totalPassportCount = adults + children + infants
+    const bedAndSeatCount = adults + children
 
     // 1. Calculate Visa Tier & Cost if visa is included
     let totalKsaDays: number | null = null
@@ -178,8 +183,9 @@ export async function submitCustomApplication(
         customerCity: data.contact.customerCity,
         customerEmail: data.contact.customerEmail || null,
         specialRequests: data.contact.specialRequests || null,
-        adults: data.passengers.adults,
-        infants: data.passengers.infants,
+        adults,
+        children,
+        infants,
         totalPassportCount,
         bedAndSeatCount,
         includeVisa: data.includeVisa,
@@ -215,85 +221,101 @@ export async function submitCustomApplication(
       throw new Error("Failed to insert application record.")
     }
 
-    // Insert Hotel Stays if enabled
-    if (data.includeHotels && data.hotelStays && data.hotelStays.length > 0) {
-      const staysToInsert = data.hotelStays.map((stay) => {
-        return {
-          applicationId: newApp.id,
-          stayOrder: stay.stayOrder,
-          city: stay.city,
-          hotelId: stay.hotelId,
-          checkInDate:
-            stay.checkInDate ||
-            data.ksaArrivalDate ||
-            new Date().toISOString().split("T")[0]!,
-          checkOutDate:
-            stay.checkOutDate ||
-            data.ksaDepartureDate ||
-            new Date().toISOString().split("T")[0]!,
-          nights: stay.nights,
-          roomCategory: stay.roomCategory,
-          sharedRoomType: stay.sharedRoomType || null,
-          privateRoomAllocation: stay.privateRoomAllocation || {
-            double: 0,
-            triple: 0,
-            quad: 0,
-          },
-        }
+    try {
+      // Insert Hotel Stays if enabled
+      if (data.includeHotels && data.hotelStays && data.hotelStays.length > 0) {
+        const staysToInsert = data.hotelStays.map((stay) => {
+          return {
+            applicationId: newApp.id,
+            stayOrder: stay.stayOrder,
+            city: stay.city,
+            hotelId: stay.hotelId,
+            checkInDate:
+              stay.checkInDate ||
+              data.ksaArrivalDate ||
+              new Date().toISOString().split("T")[0]!,
+            checkOutDate:
+              stay.checkOutDate ||
+              data.ksaDepartureDate ||
+              new Date().toISOString().split("T")[0]!,
+            nights: stay.nights,
+            roomCategory: stay.roomCategory,
+            sharedRoomType: stay.sharedRoomType || null,
+            privateRoomAllocation: stay.privateRoomAllocation || {
+              double: 0,
+              triple: 0,
+              quad: 0,
+            },
+          }
+        })
+
+        await db.insert(schema.applicationHotelStays).values(staysToInsert)
+      }
+
+      // Insert Transport Segments if enabled
+      if (
+        data.includeTransport &&
+        data.transportSegments &&
+        data.transportSegments.length > 0
+      ) {
+        const allVehicles = await db.select().from(schema.vehicles)
+        const vehicleSeatMap = new Map(
+          allVehicles.map((v) => [v.id, v.seatCapacity])
+        )
+
+        const segmentsToInsert = data.transportSegments.map((segment) => {
+          const seatCap = vehicleSeatMap.get(segment.vehicleId) ?? 4
+          const quantity =
+            segment.serviceType === "private"
+              ? Math.max(1, Math.ceil(bedAndSeatCount / Math.max(1, seatCap)))
+              : 1
+
+          return {
+            applicationId: newApp.id,
+            segmentOrder: segment.segmentOrder,
+            sectorId: segment.sectorId,
+            serviceType: segment.serviceType,
+            vehicleId: segment.vehicleId,
+            vehicleQuantity: quantity,
+            scheduledDate: segment.scheduledDate || data.ksaArrivalDate || null,
+            pickupTime: segment.pickupTime || null,
+          }
+        })
+
+        await db
+          .insert(schema.applicationTransportSegments)
+          .values(segmentsToInsert)
+      }
+
+      // Create Initial Quote Record
+      await db.insert(schema.applicationQuotes).values({
+        applicationId: newApp.id,
+        version: 1,
+        visaTotalPkr: calculatedVisaTotalPkr || 0,
+        flightsTotalPkr: 0,
+        makkahHotelTotalPkr: 0,
+        madinahHotelTotalPkr: 0,
+        transportTotalPkr: 0,
+        ziyaratTotalPkr: 0,
+        discountPkr: 0,
+        grandTotalPkr: isVisaOnly ? calculatedVisaTotalPkr || 0 : 0,
+        paymentStatus: "unpaid",
       })
-
-      await db.insert(schema.applicationHotelStays).values(staysToInsert)
+    } catch (childErr) {
+      // Compensating rollback: delete parent application if child inserts fail
+      try {
+        await db
+          .delete(schema.applications)
+          .where(eq(schema.applications.id, newApp.id))
+      } catch (rollbackErr) {
+        console.error(
+          "Compensating rollback failed for application",
+          newApp.id,
+          rollbackErr
+        )
+      }
+      throw childErr
     }
-
-    // Insert Transport Segments if enabled
-    if (
-      data.includeTransport &&
-      data.transportSegments &&
-      data.transportSegments.length > 0
-    ) {
-      const allVehicles = await db.select().from(schema.vehicles)
-      const vehicleSeatMap = new Map(
-        allVehicles.map((v) => [v.id, v.seatCapacity])
-      )
-
-      const segmentsToInsert = data.transportSegments.map((segment) => {
-        const seatCap = vehicleSeatMap.get(segment.vehicleId) ?? 4
-        const quantity =
-          segment.serviceType === "private"
-            ? Math.max(1, Math.ceil(bedAndSeatCount / Math.max(1, seatCap)))
-            : 1
-
-        return {
-          applicationId: newApp.id,
-          segmentOrder: segment.segmentOrder,
-          sectorId: segment.sectorId,
-          serviceType: segment.serviceType,
-          vehicleId: segment.vehicleId,
-          vehicleQuantity: quantity,
-          scheduledDate: segment.scheduledDate || data.ksaArrivalDate || null,
-          pickupTime: segment.pickupTime || null,
-        }
-      })
-
-      await db
-        .insert(schema.applicationTransportSegments)
-        .values(segmentsToInsert)
-    }
-
-    // Create Initial Quote Record
-    await db.insert(schema.applicationQuotes).values({
-      applicationId: newApp.id,
-      version: 1,
-      visaTotalPkr: calculatedVisaTotalPkr || 0,
-      flightsTotalPkr: 0,
-      makkahHotelTotalPkr: 0,
-      madinahHotelTotalPkr: 0,
-      transportTotalPkr: 0,
-      ziyaratTotalPkr: 0,
-      discountPkr: 0,
-      grandTotalPkr: isVisaOnly ? calculatedVisaTotalPkr || 0 : 0,
-      paymentStatus: "unpaid",
-    })
 
     revalidatePath("/admin")
     revalidatePath("/admin/applications")
@@ -304,7 +326,7 @@ export async function submitCustomApplication(
     })
     const agencyWhatsapp = settings?.primaryWhatsapp ?? "+923008456789"
 
-    const whatsappMessage = `As-salamu alaykum Al Ramlah Travels,\n\nI have submitted a Custom Journey inquiry on your portal.\n*Reference Code:* ${referenceNumber}\n*Lead Pilgrim:* ${data.contact.customerName}\n*City:* ${data.contact.customerCity}\n*Travellers:* ${data.passengers.adults} Adults, ${data.passengers.infants} Infants\n*Selected Services:* ${[
+    const whatsappMessage = `As-salamu alaykum Al Ramlah Travels,\n\nI have submitted a Custom Journey inquiry on your portal.\n*Reference Code:* ${referenceNumber}\n*Lead Pilgrim:* ${data.contact.customerName}\n*City:* ${data.contact.customerCity}\n*Travellers:* ${adults} Adults, ${children} Children, ${infants} Infants\n*Selected Services:* ${[
       data.includeVisa ? "Visa" : null,
       data.includeFlights ? "Flights" : null,
       data.includeHotels ? "Hotels" : null,
@@ -345,6 +367,8 @@ export async function submitCustomApplication(
 export interface GroupBookingResult {
   success: boolean
   referenceNumber?: string
+  applicationId?: string
+  grandTotalPkr?: number
   whatsappUrl?: string
   error?: string
 }
@@ -363,9 +387,11 @@ export async function submitGroupBookingApplication(
 
     const data: GroupBookingInput = parseResult.data
 
-    const totalPassportCount =
-      data.passengers.adults + data.passengers.infants
-    const bedAndSeatCount = data.passengers.adults
+    const adults = data.passengers.adults
+    const children = data.passengers.children ?? 0
+    const infants = data.passengers.infants ?? 0
+    const totalPassportCount = adults + children + infants
+    const bedAndSeatCount = adults + children
 
     // Check departure availability
     const departure = await db.query.groupDepartures.findFirst({
@@ -374,6 +400,13 @@ export async function submitGroupBookingApplication(
 
     if (!departure) {
       return { success: false, error: "Selected departure batch not found." }
+    }
+
+    if (departure.status === "sold_out" || departure.status === "closed") {
+      return {
+        success: false,
+        error: "This departure batch is sold out or closed for new reservations.",
+      }
     }
 
     const availableSeats = departure.totalSeats - departure.bookedSeats
@@ -431,8 +464,9 @@ export async function submitGroupBookingApplication(
         customerCity: data.contact.customerCity,
         customerEmail: data.contact.customerEmail || null,
         specialRequests: data.contact.specialRequests || null,
-        adults: data.passengers.adults,
-        infants: data.passengers.infants,
+        adults,
+        children,
+        infants,
         totalPassportCount,
         bedAndSeatCount,
         includeVisa: true,
@@ -449,13 +483,33 @@ export async function submitGroupBookingApplication(
       throw new Error("Failed to insert group application.")
     }
 
-    await db.insert(schema.applicationQuotes).values({
-      applicationId: groupApp.id,
-      version: 1,
-      grandTotalPkr: packageTotalPkr,
-      quoteNotesCustomer: `${pkg.title} (${departure.batchCode}) - ${data.selectedRoomType.toUpperCase()} Room Sharing for ${bedAndSeatCount} passenger(s)${data.passengers.infants > 0 ? ` + ${data.passengers.infants} Infant(s)` : ""}.`,
-      paymentStatus: "unpaid",
-    })
+    try {
+      await db.insert(schema.applicationQuotes).values({
+        applicationId: groupApp.id,
+        version: 1,
+        visaTotalPkr: 0,
+        flightsTotalPkr: 0,
+        makkahHotelTotalPkr: 0,
+        madinahHotelTotalPkr: 0,
+        transportTotalPkr: 0,
+        ziyaratTotalPkr: 0,
+        discountPkr: 0,
+        grandTotalPkr: packageTotalPkr,
+        currency: "PKR",
+        quoteNotesCustomer: `${pkg.title} (${departure.batchCode}) - ${data.selectedRoomType.toUpperCase()} Room Sharing for ${bedAndSeatCount} passenger(s)${data.passengers.infants > 0 ? ` + ${data.passengers.infants} Infant(s)` : ""}.`,
+        internalNotesAdmin: `Online Group Booking submitted via public website. Batch code: ${departure.batchCode}. Room tier: ${data.selectedRoomType} @ PKR ${ratePerPersonPkr.toLocaleString()}/pax.${infantTotalPkr > 0 ? ` Infant charge: PKR ${infantTotalPkr.toLocaleString()}.` : ""}`,
+        paymentStatus: "unpaid",
+      })
+    } catch (quoteErr) {
+      try {
+        await db
+          .delete(schema.applications)
+          .where(eq(schema.applications.id, groupApp.id))
+      } catch (delErr) {
+        console.error("Compensating rollback failed for group application:", delErr)
+      }
+      throw quoteErr
+    }
 
     revalidatePath("/admin")
     revalidatePath("/admin/applications")
@@ -472,6 +526,8 @@ export async function submitGroupBookingApplication(
     return {
       success: true,
       referenceNumber,
+      applicationId: groupApp.id,
+      grandTotalPkr: packageTotalPkr,
       whatsappUrl,
     }
   } catch (err: unknown) {
@@ -486,6 +542,9 @@ export async function submitGroupBookingApplication(
   }
 }
 
+export const submitGroupPackageApplication = submitGroupBookingApplication
+export const submitGroupBooking = submitGroupBookingApplication
+
 // ==========================================
 // 3. SUBMIT HAJJ INQUIRY APPLICATION
 // ==========================================
@@ -493,6 +552,7 @@ export async function submitGroupBookingApplication(
 export interface HajjInquiryResult {
   success: boolean
   referenceNumber?: string
+  applicationId?: string
   whatsappUrl?: string
   error?: string
 }
@@ -510,9 +570,11 @@ export async function submitHajjInquiryApplication(
     }
 
     const data: HajjInquiryInput = parseResult.data
-    const totalPassportCount =
-      data.passengers.adults + data.passengers.infants
-    const bedAndSeatCount = data.passengers.adults
+    const adults = data.passengers.adults
+    const children = data.passengers.children ?? 0
+    const infants = data.passengers.infants ?? 0
+    const totalPassportCount = adults + children + infants
+    const bedAndSeatCount = adults + children
 
     const referenceNumber = await generateApplicationReference()
 
@@ -530,8 +592,9 @@ export async function submitHajjInquiryApplication(
         customerCity: data.contact.customerCity,
         customerEmail: data.contact.customerEmail || null,
         specialRequests: data.notes || null,
-        adults: data.passengers.adults,
-        infants: data.passengers.infants,
+        adults,
+        children,
+        infants,
         totalPassportCount,
         bedAndSeatCount,
         includeVisa: true,
@@ -546,13 +609,33 @@ export async function submitHajjInquiryApplication(
       throw new Error("Failed to insert Hajj application.")
     }
 
-    await db.insert(schema.applicationQuotes).values({
-      applicationId: hajjApp.id,
-      version: 1,
-      grandTotalPkr: 0,
-      quoteNotesCustomer: `Hajj Consultation Request: ${data.hajjConsultationType}`,
-      paymentStatus: "unpaid",
-    })
+    try {
+      await db.insert(schema.applicationQuotes).values({
+        applicationId: hajjApp.id,
+        version: 1,
+        visaTotalPkr: 0,
+        flightsTotalPkr: 0,
+        makkahHotelTotalPkr: 0,
+        madinahHotelTotalPkr: 0,
+        transportTotalPkr: 0,
+        ziyaratTotalPkr: 0,
+        discountPkr: 0,
+        grandTotalPkr: 0,
+        currency: "PKR",
+        quoteNotesCustomer: `Hajj Consultation Request: ${data.hajjConsultationType}`,
+        internalNotesAdmin: `VIP Hajj Inquiry submitted via public website. Category: ${data.hajjConsultationType}`,
+        paymentStatus: "unpaid",
+      })
+    } catch (quoteErr) {
+      try {
+        await db
+          .delete(schema.applications)
+          .where(eq(schema.applications.id, hajjApp.id))
+      } catch (delErr) {
+        console.error("Compensating rollback failed for Hajj application:", delErr)
+      }
+      throw quoteErr
+    }
 
     revalidatePath("/admin")
     revalidatePath("/admin/applications")
@@ -569,6 +652,7 @@ export async function submitHajjInquiryApplication(
     return {
       success: true,
       referenceNumber,
+      applicationId: hajjApp.id,
       whatsappUrl,
     }
   } catch (err: unknown) {
@@ -582,6 +666,9 @@ export async function submitHajjInquiryApplication(
     }
   }
 }
+
+export const submitHajjApplication = submitHajjInquiryApplication
+export const submitHajjInquiry = submitHajjInquiryApplication
 
 // ==========================================
 // 4. PUBLIC APPLICATION STATUS LOOKUP
@@ -607,6 +694,7 @@ export interface StatusLookupResult {
     exitAirport?: string | null
     calculatedVisaTotalPkr?: number | null
     adults: number
+    children: number
     infants: number
     totalPassportCount: number
     bedAndSeatCount: number
@@ -773,6 +861,7 @@ export async function lookupApplicationStatus(
         exitAirport: app.exitAirport,
         calculatedVisaTotalPkr: app.calculatedVisaTotalPkr,
         adults: app.adults,
+        children: app.children,
         infants: app.infants,
         totalPassportCount: app.totalPassportCount,
         bedAndSeatCount: app.bedAndSeatCount,
@@ -815,8 +904,8 @@ export async function lookupApplicationStatus(
               makkahNights: app.groupPackage.makkahNights,
               madinahNights: app.groupPackage.madinahNights,
               departureCityName:
-                (app.groupDeparture as any)?.departureCity?.name ?? null,
-              airlineName: (app.groupPackage as any)?.airline?.name ?? null,
+                app.groupDeparture?.departureCity?.cityName ?? null,
+              airlineName: app.groupPackage?.airline?.name ?? null,
               outboundFlightNumber:
                 app.groupDeparture?.outboundFlightNumber ?? null,
               returnFlightNumber:

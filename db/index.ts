@@ -4,7 +4,12 @@ import { drizzle } from "drizzle-orm/neon-http"
 import * as schema from "./schema"
 
 const connectionString =
-  process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL
+  process.env.DATABASE_URL_POOLED ||
+  process.env.DATABASE_URL ||
+  (process.env.SKIP_ENV_VALIDATION === "1" ||
+  process.env.NEXT_PHASE === "phase-production-build"
+    ? "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+    : "")
 
 if (!connectionString) {
   throw new Error(

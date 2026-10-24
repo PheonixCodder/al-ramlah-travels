@@ -6,8 +6,6 @@ import {
   Clock,
   CheckCircle2,
   Users,
-  AlertTriangle,
-  ArrowUpRight,
 } from "lucide-react"
 
 import { Card, CardContent } from "@/components/ui/card"

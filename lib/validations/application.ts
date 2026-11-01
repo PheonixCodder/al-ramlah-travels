@@ -96,6 +96,13 @@ export const customJourneyApplicationSchema = z.object({
             quad: z.number().int().min(0),
           })
           .optional(),
+        mealPlan: z
+          .enum(["room_only", "breakfast", "half_board", "full_board"])
+          .default("room_only")
+          .optional(),
+        includeBreakfast: z.boolean().default(false).optional(),
+        includeLunch: z.boolean().default(false).optional(),
+        includeDinner: z.boolean().default(false).optional(),
       })
     )
     .optional(),

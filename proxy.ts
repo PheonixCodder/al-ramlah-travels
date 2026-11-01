@@ -31,8 +31,9 @@ export function proxy(request: NextRequest) {
 
     if (!sessionCookie) {
       const loginUrl = new URL("/admin/login", request.url)
-      loginUrl.searchParams.set("callbackUrl", pathname)
-      loginUrl.searchParams.set("from", pathname)
+      if (pathname !== "/admin" && pathname !== "/admin/") {
+        loginUrl.searchParams.set("callbackUrl", pathname)
+      }
       return NextResponse.redirect(loginUrl)
     }
   }

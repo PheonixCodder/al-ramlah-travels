@@ -162,9 +162,9 @@ const DEFAULT_FAQS: FaqPreviewItem[] = [
   {
     id: "f-5",
     category: "hajj",
-    question: "How do I secure a VIP Mina tent for Hajj 1447H / 2026?",
+    question: "How do I reserve a package under the Hajj 2027 Package Guide?",
     answer:
-      "Hajj operations are governed strictly by the Saudi Nusuk platform and official Ministry quotas. We provide confidential executive consultations for VIP Majar Al-Kabsh gypsum tents and near-Jamarat building accommodations to guide your family through mandatory quota verification without unauthorized online checkouts.",
+      "Our Hajj 2027 Package Guide offers comprehensive Maktab A, Maktab B, and Maktab C arrangements across 10, 14, and 20/22 day durations. Simply select your preferred package, submit your inquiry, and our dedicated Hajj directors will guide you through passport verification, seat confirmation, and Nusuk clearance.",
   },
 ]
 
@@ -236,16 +236,16 @@ export function MarketingSections({
             </p>
           </div>
 
-          {/* Bento Item 3: Ministry License & Compliance */}
+          {/* Bento Item 3: Purpose & Excellence */}
           <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs space-y-4">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200">
               <ShieldCheck className="size-6" />
             </div>
             <h3 className="font-display text-xl font-bold text-foreground">
-              Ministry Licensed #4082
+              Purpose &amp; Excellence
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Authorized by both the Ministry of Religious Affairs (MORA) Pakistan and Saudi Arabia&apos;s Nusuk electronic system for rapid visa issuance.
+              Where Purpose Meets Excellence. Authorized visa processing with rapid Nusuk electronic clearance and dedicated on-ground pilgrim assistance.
             </p>
           </div>
 

@@ -3,12 +3,10 @@
 import * as React from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import {
   Lock,
   Mail,
-  ShieldCheck,
-  UserCheck,
   ArrowRight,
   Loader2,
   AlertCircle,
@@ -24,7 +22,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge"
 
 function AdminLoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const rawTarget = searchParams.get("callbackUrl") || searchParams.get("from") || "/admin"
   const callbackUrl =
@@ -58,8 +55,8 @@ function AdminLoginForm() {
         return
       }
 
-      router.push(callbackUrl)
-      router.refresh()
+      // Use full navigation so the newly set session cookie is immediately read by proxy.ts
+      window.location.assign(callbackUrl)
     } catch (err: unknown) {
       const msg =
         err instanceof Error
@@ -68,12 +65,6 @@ function AdminLoginForm() {
       setErrorMessage(msg)
       setIsLoading(false)
     }
-  }
-
-  const fillCredentials = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail)
-    setPassword(demoPass)
-    setErrorMessage(null)
   }
 
   return (
@@ -215,60 +206,6 @@ function AdminLoginForm() {
                 )}
               </Button>
             </form>
-
-            {/* One-Click Demo Credentials Quick Fill — Development Environment Only */}
-            {process.env.NODE_ENV === "development" && (
-              <div className="pt-2">
-                <div className="relative flex items-center justify-center py-2">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-border" />
-                  </div>
-                  <span className="relative bg-card px-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-                    One-Click Demo Access
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      fillCredentials("admin@alramlahtravels.com", "Admin@123456")
-                    }
-                    className="flex flex-col items-start rounded-lg border border-gold/40 bg-gold/5 p-2.5 text-left transition-colors hover:border-gold hover:bg-gold/10"
-                  >
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                      <ShieldCheck className="size-3.5 text-gold" />
-                      <span>Super Admin</span>
-                    </div>
-                    <span className="mt-0.5 font-mono text-[11px] text-muted-foreground truncate w-full">
-                      admin@alramlahtravels.com
-                    </span>
-                    <span className="mt-0.5 text-[10px] text-gold-foreground/70">
-                      Full Executive Access
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      fillCredentials("staff@alramlahtravels.com", "Staff@123456")
-                    }
-                    className="flex flex-col items-start rounded-lg border border-primary/20 bg-primary/5 p-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/10"
-                  >
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                      <UserCheck className="size-3.5 text-primary" />
-                      <span>Quoting Staff</span>
-                    </div>
-                    <span className="mt-0.5 font-mono text-[11px] text-muted-foreground truncate w-full">
-                      staff@alramlahtravels.com
-                    </span>
-                    <span className="mt-0.5 text-[10px] text-muted-foreground">
-                      Worksheet & CRM
-                    </span>
-                  </button>
-                </div>
-              </div>
-            )}
           </CardContent>
 
           <CardFooter className="flex flex-col items-center justify-center border-t border-border pt-4 pb-4">

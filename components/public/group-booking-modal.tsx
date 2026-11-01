@@ -79,7 +79,7 @@ export function GroupBookingModal({
   pkg,
   selectedBatchId,
   trigger,
-  agencyWhatsapp = "+923001234567",
+  agencyWhatsapp = "03274029701",
 }: GroupBookingModalProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -511,7 +511,7 @@ export function GroupBookingModal({
                     id="gb-phone"
                     value={customerPhone}
                     onChange={(e) => syncPhoneToWhatsapp(e.target.value)}
-                    placeholder="+92 300 1234567"
+                    placeholder="0327 4029701"
                     required
                   />
                 </div>
@@ -521,7 +521,7 @@ export function GroupBookingModal({
                     id="gb-wa"
                     value={customerWhatsapp}
                     onChange={(e) => setCustomerWhatsapp(e.target.value)}
-                    placeholder="+92 300 1234567"
+                    placeholder="0327 4029701"
                     required
                   />
                 </div>

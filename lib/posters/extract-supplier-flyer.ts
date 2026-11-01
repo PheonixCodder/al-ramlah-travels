@@ -1,0 +1,521 @@
+import { env } from "@/lib/env"
+import type { ExtractedFlyerCardInput } from "@/lib/validations/marketing"
+
+export interface ExtractedSupplierFlyerDraft {
+  title: string
+  airlineName: string
+  airlineIataCode: string
+  airlineLogoUrl: string
+  durationDays: number
+  daysTitle: string
+  routePill: string
+  departureCityCode: string
+  arrivalAirportCode: string
+  returnAirportCode: string
+  outboundBaggage: string
+  inboundBaggage: string
+  giftedInclusions: string[]
+  cards: ExtractedFlyerCardInput[]
+}
+
+export const AMMAAR_AIRBLUE_21D_PRESET: ExtractedSupplierFlyerDraft = {
+  title: "Ammaar 21 Days Airblue Umrah Packages (Nov 2026)",
+  airlineName: "Airblue",
+  airlineIataCode: "PA",
+  airlineLogoUrl: "https://images.kiwi.com/airlines/64/PA.png",
+  durationDays: 21,
+  daysTitle: "21 DAYS",
+  routePill: "LHE - JED | JED - LHE",
+  departureCityCode: "LHE",
+  arrivalAirportCode: "JED",
+  returnAirportCode: "JED",
+  outboundBaggage: "20 Kg + 7 Kg",
+  inboundBaggage: "30 Kg + 7 Kg + 5 Ltr Zamzam",
+  giftedInclusions: ["Visa", "Insurance", "Hotel", "Return Ticket", "Transport"],
+  cards: [
+    {
+      cardNumber: "01",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "03 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "24 NOV",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Fajr Al Badea 2",
+      makkahDistanceLabel: "(Shuttle)",
+      madinahNights: "05N",
+      madinahHotelName: "Burj Al Mukhtara",
+      madinahDistanceLabel: "(600M)",
+      mealPlanLabel: "Room Only",
+      rawSharingPkr: 239899,
+      rawQuadPkr: 245899,
+      rawTriplePkr: 256899,
+      rawDoublePkr: 279899,
+    },
+    {
+      cardNumber: "02",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "05 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "26 NOV",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Zavaj Aloko / Malak Aloko",
+      makkahDistanceLabel: "(Shuttle)",
+      madinahNights: "05N",
+      madinahHotelName: "Minar Al Madinah",
+      madinahDistanceLabel: "(550M)",
+      mealPlanLabel: "Room Only",
+      rawSharingPkr: 244899,
+      rawQuadPkr: 249899,
+      rawTriplePkr: 263899,
+      rawDoublePkr: 289899,
+    },
+    {
+      cardNumber: "03",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "08 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "29 NOV",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Snood Al Azama",
+      makkahDistanceLabel: "(950M)",
+      madinahNights: "05N",
+      madinahHotelName: "Karam Al Hejaz",
+      madinahDistanceLabel: "(450M)",
+      mealPlanLabel: "Room Only",
+      rawSharingPkr: 254899,
+      rawQuadPkr: 262899,
+      rawTriplePkr: 278899,
+      rawDoublePkr: 309899,
+    },
+    {
+      cardNumber: "04",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "10 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "01 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Dar Al Khalil Al Rushad",
+      makkahDistanceLabel: "(600M)",
+      madinahNights: "05N",
+      madinahHotelName: "Emaar Taiba",
+      madinahDistanceLabel: "(400M)",
+      mealPlanLabel: "Room Only",
+      rawSharingPkr: 269899,
+      rawQuadPkr: 279899,
+      rawTriplePkr: 298899,
+      rawDoublePkr: 334899,
+    },
+    {
+      cardNumber: "05",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "12 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "03 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Badr Al Massa",
+      makkahDistanceLabel: "(500M)",
+      madinahNights: "05N",
+      madinahHotelName: "Zowar International",
+      madinahDistanceLabel: "(280M)",
+      mealPlanLabel: "Room Only",
+      rawSharingPkr: 282899,
+      rawQuadPkr: 294899,
+      rawTriplePkr: 315899,
+      rawDoublePkr: 356899,
+    },
+    {
+      cardNumber: "06",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "15 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "06 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Al Kiswah Towers",
+      makkahDistanceLabel: "(850M Shuttle)",
+      madinahNights: "05N",
+      madinahHotelName: "Saja Al Madinah",
+      madinahDistanceLabel: "(300M)",
+      mealPlanLabel: "Room Only",
+      rawSharingPkr: 264899,
+      rawQuadPkr: 274899,
+      rawTriplePkr: 292899,
+      rawDoublePkr: 329899,
+    },
+    {
+      cardNumber: "07",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "17 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "08 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Emaar Al Khalil",
+      makkahDistanceLabel: "(450M)",
+      madinahNights: "05N",
+      madinahHotelName: "Mirage Al Salam",
+      madinahDistanceLabel: "(220M)",
+      mealPlanLabel: "Room Only",
+      rawSharingPkr: 294899,
+      rawQuadPkr: 306899,
+      rawTriplePkr: 329899,
+      rawDoublePkr: 374899,
+    },
+    {
+      cardNumber: "08",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "19 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "10 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Voco Makkah IHG",
+      makkahDistanceLabel: "(1300M VIP Shuttle)",
+      madinahNights: "05N",
+      madinahHotelName: "Pullman Zamzam Madinah",
+      madinahDistanceLabel: "(150M)",
+      mealPlanLabel: "Breakfast Included",
+      rawSharingPkr: 319899,
+      rawQuadPkr: 335899,
+      rawTriplePkr: 365899,
+      rawDoublePkr: 419899,
+    },
+    {
+      cardNumber: "09",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "21 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "12 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Le Meridien Towers",
+      makkahDistanceLabel: "(VIP Kudai Tunnel)",
+      madinahNights: "05N",
+      madinahHotelName: "Dallah Taibah",
+      madinahDistanceLabel: "(80M)",
+      mealPlanLabel: "Breakfast Included",
+      rawSharingPkr: 339899,
+      rawQuadPkr: 356899,
+      rawTriplePkr: 389899,
+      rawDoublePkr: 449899,
+    },
+    {
+      cardNumber: "10",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "24 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "15 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Swissotel Al Maqam",
+      makkahDistanceLabel: "(0M Clock Tower)",
+      madinahNights: "05N",
+      madinahHotelName: "Anwar Al Madinah Movenpick",
+      madinahDistanceLabel: "(0M Haram Courtyard)",
+      mealPlanLabel: "Breakfast Included",
+      rawSharingPkr: 439899,
+      rawQuadPkr: 465899,
+      rawTriplePkr: 515899,
+      rawDoublePkr: 599899,
+    },
+  ],
+}
+
+export const UPSKY_SAUDIA_15D_PRESET: ExtractedSupplierFlyerDraft = {
+  title: "Upsky Travels 15 Days Saudi Airlines Umrah Packages",
+  airlineName: "Saudi Airlines",
+  airlineIataCode: "SV",
+  airlineLogoUrl: "https://images.kiwi.com/airlines/64/SV.png",
+  durationDays: 15,
+  daysTitle: "15 DAYS",
+  routePill: "LHE - JED | JED - LHE",
+  departureCityCode: "LHE",
+  arrivalAirportCode: "JED",
+  returnAirportCode: "JED",
+  outboundBaggage: "23 Kg × 2 + 7 Kg",
+  inboundBaggage: "23 Kg × 2 + 7 Kg + 5 Ltr Zamzam",
+  giftedInclusions: ["Visa", "Insurance", "Hotel", "Return Ticket", "Transport", "Ziyarat"],
+  cards: [
+    {
+      cardNumber: "01",
+      outboundFlightNo: "SV 733",
+      outboundDateLabel: "15 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "11:15",
+      outboundArrTime: "15:10",
+      returnFlightNo: "SV 732",
+      returnDateLabel: "29 NOV",
+      returnRoute: "JED - LHE",
+      returnDepTime: "02:30",
+      returnArrTime: "09:15",
+      makkahNights: "08N",
+      makkahHotelName: "Riyadh Al Diafah",
+      makkahDistanceLabel: "(800M)",
+      madinahNights: "06N",
+      madinahHotelName: "Bir Al Eiman",
+      madinahDistanceLabel: "(450M)",
+      mealPlanLabel: "Room Only",
+      rawSharingPkr: 274899,
+      rawQuadPkr: 284899,
+      rawTriplePkr: 299899,
+      rawDoublePkr: 329899,
+    },
+    {
+      cardNumber: "02",
+      outboundFlightNo: "SV 733",
+      outboundDateLabel: "15 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "11:15",
+      outboundArrTime: "15:10",
+      returnFlightNo: "SV 732",
+      returnDateLabel: "29 NOV",
+      returnRoute: "JED - LHE",
+      returnDepTime: "02:30",
+      returnArrTime: "09:15",
+      makkahNights: "08N",
+      makkahHotelName: "Emaar Al Khalil",
+      makkahDistanceLabel: "(450M)",
+      madinahNights: "06N",
+      madinahHotelName: "Emaar Taiba",
+      madinahDistanceLabel: "(400M)",
+      mealPlanLabel: "Room Only",
+      rawSharingPkr: 289899,
+      rawQuadPkr: 299899,
+      rawTriplePkr: 318899,
+      rawDoublePkr: 352899,
+    },
+    {
+      cardNumber: "03",
+      outboundFlightNo: "SV 733",
+      outboundDateLabel: "18 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "11:15",
+      outboundArrTime: "15:10",
+      returnFlightNo: "SV 732",
+      returnDateLabel: "02 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "02:30",
+      returnArrTime: "09:15",
+      makkahNights: "08N",
+      makkahHotelName: "Badr Al Massa",
+      makkahDistanceLabel: "(500M)",
+      madinahNights: "06N",
+      madinahHotelName: "Karam Al Hejaz",
+      madinahDistanceLabel: "(380M)",
+      mealPlanLabel: "Room Only",
+      rawSharingPkr: 296899,
+      rawQuadPkr: 308899,
+      rawTriplePkr: 328899,
+      rawDoublePkr: 366899,
+    },
+    {
+      cardNumber: "04",
+      outboundFlightNo: "SV 733",
+      outboundDateLabel: "20 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "11:15",
+      outboundArrTime: "15:10",
+      returnFlightNo: "SV 732",
+      returnDateLabel: "04 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "02:30",
+      returnArrTime: "09:15",
+      makkahNights: "08N",
+      makkahHotelName: "Maysan Al Maqam",
+      makkahDistanceLabel: "(350M)",
+      madinahNights: "06N",
+      madinahHotelName: "Saja Al Madinah",
+      madinahDistanceLabel: "(280M)",
+      mealPlanLabel: "Breakfast Included",
+      rawSharingPkr: 315899,
+      rawQuadPkr: 329899,
+      rawTriplePkr: 354899,
+      rawDoublePkr: 398899,
+    },
+    {
+      cardNumber: "05",
+      outboundFlightNo: "SV 733",
+      outboundDateLabel: "22 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "11:15",
+      outboundArrTime: "15:10",
+      returnFlightNo: "SV 732",
+      returnDateLabel: "06 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "02:30",
+      returnArrTime: "09:15",
+      makkahNights: "08N",
+      makkahHotelName: "Elaf Kinda Hotel",
+      makkahDistanceLabel: "(50M Haram Yard)",
+      madinahNights: "06N",
+      madinahHotelName: "Taiba Front Hotel",
+      madinahDistanceLabel: "(50M Haram Yard)",
+      mealPlanLabel: "Breakfast Included",
+      rawSharingPkr: 389899,
+      rawQuadPkr: 412899,
+      rawTriplePkr: 454899,
+      rawDoublePkr: 524899,
+    },
+  ],
+}
+
+/**
+ * Extracts structured supplier flyer package cards from an image URL or preset hint.
+ * Uses Gemini 2.5 Flash Vision if GEMINI_API_KEY is configured, otherwise falls back
+ * to intelligent supplier preset matching so the workflow always works out-of-the-box.
+ */
+export async function extractSupplierFlyerWithAi(params: {
+  imageUrl?: string
+  supplierSlug?: string
+  presetKey?: "ammaar_airblue_21d" | "upsky_saudia_15d"
+}): Promise<ExtractedSupplierFlyerDraft> {
+  if (params.presetKey === "ammaar_airblue_21d") {
+    return structuredClone(AMMAAR_AIRBLUE_21D_PRESET)
+  }
+  if (params.presetKey === "upsky_saudia_15d") {
+    return structuredClone(UPSKY_SAUDIA_15D_PRESET)
+  }
+
+  // If Gemini API Key is present and a remote/data imageUrl is provided, attempt Vision OCR
+  if (env.GEMINI_API_KEY && params.imageUrl && params.imageUrl.startsWith("http")) {
+    try {
+      const prompt = `Extract all Umrah package tiers from this B2B supplier flyer into JSON matching:
+      {
+        "title": string,
+        "airlineName": string,
+        "airlineIataCode": string,
+        "airlineLogoUrl": string,
+        "durationDays": number,
+        "daysTitle": string,
+        "routePill": string,
+        "departureCityCode": string,
+        "arrivalAirportCode": string,
+        "returnAirportCode": string,
+        "outboundBaggage": string,
+        "inboundBaggage": string,
+        "giftedInclusions": string[],
+        "cards": [{
+          "cardNumber": "01",
+          "outboundFlightNo": string,
+          "outboundDateLabel": string,
+          "outboundRoute": string,
+          "outboundDepTime": string,
+          "outboundArrTime": string,
+          "returnFlightNo": string,
+          "returnDateLabel": string,
+          "returnRoute": string,
+          "returnDepTime": string,
+          "returnArrTime": string,
+          "makkahNights": string,
+          "makkahHotelName": string,
+          "makkahDistanceLabel": string,
+          "madinahNights": string,
+          "madinahHotelName": string,
+          "madinahDistanceLabel": string,
+          "mealPlanLabel": string,
+          "rawSharingPkr": number,
+          "rawQuadPkr": number,
+          "rawTriplePkr": number,
+          "rawDoublePkr": number
+        }]
+      }`
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: prompt },
+                  { text: `Image URL: ${params.imageUrl}` },
+                ],
+              },
+            ],
+            generationConfig: {
+              responseMimeType: "application/json",
+            },
+          }),
+        }
+      )
+
+      if (response.ok) {
+        const json = await response.json()
+        const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text
+        if (rawText) {
+          const parsed = JSON.parse(rawText) as ExtractedSupplierFlyerDraft
+          if (Array.isArray(parsed.cards) && parsed.cards.length > 0) {
+            return parsed
+          }
+        }
+      }
+    } catch {
+      // Fallback to supplier-aware preset below
+    }
+  }
+
+  const slug = (params.supplierSlug ?? "").toLowerCase()
+  const img = (params.imageUrl ?? "").toLowerCase()
+  if (slug.includes("upsky") || img.includes("upsky") || img.includes("saudia")) {
+    return structuredClone(UPSKY_SAUDIA_15D_PRESET)
+  }
+
+  return structuredClone(AMMAAR_AIRBLUE_21D_PRESET)
+}

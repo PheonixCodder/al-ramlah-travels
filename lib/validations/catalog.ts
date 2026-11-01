@@ -56,6 +56,14 @@ export const hotelSchema = z.object({
   availableRoomTypes: z
     .array(z.enum(["double", "triple", "quad"]))
     .default(["double", "triple", "quad"]),
+  offersDining: z.boolean().default(true),
+  availableMealPlans: z
+    .array(z.enum(["room_only", "breakfast", "half_board", "full_board"]))
+    .default(["room_only", "breakfast", "half_board", "full_board"]),
+  breakfastPriceSarPerPax: z.number().int().min(0).default(25),
+  lunchPriceSarPerPax: z.number().int().min(0).default(35),
+  dinnerPriceSarPerPax: z.number().int().min(0).default(35),
+  fullBoardPriceSarPerPax: z.number().int().min(0).default(85),
   sharingPriceSar: z.number().int().min(0).default(0),
   roomPriceSar: z.number().int().min(0).default(0),
   quadPriceSar: z.number().int().min(0).default(0),
@@ -133,17 +141,19 @@ export const ziyaratPlaceSchema = z.object({
 
 export const agencySettingsSchema = z.object({
   agencyName: z.string().min(1).default("Al Ramlah Travels"),
-  tagline: z.string().min(1).default("Haramain Pilgrimage Specialists"),
-  primaryWhatsapp: z.string().min(7).default("+92 300 1234567"),
-  secondaryPhone: z.string().optional().nullable(),
-  supportEmail: z.string().email().default("info@alramlahtravels.com"),
+  tagline: z.string().min(1).default("Where Purpose Meets Excellence"),
+  primaryWhatsapp: z.string().min(7).default("03274029701"),
+  secondaryPhone: z.string().optional().nullable().default("03190462638"),
+  supportEmail: z.string().email().default("alramlahtravels@gmail.com"),
   officeAddress: z
     .string()
     .min(1)
     .default(
-      "Office #12, Ground Floor, Executive Heights, Blue Area, Islamabad"
+      "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt"
     ),
-  mapsEmbedUrl: z.string().optional().nullable(),
+  mapsEmbedUrl: z.string().optional().nullable().default(
+    "https://maps.google.com/?q=Sector+C+Askari+10+Airport+Road+Lahore+Cantt"
+  ),
   facebookUrl: z.string().optional().nullable(),
   instagramUrl: z.string().optional().nullable(),
   youtubeUrl: z.string().optional().nullable(),
@@ -151,7 +161,7 @@ export const agencySettingsSchema = z.object({
   workingHours: z
     .string()
     .min(1)
-    .default("Monday - Saturday: 9:00 AM - 8:00 PM PKT"),
+    .default("Monday to Saturday: 9:00 AM to 8:00 PM PKT"),
   slaOverdueHours: z.number().int().min(1).default(24),
   sarToPkrRate: z.number().int().min(1).default(75),
 })

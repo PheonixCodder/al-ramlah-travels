@@ -246,6 +246,10 @@ export async function submitCustomApplication(
               triple: 0,
               quad: 0,
             },
+            mealPlan: stay.mealPlan ?? "room_only",
+            includeBreakfast: stay.includeBreakfast ?? false,
+            includeLunch: stay.includeLunch ?? false,
+            includeDinner: stay.includeDinner ?? false,
           }
         })
 
@@ -324,7 +328,7 @@ export async function submitCustomApplication(
     const settings = await db.query.agencySettings.findFirst({
       where: eq(schema.agencySettings.id, "default"),
     })
-    const agencyWhatsapp = settings?.primaryWhatsapp ?? "+923008456789"
+    const agencyWhatsapp = settings?.primaryWhatsapp ?? "03274029701"
 
     const whatsappMessage = `As-salamu alaykum Al Ramlah Travels,\n\nI have submitted a Custom Journey inquiry on your portal.\n*Reference Code:* ${referenceNumber}\n*Lead Pilgrim:* ${data.contact.customerName}\n*City:* ${data.contact.customerCity}\n*Travellers:* ${adults} Adults, ${children} Children, ${infants} Infants\n*Selected Services:* ${[
       data.includeVisa ? "Visa" : null,
@@ -517,7 +521,7 @@ export async function submitGroupBookingApplication(
     const settings = await db.query.agencySettings.findFirst({
       where: eq(schema.agencySettings.id, "default"),
     })
-    const agencyWhatsapp = settings?.primaryWhatsapp ?? "+923008456789"
+    const agencyWhatsapp = settings?.primaryWhatsapp ?? "03274029701"
 
     const message = `As-salamu alaykum Al Ramlah Travels,\n\nI have requested a seat reservation for Group Package: *${pkg.title}* (${departure.batchCode}).\n*Reference Code:* ${referenceNumber}\n*Passenger:* ${data.contact.customerName} (${bedAndSeatCount} seats, ${data.selectedRoomType.toUpperCase()} Room)\n*Total Estimated:* PKR ${packageTotalPkr.toLocaleString()}\n\nPlease verify seat allotment and share payment instructions.`
 
@@ -643,7 +647,7 @@ export async function submitHajjInquiryApplication(
     const settings = await db.query.agencySettings.findFirst({
       where: eq(schema.agencySettings.id, "default"),
     })
-    const agencyWhatsapp = settings?.primaryWhatsapp ?? "+923008456789"
+    const agencyWhatsapp = settings?.primaryWhatsapp ?? "03274029701"
 
     const message = `As-salamu alaykum Al Ramlah Travels,\n\nI have requested a Hajj VIP Consultation.\n*Reference Code:* ${referenceNumber}\n*Lead Pilgrim:* ${data.contact.customerName}\n*Consultation Type:* ${data.hajjConsultationType}\n*Family Count:* ${totalPassportCount} Pilgrim(s)\n\nPlease connect me with a senior Hajj advisor.`
 
@@ -716,6 +720,7 @@ export interface StatusLookupResult {
       nights: number
       roomCategory: string
       sharedRoomType?: string | null
+      mealPlan?: string | null
     }>
     transportSegments: Array<{
       segmentOrder: number
@@ -756,6 +761,7 @@ export interface StatusLookupResult {
     paymentStatus: string
     amountPaidPkr: number
     quoteNotesCustomer?: string | null
+    quotationPdfUrl?: string | null
     validUntil?: string | null
     approvedAt?: string | null
   } | null
@@ -833,7 +839,7 @@ export async function lookupApplicationStatus(
     const settings = await db.query.agencySettings.findFirst({
       where: eq(schema.agencySettings.id, "default"),
     })
-    const agencyWhatsapp = settings?.primaryWhatsapp ?? "+923008456789"
+    const agencyWhatsapp = settings?.primaryWhatsapp ?? "03274029701"
 
     const latestQuote = app.quotes && app.quotes.length > 0 ? app.quotes[0] : null
     const canExposeQuote =
@@ -883,6 +889,7 @@ export async function lookupApplicationStatus(
           nights: stay.nights,
           roomCategory: stay.roomCategory,
           sharedRoomType: stay.sharedRoomType,
+          mealPlan: stay.mealPlan,
         })),
         transportSegments: (app.transportSegments || []).map((seg) => ({
           segmentOrder: seg.segmentOrder,
@@ -932,6 +939,7 @@ export async function lookupApplicationStatus(
               paymentStatus: latestQuote.paymentStatus,
               amountPaidPkr: latestQuote.amountPaidPkr,
               quoteNotesCustomer: latestQuote.quoteNotesCustomer,
+              quotationPdfUrl: latestQuote.quotationPdfUrl,
               validUntil: latestQuote.validUntil?.toISOString() || null,
               approvedAt: latestQuote.approvedAt?.toISOString() || null,
             }

@@ -2,9 +2,10 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { MessageSquare, Mail, Printer, ExternalLink } from "lucide-react"
+import { MessageSquare, Mail, Printer, ExternalLink, FileText, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { generateApplicationLuxuryPdf } from "@/app/actions/quotes"
 
 export interface QuoteDispatchBarProps {
   application: {
@@ -31,6 +32,7 @@ export interface QuoteDispatchBarProps {
     paymentStatus?: "unpaid" | "partially_paid" | "paid_in_full"
     amountPaidPkr?: number
     quoteNotesCustomer?: string | null
+    quotationPdfUrl?: string | null
   } | null
   liveQuote?: {
     grandTotalPkr: number
@@ -44,6 +46,7 @@ export interface QuoteDispatchBarProps {
     paymentStatus?: "unpaid" | "partially_paid" | "paid_in_full"
     amountPaidPkr?: number
     quoteNotesCustomer?: string | null
+    quotationPdfUrl?: string | null
   } | null
 }
 
@@ -63,6 +66,23 @@ export function QuoteDispatchBar({
   liveQuote,
 }: QuoteDispatchBarProps) {
   const activeQuote = liveQuote ?? latestQuote
+  const [pdfUrl, setPdfUrl] = React.useState<string | null>(
+    activeQuote?.quotationPdfUrl ?? null
+  )
+  const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false)
+
+  const handleGenerateLuxuryPdf = async () => {
+    setIsGeneratingPdf(true)
+    try {
+      const res = await generateApplicationLuxuryPdf(application.id)
+      if (res.success && res.pdfUrl) {
+        setPdfUrl(res.pdfUrl)
+        window.open(res.pdfUrl, "_blank")
+      }
+    } finally {
+      setIsGeneratingPdf(false)
+    }
+  }
 
   const formatPkr = (val: number) =>
     new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 }).format(val)
@@ -131,7 +151,7 @@ export function QuoteDispatchBar({
 
     lines.push(``)
     lines.push(`To confirm this quotation or submit advance deposit, reply to this WhatsApp message or call our 24/7 Pilgrim Concierge.`)
-    lines.push(`*Al Ramlah Travels* | IATA Accredited Operator #4082`)
+    lines.push(`*Al Ramlah Travels* | Where Purpose Meets Excellence (www.alramlahtravels.com)`)
 
     return encodeURIComponent(lines.join("\n"))
   }
@@ -143,7 +163,7 @@ export function QuoteDispatchBar({
     )
     const grandTotal = activeQuote?.grandTotalPkr || 0
     const body = encodeURIComponent(
-      `Dear ${application.customerName},\n\nThank you for choosing Al Ramlah Travels for your sacred pilgrimage.\n\nPlease find your official quotation for Reference: ${application.referenceNumber}.\nGrand Total: PKR ${formatPkr(grandTotal)}\n\nPlease let us know if you would like to proceed with reservation.\n\nWarm regards,\nAl Ramlah Travels Quoting Team\ninfo@alramlahtravels.com`
+      `Dear ${application.customerName},\n\nThank you for choosing Al Ramlah Travels for your sacred pilgrimage.\n\nPlease find your official quotation for Reference: ${application.referenceNumber}.\nGrand Total: PKR ${formatPkr(grandTotal)}\n\nPlease let us know if you would like to proceed with reservation.\n\nWarm regards,\nAl Ramlah Travels Quoting Team\nalramlahtravels@gmail.com\nCall / WhatsApp: 03274029701 / 03190462638\nwww.alramlahtravels.com`
     )
     return `mailto:${application.customerEmail || ""}?subject=${subject}&body=${body}`
   }
@@ -181,6 +201,35 @@ export function QuoteDispatchBar({
           <Mail className="size-3.5 text-muted-foreground" />
           <span>Email Quote</span>
         </a>
+
+        {/* 3-Page Luxury Quotation PDF (Skill 1) */}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={isGeneratingPdf}
+          onClick={handleGenerateLuxuryPdf}
+          className="border-gold bg-[#0A3622] text-white hover:bg-[#0A3622]/90 text-xs font-semibold cursor-pointer"
+        >
+          {isGeneratingPdf ? (
+            <Loader2 className="size-3.5 animate-spin text-gold" />
+          ) : (
+            <FileText className="size-3.5 text-gold" />
+          )}
+          <span>3-Page Luxury PDF</span>
+        </Button>
+
+        {pdfUrl && (
+          <a
+            href={pdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-lg border border-gold/50 bg-white px-2.5 py-1.5 text-xs font-bold text-primary hover:bg-secondary"
+          >
+            <span>Open PDF</span>
+            <ExternalLink className="size-3 text-gold" />
+          </a>
+        )}
 
         {/* Printable Voucher Button */}
         <Button

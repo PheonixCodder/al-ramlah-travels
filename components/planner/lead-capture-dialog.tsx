@@ -257,7 +257,7 @@ export function LeadCaptureDialog({
                     id="dialog-lead-phone"
                     type="tel"
                     required
-                    placeholder="+92 300 1234567"
+                    placeholder="0327 4029701"
                     value={customerPhone}
                     onChange={(e) => handlePhoneChange(e.target.value)}
                     className="w-full rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-3 py-2 text-xs font-medium text-[#1A1D1A] focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
@@ -315,7 +315,7 @@ export function LeadCaptureDialog({
                     id="dialog-lead-whatsapp"
                     type="tel"
                     required
-                    placeholder="+92 300 1234567"
+                    placeholder="0327 4029701"
                     value={customerWhatsapp}
                     onChange={(e) => setCustomerWhatsapp(e.target.value)}
                     className="w-full rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-3 py-2 text-xs font-medium text-[#1A1D1A] focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"

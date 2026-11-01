@@ -69,6 +69,10 @@ export default async function ApplicationVoucherPage({
     notFound()
   }
 
+  const settings = await db.query.agencySettings.findFirst({
+    where: eq(schema.agencySettings.id, "default"),
+  })
+
   const latestQuote = application.quotes?.[0]
   const grandTotal =
     latestQuote?.grandTotalPkr || application.calculatedVisaTotalPkr || 0
@@ -122,7 +126,7 @@ export default async function ApplicationVoucherPage({
                 سفريات الرملة لخدمات الحج والعمرة
               </p>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                IATA Accredited Agency · Ministry of Hajj & Umrah License #4082
+                Where Purpose Meets Excellence · Hajj • Umrah • Flights • Hotels • Tours
               </p>
             </div>
           </div>
@@ -494,8 +498,10 @@ export default async function ApplicationVoucherPage({
         <div className="mt-12 flex items-end justify-between border-t border-slate-200 pt-6 text-xs text-slate-500">
           <div>
             <p className="font-semibold text-slate-800">Al Ramlah Travels Back Office Operations</p>
-            <p>24/7 Pilgrim Support: +92 300 1234567 · info@alramlahtravels.com</p>
-            <p>Suite 401, Al-Manara Executive Towers, Shahrah-e-Faisal, Karachi</p>
+            <p>
+              Call / WhatsApp: {settings?.primaryWhatsapp || "03274029701"} · {settings?.secondaryPhone || "03190462638"} · {settings?.supportEmail || "alramlahtravels@gmail.com"} · www.alramlahtravels.com
+            </p>
+            <p>{settings?.officeAddress || "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt"}</p>
           </div>
 
           <div className="text-center">

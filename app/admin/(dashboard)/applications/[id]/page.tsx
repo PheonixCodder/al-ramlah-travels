@@ -61,6 +61,7 @@ export default async function ApplicationDetailPage({
           departureCity: true,
         },
       },
+      supplier: true,
       assignedStaff: true,
     },
   })
@@ -78,6 +79,7 @@ export default async function ApplicationDetailPage({
     transportRates,
     visaRates,
     settings,
+    suppliers,
   ] = await Promise.all([
     application.selectedZiyaratPlaceIds && application.selectedZiyaratPlaceIds.length > 0
       ? db.query.ziyaratPlaces.findMany({
@@ -96,6 +98,10 @@ export default async function ApplicationDetailPage({
     db.query.transportRates.findMany(),
     db.query.visaRates.findMany(),
     db.query.agencySettings.findFirst(),
+    db.query.suppliers.findMany({
+      where: eq(schema.suppliers.isActive, true),
+      orderBy: [asc(schema.suppliers.name)],
+    }).catch(() => []),
   ])
 
   const sarToPkrRate = settings?.sarToPkrRate ?? 75
@@ -121,6 +127,10 @@ export default async function ApplicationDetailPage({
         roomCategory: s.roomCategory,
         sharedRoomType: s.sharedRoomType,
         privateRoomAllocation: s.privateRoomAllocation,
+        mealPlan: s.mealPlan,
+        includeBreakfast: s.includeBreakfast,
+        includeLunch: s.includeLunch,
+        includeDinner: s.includeDinner,
       })),
       transportSegments: application.transportSegments.map((s) => ({
         sectorId: s.sectorId,
@@ -179,6 +189,7 @@ export default async function ApplicationDetailPage({
             initialQuote={latestQuote}
             rateHints={rateHints}
             sarToPkrRate={sarToPkrRate}
+            suppliers={suppliers}
           />
         </div>
       </div>

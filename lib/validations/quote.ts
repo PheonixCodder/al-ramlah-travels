@@ -18,6 +18,9 @@ export const quoteUpdateSchema = z.object({
     .min(0, "Transport total cannot be negative"),
   ziyaratTotalPkr: z.number().int().min(0, "Ziyarat total cannot be negative"),
   discountPkr: z.number().int().min(0).default(0),
+  supplierId: z.string().uuid().optional().nullable().or(z.literal("")),
+  supplierNetCostPkr: z.number().int().min(0).default(0).optional(),
+  commissionPkr: z.number().int().min(0).default(25000).optional(),
   quoteNotesCustomer: z.string().max(2000).optional(),
   internalNotesAdmin: z.string().max(2000).optional(),
   paymentStatus: z

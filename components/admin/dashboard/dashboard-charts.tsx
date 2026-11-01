@@ -32,10 +32,18 @@ interface DashboardChartsProps {
   pillarData: PillarDemandItem[]
 }
 
+const emptySubscribe = () => () => {}
+
 export function DashboardCharts({
   statusData,
   pillarData,
 }: DashboardChartsProps) {
+  const mounted = React.useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  )
+
   const formatPkrCompact = (val: number) => {
     if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`
     if (val >= 1_000) return `${(val / 1_000).toFixed(0)}k`
@@ -45,7 +53,7 @@ export function DashboardCharts({
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
       {/* 1. Pipeline Volume & Value Distribution (8 cols) */}
-      <Card className="border-border bg-card shadow-xs lg:col-span-7">
+      <Card className="min-w-0 border-border bg-card shadow-xs lg:col-span-7">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>
@@ -59,72 +67,81 @@ export function DashboardCharts({
           </div>
         </CardHeader>
         <CardContent className="pt-2">
-          <div className="h-[280px] min-w-0 w-full">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
-              <BarChart
-                data={statusData}
-                margin={{ top: 20, right: 20, left: 0, bottom: 20 }}
+          <div className="h-[280px] min-h-[280px] min-w-0 w-full">
+            {mounted ? (
+              <ResponsiveContainer
+                width="100%"
+                height={280}
+                minWidth={0}
+                initialDimension={{ width: 520, height: 280 }}
               >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="#E6DEC8"
-                  opacity={0.6}
-                />
-                <XAxis
-                  dataKey="name"
-                  tickLine={false}
-                  axisLine={{ stroke: "#E6DEC8" }}
-                  tick={{ fill: "#686E65", fontSize: 11 }}
-                />
-                <YAxis
-                  yAxisId="left"
-                  orientation="left"
-                  tickLine={false}
-                  axisLine={{ stroke: "#E6DEC8" }}
-                  tick={{ fill: "#686E65", fontSize: 10 }}
-                  tickFormatter={formatPkrCompact}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fill: "#686E65", fontSize: 10 }}
-                  allowDecimals={false}
-                />
-                <Tooltip
-                  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-                  formatter={(value: any, name: any) => {
-                    if (name === "pkrValue") {
-                      return [
-                        `PKR ${Number(value).toLocaleString()}`,
-                        "Pipeline Value",
-                      ]
-                    }
-                    return [`${value} Inquiries`, "Count"]
-                  }}
-                  contentStyle={{
-                    backgroundColor: "#FFFFFF",
-                    borderRadius: "8px",
-                    border: "1px solid #E6DEC8",
-                    boxShadow: "0 4px 12px rgba(10,54,34,0.08)",
-                    fontSize: "12px",
-                  }}
-                />
-                <Bar
-                  yAxisId="left"
-                  dataKey="pkrValue"
-                  name="pkrValue"
-                  radius={[6, 6, 0, 0]}
-                  maxBarSize={45}
+                <BarChart
+                  data={statusData}
+                  margin={{ top: 20, right: 20, left: 0, bottom: 20 }}
                 >
-                  {statusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#E6DEC8"
+                    opacity={0.6}
+                  />
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    axisLine={{ stroke: "#E6DEC8" }}
+                    tick={{ fill: "#686E65", fontSize: 11 }}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    orientation="left"
+                    tickLine={false}
+                    axisLine={{ stroke: "#E6DEC8" }}
+                    tick={{ fill: "#686E65", fontSize: 10 }}
+                    tickFormatter={formatPkrCompact}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: "#686E65", fontSize: 10 }}
+                    allowDecimals={false}
+                  />
+                  <Tooltip
+                    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+                    formatter={(value: any, name: any) => {
+                      if (name === "pkrValue") {
+                        return [
+                          `PKR ${Number(value).toLocaleString()}`,
+                          "Pipeline Value",
+                        ]
+                      }
+                      return [`${value} Inquiries`, "Count"]
+                    }}
+                    contentStyle={{
+                      backgroundColor: "#FFFFFF",
+                      borderRadius: "8px",
+                      border: "1px solid #E6DEC8",
+                      boxShadow: "0 4px 12px rgba(10,54,34,0.08)",
+                      fontSize: "12px",
+                    }}
+                  />
+                  <Bar
+                    yAxisId="left"
+                    dataKey="pkrValue"
+                    name="pkrValue"
+                    radius={[6, 6, 0, 0]}
+                    maxBarSize={45}
+                  >
+                    {statusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[280px] w-full animate-pulse rounded-lg bg-muted/30" />
+            )}
           </div>
           <div className="flex flex-wrap items-center justify-center gap-4 pt-2 text-xs text-muted-foreground">
             {statusData.map((item) => (
@@ -144,7 +161,7 @@ export function DashboardCharts({
       </Card>
 
       {/* 2. Service Pillar Adoption (5 cols) */}
-      <Card className="border-border bg-card shadow-xs lg:col-span-5">
+      <Card className="min-w-0 border-border bg-card shadow-xs lg:col-span-5">
         <CardHeader className="pb-2">
           <CardTitle className="font-display text-base font-bold text-foreground">
             Service Pillar Demand
@@ -154,55 +171,64 @@ export function DashboardCharts({
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-2">
-          <div className="h-[280px] min-w-0 w-full">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
-              <BarChart
-                data={pillarData}
-                layout="vertical"
-                margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+          <div className="h-[280px] min-h-[280px] min-w-0 w-full">
+            {mounted ? (
+              <ResponsiveContainer
+                width="100%"
+                height={280}
+                minWidth={0}
+                initialDimension={{ width: 380, height: 280 }}
               >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  horizontal={false}
-                  stroke="#E6DEC8"
-                  opacity={0.6}
-                />
-                <XAxis
-                  type="number"
-                  tickLine={false}
-                  axisLine={{ stroke: "#E6DEC8" }}
-                  tick={{ fill: "#686E65", fontSize: 10 }}
-                  allowDecimals={false}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="pillar"
-                  tickLine={false}
-                  axisLine={{ stroke: "#E6DEC8" }}
-                  tick={{ fill: "#1A1D1A", fontSize: 11, fontWeight: 500 }}
-                  width={75}
-                />
-                <Tooltip
-                  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-                  formatter={(val: any) => [`${val} Inquiries`, "Demand"]}
-                  contentStyle={{
-                    backgroundColor: "#FFFFFF",
-                    borderRadius: "8px",
-                    border: "1px solid #E6DEC8",
-                    fontSize: "12px",
-                  }}
-                />
-                <Bar
-                  dataKey="inquiries"
-                  radius={[0, 6, 6, 0]}
-                  maxBarSize={28}
+                <BarChart
+                  data={pillarData}
+                  layout="vertical"
+                  margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
                 >
-                  {pillarData.map((entry, index) => (
-                    <Cell key={`bar-${index}`} fill={entry.fillColor} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    horizontal={false}
+                    stroke="#E6DEC8"
+                    opacity={0.6}
+                  />
+                  <XAxis
+                    type="number"
+                    tickLine={false}
+                    axisLine={{ stroke: "#E6DEC8" }}
+                    tick={{ fill: "#686E65", fontSize: 10 }}
+                    allowDecimals={false}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="pillar"
+                    tickLine={false}
+                    axisLine={{ stroke: "#E6DEC8" }}
+                    tick={{ fill: "#1A1D1A", fontSize: 11, fontWeight: 500 }}
+                    width={75}
+                  />
+                  <Tooltip
+                    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+                    formatter={(val: any) => [`${val} Inquiries`, "Demand"]}
+                    contentStyle={{
+                      backgroundColor: "#FFFFFF",
+                      borderRadius: "8px",
+                      border: "1px solid #E6DEC8",
+                      fontSize: "12px",
+                    }}
+                  />
+                  <Bar
+                    dataKey="inquiries"
+                    radius={[0, 6, 6, 0]}
+                    maxBarSize={28}
+                  >
+                    {pillarData.map((entry, index) => (
+                      <Cell key={`bar-${index}`} fill={entry.fillColor} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[280px] w-full animate-pulse rounded-lg bg-muted/30" />
+            )}
           </div>
         </CardContent>
       </Card>

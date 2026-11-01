@@ -20,22 +20,27 @@ export default async function PublicLayout({
     console.error("Failed to query agencySettings in PublicLayout:", err)
   }
 
-  const agencyPhone = settings?.secondaryPhone || settings?.primaryWhatsapp || "+92 300 1234567"
-  const whatsappNumber = settings?.primaryWhatsapp || "+923001234567"
+  const agencyPhone = settings?.primaryWhatsapp || "03274029701"
+  const secondaryPhone = settings?.secondaryPhone || "03190462638"
+  const whatsappNumber = settings?.primaryWhatsapp || "03274029701"
   const agencyName = settings?.agencyName || "Al Ramlah Travels"
-  const supportEmail = settings?.supportEmail || "info@alramlahtravels.com"
-  const officeAddress = settings?.officeAddress || "Suite 402, Al-Hafeez Heights, Gulberg III, Lahore, Pakistan"
+  const supportEmail = settings?.supportEmail || "alramlahtravels@gmail.com"
+  const officeAddress =
+    settings?.officeAddress ||
+    "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt"
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <PublicHeader
         agencyPhone={agencyPhone}
+        secondaryPhone={secondaryPhone}
         whatsappNumber={whatsappNumber}
         officeAddress={officeAddress}
       />
       <main className="flex-1">{children}</main>
       <PublicFooter
         agencyPhone={agencyPhone}
+        secondaryPhone={secondaryPhone}
         whatsappNumber={whatsappNumber}
         agencyName={agencyName}
         supportEmail={supportEmail}

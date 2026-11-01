@@ -33,12 +33,12 @@ export interface AgencyContactInfo {
 
 const DEFAULT_AGENCY: AgencyContactInfo = {
   agencyName: "Al Ramlah Travels",
-  tagline: "Sacred Journeys Crafted with Dignity & Comfort",
-  primaryWhatsapp: "+923001234567",
-  secondaryPhone: "+924235789012",
-  supportEmail: "info@alramlahtravels.com",
-  officeAddress: "Suite 402, Al-Hafeez Heights, Gulberg III, Lahore, Pakistan",
-  workingHours: "Monday to Saturday, 9:00 AM to 8:00 PM PKT",
+  tagline: "Where Purpose Meets Excellence",
+  primaryWhatsapp: "03274029701",
+  secondaryPhone: "03190462638",
+  supportEmail: "alramlahtravels@gmail.com",
+  officeAddress: "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
+  workingHours: "Monday to Saturday: 9:00 AM to 8:00 PM PKT",
 }
 
 interface ContactSectionProps {
@@ -208,14 +208,14 @@ export function ContactSection({ settings }: ContactSectionProps) {
               </div>
             </div>
 
-            {/* Ministry License Trust Badge */}
+            {/* Trust Badge */}
             <div className="rounded-2xl border border-emerald-300 bg-emerald-50/80 p-4 text-emerald-950 flex items-center gap-3">
               <ShieldCheck className="size-6 text-emerald-700 shrink-0" />
               <div className="text-xs leading-snug">
                 <span className="font-bold block">
-                  Govt. of Pakistan & Nusuk Licensed
+                  Where Purpose Meets Excellence
                 </span>
-                Ministry of Religious Affairs License #4082. All passenger funds held in audited custodial accounts.
+                Hajj • Umrah • Flights • Hotels • Tours. Dedicated pilgrim concierge, transparent pricing, and 24/7 on-ground assistance.
               </div>
             </div>
           </div>
@@ -284,7 +284,7 @@ export function ContactSection({ settings }: ContactSectionProps) {
                       id="c-phone"
                       value={phone}
                       onChange={(e) => syncPhone(e.target.value)}
-                      placeholder="+92 300 1234567"
+                      placeholder="0327 4029701"
                       required
                     />
                   </div>
@@ -296,7 +296,7 @@ export function ContactSection({ settings }: ContactSectionProps) {
                       id="c-wa"
                       value={whatsapp}
                       onChange={(e) => setWhatsapp(e.target.value)}
-                      placeholder="+92 300 1234567"
+                      placeholder="0327 4029701"
                     />
                   </div>
                 </div>
@@ -320,8 +320,8 @@ export function ContactSection({ settings }: ContactSectionProps) {
                     <option value="Group Departure Booking">
                       Group Departure Booking
                     </option>
-                    <option value="VIP Hajj 1447H Consultation">
-                      VIP Hajj 1447H Consultation
+                    <option value="Hajj 2027 Package Reservation (Maktab A / B / C)">
+                      Hajj 2027 Package Reservation (Maktab A / B / C)
                     </option>
                     <option value="Corporate / Institution Pilgrimage">
                       Corporate / Institution Pilgrimage

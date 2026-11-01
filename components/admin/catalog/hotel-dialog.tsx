@@ -38,6 +38,11 @@ export interface HotelData {
   quadPriceSar?: number
   triplePriceSar?: number
   doublePriceSar?: number
+  offersDining?: boolean
+  breakfastPriceSarPerPax?: number
+  lunchPriceSarPerPax?: number
+  dinnerPriceSarPerPax?: number
+  fullBoardPriceSarPerPax?: number
   validFrom?: string | null
   validUntil?: string | null
   locationNotes?: string | null
@@ -105,6 +110,19 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
   const [doublePriceSar, setDoublePriceSar] = useState<number>(
     hotel?.doublePriceSar ?? 360
   )
+  const [offersDining, setOffersDining] = useState<boolean>(
+    hotel?.offersDining ?? true
+  )
+  const [breakfastPriceSarPerPax, setBreakfastPriceSarPerPax] =
+    useState<number>(hotel?.breakfastPriceSarPerPax ?? 35)
+  const [lunchPriceSarPerPax, setLunchPriceSarPerPax] = useState<number>(
+    hotel?.lunchPriceSarPerPax ?? 45
+  )
+  const [dinnerPriceSarPerPax, setDinnerPriceSarPerPax] = useState<number>(
+    hotel?.dinnerPriceSarPerPax ?? 50
+  )
+  const [fullBoardPriceSarPerPax, setFullBoardPriceSarPerPax] =
+    useState<number>(hotel?.fullBoardPriceSarPerPax ?? 110)
   const [validFrom, setValidFrom] = useState<string>(hotel?.validFrom ?? "")
   const [validUntil, setValidUntil] = useState<string>(hotel?.validUntil ?? "")
   const [locationNotes, setLocationNotes] = useState<string>(
@@ -158,6 +176,14 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
         quadPriceSar,
         triplePriceSar,
         doublePriceSar,
+        offersDining,
+        availableMealPlans: offersDining
+          ? ["room_only", "breakfast", "half_board", "full_board"]
+          : ["room_only"],
+        breakfastPriceSarPerPax,
+        lunchPriceSarPerPax,
+        dinnerPriceSarPerPax,
+        fullBoardPriceSarPerPax,
         validFrom: validFrom || undefined,
         validUntil: validUntil || undefined,
         locationNotes: locationNotes || undefined,
@@ -402,6 +428,84 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
                   required
                 />
               </div>
+            </div>
+
+            {/* Dining & Meal Plans Rate Matrix */}
+            <div className="pt-2 border-t border-border/60 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground">
+                  Hotel Dining &amp; Meal Supplements (SAR / Pax / Night)
+                </span>
+                <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={offersDining}
+                    onChange={(e) => setOffersDining(e.target.checked)}
+                    className="rounded text-primary"
+                  />
+                  <span>Offers Dining Plans</span>
+                </label>
+              </div>
+              {offersDining && (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="sar-bf" className="text-[11px]">
+                      Breakfast (SAR)
+                    </Label>
+                    <Input
+                      id="sar-bf"
+                      type="number"
+                      min="0"
+                      value={breakfastPriceSarPerPax}
+                      onChange={(e) =>
+                        setBreakfastPriceSarPerPax(Number(e.target.value))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="sar-lunch" className="text-[11px]">
+                      Lunch (SAR)
+                    </Label>
+                    <Input
+                      id="sar-lunch"
+                      type="number"
+                      min="0"
+                      value={lunchPriceSarPerPax}
+                      onChange={(e) =>
+                        setLunchPriceSarPerPax(Number(e.target.value))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="sar-dinner" className="text-[11px]">
+                      Dinner (SAR)
+                    </Label>
+                    <Input
+                      id="sar-dinner"
+                      type="number"
+                      min="0"
+                      value={dinnerPriceSarPerPax}
+                      onChange={(e) =>
+                        setDinnerPriceSarPerPax(Number(e.target.value))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="sar-fb" className="text-[11px]">
+                      Full Board (SAR)
+                    </Label>
+                    <Input
+                      id="sar-fb"
+                      type="number"
+                      min="0"
+                      value={fullBoardPriceSarPerPax}
+                      onChange={(e) =>
+                        setFullBoardPriceSarPerPax(Number(e.target.value))
+                      }
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Validity Dates */}

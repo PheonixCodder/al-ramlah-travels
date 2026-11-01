@@ -45,6 +45,7 @@ export interface QuoteWorksheetFormProps {
     includeZiyarat: boolean
     lockedVisaRatePerPersonPkr?: number | null
     calculatedVisaTotalPkr?: number | null
+    supplierId?: string | null
   }
   initialQuote?: {
     id: string
@@ -60,9 +61,19 @@ export interface QuoteWorksheetFormProps {
     amountPaidPkr: number
     quoteNotesCustomer?: string | null
     internalNotesAdmin?: string | null
+    supplierId?: string | null
+    supplierNetCostPkr?: number | null
+    commissionPkr?: number | null
+    quotationPdfUrl?: string | null
   } | null
   rateHints?: ApplicationRateHintsResult
   sarToPkrRate?: number
+  suppliers?: Array<{
+    id: string
+    name: string
+    codePrefix: string
+    defaultCommissionPkr: number
+  }>
 }
 
 export function QuoteWorksheetForm({
@@ -70,6 +81,7 @@ export function QuoteWorksheetForm({
   initialQuote,
   rateHints,
   sarToPkrRate = 75,
+  suppliers = [],
 }: QuoteWorksheetFormProps) {
   const router = useRouter()
 
@@ -114,6 +126,19 @@ export function QuoteWorksheetForm({
   )
   const [internalNotes, setInternalNotes] = React.useState<string>(
     initialQuote?.internalNotesAdmin || ""
+  )
+
+  // B2B Supplier & Commission Attribution (e.g. Zahoor Travels)
+  const defaultZahoorId =
+    suppliers.find((s) => s.name.toLowerCase().includes("zahoor"))?.id || ""
+  const [supplierId, setSupplierId] = React.useState<string>(
+    initialQuote?.supplierId || application.supplierId || defaultZahoorId
+  )
+  const [commissionPkr, setCommissionPkr] = React.useState<number>(
+    initialQuote?.commissionPkr ?? 25000
+  )
+  const [supplierNetCostPkr, setSupplierNetCostPkr] = React.useState<number>(
+    initialQuote?.supplierNetCostPkr ?? 0
   )
 
   // UI state
@@ -201,6 +226,12 @@ export function QuoteWorksheetForm({
         internalNotesAdmin: internalNotes,
         paymentStatus,
         amountPaidPkr: Math.max(0, Math.floor(amountPaid)),
+        supplierId: supplierId || null,
+        supplierNetCostPkr:
+          supplierNetCostPkr > 0
+            ? Math.floor(supplierNetCostPkr)
+            : Math.max(0, grandTotalPkr - Math.floor(commissionPkr)),
+        commissionPkr: Math.max(0, Math.floor(commissionPkr)),
         validUntilDays: validDays,
         targetStatus,
       }
@@ -281,6 +312,7 @@ export function QuoteWorksheetForm({
           paymentStatus,
           amountPaidPkr: amountPaid,
           quoteNotesCustomer: customerNotes,
+          quotationPdfUrl: initialQuote?.quotationPdfUrl,
         }}
       />
 
@@ -622,6 +654,78 @@ export function QuoteWorksheetForm({
               <span className="font-mono text-2xl font-bold tabular-nums text-white sm:text-3xl">
                 PKR {grandTotalPkr.toLocaleString()}
               </span>
+            </div>
+          </div>
+
+          {/* B2B Supplier Attribution & Commission Box */}
+          <div className="space-y-3 rounded-lg border border-gold/40 bg-gold/5 p-3 text-xs">
+            <div className="flex items-center justify-between font-semibold text-foreground">
+              <span>B2B Supplier &amp; Al Ramlah Commission:</span>
+              <Badge
+                variant="outline"
+                className="border-gold/50 bg-white text-[10px] font-mono text-primary font-bold"
+              >
+                Margin: PKR {commissionPkr.toLocaleString()}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+              <div>
+                <Label htmlFor="quote-supplier" className="text-[11px] text-muted-foreground">
+                  Wholesale Supplier
+                </Label>
+                <select
+                  id="quote-supplier"
+                  value={supplierId}
+                  onChange={(e) => setSupplierId(e.target.value)}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-2.5 py-1 text-xs shadow-xs"
+                  disabled={isSubmitting}
+                >
+                  <option value="">Direct / Unassigned</option>
+                  {suppliers.map((sup) => (
+                    <option key={sup.id} value={sup.id}>
+                      {sup.name} ({sup.codePrefix})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="quote-commission" className="text-[11px] text-muted-foreground">
+                  Our Commission (PKR)
+                </Label>
+                <Input
+                  id="quote-commission"
+                  type="number"
+                  min={0}
+                  value={commissionPkr}
+                  onChange={(e) => {
+                    const nextComm = Number(e.target.value) || 0
+                    setCommissionPkr(nextComm)
+                    if (grandTotalPkr > 0) {
+                      setSupplierNetCostPkr(Math.max(0, grandTotalPkr - nextComm))
+                    }
+                  }}
+                  className="font-mono text-xs tabular-nums mt-1"
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div>
+                <Label htmlFor="quote-net-cost" className="text-[11px] text-muted-foreground">
+                  Supplier Net Payable (PKR)
+                </Label>
+                <Input
+                  id="quote-net-cost"
+                  type="number"
+                  min={0}
+                  value={
+                    supplierNetCostPkr > 0
+                      ? supplierNetCostPkr
+                      : Math.max(0, grandTotalPkr - commissionPkr)
+                  }
+                  onChange={(e) => setSupplierNetCostPkr(Number(e.target.value) || 0)}
+                  className="font-mono text-xs tabular-nums mt-1"
+                  disabled={isSubmitting}
+                />
+              </div>
             </div>
           </div>
 

@@ -52,6 +52,10 @@ export interface StayConfig {
   roomCategory: "shared" | "private"
   sharedRoomType?: "sharing" | "double" | "triple" | "quad"
   privateRoomAllocation: { double: number; triple: number; quad: number }
+  mealPlan?: "room_only" | "breakfast" | "half_board" | "full_board"
+  includeBreakfast?: boolean
+  includeLunch?: boolean
+  includeDinner?: boolean
   starFilter: number // 0 = all, 3, 4, 5
 }
 
@@ -365,6 +369,10 @@ export function PlannerProvider({
       roomCategory: "private",
       sharedRoomType: "sharing",
       privateRoomAllocation: calculatePrivateRoomSplits(2).primaryAllocation,
+      mealPlan: "room_only",
+      includeBreakfast: false,
+      includeLunch: false,
+      includeDinner: false,
       starFilter: 0,
     },
     {
@@ -377,6 +385,10 @@ export function PlannerProvider({
       roomCategory: "private",
       sharedRoomType: "sharing",
       privateRoomAllocation: calculatePrivateRoomSplits(2).primaryAllocation,
+      mealPlan: "room_only",
+      includeBreakfast: false,
+      includeLunch: false,
+      includeDinner: false,
       starFilter: 0,
     },
   ])
@@ -588,6 +600,10 @@ export function PlannerProvider({
           roomCategory,
           sharedRoomType: existing?.sharedRoomType ?? "sharing",
           privateRoomAllocation: existing?.privateRoomAllocation ?? split,
+          mealPlan: existing?.mealPlan ?? "room_only",
+          includeBreakfast: existing?.includeBreakfast ?? false,
+          includeLunch: existing?.includeLunch ?? false,
+          includeDinner: existing?.includeDinner ?? false,
           starFilter: existing?.starFilter ?? 0,
         }
       })

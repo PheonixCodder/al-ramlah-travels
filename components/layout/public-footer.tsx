@@ -25,6 +25,7 @@ import {
 
 interface PublicFooterProps {
   agencyPhone?: string
+  secondaryPhone?: string
   whatsappNumber?: string
   agencyName?: string
   supportEmail?: string
@@ -32,11 +33,12 @@ interface PublicFooterProps {
 }
 
 export function PublicFooter({
-  agencyPhone = "+92 300 1234567",
-  whatsappNumber = "+923001234567",
+  agencyPhone = "03274029701",
+  secondaryPhone = "03190462638",
+  whatsappNumber = "03274029701",
   agencyName = "Al Ramlah Travels",
-  supportEmail = "info@alramlahtravels.com",
-  officeAddress = "Suite 402, Al-Hafeez Heights, Gulberg III, Lahore, Pakistan",
+  supportEmail = "alramlahtravels@gmail.com",
+  officeAddress = "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
 }: PublicFooterProps = {}) {
   const currentYear = new Date().getFullYear()
   const [modalType, setModalType] = useState<
@@ -47,7 +49,8 @@ export function PublicFooter({
     .replace(/\D/g, "")
     .replace(/^03/, "923")
   const telHref = `tel:${agencyPhone.replace(/\s+/g, "")}`
-  const waHref = `https://wa.me/${normalizedWhatsapp || "923001234567"}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
+  const secTelHref = `tel:${secondaryPhone.replace(/\s+/g, "")}`
+  const waHref = `https://wa.me/${normalizedWhatsapp || "923274029701"}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
 
   return (
     <footer className="relative overflow-hidden border-t border-primary-foreground/10 bg-primary text-primary-foreground">
@@ -134,7 +137,7 @@ export function PublicFooter({
                   href="#hajj-inquiry"
                   className="group inline-flex items-center gap-1 transition-colors hover:text-gold"
                 >
-                  <span>Hajj 2026 Registration</span>
+                  <span>Hajj 2027 Packages</span>
                   <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
                 </Link>
               </li>
@@ -213,13 +216,15 @@ export function PublicFooter({
               Pilgrim Concierge
             </h3>
             <div className="flex flex-col gap-2.5 text-sm text-primary-foreground/80">
-              <a
-                href={telHref}
-                className="flex items-center gap-2 transition-colors hover:text-gold"
-              >
-                <Phone className="size-4 shrink-0 text-gold" />
-                <span className="font-mono tabular-nums">{agencyPhone}</span>
-              </a>
+              <div className="flex flex-col gap-1">
+                <a
+                  href={telHref}
+                  className="flex items-center gap-2 transition-colors hover:text-gold"
+                >
+                  <Phone className="size-4 shrink-0 text-gold" />
+                  <span className="font-mono tabular-nums">{agencyPhone} · {secondaryPhone}</span>
+                </a>
+              </div>
               <a
                 href={waHref}
                 target="_blank"
@@ -227,7 +232,7 @@ export function PublicFooter({
                 className="flex items-center gap-2 transition-colors hover:text-gold"
               >
                 <MessageCircle className="size-4 shrink-0 text-emerald-400" />
-                <span>WhatsApp: 24/7 Ground Team</span>
+                <span>WhatsApp: {whatsappNumber} (24/7 Ground Team)</span>
               </a>
               <a
                 href={`mailto:${supportEmail}`}
@@ -236,13 +241,18 @@ export function PublicFooter({
                 <Mail className="size-4 shrink-0 text-gold" />
                 <span>{supportEmail}</span>
               </a>
+              <a
+                href="https://www.alramlahtravels.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 transition-colors hover:text-gold text-xs"
+              >
+                <Compass className="size-4 shrink-0 text-gold" />
+                <span>www.alramlahtravels.com</span>
+              </a>
               <div className="flex items-start gap-2 pt-1 text-xs text-primary-foreground/70">
                 <MapPin className="mt-0.5 size-4 shrink-0 text-gold" />
                 <span>{officeAddress}</span>
-              </div>
-              <div className="flex items-start gap-2 text-xs text-primary-foreground/70">
-                <Compass className="mt-0.5 size-4 shrink-0 text-gold" />
-                <span>KSA Liaison Office: Ibrahim Al Khalil Rd, Makkah</span>
               </div>
             </div>
           </div>
@@ -253,19 +263,19 @@ export function PublicFooter({
           <div className="flex flex-wrap items-center gap-6 text-xs text-primary-foreground/80">
             <div className="inline-flex items-center gap-2">
               <ShieldCheck className="size-4 text-gold" />
-              <span>Ministry of Hajj & Umrah Licensed Operator # 4082</span>
+              <span>Hajj • Umrah • Flights • Hotels • Tours</span>
             </div>
             <div className="inline-flex items-center gap-2">
               <Award className="size-4 text-gold" />
-              <span>IATA Accredited Passenger Agent (# 27-2-1234-5)</span>
+              <span>Where Purpose Meets Excellence</span>
             </div>
             <div className="inline-flex items-center gap-2">
               <Lock className="size-4 text-gold" />
               <span>256-Bit SSL Encrypted Verification</span>
             </div>
           </div>
-          <div className="text-xs text-primary-foreground/60">
-            National Tax Number (NTN): 7824192-3
+          <div className="text-xs text-primary-foreground/75">
+            Askari 10, Airport Road, Lahore Cantt
           </div>
         </div>
 
@@ -339,7 +349,7 @@ export function PublicFooter({
                 </p>
                 <h4 className="font-bold text-[#0A3622]">3. Data Retention</h4>
                 <p>
-                  In accordance with IATA and regulatory requirements, flight
+                  In accordance with regulatory and aviation industry requirements, flight
                   and hotel booking vouchers are archived securely for audit and
                   tax verification purposes.
                 </p>

@@ -31,6 +31,10 @@ interface HotelStayItem {
   roomCategory: "shared" | "private"
   sharedRoomType?: string | null
   privateRoomAllocation?: { double: number; triple: number; quad: number } | null
+  mealPlan?: string | null
+  includeBreakfast?: boolean
+  includeLunch?: boolean
+  includeDinner?: boolean
   hotel: {
     id: string
     name: string
@@ -107,7 +111,9 @@ export interface ApplicationDossierProps {
     exitAirport?: string | null
     flightRouteType?: string | null
     cabinClass?: string | null
+    sourcePostCode?: string | null
     createdAt: Date
+    supplier?: { id: string; name: string; codePrefix: string } | null
     departureCity?: { cityName: string; airportCode: string } | null
     preferredAirline?: { name: string; iataCode: string } | null
     ziyaratVehicle?: { name: string } | null
@@ -172,6 +178,22 @@ export function ApplicationDossier({
             >
               {application.source.replace(/_/g, " ")}
             </Badge>
+            {application.sourcePostCode && (
+              <Badge
+                variant="outline"
+                className="border-primary/40 bg-primary/10 font-mono text-xs font-bold text-primary"
+              >
+                Post Ref: {application.sourcePostCode}
+              </Badge>
+            )}
+            {application.supplier && (
+              <Badge
+                variant="outline"
+                className="border-emerald-600/30 bg-emerald-50 text-xs font-semibold text-emerald-800"
+              >
+                Supplier: {application.supplier.name}
+              </Badge>
+            )}
           </div>
           <span className="text-xs text-muted-foreground">
             Inquiry received on{" "}
@@ -651,9 +673,10 @@ export function ApplicationDossier({
                       </span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block">Room Category</span>
+                      <span className="text-muted-foreground block">Room &amp; Dining</span>
                       <span className="font-semibold text-foreground capitalize">
-                        {stay.roomCategory === "private" ? "Private Rooms" : "Shared Beds"}
+                        {stay.roomCategory === "private" ? "Private Rooms" : "Shared Beds"} ·{" "}
+                        {(stay.mealPlan || "room_only").replace(/_/g, " ")}
                       </span>
                     </div>
                   </div>

@@ -29,7 +29,7 @@ import {
 const NAV_LINKS = [
   { title: "Custom Umrah", href: "#journey-builder", icon: Compass },
   { title: "Group Packages", href: "#group-packages", icon: Package },
-  { title: "Hajj 2026", href: "#hajj-inquiry", icon: Layers },
+  { title: "Hajj 2027", href: "#hajj-inquiry", icon: Layers },
   { title: "Ziyarat Guides", href: "#ziyarat", icon: Compass },
   { title: "Track Request", href: "#track-status", icon: Search },
   { title: "Concierge", href: "#contact", icon: MessageCircle },
@@ -37,14 +37,16 @@ const NAV_LINKS = [
 
 interface PublicHeaderProps {
   agencyPhone?: string
+  secondaryPhone?: string
   whatsappNumber?: string
   officeAddress?: string
 }
 
 export function PublicHeader({
-  agencyPhone = "+92 300 1234567",
-  whatsappNumber = "+923001234567",
-  officeAddress = "Lahore Head Office · Gulberg III",
+  agencyPhone = "03274029701",
+  secondaryPhone = "03190462638",
+  whatsappNumber = "03274029701",
+  officeAddress = "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
 }: PublicHeaderProps = {}) {
   const [mobileOpen, setMobileOpen] = React.useState(false)
 
@@ -52,7 +54,8 @@ export function PublicHeader({
     .replace(/\D/g, "")
     .replace(/^03/, "923")
   const telHref = `tel:${agencyPhone.replace(/\s+/g, "")}`
-  const waHref = `https://wa.me/${normalizedWhatsapp || "923001234567"}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
+  const secTelHref = `tel:${secondaryPhone.replace(/\s+/g, "")}`
+  const waHref = `https://wa.me/${normalizedWhatsapp || "923274029701"}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
 
   return (
     <div className="w-full">
@@ -68,6 +71,17 @@ export function PublicHeader({
               <Phone className="size-3.5 shrink-0 text-gold" />
               <span className="font-mono tabular-nums">{agencyPhone}</span>
             </a>
+            {secondaryPhone && (
+              <>
+                <span className="text-primary-foreground/30">·</span>
+                <a
+                  href={secTelHref}
+                  className="inline-flex items-center gap-1.5 transition-colors hover:text-gold"
+                >
+                  <span className="font-mono tabular-nums">{secondaryPhone}</span>
+                </a>
+              </>
+            )}
             <span className="hidden text-primary-foreground/30 sm:inline">
               |
             </span>
@@ -93,7 +107,7 @@ export function PublicHeader({
           <div className="flex items-center gap-3">
             <span className="hidden items-center gap-1.5 rounded bg-primary-foreground/10 px-2 py-0.5 text-[11px] font-medium text-primary-foreground/90 lg:inline-flex">
               <ShieldCheck className="size-3.5 shrink-0 text-gold" />
-              <span>Govt. Licensed #4082 · IATA Accredited</span>
+              <span>Where Purpose Meets Excellence · Hajj • Umrah • Flights • Hotels • Tours</span>
             </span>
             <Link
               href="#track-status"
@@ -239,7 +253,7 @@ export function PublicHeader({
                     </a>
 
                     <div className="pt-1 text-center text-[11px] text-muted-foreground">
-                      Govt. Licensed Umrah Operator # 4082 · IATA Accredited
+                      Where Purpose Meets Excellence · Hajj • Umrah • Flights • Hotels • Tours
                     </div>
                   </div>
                 </SheetContent>

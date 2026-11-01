@@ -39,6 +39,8 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 26 | Deep removal of dining & meal plans across database, backend, admin & public UI | Slice 22 | done |
 | 27 | Restore children passenger count across database, domain, admin & public UI | Slice 23 | done |
 | 28 | Production deployment readiness, security hardening & full stack bug fixes | Slice 24 | done |
+| 29 | Official contact details, demo UI removal, database cleanup & Hajj 2027 package guide | Slice 25 | done |
+| 30 | B2B supplier wrapping, 4K post studio, multi-channel distribution, 14-day outreach CRM & restored hotel meal plans | Slice 26 | done |
 
 ## Foundations
 
@@ -375,6 +377,27 @@ code in `tsconfig.json`, `next.config.ts`, `lib/`, `db/`, `app/`, `components/`,
 - [x] Build it: `/develop production deployment readiness, security hardening & full stack bug fixes`
 - [x] Verify it: `/check verify production deployment readiness, security hardening & full stack bug fixes`
 - [x] Test it: `/test production deployment readiness, security hardening & full stack bug fixes`
+
+## Slice 25: Official contact details, demo UI removal, database cleanup & Hajj 2027 package guide
+
+### 29. Official contact details, demo UI removal, database cleanup & Hajj 2027 package guide · done
+
+Remove all demo and test UI (`One-Click Demo Access` on `/admin/login` and `Quick Test Samples` on the Status Tracker), purge seeded sample applications (`ART-2026-8812`, `ART-2026-4521`, `ART-2026-1930`) and sample contact messages from Neon PostgreSQL and `db/seed.ts`, remove fake registration numbers (`#4082`, `IATA # 27-2-1234-5`, `NTN: 7824192-3`) in favor of official branding (`Hajj • Umrah • Flights • Hotels • Tours` and `Where Purpose Meets Excellence`), update all agency contact details (`03274029701`, `03190462638`, `alramlahtravels@gmail.com`, `House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt`) across the database, vouchers, and UI, and upgrade `#hajj-inquiry` with the complete Hajj 2027 Package Guide (Maktab A, B, C tabs, all 10 packages with Quad/Triple/Double PKR rates, Qurbani & Train additional charges, 6 required documents, and 3 step booking roadmap).
+**Done when:** zero demo buttons, sample test pills, fake license numbers, or old phone/address strings remain in the database or codebase, the Admin CRM is clean of sample applications, and the Hajj 2027 Package Guide displays all 10 packages, requirements, and contact numbers from the official brochure.
+code in `db/`, `lib/validations/catalog.ts`, `app/`, `components/`
+- [x] Build it: `/develop official contact details, demo UI removal, database cleanup & Hajj 2027 package guide`
+- [x] Verify it: `/check verify official contact details, demo UI removal, database cleanup & Hajj 2027 package guide`
+
+## Slice 26: B2B supplier wrapping, 4K post studio, multi-channel distribution, 14-day outreach CRM & restored hotel meal plans
+
+### 30. B2B supplier wrapping, 4K post studio, multi-channel distribution, 14-day outreach CRM & restored hotel meal plans · done · Beta
+
+Build the unified B2B Supplier Package Wrapping, 4K Post Studio, Multi-Channel Distribution Matrix, and 14-Day Cooldown Personal Outreach CRM directly inside the Next.js 16 + Drizzle ORM Command Center (`/admin/supplier-flyers`, `/admin/post-lookup`, `/admin/distribution`, `/admin/outreach`), unpack and expand the 3 Agent Skills (`umrah-quotation-pdf`, `umrah-package-posters`, and new `umrah-single-package-poster`), integrate Cloudflare R2 object storage with local disk fallback (`lib/storage/r2.ts`) and Headless Chromium DevTools Protocol 4K rendering (`lib/posters/`), clone open-source marketing reference repositories (`services/postiz-app`, `services/wacrm`, `services/posthive`) with TypeScript service bridges, restore configurable Hotel Meal Plans (`Room Only`, `Breakfast`, `Half Board`, `Full Board`) across the database, Custom Journey Builder, and Admin Quote Worksheet, and add Zahoor Travels custom quotation attribution with 1-click 3-Page Luxury Quotation PDF generation.
+**Done when:** all 3 skills are unpacked and documented, all new Drizzle tables (`suppliers`, `supplier_flyers`, `supplier_flyer_packages`, `post_assets`, `marketing_channels`, `daily_post_distributions`, `outreach_contacts`, `outreach_logs`) and restored hotel meal plan columns are pushed to Neon PostgreSQL and seeded with Ammaar, Upsky Travels, Zahoor Travels, 36 marketing channels, and 14-day outreach contacts, 4K Single-Package Spotlight Posters (`3240x4560`) and Multi-Package Sheets render via Headless Chromium, and `typecheck`, `lint`, `test`, and `build` pass with zero errors.
+code in `db/schema/suppliers-and-marketing.ts`, `lib/storage/r2.ts`, `lib/domain/marketing-ops.ts`, `lib/posters/`, `lib/bridges/`, `app/actions/marketing-ops.ts`, `app/admin/(dashboard)/supplier-flyers/`, `post-lookup/`, `distribution/`, `outreach/`
+- [x] Build it: `/develop B2B supplier wrapping, 4K post studio, multi-channel distribution, 14-day outreach CRM & restored hotel meal plans`
+- [x] Verify it: `/check verify B2B supplier wrapping, 4K post studio, multi-channel distribution, 14-day outreach CRM & restored hotel meal plans`
+- [x] Test it: `/test B2B supplier wrapping, 4K post studio, multi-channel distribution, 14-day outreach CRM & restored hotel meal plans` ([marketing-and-suppliers.test.ts](tests/marketing-and-suppliers.test.ts))
 
 ## Deferred
 

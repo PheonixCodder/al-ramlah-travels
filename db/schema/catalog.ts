@@ -28,6 +28,13 @@ export const hotelAccessTypeEnum = pgEnum("hotel_access_type", [
   "shuttle",
 ])
 
+export const mealPlanTypeEnum = pgEnum("meal_plan_type", [
+  "room_only",
+  "breakfast",
+  "half_board",
+  "full_board",
+])
+
 export const roomCategoryEnum = pgEnum("room_category", ["shared", "private"])
 
 export const roomTypeEnum = pgEnum("room_type", [
@@ -155,6 +162,23 @@ export const hotels = pgTable(
       .$type<("double" | "triple" | "quad")[]>()
       .notNull()
       .default(["double", "triple", "quad"]),
+    offersDining: boolean("offers_dining").notNull().default(true),
+    availableMealPlans: jsonb("available_meal_plans")
+      .$type<("room_only" | "breakfast" | "half_board" | "full_board")[]>()
+      .notNull()
+      .default(["room_only", "breakfast", "half_board", "full_board"]),
+    breakfastPriceSarPerPax: integer("breakfast_price_sar_per_pax")
+      .notNull()
+      .default(25),
+    lunchPriceSarPerPax: integer("lunch_price_sar_per_pax")
+      .notNull()
+      .default(35),
+    dinnerPriceSarPerPax: integer("dinner_price_sar_per_pax")
+      .notNull()
+      .default(35),
+    fullBoardPriceSarPerPax: integer("full_board_price_sar_per_pax")
+      .notNull()
+      .default(85),
     sharingPriceSar: integer("sharing_price_sar").notNull().default(0),
     roomPriceSar: integer("room_price_sar").notNull().default(0),
     quadPriceSar: integer("quad_price_sar").notNull().default(0),

@@ -19,6 +19,7 @@ import {
   cityNameEnum,
   departureCities,
   hotels,
+  mealPlanTypeEnum,
   roomCategoryEnum,
   roomTypeEnum,
   transportSectors,
@@ -26,6 +27,7 @@ import {
   visaTierEnum,
 } from "./catalog"
 import { groupDepartures, groupPackages } from "./packages"
+import { suppliers } from "./suppliers-and-marketing"
 
 // ==========================================
 // APPLICATION ENUMS
@@ -155,6 +157,11 @@ export const applications = pgTable(
     selectedRoomType: roomTypeEnum("selected_room_type"),
     hajjConsultationType: text("hajj_consultation_type"),
 
+    // Marketing Post & B2B Supplier Attribution
+    sourcePostCode: varchar("source_post_code", { length: 64 }),
+    sourceChannelId: uuid("source_channel_id"),
+    supplierId: uuid("supplier_id"),
+
     // Ziyarat Selection
     ziyaratScope: ziyaratScopeEnum("ziyarat_scope"),
     ziyaratVehicleId: uuid("ziyarat_vehicle_id").references(() => vehicles.id),
@@ -213,6 +220,10 @@ export const applicationHotelStays = pgTable(
     privateRoomAllocation: jsonb("private_room_allocation")
       .$type<{ double: number; triple: number; quad: number }>()
       .default({ double: 0, triple: 0, quad: 0 }),
+    mealPlan: mealPlanTypeEnum("meal_plan").notNull().default("room_only"),
+    includeBreakfast: boolean("include_breakfast").notNull().default(false),
+    includeLunch: boolean("include_lunch").notNull().default(false),
+    includeDinner: boolean("include_dinner").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -286,6 +297,13 @@ export const applicationQuotes = pgTable(
     ziyaratTotalPkr: integer("ziyarat_total_pkr").notNull().default(0),
     discountPkr: integer("discount_pkr").notNull().default(0),
     grandTotalPkr: integer("grand_total_pkr").notNull().default(0),
+    supplierId: uuid("supplier_id"),
+    supplierNetCostPkr: integer("supplier_net_cost_pkr").notNull().default(0),
+    commissionPkr: integer("commission_pkr").notNull().default(25000),
+    quotationPdfUrl: text("quotation_pdf_url"),
+    quotationPdfGeneratedAt: timestamp("quotation_pdf_generated_at", {
+      withTimezone: true,
+    }),
     currency: varchar("currency", { length: 3 }).notNull().default("PKR"),
     quoteNotesCustomer: text("quote_notes_customer"),
     internalNotesAdmin: text("internal_notes_admin"),
@@ -342,6 +360,10 @@ export const applicationsRelations = relations(
     assignedStaff: one(user, {
       fields: [applications.assignedStaffUserId],
       references: [user.id],
+    }),
+    supplier: one(suppliers, {
+      fields: [applications.supplierId],
+      references: [suppliers.id],
     }),
     hotelStays: many(applicationHotelStays),
     transportSegments: many(applicationTransportSegments),

@@ -19,6 +19,10 @@ import {
   Settings,
   ExternalLink,
   LogOut,
+  Sparkles,
+  Search,
+  Share2,
+  UserCheck,
 } from "lucide-react"
 
 import {
@@ -73,6 +77,31 @@ const NAV_GROUPS: NavGroup[] = [
         icon: Inbox,
         badgeClass:
           "bg-emerald-500/25 text-emerald-200 border border-emerald-500/40",
+      },
+    ],
+  },
+  {
+    groupLabel: "Suppliers, Posts & Outreach",
+    items: [
+      {
+        title: "Suppliers & Flyer Studio",
+        href: "/admin/supplier-flyers",
+        icon: Sparkles,
+      },
+      {
+        title: "Post Reverse Lookup",
+        href: "/admin/post-lookup",
+        icon: Search,
+      },
+      {
+        title: "Daily Group & Social Matrix",
+        href: "/admin/distribution",
+        icon: Share2,
+      },
+      {
+        title: "14-Day Personal Outreach",
+        href: "/admin/outreach",
+        icon: UserCheck,
       },
     ],
   },

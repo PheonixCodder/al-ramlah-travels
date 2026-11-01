@@ -1,5 +1,7 @@
 import "dotenv/config"
-import { eq, or } from "drizzle-orm"
+import fs from "node:fs"
+import path from "node:path"
+import { eq, or, sql } from "drizzle-orm"
 import { db } from "./index"
 import * as schema from "./schema"
 import { auth } from "../lib/auth"
@@ -36,8 +38,11 @@ async function seed() {
           .where(eq(schema.user.id, adminUserId))
         console.log("   ✅ Created Super Admin: admin@alramlahtravels.com")
       }
-    } catch (err: any) {
-      console.log("   ℹ️ Admin account creation note:", err?.message || err)
+    } catch (err: unknown) {
+      console.log(
+        "   ℹ️ Admin account creation note:",
+        err instanceof Error ? err.message : err
+      )
     }
   } else {
     await db
@@ -71,8 +76,11 @@ async function seed() {
           .where(eq(schema.user.id, staffUserId))
         console.log("   ✅ Created Staff: staff@alramlahtravels.com")
       }
-    } catch (err: any) {
-      console.log("   ℹ️ Staff account creation note:", err?.message || err)
+    } catch (err: unknown) {
+      console.log(
+        "   ℹ️ Staff account creation note:",
+        err instanceof Error ? err.message : err
+      )
     }
   } else {
     await db
@@ -91,19 +99,19 @@ async function seed() {
     .values({
       id: "default",
       agencyName: "Al Ramlah Travels",
-      tagline: "Sacred Journeys Crafted with Dignity & Comfort",
-      primaryWhatsapp: "+92 300 8456789",
-      secondaryPhone: "+92 51 2345678",
-      supportEmail: "contact@alramlahtravels.com",
+      tagline: "Where Purpose Meets Excellence",
+      primaryWhatsapp: "03274029701",
+      secondaryPhone: "03190462638",
+      supportEmail: "alramlahtravels@gmail.com",
       officeAddress:
-        "Suite 402, Al-Hafeez Heights, Main Boulevard, Gulberg III, Lahore, Pakistan",
+        "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
       mapsEmbedUrl:
-        "https://maps.google.com/?q=Al-Hafeez+Heights+Gulberg+III+Lahore",
+        "https://maps.google.com/?q=Sector+C+Askari+10+Airport+Road+Lahore+Cantt",
       facebookUrl: "https://facebook.com/alramlahtravels",
       instagramUrl: "https://instagram.com/alramlahtravels",
       youtubeUrl: "https://youtube.com/@alramlahtravels",
       tiktokUrl: "https://tiktok.com/@alramlahtravels",
-      workingHours: "Monday to Saturday, 9:00 AM to 8:00 PM PKT",
+      workingHours: "Monday to Saturday: 9:00 AM to 8:00 PM PKT",
       slaOverdueHours: 24,
       sarToPkrRate: 75,
       updatedByUserId: adminUserId,
@@ -111,10 +119,15 @@ async function seed() {
     .onConflictDoUpdate({
       target: schema.agencySettings.id,
       set: {
-        primaryWhatsapp: "+92 300 8456789",
-        supportEmail: "contact@alramlahtravels.com",
+        tagline: "Where Purpose Meets Excellence",
+        primaryWhatsapp: "03274029701",
+        secondaryPhone: "03190462638",
+        supportEmail: "alramlahtravels@gmail.com",
         officeAddress:
-          "Suite 402, Al-Hafeez Heights, Main Boulevard, Gulberg III, Lahore, Pakistan",
+          "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
+        mapsEmbedUrl:
+          "https://maps.google.com/?q=Sector+C+Askari+10+Airport+Road+Lahore+Cantt",
+        workingHours: "Monday to Saturday: 9:00 AM to 8:00 PM PKT",
         slaOverdueHours: 24,
         sarToPkrRate: 75,
       },
@@ -2182,327 +2195,7 @@ async function seed() {
   console.log("   ✅ 4 group packages and scheduled departure batches seeded.")
 
   // ==========================================
-  // 11. SAMPLE APPLICATIONS & QUOTES (RICH DATA)
-  // ==========================================
-  console.log(
-    "📋 Seeding sample inquiries, hotel stays, segments & live quotes..."
-  )
-
-  const yukon = await db.query.vehicles.findFirst({
-    where: or(
-      eq(schema.vehicles.name, "GMC Yukon XL"),
-      eq(schema.vehicles.name, "GMC Yukon")
-    ),
-  })
-  const hiace = await db.query.vehicles.findFirst({
-    where: eq(schema.vehicles.name, "Toyota HiAce"),
-  })
-  const jedMakSector = await db.query.transportSectors.findFirst({
-    where: eq(schema.transportSectors.code, "JED_MAK"),
-  })
-  const makMedSector = await db.query.transportSectors.findFirst({
-    where: eq(schema.transportSectors.code, "MAK_MED"),
-  })
-  const medAirSector = await db.query.transportSectors.findFirst({
-    where: eq(schema.transportSectors.code, "MED_AIR"),
-  })
-
-  // Application 1: Custom Journey, Pending Quote
-  const app1Ref = "ART-2026-8812"
-  let app1 = await db.query.applications.findFirst({
-    where: eq(schema.applications.referenceNumber, app1Ref),
-  })
-
-  if (!app1) {
-    const [createdApp1] = await db
-      .insert(schema.applications)
-      .values({
-        referenceNumber: app1Ref,
-        source: "custom_builder",
-        status: "pending_quote",
-        presetMode: "complete_umrah",
-        customerName: "Kamran Akram",
-        customerPhone: "+923214567890",
-        customerWhatsapp: "+923214567890",
-        customerCity: "Lahore",
-        customerEmail: "kamran.akram@gmail.com",
-        specialRequests:
-          "Traveling with elderly mother; ground floor or close to elevator preferred.",
-        adults: 2,
-        children: 1,
-        infants: 1,
-        totalPassportCount: 4,
-        bedAndSeatCount: 3, // 3 pilgrims (adults + children; infants occupy 0 beds / 0 seats)
-        includeVisa: true,
-        includeFlights: true,
-        includeHotels: true,
-        includeTransport: true,
-        includeZiyarat: true,
-        ksaArrivalDate: "2026-11-12",
-        ksaDepartureDate: "2026-11-26",
-        totalKsaDays: 15,
-        calculatedVisaTier: "short_term",
-        lockedVisaRatePerPersonPkr: 42500,
-        calculatedVisaTotalPkr: 170000, // 4 passports * 42,500
-        citySequence: "makkah_madinah",
-        entryAirport: "JED", // Locked: Makkah first
-        exitAirport: "MED",
-        departureCityId: lheCity?.id,
-        flightRouteType: "direct",
-        cabinClass: "economy",
-        preferredAirlineId: saudia?.id,
-        ziyaratScope: "both",
-        ziyaratVehicleId: yukon?.id,
-        assignedStaffUserId: staffUserId,
-      })
-      .returning()
-
-    app1 = createdApp1
-
-    // Stays for App 1
-    if (hyatt && oberoi) {
-      await db.insert(schema.applicationHotelStays).values([
-        {
-          applicationId: app1.id,
-          stayOrder: 1,
-          city: "makkah",
-          hotelId: hyatt.id,
-          checkInDate: "2026-11-12",
-          checkOutDate: "2026-11-20",
-          nights: 8,
-          roomCategory: "private",
-          privateRoomAllocation: { double: 0, triple: 1, quad: 0 },
-        },
-        {
-          applicationId: app1.id,
-          stayOrder: 2,
-          city: "madinah",
-          hotelId: oberoi.id,
-          checkInDate: "2026-11-20",
-          checkOutDate: "2026-11-26",
-          nights: 6,
-          roomCategory: "private",
-          privateRoomAllocation: { double: 0, triple: 1, quad: 0 },
-        },
-      ])
-    }
-
-    // Transport for App 1
-    if (jedMakSector && makMedSector && medAirSector && yukon) {
-      await db.insert(schema.applicationTransportSegments).values([
-        {
-          applicationId: app1.id,
-          segmentOrder: 1,
-          sectorId: jedMakSector.id,
-          serviceType: "private",
-          vehicleId: yukon.id,
-          vehicleQuantity: 1,
-          scheduledDate: "2026-11-12",
-          pickupTime: "18:30",
-          notes: "Airport meet and assist at terminal 1",
-        },
-        {
-          applicationId: app1.id,
-          segmentOrder: 2,
-          sectorId: makMedSector.id,
-          serviceType: "private",
-          vehicleId: yukon.id,
-          vehicleQuantity: 1,
-          scheduledDate: "2026-11-20",
-          pickupTime: "10:00",
-        },
-        {
-          applicationId: app1.id,
-          segmentOrder: 3,
-          sectorId: medAirSector.id,
-          serviceType: "private",
-          vehicleId: yukon.id,
-          vehicleQuantity: 1,
-          scheduledDate: "2026-11-26",
-          pickupTime: "15:00",
-        },
-      ])
-    }
-  } else {
-    await db
-      .update(schema.applications)
-      .set({
-        adults: 2,
-        children: 1,
-        infants: 1,
-        totalPassportCount: 4,
-        bedAndSeatCount: 3,
-      })
-      .where(eq(schema.applications.id, app1.id))
-  }
-
-  // Application 2: Custom Journey, Quoted & Partially Paid
-  const app2Ref = "ART-2026-4521"
-  let app2 = await db.query.applications.findFirst({
-    where: eq(schema.applications.referenceNumber, app2Ref),
-  })
-
-  if (!app2) {
-    const [createdApp2] = await db
-      .insert(schema.applications)
-      .values({
-        referenceNumber: app2Ref,
-        source: "custom_builder",
-        status: "quoted",
-        presetMode: "complete_umrah",
-        customerName: "Dr. Ayesha Siddiqua",
-        customerPhone: "+923005556677",
-        customerWhatsapp: "+923005556677",
-        customerCity: "Islamabad",
-        customerEmail: "ayesha.siddiqua@shifa.com.pk",
-        specialRequests: "High floor Haram view rooms if possible.",
-        adults: 4,
-        children: 0,
-        infants: 0,
-        totalPassportCount: 4,
-        bedAndSeatCount: 4,
-        includeVisa: true,
-        includeFlights: true,
-        includeHotels: true,
-        includeTransport: true,
-        includeZiyarat: true,
-        ksaArrivalDate: "2026-12-05",
-        ksaDepartureDate: "2026-12-15",
-        totalKsaDays: 11,
-        calculatedVisaTier: "short_term",
-        lockedVisaRatePerPersonPkr: 42500,
-        calculatedVisaTotalPkr: 170000,
-        citySequence: "makkah_madinah",
-        entryAirport: "JED",
-        exitAirport: "MED",
-        departureCityId: isbCity?.id,
-        flightRouteType: "direct",
-        cabinClass: "economy",
-        preferredAirlineId: saudia?.id,
-        ziyaratScope: "both",
-        ziyaratVehicleId: hiace?.id,
-        assignedStaffUserId: staffUserId,
-        quoteSentAt: new Date(),
-      })
-      .returning()
-
-    app2 = createdApp2
-
-    // Quote for App 2
-    await db.insert(schema.applicationQuotes).values({
-      applicationId: app2.id,
-      version: 1,
-      visaTotalPkr: 170000,
-      flightsTotalPkr: 480000,
-      makkahHotelTotalPkr: 450000,
-      madinahHotelTotalPkr: 320000,
-      transportTotalPkr: 120000,
-      ziyaratTotalPkr: 50000,
-      discountPkr: 20000,
-      grandTotalPkr: 1570000,
-      quoteNotesCustomer:
-        "Package includes 4x Saudia direct return tickets, 5 nights Swissôtel Makkah + 5 nights Madinah Hilton with luxury amenities, private HiAce transport, and complete visa processing.",
-      internalNotesAdmin:
-        "Wholesale flight cost PKR 420,000. Margin PKR 60,000 on tickets.",
-      paymentStatus: "partially_paid",
-      amountPaidPkr: 500000,
-      quotedByUserId: staffUserId,
-      quotedAt: new Date(),
-      validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    })
-  } else {
-    await db
-      .update(schema.applications)
-      .set({
-        adults: 4,
-        children: 0,
-        infants: 0,
-        totalPassportCount: 4,
-        bedAndSeatCount: 4,
-      })
-      .where(eq(schema.applications.id, app2.id))
-  }
-
-  // Application 3: Group Booking, Approved & Paid in Full
-  const app3Ref = "ART-2026-1930"
-  let app3 = await db.query.applications.findFirst({
-    where: eq(schema.applications.referenceNumber, app3Ref),
-  })
-
-  const pkg1Departure = await db.query.groupDepartures.findFirst({
-    where: eq(schema.groupDepartures.batchCode, "ART-RAM-ISB-01"),
-  })
-
-  if (!app3 && pkg1 && pkg1Departure) {
-    const [createdApp3] = await db
-      .insert(schema.applications)
-      .values({
-        referenceNumber: app3Ref,
-        source: "group_booking",
-        status: "approved",
-        presetMode: "group_package",
-        customerName: "Zahid Mehmood",
-        customerPhone: "+923331122334",
-        customerWhatsapp: "+923331122334",
-        customerCity: "Rawalpindi",
-        customerEmail: "zahid.mehmood@gmail.com",
-        adults: 2,
-        children: 0,
-        infants: 0,
-        totalPassportCount: 2,
-        bedAndSeatCount: 2,
-        includeVisa: true,
-        includeFlights: true,
-        includeHotels: true,
-        includeTransport: true,
-        includeZiyarat: true,
-        groupPackageId: pkg1.id,
-        groupDepartureId: pkg1Departure.id,
-        selectedRoomType: "double",
-        assignedStaffUserId: adminUserId,
-        decisionAt: new Date(),
-      })
-      .returning()
-
-    app3 = createdApp3
-
-    await db.insert(schema.applicationQuotes).values({
-      applicationId: app3.id,
-      version: 1,
-      visaTotalPkr: 85000,
-      flightsTotalPkr: 280000,
-      makkahHotelTotalPkr: 460000,
-      madinahHotelTotalPkr: 380000,
-      transportTotalPkr: 65000,
-      ziyaratTotalPkr: 0,
-      discountPkr: 0,
-      grandTotalPkr: 1270000, // 2 x 635,000 double price
-      quoteNotesCustomer:
-        "Royal Ramadan 15-Day Package confirmed for 2 persons in Double Room sharing.",
-      paymentStatus: "paid_in_full",
-      amountPaidPkr: 1270000,
-      quotedByUserId: adminUserId,
-      quotedAt: new Date(),
-      approvedAt: new Date(),
-    })
-  } else if (app3) {
-    await db
-      .update(schema.applications)
-      .set({
-        adults: 2,
-        children: 0,
-        infants: 0,
-        totalPassportCount: 2,
-        bedAndSeatCount: 2,
-      })
-      .where(eq(schema.applications.id, app3.id))
-  }
-  console.log(
-    "   ✅ Rich sample applications, stays, transport segments, and quotes seeded."
-  )
-
-  // ==========================================
-  // 12. PUBLIC CMS (HERO, TESTIMONIALS, FAQS)
+  // 11. PUBLIC CMS (HERO, TESTIMONIALS, FAQS)
   // ==========================================
   console.log("🌟 Seeding public CMS content...")
 
@@ -2510,7 +2203,7 @@ async function seed() {
   const heroSlidesData = [
     {
       badge: "Al Ramlah Elite Pilgrimage",
-      title: "Sacred Journeys Crafted with Dignity & Comfort",
+      title: "Where Purpose Meets Excellence",
       subtitle:
         "Bespoke Umrah itineraries with five-star courtyard accommodations, high-speed rail transit, and personalized scholar-led ziyarat.",
       imageUrl:
@@ -2535,7 +2228,7 @@ async function seed() {
       sortOrder: 2,
     },
     {
-      badge: "VIP Hajj Consultation 1448H",
+      badge: "Hajj 2027 Package Guide",
       title: "Guaranteed Guidance for the Lifetime Obligation",
       subtitle:
         "Private consultations, pre-registration assistance, and verified executive arrangements for Pakistan & overseas diaspora pilgrims.",
@@ -2543,15 +2236,15 @@ async function seed() {
         "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=1600",
       primaryCtaLabel: "Request Hajj Consultation",
       primaryCtaUrl: "#hajj-inquiry",
-      secondaryCtaLabel: "WhatsApp Consultant",
-      secondaryCtaUrl: "https://wa.me/923008456789",
+      secondaryCtaLabel: "WhatsApp Hajj 2027 Team",
+      secondaryCtaUrl: "https://wa.me/923274029701",
       sortOrder: 3,
     },
   ]
 
   for (const s of heroSlidesData) {
     const existing = await db.query.heroSlides.findFirst({
-      where: eq(schema.heroSlides.title, s.title),
+      where: eq(schema.heroSlides.sortOrder, s.sortOrder),
     })
     if (!existing) {
       await db.insert(schema.heroSlides).values(s)
@@ -2559,9 +2252,13 @@ async function seed() {
       await db
         .update(schema.heroSlides)
         .set({
+          badge: s.badge,
+          title: s.title,
+          subtitle: s.subtitle,
+          imageUrl: s.imageUrl,
           primaryCtaUrl: s.primaryCtaUrl,
-          secondaryCtaUrl: s.secondaryCtaUrl,
           primaryCtaLabel: s.primaryCtaLabel,
+          secondaryCtaUrl: s.secondaryCtaUrl,
           secondaryCtaLabel: s.secondaryCtaLabel,
         })
         .where(eq(schema.heroSlides.id, existing.id))
@@ -2681,30 +2378,742 @@ async function seed() {
     }
   }
 
-  // Contact Messages
-  const contactMessagesData = [
+  console.log(
+    "   ✅ Hero slides, testimonials, and FAQs seeded."
+  )
+
+  // ==========================================
+  // 11. B2B SUPPLIERS, WRAPPED FLYERS, 30+ WA GROUPS & 14-DAY OUTREACH CRM
+  // ==========================================
+  console.log(
+    "📦 Seeding B2B Suppliers (Ammaar, Upsky Travels, Zahoor Travels), Flyers, 30+ WhatsApp Groups & 14-Day Outreach CRM..."
+  )
+
+  const migrationSqlPath = path.join(
+    process.cwd(),
+    "drizzle",
+    "0001_suppliers_marketing_and_meal_plans.sql"
+  )
+  if (fs.existsSync(migrationSqlPath)) {
+    const rawSql = fs.readFileSync(migrationSqlPath, "utf8")
+    const statements = rawSql
+      .replace(/DO \$\$ BEGIN[\s\S]*?END \$\$;/g, (m) =>
+        m.replace(/;/g, "__SEMI__")
+      )
+      .split(";")
+      .map((s) => s.replace(/__SEMI__/g, ";").trim())
+      .filter((s) => s.length > 0 && !s.startsWith("--"))
+    for (const stmt of statements) {
+      await db.execute(sql.raw(stmt))
+    }
+  }
+
+  const suppliersSeed = [
     {
-      name: "Chaudhry Nadeem Afzal",
-      email: "nadeem.afzal@textiles.pk",
-      phone: "+923018899001",
-      whatsapp: "+923018899001",
-      subject: "Group of 18 Persons - Ramadan Last 10 Days Inquiry",
-      message:
-        "Assalam-o-Alaikum, We are an extended family of 18 intending to perform Umrah during the last 10 days of Ramadan. We require 4 quad rooms in Swissôtel or Fairmont, plus 1 double room. Please have a senior consultant call me.",
-      status: "unread" as const,
+      name: "Ammaar",
+      slug: "ammaar",
+      codePrefix: "AM",
+      category: "group_packages" as const,
+      defaultCommissionMode: "included_in_flyer" as const,
+      defaultCommissionPkr: 22000,
+      contactPerson: "Ammaar Group Desk",
+      whatsappNumber: "03004001122",
+      phone: "04235761122",
+      notes: "21-Day Airblue & SereneAir Umrah Group Consolidator",
+      isActive: true,
+    },
+    {
+      name: "Upsky Travels",
+      slug: "upsky-travels",
+      codePrefix: "UP",
+      category: "group_packages" as const,
+      defaultCommissionMode: "included_in_flyer" as const,
+      defaultCommissionPkr: 23000,
+      contactPerson: "Upsky B2B Desk",
+      whatsappNumber: "03214003344",
+      phone: "04235883344",
+      notes: "15-Day Direct Saudi Airlines (SV) Umrah Group Consolidator",
+      isActive: true,
+    },
+    {
+      name: "Zahoor Travels",
+      slug: "zahoor-travels",
+      codePrefix: "ZH",
+      category: "custom_packages" as const,
+      defaultCommissionMode: "net_plus_markup" as const,
+      defaultCommissionPkr: 25000,
+      contactPerson: "Zahoor VIP Quoting Desk",
+      whatsappNumber: "03334005566",
+      phone: "04235995566",
+      notes: "Custom VIP 5-Star Mövenpick & Clock Tower Umrah Quotations",
+      isActive: true,
     },
   ]
 
-  for (const m of contactMessagesData) {
-    const existing = await db.query.contactMessages.findFirst({
-      where: eq(schema.contactMessages.phone, m.phone),
+  const supplierMap = new Map<string, string>()
+  for (const sup of suppliersSeed) {
+    const existing = await db.query.suppliers.findFirst({
+      where: eq(schema.suppliers.slug, sup.slug),
     })
     if (!existing) {
-      await db.insert(schema.contactMessages).values(m)
+      const [inserted] = await db
+        .insert(schema.suppliers)
+        .values(sup)
+        .returning()
+      supplierMap.set(sup.slug, inserted.id)
+    } else {
+      await db
+        .update(schema.suppliers)
+        .set(sup)
+        .where(eq(schema.suppliers.id, existing.id))
+      supplierMap.set(sup.slug, existing.id)
     }
   }
+
+  const ammaarId = supplierMap.get("ammaar")!
+  const upskyId = supplierMap.get("upsky-travels")!
+  const zahoorId = supplierMap.get("zahoor-travels")!
+
+  // Clear and re-seed sample flyers to keep deterministic Post Codes clean
+  await db.delete(schema.dailyPostDistributions)
+  await db.delete(schema.outreachLogs)
+  await db.delete(schema.postAssets)
+  await db.delete(schema.supplierFlyerPackages)
+  await db.delete(schema.supplierFlyers)
+
+  // Flyer 1: Ammaar 21-Day Airblue Flyer
+  const [ammaarFlyer] = await db
+    .insert(schema.supplierFlyers)
+    .values({
+      supplierId: ammaarId,
+      title: "Ammaar 21 Days Airblue Umrah Packages (PA 470/471)",
+      rawFlyerImageUrl: "/uploads/sample-posts/ammaar-raw-17cards.jpg",
+      airlineName: "Airblue",
+      airlineIataCode: "PA",
+      airlineLogoUrl: "https://images.kiwi.com/airlines/64/PA.png",
+      durationDays: 21,
+      daysTitle: "21 DAYS",
+      routePill: "LHE - JED | JED - LHE",
+      departureCityCode: "LHE",
+      arrivalAirportCode: "JED",
+      returnAirportCode: "JED",
+      outboundBaggage: "20 Kg + 7 Kg",
+      inboundBaggage: "30 Kg + 7 Kg + 5 Ltr Zamzam",
+      giftedInclusions: ["Visa", "Insurance", "Hotel", "Return Ticket", "Transport"],
+      commissionMode: "included_in_flyer",
+      commissionPkr: 22000,
+      receivedDate: "2026-11-01",
+      multiSheetImageUrl: "/uploads/sample-posts/ammaar-wrapped-sheet.png",
+      extractedCardsCount: 4,
+      status: "wrapped",
+    })
+    .returning()
+
+  const ammaarCards = [
+    {
+      cardNumber: "01",
+      postCode: "ART-AM-21D-01",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "03 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "24 NOV",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Fajr Al Badea 2",
+      makkahDistanceLabel: "(Shuttle)",
+      madinahNights: "05N",
+      madinahHotelName: "Burj Al Mukhtara",
+      madinahDistanceLabel: "(600M)",
+      mealPlanLabel: "Room Only",
+      sharing: 239899,
+      quad: 245899,
+      triple: 256899,
+      double: 279899,
+    },
+    {
+      cardNumber: "04",
+      postCode: "ART-AM-21D-04",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "10 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "01 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Dar Al Khalil Al Rushad",
+      makkahDistanceLabel: "(600M)",
+      madinahNights: "05N",
+      madinahHotelName: "Emaar Taiba",
+      madinahDistanceLabel: "(400M)",
+      mealPlanLabel: "Room Only",
+      sharing: 269899,
+      quad: 279899,
+      triple: 298899,
+      double: 334899,
+    },
+    {
+      cardNumber: "08",
+      postCode: "ART-AM-21D-08",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "19 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "10 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Voco Makkah IHG",
+      makkahDistanceLabel: "(1300M VIP Shuttle)",
+      madinahNights: "05N",
+      madinahHotelName: "Pullman Zamzam Madinah",
+      madinahDistanceLabel: "(150M)",
+      mealPlanLabel: "Breakfast Included",
+      sharing: 319899,
+      quad: 335899,
+      triple: 365899,
+      double: 419899,
+    },
+    {
+      cardNumber: "10",
+      postCode: "ART-AM-21D-10",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "24 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "15 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      makkahNights: "15N",
+      makkahHotelName: "Swissotel Al Maqam",
+      makkahDistanceLabel: "(0M Clock Tower)",
+      madinahNights: "05N",
+      madinahHotelName: "Anwar Al Madinah Movenpick",
+      madinahDistanceLabel: "(0M Haram Courtyard)",
+      mealPlanLabel: "Breakfast Included",
+      sharing: 439899,
+      quad: 465899,
+      triple: 515899,
+      double: 599899,
+    },
+  ]
+
+  const insertedAmmaarPkgs = await db
+    .insert(schema.supplierFlyerPackages)
+    .values(
+      ammaarCards.map((c) => ({
+        flyerId: ammaarFlyer.id,
+        supplierId: ammaarId,
+        cardNumber: c.cardNumber,
+        postCode: c.postCode,
+        outboundFlightNo: c.outboundFlightNo,
+        outboundDateLabel: c.outboundDateLabel,
+        outboundRoute: c.outboundRoute,
+        outboundDepTime: c.outboundDepTime,
+        outboundArrTime: c.outboundArrTime,
+        returnFlightNo: c.returnFlightNo,
+        returnDateLabel: c.returnDateLabel,
+        returnRoute: c.returnRoute,
+        returnDepTime: c.returnDepTime,
+        returnArrTime: c.returnArrTime,
+        makkahNights: c.makkahNights,
+        makkahHotelName: c.makkahHotelName,
+        makkahDistanceLabel: c.makkahDistanceLabel,
+        madinahNights: c.madinahNights,
+        madinahHotelName: c.madinahHotelName,
+        madinahDistanceLabel: c.madinahDistanceLabel,
+        mealPlanLabel: c.mealPlanLabel,
+        rawSharingPkr: c.sharing,
+        rawQuadPkr: c.quad,
+        rawTriplePkr: c.triple,
+        rawDoublePkr: c.double,
+        netSharingPkr: c.sharing - 22000,
+        netQuadPkr: c.quad - 22000,
+        netTriplePkr: c.triple - 22000,
+        netDoublePkr: c.double - 22000,
+        retailSharingPkr: c.sharing,
+        retailQuadPkr: c.quad,
+        retailTriplePkr: c.triple,
+        retailDoublePkr: c.double,
+        commissionPkr: 22000,
+        spotlightPosterUrl:
+          c.cardNumber === "04"
+            ? "/uploads/sample-posts/ammaar-spotlight-04.png"
+            : "/uploads/sample-posts/ammaar-wrapped-sheet.png",
+      }))
+    )
+    .returning()
+
+  // Flyer 2: Upsky Travels 15-Day Saudi Airlines Flyer
+  const [upskyFlyer] = await db
+    .insert(schema.supplierFlyers)
+    .values({
+      supplierId: upskyId,
+      title: "Upsky Travels 15 Days Saudi Airlines Umrah Packages (SV 733/732)",
+      rawFlyerImageUrl: "/uploads/sample-posts/upsky-raw-15d.jpeg",
+      airlineName: "Saudi Airlines",
+      airlineIataCode: "SV",
+      airlineLogoUrl: "https://images.kiwi.com/airlines/64/SV.png",
+      durationDays: 15,
+      daysTitle: "15 DAYS",
+      routePill: "LHE - JED | JED - LHE",
+      departureCityCode: "LHE",
+      arrivalAirportCode: "JED",
+      returnAirportCode: "JED",
+      outboundBaggage: "23 Kg × 2 + 7 Kg",
+      inboundBaggage: "23 Kg × 2 + 7 Kg + 5 Ltr Zamzam",
+      giftedInclusions: ["Visa", "Insurance", "Hotel", "Return Ticket", "Transport", "Ziyarat"],
+      commissionMode: "included_in_flyer",
+      commissionPkr: 23000,
+      receivedDate: "2026-11-01",
+      multiSheetImageUrl: "/uploads/sample-posts/upsky-wrapped-15d.jpeg",
+      extractedCardsCount: 2,
+      status: "wrapped",
+    })
+    .returning()
+
+  const insertedUpskyPkgs = await db
+    .insert(schema.supplierFlyerPackages)
+    .values([
+      {
+        flyerId: upskyFlyer.id,
+        supplierId: upskyId,
+        cardNumber: "01",
+        postCode: "ART-UP-15D-01",
+        outboundFlightNo: "SV 733",
+        outboundDateLabel: "15 NOV",
+        outboundRoute: "LHE - JED",
+        outboundDepTime: "11:15",
+        outboundArrTime: "15:10",
+        returnFlightNo: "SV 732",
+        returnDateLabel: "29 NOV",
+        returnRoute: "JED - LHE",
+        returnDepTime: "02:30",
+        returnArrTime: "09:15",
+        makkahNights: "08N",
+        makkahHotelName: "Emaar Al Khalil",
+        makkahDistanceLabel: "(450M)",
+        madinahNights: "06N",
+        madinahHotelName: "Emaar Taiba",
+        madinahDistanceLabel: "(400M)",
+        mealPlanLabel: "Room Only",
+        rawSharingPkr: 289899,
+        rawQuadPkr: 299899,
+        rawTriplePkr: 318899,
+        rawDoublePkr: 352899,
+        netSharingPkr: 266899,
+        netQuadPkr: 276899,
+        netTriplePkr: 295899,
+        netDoublePkr: 329899,
+        retailSharingPkr: 289899,
+        retailQuadPkr: 299899,
+        retailTriplePkr: 318899,
+        retailDoublePkr: 352899,
+        commissionPkr: 23000,
+        spotlightPosterUrl: "/uploads/sample-posts/upsky-wrapped-15d.jpeg",
+      },
+      {
+        flyerId: upskyFlyer.id,
+        supplierId: upskyId,
+        cardNumber: "02",
+        postCode: "ART-UP-15D-02",
+        outboundFlightNo: "SV 733",
+        outboundDateLabel: "22 NOV",
+        outboundRoute: "LHE - JED",
+        outboundDepTime: "11:15",
+        outboundArrTime: "15:10",
+        returnFlightNo: "SV 732",
+        returnDateLabel: "06 DEC",
+        returnRoute: "JED - LHE",
+        returnDepTime: "02:30",
+        returnArrTime: "09:15",
+        makkahNights: "08N",
+        makkahHotelName: "Elaf Kinda Hotel",
+        makkahDistanceLabel: "(50M Haram Yard)",
+        madinahNights: "06N",
+        madinahHotelName: "Taiba Front Hotel",
+        madinahDistanceLabel: "(50M Haram Yard)",
+        mealPlanLabel: "Breakfast Included",
+        rawSharingPkr: 389899,
+        rawQuadPkr: 412899,
+        rawTriplePkr: 454899,
+        rawDoublePkr: 524899,
+        netSharingPkr: 366899,
+        netQuadPkr: 389899,
+        netTriplePkr: 431899,
+        netDoublePkr: 501899,
+        retailSharingPkr: 389899,
+        retailQuadPkr: 412899,
+        retailTriplePkr: 454899,
+        retailDoublePkr: 524899,
+        commissionPkr: 23000,
+        spotlightPosterUrl: "/uploads/sample-posts/upsky-wrapped-15d.jpeg",
+      },
+    ])
+    .returning()
+
+  // Seed Post Assets (Multi-Package Sheets + Single-Package Spotlights)
+  const [ammaarSheetAsset, ammaarSpotAsset, upskySheetAsset, upskySpotAsset] =
+    await db
+      .insert(schema.postAssets)
+      .values([
+        {
+          postCode: "ART-AM-21D-ALL",
+          kind: "multi_package_sheet",
+          title: "Ammaar 21 Days Airblue — All-Packages Sheet",
+          supplierId: ammaarId,
+          flyerId: ammaarFlyer.id,
+          imageUrl: "/uploads/sample-posts/ammaar-wrapped-sheet.png",
+          captionWhatsapp:
+            "*AL RAMLAH TRAVELS — 21 DAYS AIRBLUE UMRAH PACKAGES*\n✈️ Airline: Airblue (LHE-JED-LHE)\n💰 Starting From: PKR 239,899\n📌 Ref: ART-AM-21D-ALL\n📞 Call/WA: 03274029701 | 03190462638",
+          searchableText:
+            "ART-AM-21D-ALL Ammaar Airblue 21 Days Fajr Al Badea Dar Al Khalil Swissotel",
+        },
+        {
+          postCode: "ART-AM-21D-04",
+          kind: "single_package_spotlight",
+          title: "21 Days Spotlight #04 — Dar Al Khalil (600m) + Emaar Taiba",
+          supplierId: ammaarId,
+          flyerId: ammaarFlyer.id,
+          flyerPackageId: insertedAmmaarPkgs[1]!.id,
+          imageUrl: "/uploads/sample-posts/ammaar-spotlight-04.png",
+          captionWhatsapp:
+            "*✨ AL RAMLAH TRAVELS — 21 DAYS UMRAH SPOTLIGHT ✨*\n🔖 Post Ref: ART-AM-21D-04\n✈️ Airblue PA 470 (10 NOV → 01 DEC)\n🕋 Makkah (15N): Dar Al Khalil Al Rushad (600M)\n🕌 Madinah (05N): Emaar Taiba (400M)\n💰 Sharing: PKR 269,899 | Quad: PKR 279,899\n📞 Call/WA: 03274029701 | 03190462638",
+          searchableText:
+            "ART-AM-21D-04 Dar Al Khalil Emaar Taiba 269899 279899 10 NOV",
+        },
+        {
+          postCode: "ART-UP-15D-ALL",
+          kind: "multi_package_sheet",
+          title: "Upsky 15 Days Saudi Airlines — All-Packages Sheet",
+          supplierId: upskyId,
+          flyerId: upskyFlyer.id,
+          imageUrl: "/uploads/sample-posts/upsky-wrapped-15d.jpeg",
+          captionWhatsapp:
+            "*AL RAMLAH TRAVELS — 15 DAYS DIRECT SAUDI AIRLINES UMRAH*\n✈️ Airline: Saudi Airlines SV 733/732\n💰 Starting From: PKR 289,899\n📌 Ref: ART-UP-15D-ALL\n📞 Call/WA: 03274029701 | 03190462638",
+          searchableText:
+            "ART-UP-15D-ALL Upsky Saudi Airlines 15 Days Emaar Al Khalil Elaf Kinda",
+        },
+        {
+          postCode: "ART-UP-15D-01",
+          kind: "single_package_spotlight",
+          title: "15 Days Saudia Spotlight #01 — Emaar Al Khalil + Emaar Taiba",
+          supplierId: upskyId,
+          flyerId: upskyFlyer.id,
+          flyerPackageId: insertedUpskyPkgs[0]!.id,
+          imageUrl: "/uploads/sample-posts/upsky-wrapped-15d.jpeg",
+          captionWhatsapp:
+            "*✨ AL RAMLAH TRAVELS — 15 DAYS SAUDIA SPOTLIGHT ✨*\n🔖 Post Ref: ART-UP-15D-01\n✈️ Saudi Airlines SV 733 (15 NOV → 29 NOV)\n🕋 Makkah (08N): Emaar Al Khalil (450M)\n🕌 Madinah (06N): Emaar Taiba (400M)\n💰 Sharing: PKR 289,899 | Quad: PKR 299,899\n📞 Call/WA: 03274029701 | 03190462638",
+          searchableText:
+            "ART-UP-15D-01 Emaar Al Khalil Emaar Taiba 289899 15 NOV Saudia",
+        },
+      ])
+      .returning()
+
+  // Seed 36 Marketing Channels (30 WhatsApp Groups across Askari 10, DHA, Lahore, Other Cities + 2 Statuses + 4 Social)
+  await db.delete(schema.marketingChannels)
+  const channelsSeed = [
+    // Askari 10 (10 Groups)
+    ...[
+      "Askari 10 Sector A Residents Forum",
+      "Askari 10 Sector B Community",
+      "Askari 10 Sector C Welfare Group",
+      "Askari 10 Sector D & E Residents",
+      "Askari 10 Sector F Executive Hub",
+      "Askari 10 Ladies & Families Circle",
+      "Askari 10 Masjid & Islamic Events",
+      "Askari 10 Business & Trade Directory",
+      "Askari 10 Villas & Apartments Group",
+      "Askari 10 Youth & Families Network",
+    ].map((name, i) => ({
+      name,
+      platform: "whatsapp_group" as const,
+      areaTag: "Askari 10",
+      senderWhatsappNumber: i % 2 === 0 ? "03274029701" : "03190462638",
+      memberCount: 420 + i * 35,
+      dailyTargetPosts: 1,
+      isActive: true,
+    })),
+    // DHA Lahore (10 Groups)
+    ...[
+      "DHA Phase 1 & 2 Residents Hub",
+      "DHA Phase 3 Block Y & Z Community",
+      "DHA Phase 4 Families Forum",
+      "DHA Phase 5 Executive Residents",
+      "DHA Phase 6 Main Boulevard Community",
+      "DHA Phase 7 & 8 Homeowners Circle",
+      "DHA Rahbar & EME Sector Community",
+      "DHA Lahore Business & Professionals",
+      "DHA Lahore Islamic & Umrah Circle",
+      "DHA Lahore Overseas Pakistanis",
+    ].map((name, i) => ({
+      name,
+      platform: "whatsapp_group" as const,
+      areaTag: "DHA",
+      senderWhatsappNumber: i % 2 === 0 ? "03274029701" : "03190462638",
+      memberCount: 510 + i * 40,
+      dailyTargetPosts: 1,
+      isActive: true,
+    })),
+    // Lahore Cantt / Bahria / Model Town / Gulberg (6 Groups)
+    ...[
+      "Lahore Cantt & Polo Club Families",
+      "Bahria Town Lahore Executive Forum",
+      "Model Town Blocks A-M Residents",
+      "Gulberg & Cavalry Ground Community",
+      "Wapda Town & Valencia Residents",
+      "Lake City & Raiwind Golf Community",
+    ].map((name, i) => ({
+      name,
+      platform: "whatsapp_group" as const,
+      areaTag: "Lahore",
+      senderWhatsappNumber: i % 2 === 0 ? "03274029701" : "03190462638",
+      memberCount: 380 + i * 30,
+      dailyTargetPosts: 1,
+      isActive: true,
+    })),
+    // Other Cities (4 Groups)
+    ...[
+      "Islamabad F-6 / F-7 / DHA Pilgrims",
+      "Gujranwala & Sialkot Business Chamber",
+      "Faisalabad Textile & Business Families",
+      "Multan & Bahawalpur Executive Circle",
+    ].map((name, i) => ({
+      name,
+      platform: "whatsapp_group" as const,
+      areaTag: "Other Cities",
+      senderWhatsappNumber: i % 2 === 0 ? "03274029701" : "03190462638",
+      memberCount: 340 + i * 25,
+      dailyTargetPosts: 1,
+      isActive: true,
+    })),
+    // 2 WhatsApp Statuses
+    {
+      name: "WhatsApp Status — Primary Line (03274029701)",
+      platform: "whatsapp_status" as const,
+      areaTag: "Status",
+      senderWhatsappNumber: "03274029701",
+      memberCount: 1850,
+      dailyTargetPosts: 2,
+      isActive: true,
+    },
+    {
+      name: "WhatsApp Status — Secondary Line (03190462638)",
+      platform: "whatsapp_status" as const,
+      areaTag: "Status",
+      senderWhatsappNumber: "03190462638",
+      memberCount: 1420,
+      dailyTargetPosts: 2,
+      isActive: true,
+    },
+    // 4 Social Media Accounts
+    {
+      name: "Al Ramlah Travels Instagram (@alramlahtravels)",
+      platform: "instagram" as const,
+      areaTag: "Social",
+      externalGroupIdOrHandle: "@alramlahtravels",
+      memberCount: 4800,
+      dailyTargetPosts: 1,
+      isActive: true,
+    },
+    {
+      name: "Al Ramlah Travels Facebook Page",
+      platform: "facebook" as const,
+      areaTag: "Social",
+      externalGroupIdOrHandle: "fb.com/alramlahtravels",
+      memberCount: 6200,
+      dailyTargetPosts: 1,
+      isActive: true,
+    },
+    {
+      name: "Al Ramlah Travels TikTok (@alramlahtravels)",
+      platform: "tiktok" as const,
+      areaTag: "Social",
+      externalGroupIdOrHandle: "@alramlahtravels",
+      memberCount: 3100,
+      dailyTargetPosts: 1,
+      isActive: true,
+    },
+    {
+      name: "Al Ramlah Travels YouTube Shorts",
+      platform: "youtube" as const,
+      areaTag: "Social",
+      externalGroupIdOrHandle: "@alramlahtravels",
+      memberCount: 1200,
+      dailyTargetPosts: 1,
+      isActive: true,
+    },
+  ]
+
+  const insertedChannels = await db
+    .insert(schema.marketingChannels)
+    .values(channelsSeed)
+    .returning()
+
+  // Seed Sample Daily Post Distributions for Today
+  const todayStr = new Date().toISOString().split("T")[0]!
+  await db.insert(schema.dailyPostDistributions).values(
+    insertedChannels.slice(0, 8).map((ch) => ({
+      scheduledDate: todayStr,
+      channelId: ch.id,
+      postAssetId: ammaarSpotAsset.id,
+      pairedFollowUpAssetId: ammaarSheetAsset.id,
+      stage: "step_1_spotlight_hook" as const,
+      status: "sent" as const,
+      senderWhatsappLine: ch.senderWhatsappNumber || "03274029701",
+      captionUsed: ammaarSpotAsset.captionWhatsapp,
+      externalQueueJobId: `wacrm-seed-${ch.id.slice(0, 6)}`,
+      postedAt: new Date(),
+    }))
+  )
+
+  // Seed 14-Day Personal Outreach Contacts
+  await db.delete(schema.outreachContacts)
+  const nowTs = Date.now()
+  const dayMs = 24 * 60 * 60 * 1000
+
+  await db.insert(schema.outreachContacts).values([
+    {
+      fullName: "Brig. (R) Tariq Mahmood",
+      whatsappNumber: "03004112233",
+      city: "Lahore",
+      areaCommunity: "Askari 10",
+      sourceGroupOrChannel: "Askari 10 Sector B Community",
+      assignedWhatsappLine: "03274029701",
+      interestStatus: "interested",
+      lastOutreachAt: new Date(nowTs - 16 * dayMs),
+      cooldownUntil: new Date(nowTs - 2 * dayMs),
+      totalOutreachCount: 2,
+      packagesSharedHistory: ["ART-AM-21D-01"],
+      tags: ["Askari 10", "Family of 4"],
+    },
+    {
+      fullName: "Col. (R) Salman Rashid",
+      whatsappNumber: "03214223344",
+      city: "Lahore",
+      areaCommunity: "Askari 10",
+      sourceGroupOrChannel: "Askari 10 Sector F Executive Hub",
+      assignedWhatsappLine: "03274029701",
+      interestStatus: "prospect",
+      lastOutreachAt: null,
+      cooldownUntil: null,
+      totalOutreachCount: 0,
+      packagesSharedHistory: [],
+      tags: ["Askari 10", "First Outreach"],
+    },
+    {
+      fullName: "Dr. Kamran & Mrs. Ayesha Siddiqui",
+      whatsappNumber: "03334334455",
+      city: "Lahore",
+      areaCommunity: "DHA Phase 5",
+      sourceGroupOrChannel: "DHA Phase 5 Executive Residents",
+      assignedWhatsappLine: "03190462638",
+      interestStatus: "interested",
+      lastOutreachAt: new Date(nowTs - 5 * dayMs),
+      cooldownUntil: new Date(nowTs + 9 * dayMs), // Locked for 9 more days!
+      totalOutreachCount: 1,
+      packagesSharedHistory: ["ART-AM-21D-04"],
+      tags: ["DHA", "14-Day Cooldown Active"],
+    },
+    {
+      fullName: "Mian Usman Ghani",
+      whatsappNumber: "03014445566",
+      city: "Lahore",
+      areaCommunity: "DHA Phase 6",
+      sourceGroupOrChannel: "DHA Phase 6 Main Boulevard Community",
+      assignedWhatsappLine: "03274029701",
+      interestStatus: "active_conversation",
+      lastOutreachAt: new Date(nowTs - 3 * dayMs),
+      cooldownUntil: new Date(nowTs + 11 * dayMs),
+      lastInboundReplyAt: new Date(nowTs - 1 * dayMs), // Replied after outreach -> Active Reply Exemption!
+      totalOutreachCount: 1,
+      packagesSharedHistory: ["ART-UP-15D-01"],
+      tags: ["DHA", "Active Inbound Reply"],
+    },
+  ])
+
+  // Seed Barrister Adil Rafi Cheema & Family Custom Quotation (Zahoor Travels — PKR 1,750,000)
+  const existingAdilApp = await db.query.applications.findFirst({
+    where: eq(schema.applications.referenceNumber, "ART-2026-ADIL"),
+  })
+
+  if (!existingAdilApp) {
+    const [adilApp] = await db
+      .insert(schema.applications)
+      .values({
+        referenceNumber: "ART-2026-ADIL",
+        source: "custom_builder",
+        status: "quoted",
+        presetMode: "complete_umrah",
+        supplierId: zahoorId,
+        customerName: "Barrister Adil Rafi Cheema & Family",
+        customerPhone: "03008445566",
+        customerWhatsapp: "03008445566",
+        customerCity: "Lahore",
+        specialRequests:
+          "5 Family Members (4 Adults, 1 Child). PIA Return Flights, 6 Nights Makkah Hajar Tower Mövenpick (with Daily Buffet Breakfast), 6 Nights Anwar Al Madinah Mövenpick, Private Hyundai Staria 7-Seater VIP Transfers.",
+        adults: 4,
+        children: 1,
+        infants: 0,
+        totalPassportCount: 5,
+        bedAndSeatCount: 5,
+        includeVisa: true,
+        includeFlights: true,
+        includeHotels: true,
+        includeTransport: true,
+        includeZiyarat: true,
+        ksaArrivalDate: "2026-11-12",
+        ksaDepartureDate: "2026-11-24",
+        totalKsaDays: 13,
+        citySequence: "makkah_madinah",
+        entryAirport: "JED",
+        exitAirport: "JED",
+        quoteSentAt: new Date(),
+      })
+      .returning()
+
+    await db.insert(schema.applicationQuotes).values({
+      applicationId: adilApp.id,
+      version: 1,
+      visaTotalPkr: 212500,
+      flightsTotalPkr: 625000,
+      makkahHotelTotalPkr: 465000,
+      madinahHotelTotalPkr: 335000,
+      transportTotalPkr: 82500,
+      ziyaratTotalPkr: 30000,
+      discountPkr: 0,
+      grandTotalPkr: 1750000,
+      supplierId: zahoorId,
+      supplierNetCostPkr: 1725000,
+      commissionPkr: 25000,
+      quotationPdfUrl: "/uploads/sample-posts/zahoor-adil-rafi-quotation.pdf",
+      quotationPdfGeneratedAt: new Date(),
+      quoteNotesCustomer:
+        "All-Inclusive VIP Custom Umrah Quotation for Barrister Adil Rafi Cheema & Family (5 Travelers): PIA Return Flights, 6N Hajar Tower Mövenpick Makkah (Breakfast Included), 6N Anwar Al Madinah Mövenpick, Private Hyundai Staria 7-Seater.",
+      internalNotesAdmin:
+        "B2B Supplier: Zahoor Travels. Wholesale Net Cost: PKR 1,725,000 | Al Ramlah Commission: PKR 25,000.",
+      paymentStatus: "partially_paid",
+      amountPaidPkr: 500000,
+      quotedAt: new Date(),
+    })
+  }
+
   console.log(
-    "   ✅ Hero slides, testimonials, FAQs, and contact messages seeded."
+    "   ✅ B2B Suppliers, Wrapped Flyers, 36 Channels, 14-Day Outreach CRM & Barrister Adil Rafi Quote seeded."
   )
 
   console.log(

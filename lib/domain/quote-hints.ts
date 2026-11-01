@@ -41,6 +41,10 @@ export interface RateHintApplicationInput {
       triple?: number
       quad?: number
     } | null
+    mealPlan?: "room_only" | "breakfast" | "half_board" | "full_board" | null
+    includeBreakfast?: boolean
+    includeLunch?: boolean
+    includeDinner?: boolean
   }> | null
   transportSegments?: Array<{
     sectorId: string
@@ -60,6 +64,10 @@ export interface RateHintCatalogInput {
     quadPriceSar?: number
     triplePriceSar?: number
     doublePriceSar?: number
+    breakfastPriceSarPerPax?: number
+    lunchPriceSarPerPax?: number
+    dinnerPriceSarPerPax?: number
+    fullBoardPriceSarPerPax?: number
   }>
   vehicles?: Array<{
     id: string
@@ -193,49 +201,90 @@ export function calculateApplicationRateHints(
     let cityTotalSar = 0
     const labels: string[] = []
 
-    for (const stay of cityStays) {
-      const hotel = catalog.hotels?.find((h) => h.id === stay.hotelId)
-      const nights = Math.max(1, stay.nights)
+      for (const stay of cityStays) {
+        const hotel = catalog.hotels?.find((h) => h.id === stay.hotelId)
+        const nights = Math.max(1, stay.nights)
 
-      if (stay.roomCategory === "shared") {
-        const sharingPrice =
-          hotel?.sharingPriceSar && hotel.sharingPriceSar > 0
-            ? hotel.sharingPriceSar
-            : hotel?.quadPriceSar && hotel.quadPriceSar > 0
-              ? Math.round(hotel.quadPriceSar / 4)
-              : 40
-        const staySar = sharingPrice * beds * nights
-        cityTotalSar += staySar
-        labels.push(
-          `${hotel?.name || "Hotel"}: ${beds} beds × ${sharingPrice} SAR × ${nights} nights = ${staySar} SAR`
-        )
-      } else {
-        const alloc = stay.privateRoomAllocation || {
-          double: 0,
-          triple: 0,
-          quad: 0,
+        // Calculate per-person per-night meal plan surcharge (if any)
+        const bfRate = hotel?.breakfastPriceSarPerPax ?? 25
+        const lnRate = hotel?.lunchPriceSarPerPax ?? 35
+        const dnRate = hotel?.dinnerPriceSarPerPax ?? 35
+        const fbRate = hotel?.fullBoardPriceSarPerPax ?? 85
+
+        let mealSarPerPaxPerNight = 0
+        let mealLabel = ""
+        if (
+          stay.includeBreakfast ||
+          stay.includeLunch ||
+          stay.includeDinner
+        ) {
+          const mealParts: string[] = []
+          if (stay.includeBreakfast) {
+            mealSarPerPaxPerNight += bfRate
+            mealParts.push("Breakfast")
+          }
+          if (stay.includeLunch) {
+            mealSarPerPaxPerNight += lnRate
+            mealParts.push("Lunch")
+          }
+          if (stay.includeDinner) {
+            mealSarPerPaxPerNight += dnRate
+            mealParts.push("Dinner")
+          }
+          mealLabel = ` + ${mealParts.join("/")} (${mealSarPerPaxPerNight * beds * nights} SAR)`
+        } else if (stay.mealPlan && stay.mealPlan !== "room_only") {
+          if (stay.mealPlan === "breakfast") {
+            mealSarPerPaxPerNight = bfRate
+            mealLabel = ` + Breakfast (${mealSarPerPaxPerNight * beds * nights} SAR)`
+          } else if (stay.mealPlan === "half_board") {
+            mealSarPerPaxPerNight = bfRate + dnRate
+            mealLabel = ` + Half Board (${mealSarPerPaxPerNight * beds * nights} SAR)`
+          } else if (stay.mealPlan === "full_board") {
+            mealSarPerPaxPerNight = fbRate
+            mealLabel = ` + Full Board (${mealSarPerPaxPerNight * beds * nights} SAR)`
+          }
         }
-        const doubleRate = hotel?.doublePriceSar ?? 200
-        const tripleRate = hotel?.triplePriceSar ?? 250
-        const quadRate = hotel?.quadPriceSar ?? 300
+        const totalMealSar = mealSarPerPaxPerNight * beds * nights
 
-        const doubleTotal = (alloc.double || 0) * doubleRate * nights
-        const tripleTotal = (alloc.triple || 0) * tripleRate * nights
-        const quadTotal = (alloc.quad || 0) * quadRate * nights
+        if (stay.roomCategory === "shared") {
+          const sharingPrice =
+            hotel?.sharingPriceSar && hotel.sharingPriceSar > 0
+              ? hotel.sharingPriceSar
+              : hotel?.quadPriceSar && hotel.quadPriceSar > 0
+                ? Math.round(hotel.quadPriceSar / 4)
+                : 40
+          const staySar = sharingPrice * beds * nights + totalMealSar
+          cityTotalSar += staySar
+          labels.push(
+            `${hotel?.name || "Hotel"}: ${beds} beds × ${sharingPrice} SAR × ${nights} nights${mealLabel} = ${staySar} SAR`
+          )
+        } else {
+          const alloc = stay.privateRoomAllocation || {
+            double: 0,
+            triple: 0,
+            quad: 0,
+          }
+          const doubleRate = hotel?.doublePriceSar ?? 200
+          const tripleRate = hotel?.triplePriceSar ?? 250
+          const quadRate = hotel?.quadPriceSar ?? 300
 
-        const staySar = doubleTotal + tripleTotal + quadTotal
-        cityTotalSar += staySar
+          const doubleTotal = (alloc.double || 0) * doubleRate * nights
+          const tripleTotal = (alloc.triple || 0) * tripleRate * nights
+          const quadTotal = (alloc.quad || 0) * quadRate * nights
 
-        const roomParts: string[] = []
-        if (alloc.double) roomParts.push(`${alloc.double} Double`)
-        if (alloc.triple) roomParts.push(`${alloc.triple} Triple`)
-        if (alloc.quad) roomParts.push(`${alloc.quad} Quad`)
+          const staySar = doubleTotal + tripleTotal + quadTotal + totalMealSar
+          cityTotalSar += staySar
 
-        labels.push(
-          `${hotel?.name || "Hotel"}: ${roomParts.join(" + ")} × ${nights} nights = ${staySar} SAR`
-        )
+          const roomParts: string[] = []
+          if (alloc.double) roomParts.push(`${alloc.double} Double`)
+          if (alloc.triple) roomParts.push(`${alloc.triple} Triple`)
+          if (alloc.quad) roomParts.push(`${alloc.quad} Quad`)
+
+          labels.push(
+            `${hotel?.name || "Hotel"}: ${roomParts.join(" + ")} × ${nights} nights${mealLabel} = ${staySar} SAR`
+          )
+        }
       }
-    }
 
     return {
       totalSar: cityTotalSar,

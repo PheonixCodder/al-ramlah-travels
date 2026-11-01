@@ -201,6 +201,10 @@ export function ReviewAndSubmitStep() {
               roomCategory: s.roomCategory,
               sharedRoomType: s.sharedRoomType,
               privateRoomAllocation: s.privateRoomAllocation,
+              mealPlan: s.mealPlan ?? "room_only",
+              includeBreakfast: s.includeBreakfast ?? false,
+              includeLunch: s.includeLunch ?? false,
+              includeDinner: s.includeDinner ?? false,
             }))
           : undefined,
         transportSegments: pillars.transport
@@ -591,9 +595,12 @@ export function ReviewAndSubmitStep() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 self-start sm:self-auto pl-7 sm:pl-0">
+                      <div className="flex items-center gap-1.5 self-start sm:self-auto pl-7 sm:pl-0 flex-wrap">
                         <span className="text-[10px] font-semibold text-[#0A3622] bg-[#FAF7F0] border border-[#C5A059]/40 px-2 py-0.5 rounded-full">
                           {roomLabel}
+                        </span>
+                        <span className="text-[10px] font-semibold text-[#8F6E2A] bg-white border border-[#E6DEC8] px-2 py-0.5 rounded-full capitalize">
+                          {(stay.mealPlan ?? "room_only").replace("_", " ")}
                         </span>
                       </div>
                     </div>
@@ -777,7 +784,7 @@ export function ReviewAndSubmitStep() {
                 id="lead-phone"
                 type="tel"
                 required
-                placeholder="+92 300 1234567"
+                placeholder="0327 4029701"
                 value={customerPhone}
                 onChange={(e) => handlePhoneChange(e.target.value)}
                 className="w-full rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-2.5 text-xs sm:text-sm font-medium text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
@@ -855,7 +862,7 @@ export function ReviewAndSubmitStep() {
                 id="lead-whatsapp"
                 type="tel"
                 required
-                placeholder="+92 300 1234567"
+                placeholder="0327 4029701"
                 value={customerWhatsapp}
                 onChange={(e) => setCustomerWhatsapp(e.target.value)}
                 className="w-full rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-2.5 text-xs sm:text-sm font-medium text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"

@@ -13,6 +13,7 @@ import {
   Check,
   ArrowRight,
   ArrowLeft,
+  UtensilsCrossed,
 } from "lucide-react"
 import { cn } from "cn"
 
@@ -140,6 +141,14 @@ export function HotelSelectionModule() {
               stay.city === "makkah" ? "Makkah Hotel" : "Madinah Hotel"
             const roomLabel =
               stay.roomCategory === "private" ? "Private Rooms" : "Shared Beds"
+            const mealLabel =
+              stay.mealPlan === "breakfast"
+                ? "Breakfast"
+                : stay.mealPlan === "half_board"
+                  ? "Half Board"
+                  : stay.mealPlan === "full_board"
+                    ? "Full Board"
+                    : "Room Only"
 
             return (
               <button
@@ -202,7 +211,7 @@ export function HotelSelectionModule() {
                     {stayHotel?.name ?? "Select a Hotel"}
                   </p>
                   <p className="text-[10px] text-[#686E65] truncate mt-0.5">
-                    {roomLabel}
+                    {roomLabel} · {mealLabel}
                   </p>
                 </div>
               </button>
@@ -262,6 +271,85 @@ export function HotelSelectionModule() {
               updateStay(activeStay.stayOrder, { privateRoomAllocation: alloc })
             }
           />
+
+          {/* Hotel Meal Plan / Dining Selector */}
+          <div className="pt-3 border-t border-[#E6DEC8]/70">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-[#0A3622]">
+                <UtensilsCrossed className="size-3.5 text-[#C5A059]" />
+                <span>Hotel Dining &amp; Meal Plan</span>
+              </span>
+              <span className="text-[10px] text-[#686E65]">
+                Applies to Stay {activeStay.stayOrder} ({activeStay.nights} Nights)
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                {
+                  id: "room_only" as const,
+                  title: "Room Only",
+                  desc: "No meals included",
+                  bf: false,
+                  ln: false,
+                  dn: false,
+                },
+                {
+                  id: "breakfast" as const,
+                  title: "Breakfast",
+                  desc: "Daily buffet breakfast",
+                  bf: true,
+                  ln: false,
+                  dn: false,
+                },
+                {
+                  id: "half_board" as const,
+                  title: "Half Board",
+                  desc: "Breakfast + Dinner",
+                  bf: true,
+                  ln: false,
+                  dn: true,
+                },
+                {
+                  id: "full_board" as const,
+                  title: "Full Board",
+                  desc: "Breakfast + Lunch + Dinner",
+                  bf: true,
+                  ln: true,
+                  dn: true,
+                },
+              ].map((option) => {
+                const isSelected =
+                  (activeStay.mealPlan ?? "room_only") === option.id
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() =>
+                      updateStay(activeStay.stayOrder, {
+                        mealPlan: option.id,
+                        includeBreakfast: option.bf,
+                        includeLunch: option.ln,
+                        includeDinner: option.dn,
+                      })
+                    }
+                    className={cn(
+                      "flex flex-col items-start rounded-xl border p-2.5 text-left transition-all",
+                      isSelected
+                        ? "border-[#0A3622] bg-[#0A3622]/5 ring-1 ring-[#0A3622]"
+                        : "border-[#E6DEC8] bg-[#FAF7F0]/50 hover:border-[#C5A059] hover:bg-white"
+                    )}
+                  >
+                    <span className="text-xs font-bold text-[#0A3622]">
+                      {option.title}
+                    </span>
+                    <span className="text-[10px] text-[#686E65] mt-0.5">
+                      {option.desc}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         </div>
       </div>
 

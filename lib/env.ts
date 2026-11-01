@@ -29,6 +29,17 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET_NAME: z.string().optional(),
+  R2_PUBLIC_URL: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  POSTIZ_API_URL: z.string().optional(),
+  POSTIZ_API_KEY: z.string().optional(),
+  WACRM_API_URL: z.string().optional(),
+  WACRM_API_KEY: z.string().optional(),
 })
 
 const isSkip =

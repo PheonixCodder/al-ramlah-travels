@@ -302,10 +302,10 @@ export default async function HomePage() {
       {/* 3. Fixed Group Packages Section */}
       <GroupPackagesSection packages={packagesData} />
 
-      {/* 4. VIP Hajj 1447H / 2026 Executive Inquiries */}
+      {/* 4. Hajj 2027 Package Guide & Seat Reservation */}
       <HajjInquirySection
         departureCities={departureCitiesList}
-        agencyWhatsapp={rawAgencySettings?.primaryWhatsapp}
+        agencyWhatsapp={rawAgencySettings?.primaryWhatsapp || "03274029701"}
       />
 
       {/* 5. Application & Quotation Tracker */}

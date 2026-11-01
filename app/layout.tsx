@@ -46,12 +46,12 @@ export const metadata: Metadata = {
     template: "%s | Al Ramlah Travels",
   },
   description:
-    "Pakistan's premier luxury pilgrimage concierge. Ministry of Hajj & Umrah Licensed Operator (#4082) offering customized Umrah packages, transparent live rates, luxury hotels in Makkah and Madinah, and dedicated 24/7 on-ground pilgrim care.",
+    "Where Purpose Meets Excellence — Hajj 2027, Custom Umrah Packages, Flights, Haramain Hotels & Ground Transport by Al Ramlah Travels.",
   keywords: [
     "Umrah Packages Pakistan",
     "Bespoke Umrah",
     "Luxury Umrah Lahore Karachi Islamabad",
-    "Hajj 2026",
+    "Hajj 2027",
     "Makkah Clock Tower Hotels",
     "Madinah Oberoi Hotels",
     "Al Ramlah Travels",
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Al Ramlah Travels — Bespoke Umrah, Hajj & Haramain Journeys",
     description:
-      "Pakistan's premier luxury pilgrimage concierge. Ministry of Hajj & Umrah Licensed Operator (#4082) offering customized Umrah packages, transparent live rates, luxury hotels in Makkah and Madinah, and dedicated 24/7 on-ground pilgrim care.",
+      "Where Purpose Meets Excellence — Hajj 2027, Custom Umrah Packages, Flights, Haramain Hotels & Ground Transport by Al Ramlah Travels.",
     images: ["/logo.jpg"],
   },
 }

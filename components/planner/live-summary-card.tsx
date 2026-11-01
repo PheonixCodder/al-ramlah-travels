@@ -86,6 +86,10 @@ export function LiveSummaryCard() {
           roomCategory: s.roomCategory,
           sharedRoomType: s.sharedRoomType,
           privateRoomAllocation: s.privateRoomAllocation,
+          mealPlan: s.mealPlan ?? "room_only",
+          includeBreakfast: s.includeBreakfast ?? false,
+          includeLunch: s.includeLunch ?? false,
+          includeDinner: s.includeDinner ?? false,
         }))
       : undefined,
     transportSegments: pillars.transport
@@ -257,7 +261,8 @@ export function LiveSummaryCard() {
                       {stay.stayOrder}. {hotel?.name ?? stay.city.toUpperCase()} ({stay.nights}n)
                     </span>
                     <span className="font-medium text-[#0A3622]">
-                      {stay.roomCategory === "private" ? "Private" : "Shared"}
+                      {stay.roomCategory === "private" ? "Private" : "Shared"} ·{" "}
+                      {(stay.mealPlan ?? "room_only").replace("_", " ")}
                     </span>
                   </div>
                 )

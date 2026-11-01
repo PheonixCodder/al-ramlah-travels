@@ -32,7 +32,7 @@ const DEFAULT_SLIDES: PublicHeroSlide[] = [
     badge: "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
     title: "Sacred Journeys Crafted with Dignity & Comfort",
     subtitle:
-      "Bespoke Umrah planning, licensed Ministry rates, 50-meter courtyard hotels, and private GMC transfers across the Haramain.",
+      "Where Purpose Meets Excellence — Bespoke Umrah planning, 50-meter courtyard hotels, and private GMC transfers across the Haramain.",
     imageUrl:
       "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=85&w=1920",
     primaryCtaLabel: "Build Custom Umrah Journey",
@@ -49,7 +49,7 @@ const DEFAULT_SLIDES: PublicHeroSlide[] = [
       "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&q=85&w=1920",
     primaryCtaLabel: "Plan Family Pilgrimage",
     primaryCtaUrl: "#journey-builder",
-    secondaryCtaLabel: "VIP Hajj 1447H Consultation",
+    secondaryCtaLabel: "Hajj 2027 Package Guide",
     secondaryCtaUrl: "#hajj-inquiry",
   },
 ]
@@ -230,10 +230,10 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
             <div className="flex items-center gap-1.5 text-gold">
               <ShieldCheck className="size-4" />
               <span className="font-mono text-xl sm:text-2xl font-extrabold text-white">
-                #4082
+                100%
               </span>
             </div>
-            <span className="text-xs text-white/70">Ministry Licensed Agency</span>
+            <span className="text-xs text-white/70">Verified Luxury Services</span>
           </div>
         </div>
       </div>

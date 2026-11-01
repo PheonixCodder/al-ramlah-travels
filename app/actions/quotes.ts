@@ -11,6 +11,7 @@ import {
   quoteUpdateSchema,
   applicationStatusUpdateSchema,
 } from "@/lib/validations/quote"
+import { renderAndUploadLuxuryQuotationPdf } from "@/lib/posters/render-quotation-pdf"
 
 const saveQuoteInputSchema = quoteUpdateSchema.extend({
   targetStatus: z
@@ -208,6 +209,9 @@ export async function saveApplicationQuote(rawInput: unknown) {
         internalNotesAdmin: input.internalNotesAdmin || null,
         paymentStatus: input.paymentStatus,
         amountPaidPkr: input.amountPaidPkr,
+        supplierId: input.supplierId ?? null,
+        supplierNetCostPkr: input.supplierNetCostPkr ?? 0,
+        commissionPkr: input.commissionPkr ?? 25000,
         quotedByUserId: userId,
         validUntil,
         updatedAt: now,
@@ -242,6 +246,9 @@ export async function saveApplicationQuote(rawInput: unknown) {
           internalNotesAdmin: input.internalNotesAdmin || null,
           paymentStatus: input.paymentStatus,
           amountPaidPkr: input.amountPaidPkr,
+          supplierId: input.supplierId ?? null,
+          supplierNetCostPkr: input.supplierNetCostPkr ?? 0,
+          commissionPkr: input.commissionPkr ?? 25000,
           quotedByUserId: userId,
           quotedAt: targetStatus === "quoted" ? now : null,
           approvedAt: targetStatus === "approved" ? now : null,
@@ -254,10 +261,17 @@ export async function saveApplicationQuote(rawInput: unknown) {
     }
 
     // 6. Update application status & timestamps
+    const baseAppUpdate: Partial<typeof schema.applications.$inferInsert> = {
+      updatedAt: now,
+    }
+    if (input.supplierId !== undefined) {
+      baseAppUpdate.supplierId = input.supplierId ?? null
+    }
+
     if (isChangingStatus && targetStatus) {
       const appUpdates: Partial<typeof schema.applications.$inferInsert> = {
+        ...baseAppUpdate,
         status: targetStatus,
-        updatedAt: now,
       }
 
       if (targetStatus === "quoted") {
@@ -277,7 +291,7 @@ export async function saveApplicationQuote(rawInput: unknown) {
     } else {
       await db
         .update(schema.applications)
-        .set({ updatedAt: now })
+        .set(baseAppUpdate)
         .where(eq(schema.applications.id, app.id))
     }
 
@@ -500,6 +514,151 @@ export async function updateApplicationStatus(rawInput: unknown) {
     return {
       success: false,
       error: `Failed to update application status: ${message}`,
+    }
+  }
+}
+
+/**
+ * Server Action: Renders a 3-Page Luxury Quotation PDF (Skill 1: `umrah-quotation-pdf`)
+ * via Headless Chromium, uploads it to Cloudflare R2 (or local fallback), and links it
+ * to the application's latest quote.
+ */
+export async function generateApplicationLuxuryPdf(applicationId: string) {
+  await requireAdmin()
+
+  try {
+    const app = await db.query.applications.findFirst({
+      where: eq(schema.applications.id, applicationId),
+      with: {
+        quotes: {
+          orderBy: [desc(schema.applicationQuotes.version)],
+          limit: 1,
+        },
+        hotelStays: {
+          with: { hotel: true },
+          orderBy: (stays, { asc }) => [asc(stays.stayOrder)],
+        },
+        transportSegments: {
+          with: { sector: true, vehicle: true },
+          orderBy: (segs, { asc }) => [asc(segs.segmentOrder)],
+        },
+        departureCity: true,
+        preferredAirline: true,
+        supplier: true,
+      },
+    })
+
+    if (!app) {
+      return { success: false, error: "Application not found" }
+    }
+
+    const latestQuote = app.quotes?.[0]
+    const grandTotalPkr =
+      latestQuote?.grandTotalPkr && latestQuote.grandTotalPkr > 0
+        ? latestQuote.grandTotalPkr
+        : app.calculatedVisaTotalPkr || 1750000
+
+    const makkahStay = app.hotelStays.find((s) => s.city === "makkah")
+    const madinahStay = app.hotelStays.find((s) => s.city === "madinah")
+
+    const depCityCode = app.departureCity?.airportCode || "LHE"
+    const arrCode = app.entryAirport || "JED"
+    const retCode = app.exitAirport || "JED"
+
+    const leadTransport = app.transportSegments[0]
+    const routeSummary =
+      app.transportSegments.length > 0
+        ? app.transportSegments.map((s) => s.sector.label).join(" • ")
+        : "Jeddah Airport → Makkah → Madinah → Jeddah Airport"
+
+    const formatRoomSummary = (stay?: (typeof app.hotelStays)[number]) => {
+      if (!stay) return "1 Quad + 1 Double Room"
+      if (stay.roomCategory === "private" && stay.privateRoomAllocation) {
+        const parts: string[] = []
+        if (stay.privateRoomAllocation.quad > 0)
+          parts.push(`${stay.privateRoomAllocation.quad} Quad`)
+        if (stay.privateRoomAllocation.triple > 0)
+          parts.push(`${stay.privateRoomAllocation.triple} Triple`)
+        if (stay.privateRoomAllocation.double > 0)
+          parts.push(`${stay.privateRoomAllocation.double} Double`)
+        return parts.length > 0 ? parts.join(" + ") : "Private Room"
+      }
+      return stay.sharedRoomType
+        ? `${stay.sharedRoomType.toUpperCase()} Sharing`
+        : "Shared Bed"
+    }
+
+    const formatMealPlanLabel = (mp?: string | null) => {
+      if (!mp || mp === "room_only") return "Room Only"
+      if (mp === "breakfast") return "Daily Buffet Breakfast Included"
+      if (mp === "half_board") return "Half Board (Breakfast + Dinner)"
+      if (mp === "full_board") return "Full Board (Breakfast + Lunch + Dinner)"
+      return mp
+    }
+
+    const rendered = await renderAndUploadLuxuryQuotationPdf({
+      referenceNumber: app.referenceNumber,
+      customerName: app.customerName,
+      customerCity: app.customerCity,
+      adults: app.adults,
+      children: app.children,
+      infants: app.infants,
+      totalDays: app.totalKsaDays || 13,
+      airlineName: app.preferredAirline?.name || "Pakistan International Airlines (PIA)",
+      airlineCode: app.preferredAirline?.iataCode || "PK",
+      outboundRoute: `${depCityCode} → ${arrCode}`,
+      outboundDate: app.ksaArrivalDate || "12 NOV 2026",
+      returnRoute: `${retCode} → ${depCityCode}`,
+      returnDate: app.ksaDepartureDate || "24 NOV 2026",
+      baggageLabel: "30 Kg + 7 Kg Hand Carry + 5L Zamzam",
+      makkahHotelName:
+        makkahStay?.hotel.name || "Hajar Tower Mövenpick Hotel Makkah",
+      makkahNights: makkahStay?.nights || 6,
+      makkahStars: makkahStay?.hotel.starRating || 5,
+      makkahDistance: makkahStay?.hotel.distanceLabel || "0m Clock Tower Courtyard",
+      makkahRoomSummary: formatRoomSummary(makkahStay),
+      makkahMealPlan: formatMealPlanLabel(makkahStay?.mealPlan),
+      madinahHotelName:
+        madinahStay?.hotel.name || "Anwar Al Madinah Mövenpick Hotel",
+      madinahNights: madinahStay?.nights || 6,
+      madinahStars: madinahStay?.hotel.starRating || 5,
+      madinahDistance: madinahStay?.hotel.distanceLabel || "0m Haram Courtyard",
+      madinahRoomSummary: formatRoomSummary(madinahStay),
+      madinahMealPlan: formatMealPlanLabel(madinahStay?.mealPlan),
+      transportVehicleName:
+        leadTransport?.vehicle.name || "Hyundai Staria VIP 7-Seater",
+      transportRouteSummary: routeSummary,
+      supplierName: app.supplier?.name || "Zahoor Travels",
+      grandTotalPkr,
+      notesCustomer: latestQuote?.quoteNotesCustomer,
+    })
+
+    const now = new Date()
+    if (latestQuote) {
+      await db
+        .update(schema.applicationQuotes)
+        .set({
+          quotationPdfUrl: rendered.pdfUrl,
+          quotationPdfGeneratedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.applicationQuotes.id, latestQuote.id))
+    }
+
+    revalidatePath(`/admin/applications/${applicationId}`)
+    revalidatePath("/")
+
+    return {
+      success: true,
+      pdfUrl: rendered.pdfUrl,
+    }
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to render 3-page luxury PDF",
     }
   }
 }

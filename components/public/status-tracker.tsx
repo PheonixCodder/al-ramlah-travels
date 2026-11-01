@@ -23,38 +23,6 @@ import {
 import { cn } from "cn"
 import { formatCitySequence } from "@/lib/domain"
 
-interface QuickTestSample {
-  ref: string
-  phone: string
-  label: string
-  statusBadge: string
-  badgeColor: string
-}
-
-const QUICK_SAMPLES: QuickTestSample[] = [
-  {
-    ref: "ART-2026-8812",
-    phone: "03214567890",
-    label: "Kamran Akram (Custom Umrah)",
-    statusBadge: "Pending Quote",
-    badgeColor: "bg-[#FEF3C7] text-[#92400E] border-[#D97706]/30",
-  },
-  {
-    ref: "ART-2026-4521",
-    phone: "03005556677",
-    label: "Dr. Ayesha Siddiqua (Family Circuit)",
-    statusBadge: "Quoted",
-    badgeColor: "bg-[#E0F2FE] text-[#0369A1] border-[#0284C7]/30",
-  },
-  {
-    ref: "ART-2026-1930",
-    phone: "03331122334",
-    label: "Zahid Mehmood (Ramadan Package)",
-    statusBadge: "Approved & Paid",
-    badgeColor: "bg-[#D1FAE5] text-[#065F46] border-[#059669]/30",
-  },
-]
-
 export interface StatusTrackerProps {
   agencyWhatsapp?: string
 }
@@ -96,32 +64,9 @@ export function StatusTracker({ agencyWhatsapp: propWhatsapp }: StatusTrackerPro
     }
   }
 
-  const fillQuickTest = async (sample: QuickTestSample) => {
-    setReferenceNumber(sample.ref)
-    setCustomerPhone(sample.phone)
-    setError(null)
-    setIsLoading(true)
-
-    try {
-      const res = await lookupApplicationStatus({
-        referenceNumber: sample.ref,
-        customerPhone: sample.phone,
-      })
-      if (res.success) {
-        setLookupData(res)
-      } else {
-        setError(res.error || "Sample lookup failed.")
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Lookup failed.")
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   const app = lookupData?.application
   const quote = lookupData?.quote
-  const agencyWhatsapp = lookupData?.agencyWhatsapp ?? propWhatsapp ?? "+923008456789"
+  const agencyWhatsapp = lookupData?.agencyWhatsapp ?? propWhatsapp ?? "03274029701"
 
   return (
     <section id="track-status" className="w-full py-12 sm:py-16 bg-[#FAF7F0]/60">
@@ -173,40 +118,11 @@ export function StatusTracker({ agencyWhatsapp: propWhatsapp }: StatusTrackerPro
                   id="tracker-phone"
                   type="tel"
                   required
-                  placeholder="e.g. 0300 5556677"
+                  placeholder="e.g. 0327 4029701"
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
                   className="w-full rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-2.5 text-xs sm:text-sm font-medium text-[#1A1D1A] focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
                 />
-              </div>
-            </div>
-
-            {/* Quick-Test Buttons */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-[#E6DEC8]/60 pt-3">
-              <span className="text-[11px] font-semibold text-[#8F6E2A]">
-                Quick Test Samples:
-              </span>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {QUICK_SAMPLES.map((sample) => (
-                  <button
-                    key={sample.ref}
-                    type="button"
-                    onClick={() => fillQuickTest(sample)}
-                    className="flex items-center gap-1.5 rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-2.5 py-1 text-[11px] font-medium text-[#1A1D1A] transition-colors hover:bg-white hover:border-[#C5A059]"
-                  >
-                    <span className="font-mono font-bold text-[#0A3622]">
-                      {sample.ref}
-                    </span>
-                    <span
-                      className={cn(
-                        "rounded px-1.5 py-0.2 text-[9px] font-semibold border",
-                        sample.badgeColor
-                      )}
-                    >
-                      {sample.statusBadge}
-                    </span>
-                  </button>
-                ))}
               </div>
             </div>
 
@@ -546,6 +462,11 @@ export function StatusTracker({ agencyWhatsapp: propWhatsapp }: StatusTrackerPro
                                   : `${stay.sharedRoomType} Room Sharing`
                                 : `${stay.roomCategory} Room`}
                             </span>
+                            {stay.mealPlan && (
+                              <span className="rounded bg-white border border-[#E6DEC8] px-1.5 py-0.5 text-[9px] font-bold text-[#8F6E2A] capitalize">
+                                {stay.mealPlan.replace("_", " ")}
+                              </span>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -745,18 +666,31 @@ export function StatusTracker({ agencyWhatsapp: propWhatsapp }: StatusTrackerPro
                     <span className="text-[11px] text-[#686E65]">
                       Ready to lock in this itinerary? Connect directly with our concierge team:
                     </span>
-                    <a
-                      href={`https://wa.me/${agencyWhatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
-                        `As-salamu alaykum Al Ramlah Travels, I accept the quotation for Reference Code: ${app.referenceNumber} (Total: PKR ${quote.grandTotalPkr.toLocaleString()}). Please guide me through payment and document collection.`
-                      )}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 rounded-xl bg-[#0A3622] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#0F4C31] transition-colors"
-                    >
-                      <MessageCircle className="size-4 text-[#C5A059]" />
-                      <span>Accept &amp; Proceed via WhatsApp</span>
-                      <ExternalLink className="size-3 text-[#C5A059]" />
-                    </a>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {quote.quotationPdfUrl && (
+                        <a
+                          href={quote.quotationPdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 rounded-xl border border-[#C5A059] bg-[#FAF7F0] px-3.5 py-2 text-xs font-bold text-[#8F6E2A] hover:bg-white transition-colors"
+                        >
+                          <span>Download 3-Page Luxury PDF</span>
+                          <ExternalLink className="size-3 text-[#C5A059]" />
+                        </a>
+                      )}
+                      <a
+                        href={`https://wa.me/${agencyWhatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
+                          `As-salamu alaykum Al Ramlah Travels, I accept the quotation for Reference Code: ${app.referenceNumber} (Total: PKR ${quote.grandTotalPkr.toLocaleString()}). Please guide me through payment and document collection.`
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 rounded-xl bg-[#0A3622] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#0F4C31] transition-colors"
+                      >
+                        <MessageCircle className="size-4 text-[#C5A059]" />
+                        <span>Accept &amp; Proceed via WhatsApp</span>
+                        <ExternalLink className="size-3 text-[#C5A059]" />
+                      </a>
+                    </div>
                   </div>
                 </div>
               ) : (

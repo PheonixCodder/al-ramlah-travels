@@ -48,24 +48,24 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
   )
   const [tagline, setTagline] = useState(
     initialSettings?.tagline ??
-      "Sacred Journeys Crafted with Dignity & Comfort"
+      "Where Purpose Meets Excellence"
   )
   const [primaryWhatsapp, setPrimaryWhatsapp] = useState(
-    initialSettings?.primaryWhatsapp ?? "+923001234567"
+    initialSettings?.primaryWhatsapp ?? "03274029701"
   )
   const [secondaryPhone, setSecondaryPhone] = useState(
-    initialSettings?.secondaryPhone ?? "+924235789012"
+    initialSettings?.secondaryPhone ?? "03190462638"
   )
   const [supportEmail, setSupportEmail] = useState(
-    initialSettings?.supportEmail ?? "info@alramlahtravels.com"
+    initialSettings?.supportEmail ?? "alramlahtravels@gmail.com"
   )
   const [officeAddress, setOfficeAddress] = useState(
     initialSettings?.officeAddress ??
-      "Suite 402, Al-Hafeez Heights, Gulberg III, Lahore, Pakistan"
+      "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt"
   )
   const [workingHours, setWorkingHours] = useState(
     initialSettings?.workingHours ??
-      "Monday to Saturday, 9:00 AM to 8:00 PM PKT"
+      "Monday to Saturday: 9:00 AM to 8:00 PM PKT"
   )
   const [slaOverdueHours, setSlaOverdueHours] = useState(
     initialSettings?.slaOverdueHours ?? 24
@@ -163,6 +163,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
                 id="as-name"
                 value={agencyName}
                 onChange={(e) => setAgencyName(e.target.value)}
+                placeholder="Al Ramlah Travels"
                 required
               />
             </div>
@@ -172,6 +173,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
                 id="as-tagline"
                 value={tagline}
                 onChange={(e) => setTagline(e.target.value)}
+                placeholder="Where Purpose Meets Excellence"
                 required
               />
             </div>
@@ -194,6 +196,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
                 id="as-wa"
                 value={primaryWhatsapp}
                 onChange={(e) => setPrimaryWhatsapp(e.target.value)}
+                placeholder="03274029701"
                 required
               />
             </div>
@@ -203,7 +206,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
                 id="as-phone"
                 value={secondaryPhone ?? ""}
                 onChange={(e) => setSecondaryPhone(e.target.value)}
-                placeholder="+924235789012"
+                placeholder="03190462638"
               />
             </div>
             <div className="space-y-1.5">
@@ -213,6 +216,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
                 type="email"
                 value={supportEmail}
                 onChange={(e) => setSupportEmail(e.target.value)}
+                placeholder="alramlahtravels@gmail.com"
                 required
               />
             </div>
@@ -234,6 +238,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
               id="as-address"
               value={officeAddress}
               onChange={(e) => setOfficeAddress(e.target.value)}
+              placeholder="House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt"
               required
             />
           </div>
@@ -245,6 +250,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
                 id="as-hours"
                 value={workingHours}
                 onChange={(e) => setWorkingHours(e.target.value)}
+                placeholder="Monday to Saturday: 9:00 AM to 8:00 PM PKT"
                 required
               />
             </div>
@@ -285,7 +291,7 @@ export function SettingsClient({ initialSettings }: SettingsClientProps) {
               id="as-maps"
               value={mapsEmbedUrl ?? ""}
               onChange={(e) => setMapsEmbedUrl(e.target.value)}
-              placeholder="https://maps.google.com/..."
+              placeholder="https://maps.google.com/?q=Sector+C+Askari+10+Airport+Road+Lahore+Cantt"
             />
           </div>
         </div>

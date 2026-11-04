@@ -6,23 +6,13 @@ import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
-  FileText,
+  Sparkles,
+  Share2,
   Inbox,
   Boxes,
-  FileCheck,
-  Building2,
-  Car,
-  Compass,
-  Plane,
-  Globe,
-  Users,
   Settings,
   ExternalLink,
   LogOut,
-  Sparkles,
-  Search,
-  Share2,
-  UserCheck,
 } from "lucide-react"
 
 import {
@@ -42,7 +32,7 @@ import {
 } from "@/components/ui/sidebar"
 import { authClient } from "@/lib/auth-client"
 
-interface NavItem {
+export interface NavItem {
   title: string
   href: string
   icon: React.ComponentType<{ className?: string }>
@@ -51,116 +41,53 @@ interface NavItem {
   role?: "super_admin" | "staff"
 }
 
-interface NavGroup {
+export interface NavGroup {
   groupLabel: string
   items: NavItem[]
 }
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    groupLabel: "Overview & CRM",
+    groupLabel: "Command Overview",
     items: [
       {
         title: "Executive Dashboard",
         href: "/admin",
         icon: LayoutDashboard,
       },
-      {
-        title: "Applications & Quotes",
-        href: "/admin/applications",
-        icon: FileText,
-        badgeClass: "bg-amber-500/25 text-amber-200 border border-amber-500/40",
-      },
-      {
-        title: "Contact Inbox",
-        href: "/admin/messages",
-        icon: Inbox,
-        badgeClass:
-          "bg-emerald-500/25 text-emerald-200 border border-emerald-500/40",
-      },
     ],
   },
   {
-    groupLabel: "Suppliers, Posts & Outreach",
+    groupLabel: "Daily Operational Hubs",
     items: [
       {
-        title: "Suppliers & Flyer Studio",
-        href: "/admin/supplier-flyers",
+        title: "Package & Poster Studio",
+        href: "/admin/studio",
         icon: Sparkles,
       },
       {
-        title: "Post Reverse Lookup",
-        href: "/admin/post-lookup",
-        icon: Search,
-      },
-      {
-        title: "Daily Group & Social Matrix",
-        href: "/admin/distribution",
+        title: "Campaigns & Outreach",
+        href: "/admin/campaigns",
         icon: Share2,
       },
       {
-        title: "14-Day Personal Outreach",
-        href: "/admin/outreach",
-        icon: UserCheck,
+        title: "Pilgrim Inbox & Quote Desk",
+        href: "/admin/desk",
+        icon: Inbox,
+        badgeClass: "bg-amber-500/25 text-amber-200 border border-amber-500/40",
       },
     ],
   },
   {
-    groupLabel: "Packages & Pricing",
+    groupLabel: "Inventory & Administration",
     items: [
       {
-        title: "Group Packages",
-        href: "/admin/groups",
+        title: "Catalog & Suppliers",
+        href: "/admin/catalog",
         icon: Boxes,
       },
       {
-        title: "Visa Pricing",
-        href: "/admin/visa",
-        icon: FileCheck,
-      },
-    ],
-  },
-  {
-    groupLabel: "Dynamic Inventory",
-    items: [
-      {
-        title: "Hotels Catalog",
-        href: "/admin/hotels",
-        icon: Building2,
-      },
-      {
-        title: "Transport & Vehicles",
-        href: "/admin/transport",
-        icon: Car,
-      },
-      {
-        title: "Ziyarat Places",
-        href: "/admin/ziyarat",
-        icon: Compass,
-      },
-      {
-        title: "Airlines & Cities",
-        href: "/admin/flights",
-        icon: Plane,
-      },
-    ],
-  },
-  {
-    groupLabel: "Administration",
-    items: [
-      {
-        title: "Website Content CMS",
-        href: "/admin/content",
-        icon: Globe,
-      },
-      {
-        title: "Staff & Roles",
-        href: "/admin/users",
-        icon: Users,
-        role: "super_admin",
-      },
-      {
-        title: "Agency Settings",
+        title: "Connections & Settings",
         href: "/admin/settings",
         icon: Settings,
       },
@@ -238,10 +165,9 @@ export function AdminSidebar({
 
       <SidebarSeparator className="bg-sidebar-border" />
 
-      {/* Sidebar Content: 4 Navigation Groups */}
+      {/* Sidebar Content: 3 Consolidated Navigation Groups */}
       <SidebarContent className="gap-2 px-2 py-2">
         {NAV_GROUPS.map((group) => {
-          // Filter out items restricted to super_admin if current user is not super_admin
           const visibleItems = group.items.filter(
             (item) => !item.role || (item.role === "super_admin" && isSuperAdmin)
           )
@@ -256,24 +182,60 @@ export function AdminSidebar({
               <SidebarGroupContent>
                 <SidebarMenu>
                   {visibleItems.map((item) => {
-                    const isActive =
-                      item.href === "/admin"
-                        ? pathname === "/admin"
-                        : pathname?.startsWith(item.href)
+                    const isActive = (() => {
+                      if (!pathname) return false
+                      if (item.href === "/admin") {
+                        return pathname === "/admin"
+                      }
+                      if (item.href === "/admin/studio") {
+                        return (
+                          pathname.startsWith("/admin/studio") ||
+                          pathname.startsWith("/admin/supplier-flyers") ||
+                          pathname.startsWith("/admin/groups")
+                        )
+                      }
+                      if (item.href === "/admin/campaigns") {
+                        return (
+                          pathname.startsWith("/admin/campaigns") ||
+                          pathname.startsWith("/admin/distribution") ||
+                          pathname.startsWith("/admin/outreach")
+                        )
+                      }
+                      if (item.href === "/admin/desk") {
+                        return (
+                          pathname.startsWith("/admin/desk") ||
+                          pathname.startsWith("/admin/applications") ||
+                          pathname.startsWith("/admin/messages") ||
+                          pathname.startsWith("/admin/post-lookup")
+                        )
+                      }
+                      if (item.href === "/admin/catalog") {
+                        return (
+                          pathname.startsWith("/admin/catalog") ||
+                          pathname.startsWith("/admin/hotels") ||
+                          pathname.startsWith("/admin/visa") ||
+                          pathname.startsWith("/admin/transport") ||
+                          pathname.startsWith("/admin/ziyarat") ||
+                          pathname.startsWith("/admin/flights") ||
+                          pathname.startsWith("/admin/content")
+                        )
+                      }
+                      if (item.href === "/admin/settings") {
+                        return (
+                          pathname.startsWith("/admin/settings") ||
+                          pathname.startsWith("/admin/users")
+                        )
+                      }
+                      return pathname.startsWith(item.href)
+                    })()
 
                     let badgeValue: string | undefined = undefined
-                    if (
-                      item.href === "/admin/applications" &&
-                      pendingQuotesCount !== undefined &&
-                      pendingQuotesCount > 0
-                    ) {
-                      badgeValue = String(pendingQuotesCount)
-                    } else if (
-                      item.href === "/admin/messages" &&
-                      unreadMessagesCount !== undefined &&
-                      unreadMessagesCount > 0
-                    ) {
-                      badgeValue = String(unreadMessagesCount)
+                    if (item.href === "/admin/desk") {
+                      const totalDeskCount =
+                        (pendingQuotesCount ?? 0) + (unreadMessagesCount ?? 0)
+                      if (totalDeskCount > 0) {
+                        badgeValue = String(totalDeskCount)
+                      }
                     }
 
                     return (
@@ -310,18 +272,34 @@ export function AdminSidebar({
 
       <SidebarSeparator className="bg-sidebar-border" />
 
-      {/* Sidebar Footer: View Public Website & Sign Out */}
-      <SidebarFooter className="gap-1 p-2">
+      {/* Sidebar Footer: User Profile, Open Public Website & Sign Out */}
+      <SidebarFooter className="gap-2 p-2">
+        {user && (
+          <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5 bg-sidebar-accent/50 border border-sidebar-border group-data-[collapsible=icon]:hidden">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-950/80 border border-gold/40 text-[11px] font-bold text-gold">
+              {(user.name || "AR").slice(0, 2).toUpperCase()}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="truncate text-xs font-medium text-sidebar-foreground">
+                {user.name || "Admin Staff"}
+              </span>
+              <span className="truncate text-[10px] text-sidebar-foreground/60 capitalize">
+                {user.role === "super_admin" ? "Super Admin" : "Agency Staff"}
+              </span>
+            </div>
+          </div>
+        )}
+
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="View Public Website"
+              tooltip="Open Public Website"
               render={
                 <Link href="/" target="_blank" rel="noopener noreferrer" />
               }
             >
               <ExternalLink className="size-4 shrink-0 text-gold" />
-              <span className="truncate">View Public Site</span>
+              <span className="truncate">Open Public Website</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
 

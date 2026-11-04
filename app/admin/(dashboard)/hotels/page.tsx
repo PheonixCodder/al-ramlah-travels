@@ -1,21 +1,5 @@
-import * as React from "react"
-import { db } from "@/db"
-import { hotels } from "@/db/schema"
-import { asc } from "drizzle-orm"
-import { requireAdmin } from "@/lib/auth-guard"
-import { HotelsClient } from "@/components/admin/catalog/hotels-client"
+import { redirect } from "next/navigation"
 
-export const metadata = {
-  title: "Hotels Catalog | Al Ramlah Travels Admin",
-}
-
-export default async function AdminHotelsPage() {
-  await requireAdmin()
-
-  const allHotels = await db
-    .select()
-    .from(hotels)
-    .orderBy(asc(hotels.sortOrder), asc(hotels.name))
-
-  return <HotelsClient initialHotels={allHotels} />
+export default function HotelsRedirectPage() {
+  redirect("/admin/catalog?tab=hotels")
 }

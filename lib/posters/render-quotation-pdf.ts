@@ -1,7 +1,5 @@
-import {
-  getCompanyLogoBase64,
-  renderHtmlViaChromiumCdp,
-} from "./chromium-cdp"
+import { getCompanyLogoBase64 } from "./chromium-cdp"
+import { renderHtmlViaGotenberg } from "./gotenberg"
 import { uploadAssetToR2 } from "../storage/r2"
 
 export interface LuxuryQuotationPdfInput {
@@ -556,7 +554,7 @@ export async function renderAndUploadLuxuryQuotationPdf(
 ): Promise<{ pdfUrl: string }> {
   const companyLogoB64 = await getCompanyLogoBase64()
   const html = buildLuxuryQuotationHtml(input, companyLogoB64)
-  const { pdfBuffer } = await renderHtmlViaChromiumCdp({
+  const { pdfBuffer } = await renderHtmlViaGotenberg({
     html,
     width: 1240,
     height: 1754,

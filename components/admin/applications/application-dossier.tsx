@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/layout/status-badge"
 import { formatCitySequence } from "@/lib/domain"
-import { formatWhatsAppPhone } from "./quote-dispatch-bar"
+import { formatWhatsAppPhone } from "@/lib/phone"
 
 interface HotelStayItem {
   id: string

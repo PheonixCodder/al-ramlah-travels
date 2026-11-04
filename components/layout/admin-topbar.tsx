@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { authClient } from "@/lib/auth-client"
+import { CommandPalette } from "@/components/layout/command-palette"
 
 const ROUTE_TITLES: Record<string, { title: string; category: string }> = {
   "/admin": { title: "Executive Dashboard", category: "Overview & CRM" },
@@ -113,17 +114,20 @@ export function AdminTopbar({
     router.push("/admin/login")
   }
 
-  const handleQuickSearch = () => {
-    const input = document.getElementById("admin-global-search")
-    if (input) {
-      input.focus()
-    } else {
-      router.push("/admin/applications")
-    }
+  const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false)
+
+  const handleOpenCommandPalette = () => {
+    setCommandPaletteOpen(true)
   }
 
   return (
     <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center justify-between border-b border-border bg-card px-4 sm:px-6 print:hidden">
+      {/* Global Cmd+K Command Palette */}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onOpenChange={setCommandPaletteOpen}
+      />
+
       {/* Left: Sidebar Trigger & Breadcrumb */}
       <div className="flex items-center gap-3">
         <SidebarTrigger />
@@ -139,18 +143,20 @@ export function AdminTopbar({
         </div>
       </div>
 
-      {/* Right: Quick Search, SLA Warning, Notifications, User Profile */}
+      {/* Right: Prominent Global Cmd+K Search, SLA Warning, Notifications, User Profile */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Quick Search Trigger (Ctrl+K) */}
+        {/* Prominent "Search Post Ref / Price (⌘K)" Trigger Pill */}
         <button
           type="button"
-          onClick={handleQuickSearch}
-          className="hidden items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-gold/50 hover:text-foreground md:inline-flex cursor-pointer"
+          onClick={handleOpenCommandPalette}
+          className="inline-flex items-center gap-2 rounded-lg border border-gold/40 bg-background/80 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-foreground transition-all hover:border-gold hover:bg-gold/10 hover:shadow-2xs cursor-pointer"
+          title="Search Post Ref codes, PKR prices, hotels, or jump to operational hubs (⌘K or Ctrl+K)"
         >
-          <Search className="size-3.5 text-muted-foreground" />
-          <span>Search applications, pilgrims...</span>
-          <kbd className="pointer-events-none inline-flex h-4.5 items-center gap-1 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground select-none">
-            Ctrl K
+          <Search className="size-3.5 text-gold shrink-0" />
+          <span className="hidden sm:inline">Search Post Ref / Price</span>
+          <span className="sm:hidden text-[11px]">Search</span>
+          <kbd className="pointer-events-none inline-flex h-4.5 items-center gap-0.5 rounded border border-gold/30 bg-gold/10 px-1.5 font-mono text-[10px] font-bold text-gold-foreground select-none">
+            ⌘K
           </kbd>
         </button>
 

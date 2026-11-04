@@ -1,28 +1,5 @@
-import * as React from "react"
-import { db } from "@/db"
-import { contactMessages } from "@/db/schema"
-import { desc } from "drizzle-orm"
-import { requireAdmin } from "@/lib/auth-guard"
-import {
-  MessagesClient,
-  ContactMessageData,
-} from "@/components/admin/catalog/messages-client"
+import { redirect } from "next/navigation"
 
-export const metadata = {
-  title: "Contact Messages Inbox | Al Ramlah Travels Admin",
-}
-
-export default async function AdminMessagesPage() {
-  await requireAdmin()
-
-  const allMessages = await db
-    .select()
-    .from(contactMessages)
-    .orderBy(desc(contactMessages.createdAt))
-
-  return (
-    <MessagesClient
-      initialMessages={allMessages as unknown as ContactMessageData[]}
-    />
-  )
+export default function MessagesRedirectPage() {
+  redirect("/admin/desk?tab=inbox")
 }

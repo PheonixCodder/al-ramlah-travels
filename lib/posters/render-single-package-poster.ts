@@ -1,9 +1,9 @@
 import {
   getAirlineBadgeHtml,
   getCompanyLogoBase64,
-  renderHtmlViaChromiumCdp,
 } from "./chromium-cdp"
-import { uploadAssetToR2 } from "../storage/r2"
+import { renderHtmlViaGotenberg } from "./gotenberg"
+import { optimizePosterForSocialToR2, uploadAssetToR2 } from "../storage/r2"
 
 export interface SinglePackageSpotlightInput {
   cardNumber: string
@@ -344,10 +344,10 @@ export function buildSinglePackageSpotlightHtml(
 
 export async function renderAndUploadSinglePackagePoster(
   pkg: SinglePackageSpotlightInput
-): Promise<{ pngUrl: string; pdfUrl: string }> {
+): Promise<{ pngUrl: string; pdfUrl: string; socialJpegUrl?: string }> {
   const companyLogoB64 = await getCompanyLogoBase64()
   const html = buildSinglePackageSpotlightHtml(pkg, companyLogoB64)
-  const { pngBuffer, pdfBuffer } = await renderHtmlViaChromiumCdp({
+  const { pngBuffer, pdfBuffer } = await renderHtmlViaGotenberg({
     html,
     width: 1080,
     height: 1520,
@@ -369,8 +369,22 @@ export async function renderAndUploadSinglePackagePoster(
     "application/pdf"
   )
 
+  let socialJpegUrl: string | undefined
+  if (pngBuffer) {
+    try {
+      const socialRes = await optimizePosterForSocialToR2(pngBuffer, baseKey)
+      socialJpegUrl = socialRes.socialJpegUrl
+    } catch (optErr) {
+      console.warn(
+        "[Social Optimizer] Failed to generate social JPEG for single spotlight:",
+        optErr
+      )
+    }
+  }
+
   return {
     pngUrl: pngUpload.url,
     pdfUrl: pdfUpload.url,
+    socialJpegUrl,
   }
 }

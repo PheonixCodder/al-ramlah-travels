@@ -25,7 +25,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { StatusBadge, TabularPrice } from "@/components/layout/status-badge"
-import { formatWhatsAppPhone } from "./quote-dispatch-bar"
+import { formatWhatsAppPhone } from "@/lib/phone"
 
 export interface ApplicationRowItem {
   id: string

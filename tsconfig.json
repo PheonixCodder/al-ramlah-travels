@@ -39,6 +39,9 @@
   ],
   "exclude": [
     "node_modules",
-    "services"
+    "services",
+    "agent",
+    ".agents",
+    ".claude"
   ]
 }

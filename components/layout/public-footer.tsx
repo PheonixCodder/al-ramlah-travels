@@ -285,21 +285,19 @@ export function PublicFooter({
             &copy; {currentYear} {agencyName} Pvt. Ltd. All rights reserved.
           </div>
           <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => setModalType("privacy")}
+            <Link
+              href="/privacy"
               className="transition-colors hover:text-gold focus:outline-none"
             >
               Privacy Policy
-            </button>
+            </Link>
             <span>·</span>
-            <button
-              type="button"
-              onClick={() => setModalType("terms")}
+            <Link
+              href="/terms"
               className="transition-colors hover:text-gold focus:outline-none"
             >
-              Terms of Pilgrimage
-            </button>
+              Terms of Service
+            </Link>
             <span>·</span>
             <button
               type="button"

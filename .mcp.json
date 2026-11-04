@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "trigger": {
+      "command": "node",
+      "args": [
+        "C:\\nvm4w\\nodejs\\node_modules\\trigger.dev\\dist\\esm\\index.js",
+        "mcp",
+        "--project-ref",
+        "proj_wceqpgjdgrgramynogwe"
+      ]
+    }
+  }
+}

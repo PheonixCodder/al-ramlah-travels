@@ -274,7 +274,9 @@ export async function deleteVehicle(id: string) {
   }
 }
 
-export const deleteTransportVehicle = deleteVehicle
+export async function deleteTransportVehicle(id: string) {
+  return deleteVehicle(id)
+}
 
 export async function upsertTransportSector(rawInput: unknown) {
   await requireAdmin()
@@ -554,7 +556,9 @@ export async function deleteZiyaratPlace(id: string) {
   }
 }
 
-export const deleteZiyaratPoi = deleteZiyaratPlace
+export async function deleteZiyaratPoi(id: string) {
+  return deleteZiyaratPlace(id)
+}
 
 // ==========================================
 // AIRLINES & DEPARTURE CITIES ACTIONS

@@ -16,6 +16,8 @@ import {
   Footprints,
   Check,
   Sparkles,
+  MessageCircle,
+  Compass,
 } from "lucide-react"
 
 export interface PublicGroupPackageItem extends BookingModalPackage {
@@ -76,18 +78,55 @@ export function GroupPackagesSection({
   })
 
   if (activePackages.length === 0) {
+    const waDigits = agencyWhatsapp
+      ? agencyWhatsapp.replace(/\D/g, "").replace(/^03/, "923")
+      : "923274029701"
+    const waUrl = `https://wa.me/${waDigits}?text=${encodeURIComponent(
+      "As-salamu alaykum Al Ramlah Travels. I would like to inquire about upcoming seasonal group departures and bespoke Umrah packages."
+    )}`
+
     return (
       <section id="group-packages" className="py-20 bg-background scroll-mt-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center space-y-4">
-          <Badge className="bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
-            Pre-Built Fixed Departures
-          </Badge>
-          <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-            Curated Group Umrah Packages
-          </h2>
-          <p className="text-muted-foreground text-sm max-w-lg mx-auto">
-            Upcoming seasonal group departure batches are currently being finalized with our airline partners. Please use our Custom Journey Builder above or check back shortly.
-          </p>
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+          <div className="relative overflow-hidden rounded-3xl border border-gold/40 bg-gradient-to-b from-[#0A3622]/90 via-[#0A3622] to-[#062014] p-8 sm:p-12 text-center text-white shadow-xl">
+            {/* Subtle decorative glow */}
+            <div className="absolute -top-24 left-1/2 -translate-x-1/2 size-72 rounded-full bg-gold/15 blur-3xl pointer-events-none" />
+
+            <div className="relative z-10 space-y-5 max-w-2xl mx-auto">
+              <div className="inline-flex items-center gap-2 rounded-full border border-gold/50 bg-gold/15 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-gold">
+                <Sparkles className="size-3.5 text-gold" />
+                <span>Pre-Built Fixed Departures</span>
+              </div>
+
+              <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl">
+                New Seasonal Group Departures Announcing Shortly
+              </h2>
+
+              <p className="text-xs sm:text-sm text-white/85 leading-relaxed">
+                Our team is currently finalizing upcoming seasonal flight blocks and luxury 5-star hotel allotments in Makkah and Madinah with our airline and hospitality partners. Use our Custom Umrah Journey Planner above or message our Pilgrim Concierge on WhatsApp for bespoke dates.
+              </p>
+
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                <a
+                  href="#planner"
+                  className="inline-flex items-center gap-2 rounded-xl bg-gold hover:bg-gold/90 text-primary px-5 py-2.5 text-xs font-bold transition-all shadow-md cursor-pointer"
+                >
+                  <Compass className="size-4" />
+                  <span>Plan Custom Journey Above</span>
+                </a>
+
+                <a
+                  href={waUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 text-xs font-semibold backdrop-blur-xs transition-all cursor-pointer"
+                >
+                  <MessageCircle className="size-4 text-emerald-400" />
+                  <span>Message Pilgrim Concierge</span>
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     )
@@ -211,13 +250,13 @@ export function GroupPackagesSection({
               >
                 <div>
                   {/* Package Banner Header */}
-                  <div className="relative h-56 w-full bg-muted">
+                  <div className="relative h-64 sm:h-72 w-full bg-muted overflow-hidden">
                     {pkg.bannerUrl && (
                       <Image
                         src={pkg.bannerUrl}
                         alt={pkg.title}
                         fill
-                        className="object-cover"
+                        className="object-cover object-top"
                         sizes="(max-width: 1024px) 100vw, 50vw"
                       />
                     )}
@@ -512,12 +551,25 @@ export function GroupPackagesSection({
                 </div>
 
                 {/* Card Footer CTA */}
-                <div className="border-t border-border p-4 bg-muted/10">
+                <div className="border-t border-border p-4 bg-muted/10 space-y-2.5">
                   <GroupBookingModal
                     pkg={pkg}
                     selectedBatchId={primaryBatch?.id}
                     agencyWhatsapp={agencyWhatsapp}
                   />
+                  {pkg.bannerUrl && (
+                    <div className="text-center pt-0.5">
+                      <a
+                        href={pkg.bannerUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-800 hover:text-emerald-950 hover:underline transition-colors"
+                      >
+                        <Sparkles className="size-3 text-gold" />
+                        <span>View Original High-Res Flyer Poster</span>
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             )

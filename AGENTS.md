@@ -13,16 +13,18 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## Stack
 
 - **Language / Runtime**: TypeScript 5, Node 20+
-- **Framework**: Next.js 16.3.4 (App Router), React 19.2.8
+- **Framework**: Next.js 16.3.4 (App Router), React 19.2.8 (deployed on Vercel)
 - **Database & ORM**: Neon Serverless PostgreSQL (`@neondatabase/serverless`), Drizzle ORM (`drizzle-orm`, `drizzle-kit`)
 - **Authentication**: Better Auth (`better-auth`) with Drizzle PostgreSQL adapter (`super_admin` and `staff` roles)
-- **Validation & UI**: Zod (`zod`), Tailwind CSS v4, Base UI (`@base-ui/react`), shadcn/ui (`base-nova` preset in `components/ui/`), Recharts 3.8, Lucide React
+- **Validation & UI**: Zod (`zod`), Tailwind CSS v4, Base UI (`@base-ui/react`), shadcn/ui (`base-nova` preset in `components/ui/`), `@dnd-kit/*` (Kanban Desk), `cmdk` (`Cmd+K` Post Reverse-Lookup), Recharts 3.8, Lucide React
+- **Multimodal AI, Media & Durable Jobs**: Vercel AI SDK (`ai`, `@openrouter/ai-sdk-provider`, `@ai-sdk/google`), Trigger.dev Cloud v4 (`@trigger.dev/sdk`), Cloudflare R2 (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`), `sharp` (`1080×1520` JPEG social normalizer), and Oracle Cloud Always Free Gotenberg (`lib/posters/gotenberg.ts`)
+- **Native CRM & Social Engines**: Native TypeScript ports of `wacrm` (`lib/whatsapp/*` — Meta WhatsApp Cloud API v21.0, AES-256-GCM token encryption, `x-hub-signature-256` HMAC webhooks) and `postiz-app` (`lib/social/*` — Core 5 OAuth & publishing: Instagram, Facebook Pages, TikTok, YouTube, Google Business Profile)
 - **Package manager**: npm
 
 ## Build approach
 
 **Tracer Bullet** (vertical slices where each feature is built end to end through PostgreSQL, Drizzle ORM, Server Actions, and UI).
-**Workflow tier**: **Alpha** project default (`/architect` → `/develop` → `/check verify` → `/sync`), with Foundation 1 (`Stack & architecture`) and Foundation 3 (`Data model`) at **Beta** (`/architect` → `/develop` → `/check verify` → `/test` → `/sync`).
+**Workflow tier**: **Alpha** project default (`/architect` → `/develop` → `/check verify` → `/sync`), with Foundation 1 (`Stack & architecture`), Foundation 3 (`Data model`), and Enterprise Slices 27–30 at **Beta** (`/architect` → `/develop` → `/check verify` → `/test` → `/sync`).
 
 ## Subagent-driven orchestration workflow
 
@@ -64,10 +66,17 @@ npm run lint
 # Format
 npm run format
 
+# Automated unit & integration tests
+npm test
+
 # Production build
 npm run build
 
-# Drizzle database commands (once wired in Foundation 1)
+# Trigger.dev Cloud durable worker dev & deploy
+npm run trigger:dev
+npm run trigger:deploy
+
+# Drizzle database commands
 npx drizzle-kit generate
 npx drizzle-kit migrate
 npx drizzle-kit push
@@ -81,9 +90,10 @@ Living project scope lives in `docs/scope/scope.md`.
 ## Rules
 
 - **Verify Next.js 16 APIs first**: Always check `node_modules/next/dist/docs/` before writing Next.js 16 routes, `proxy.ts` / middleware, caching, or dynamic `params` / `searchParams` (which are asynchronous Promises in Next.js 16).
-- **Verify Drizzle ORM & Better Auth from local source repos**: Never guess ORM or Auth APIs. Always inspect the official reference clones in `services/drizzle-orm/` and `services/better-auth/` plus the installed `.agents/skills/better-auth-*` skills before writing database or auth code.
+- **Verify Drizzle ORM & Better Auth from local source repos**: Never guess ORM or Auth APIs. Always inspect the official reference clones in `../services/drizzle-orm/` and `../services/better-auth/` plus the installed `.agents/skills/better-auth-*` skills before writing database or auth code.
 - **Single luxury theme only**: No dark mode or theme toggle (`next-themes` switching must not be exposed). Enforce a single luxury palette inspired by the Haramain and matched to `public/logo.jpg`: Deep Haramain Emerald, Warm Ivory / Alabaster Cream, and Metallic Haramain Gold.
 - **Base UI (`@base-ui/react`) primitives**: `components/ui/*` uses `shadcn` (`base-nova` preset) built on `@base-ui/react`, not Radix UI. Use `render` prop composition instead of Radix's `asChild`.
+- **4-Hub Admin IA**: Administrative workflows live in `/admin` (Overview), `/admin/studio` (Multimodal BYO-Poster & Supplier Studio), `/admin/campaigns` (Core 5 Social Scheduler, Safe WA Group/Status Queue, Meta Broadcasts & 14-Day Outreach), `/admin/desk` (Live WhatsApp Cloud Inbox + `@dnd-kit` Applications Kanban), `/admin/catalog` (Rates, Inventory & CMS), and `/admin/settings` (WABA, Social OAuth, Gotenberg & Staff). Legacy `/admin/*` paths remain clean server-side `redirect()` stubs.
 - **Strict validation & type safety**: Validate every Server Action, Route Handler, and form payload with `zod`. Never use `any` or unvalidated `FormData`.
 - **Business domain invariants**:
   - Visa duration tier (`short_term` $\le 30$ days vs `long_term` $> 30$ days) is auto-calculated on the server from KSA Arrival Date and KSA Departure Date; never expose a manual visa-tier selector to customers.
@@ -91,11 +101,16 @@ Living project scope lives in `docs/scope/scope.md`.
   - Makkah has no airport; itineraries starting in Makkah lock Entry Airport to Jeddah (`JED`) with immediate ground transfer to Makkah.
   - Hotel beds and vehicle seat capacities count `Adults + Children`; `Infants (<2 yrs)` require a visa and infant air ticket but take 0 hotel beds and 0 vehicle seats. Total passport count includes `Adults + Children + Infants`.
 
-## Reference repositories (`services/`)
+## Reference repositories (`../services/`)
 
-- `services/skills/`: Official `jsmastery-pro/skills` context-driven development workflow reference.
-- `services/drizzle-orm/`: Official `drizzle-team/drizzle-orm` source and documentation reference.
-- `services/better-auth/`: Official `better-auth/better-auth` source and documentation reference.
+- `../services/wacrm/`: Official `ArnasDon/wacrm` Meta WhatsApp Cloud API reference (ported natively into `lib/whatsapp/` and `db/schema/whatsapp-crm.ts`).
+- `../services/postiz-app/`: Official `gitroomhq/postiz-app` social scheduling reference (Core 5 providers ported natively into `lib/social/` and `db/schema/social-scheduler.ts`).
+- `../services/trigger.dev/`: Official `triggerdotdev/trigger.dev` durable background task SDK reference (`trigger.config.ts`, `trigger/`).
+- `../services/gotenberg/`: Official `gotenberg/gotenberg` Chromium PDF/screenshot reference (`lib/posters/gotenberg.ts`, `../scripts/oracle-gotenberg/`).
+- `../services/vercel-ai/`, `../services/openrouter-ai-sdk-provider/`, `../services/google-js-genai/`: Multimodal structured extraction references (`lib/ai/extract-packages.ts`).
+- `../services/drizzle-orm/`: Official `drizzle-team/drizzle-orm` source and documentation reference.
+- `../services/better-auth/`: Official `better-auth/better-auth` source and documentation reference.
+- `../services/react-email/`: Official `resend/react-email` transactional email reference.
 
 ## Agent skills
 
@@ -107,6 +122,12 @@ Living project scope lives in `docs/scope/scope.md`.
 - [email-and-password-best-practices](.agents/skills/email-and-password-best-practices/): `better-auth/skills`, credential authentication, password policies, and admin user flows
 - [organization-best-practices](.agents/skills/organization-best-practices/): `better-auth/skills`, role-based access control (`super_admin` vs `staff`)
 - [two-factor-authentication-best-practices](.agents/skills/two-factor-authentication-best-practices/): `better-auth/skills`, optional 2FA hardening for admin accounts
+- [trigger-getting-started](.agents/skills/trigger-getting-started/): `triggerdotdev/skills`, bootstrapping Trigger.dev v4 config, CLI auth, and dev server
+- [trigger-authoring-tasks](.agents/skills/trigger-authoring-tasks/): `triggerdotdev/skills`, authoring `task()`, `schemaTask()`, retries, `wait.until()` / `wait.for()`, queues, idempotency, and cron schedules in `trigger/`
+- [trigger-realtime-and-frontend](.agents/skills/trigger-realtime-and-frontend/): `triggerdotdev/skills`, subscribing to runs with `@trigger.dev/react-hooks` (`useRealtimeRun`, `useRealtimeStream`) and public tokens
+- [trigger-cost-savings](.agents/skills/trigger-cost-savings/): `triggerdotdev/skills`, optimizing task concurrency, waits, machines, and inspecting runs via Trigger.dev MCP
+- [trigger-authoring-chat-agent](.agents/skills/trigger-authoring-chat-agent/): `triggerdotdev/skills`, durable AI chat agents via `@trigger.dev/sdk/ai`
+- [trigger-chat-agent-advanced](.agents/skills/trigger-chat-agent-advanced/): `triggerdotdev/skills`, advanced durable sessions, sub-agents, human-in-the-loop, and context compaction
 
 ## Context files
 

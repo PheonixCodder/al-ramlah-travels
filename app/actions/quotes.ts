@@ -12,6 +12,11 @@ import {
   applicationStatusUpdateSchema,
 } from "@/lib/validations/quote"
 import { renderAndUploadLuxuryQuotationPdf } from "@/lib/posters/render-quotation-pdf"
+import { triggerByIdAndAwaitOrInline } from "@/trigger/dispatch"
+import type {
+  RenderGotenbergAssetPayload,
+  RenderGotenbergAssetTaskResult,
+} from "@/trigger/render-gotenberg-asset.task"
 
 const saveQuoteInputSchema = quoteUpdateSchema.extend({
   targetStatus: z
@@ -596,7 +601,7 @@ export async function generateApplicationLuxuryPdf(applicationId: string) {
       return mp
     }
 
-    const rendered = await renderAndUploadLuxuryQuotationPdf({
+    const pdfInput = {
       referenceNumber: app.referenceNumber,
       customerName: app.customerName,
       customerCity: app.customerCity,
@@ -631,7 +636,42 @@ export async function generateApplicationLuxuryPdf(applicationId: string) {
       supplierName: app.supplier?.name || "Zahoor Travels",
       grandTotalPkr,
       notesCustomer: latestQuote?.quoteNotesCustomer,
+    }
+
+    const renderRes = await triggerByIdAndAwaitOrInline<
+      RenderGotenbergAssetPayload,
+      RenderGotenbergAssetTaskResult
+    >({
+      taskId: "render-gotenberg-asset",
+      payload: {
+        kind: "quotation_pdf",
+        applicationQuoteId: latestQuote?.id,
+        data: pdfInput,
+      },
+      options: {
+        tags: [`quotation-pdf:${app.referenceNumber}`],
+      },
+      inlineRunner: async () => {
+        const inlineOut = await renderAndUploadLuxuryQuotationPdf(pdfInput)
+        return {
+          success: true,
+          kind: "quotation_pdf",
+          pdfUrl: inlineOut.pdfUrl,
+        }
+      },
     })
+
+    if (!renderRes.success || !renderRes.output?.pdfUrl) {
+      return {
+        success: false,
+        error:
+          renderRes.error ||
+          renderRes.output?.error ||
+          "Failed to render 3-page luxury PDF",
+      }
+    }
+
+    const rendered = { pdfUrl: renderRes.output.pdfUrl }
 
     const now = new Date()
     if (latestQuote) {

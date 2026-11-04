@@ -2,12 +2,52 @@ import crypto from "node:crypto"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
+import sharp from "sharp"
 
 export interface UploadAssetResult {
   key: string
   url: string
   provider: "cloudflare_r2" | "local_r2_fallback"
   sizeBytes: number
+}
+
+export interface CreatePresignedUploadUrlOptions {
+  filename: string
+  contentType: string
+  folder?: string
+}
+
+export interface PresignedUploadUrlResult {
+  uploadUrl: string
+  publicUrl: string
+  key: string
+  mode: "r2_presigned" | "local_put"
+  expiresInSeconds: number
+}
+
+export interface OptimizedSocialAssetResult {
+  socialJpegUrl: string
+  key: string
+  width: number
+  height: number
+  sizeBytes: number
+}
+
+function getR2S3Client(
+  accountId: string,
+  accessKeyId: string,
+  secretAccessKey: string
+): S3Client {
+  return new S3Client({
+    region: "auto",
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  })
 }
 
 async function resolveWranglerOauthToken(): Promise<string | null> {
@@ -26,7 +66,10 @@ async function resolveWranglerOauthToken(): Promise<string | null> {
   ]
   for (const configPath of candidatePaths) {
     try {
-      const content = await fs.readFile(configPath, "utf8")
+      const content = await fs.readFile(
+        /*turbopackIgnore: true*/ configPath,
+        "utf8"
+      )
       const match = content.match(/oauth_token\s*=\s*"([^"]+)"/)
       if (match?.[1]) {
         return match[1]
@@ -229,5 +272,129 @@ export async function uploadBufferToR2(params: {
   return {
     ...result,
     storage: result.provider === "cloudflare_r2" ? "r2" : "local_fallback",
+  }
+}
+
+/**
+ * Creates an S3 Signature V4 presigned direct PUT URL (15 min lifetime) targeting Cloudflare R2
+ * when credentials exist, or returns a local fallback endpoint (`/api/uploads/local?key=...`)
+ * when running offline in development.
+ */
+export async function createPresignedUploadUrl(
+  options: CreatePresignedUploadUrlOptions
+): Promise<PresignedUploadUrlResult> {
+  const accountId = process.env.R2_ACCOUNT_ID?.trim()
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim()
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim()
+  const bucketName = process.env.R2_BUCKET_NAME?.trim() || "al-ramlah-assets"
+  const publicBaseUrl = process.env.R2_PUBLIC_URL?.trim()?.replace(/\/+$/, "")
+
+  const rawFolder = options.folder || "uploads"
+  const sanitizedFolder = rawFolder
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/\.\./g, "")
+  const cleanFilename = path
+    .basename(options.filename)
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+  const uniqueKey = `${sanitizedFolder}/${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${cleanFilename}`
+
+  if (accountId && accessKeyId && secretAccessKey) {
+    try {
+      const s3 = getR2S3Client(accountId, accessKeyId, secretAccessKey)
+      const command = new PutObjectCommand({
+        Bucket: bucketName,
+        Key: uniqueKey,
+        ContentType: options.contentType,
+      })
+      const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 900 })
+      const publicUrl = publicBaseUrl
+        ? `${publicBaseUrl}/${uniqueKey}`
+        : `https://${accountId}.r2.cloudflarestorage.com/${bucketName}/${uniqueKey}`
+
+      return {
+        uploadUrl,
+        publicUrl,
+        key: uniqueKey,
+        mode: "r2_presigned",
+        expiresInSeconds: 900,
+      }
+    } catch (err) {
+      console.warn(
+        "[R2 Presign] Failed to generate S3 presigned URL, falling back to local dev route:",
+        err
+      )
+    }
+  }
+
+  return {
+    uploadUrl: `/api/uploads/local?key=${encodeURIComponent(uniqueKey)}`,
+    publicUrl: `/uploads/r2-local/${uniqueKey}`,
+    key: uniqueKey,
+    mode: "local_put",
+    expiresInSeconds: 900,
+  }
+}
+
+/**
+ * Resizes a high-resolution 4K poster PNG/JPEG using Sharp so that its shortest dimension
+ * is <= 1080px (1080x1520 for 3240x4560 posters), converts it to a progressive sRGB JPEG (quality: 90),
+ * and uploads it to R2 / local disk fallback.
+ */
+export async function optimizePosterForSocialToR2(
+  sourceBuffer: Buffer,
+  baseKey: string
+): Promise<OptimizedSocialAssetResult> {
+  const sanitizedBaseKey = baseKey.replace(/^\/+/, "").replace(/\.\./g, "")
+  const socialKey = `${sanitizedBaseKey}_social.jpg`
+
+  const image = sharp(sourceBuffer)
+  const meta = await image.metadata()
+  const origWidth = meta.width ?? 1080
+  const origHeight = meta.height ?? 1520
+
+  let pipeline = image.rotate() // auto-orient based on EXIF
+
+  // If shortest side is > 1080, resize to standard 1080x1520 for posters
+  if (Math.min(origWidth, origHeight) > 1080) {
+    if (origWidth < origHeight) {
+      pipeline = pipeline.resize({
+        width: 1080,
+        height: 1520,
+        fit: "cover",
+        position: "center",
+      })
+    } else {
+      pipeline = pipeline.resize({
+        width: Math.round((origWidth / origHeight) * 1080),
+        height: 1080,
+        fit: "inside",
+      })
+    }
+  }
+
+  const jpegBuffer = await pipeline
+    .jpeg({
+      quality: 90,
+      progressive: true,
+      mozjpeg: true,
+    })
+    .toBuffer()
+
+  const finalMeta = await sharp(jpegBuffer).metadata()
+  const finalWidth = finalMeta.width ?? 1080
+  const finalHeight = finalMeta.height ?? 1520
+
+  const uploadResult = await uploadAssetToR2(
+    socialKey,
+    jpegBuffer,
+    "image/jpeg"
+  )
+
+  return {
+    socialJpegUrl: uploadResult.url,
+    key: uploadResult.key,
+    width: finalWidth,
+    height: finalHeight,
+    sizeBytes: jpegBuffer.byteLength,
   }
 }

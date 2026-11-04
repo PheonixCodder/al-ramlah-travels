@@ -55,6 +55,7 @@ export const channelPlatformEnum = pgEnum("channel_platform", [
   "facebook",
   "tiktok",
   "youtube",
+  "google_business",
 ])
 
 export const distributionDispatchStatusEnum = pgEnum(
@@ -166,6 +167,13 @@ export const supplierFlyers = pgTable(
     commissionPkr: integer("commission_pkr").notNull().default(22000),
     multiSheetImageUrl: text("multi_sheet_image_url"),
     multiSheetPdfUrl: text("multi_sheet_pdf_url"),
+    socialReadySheetJpegUrl: text("social_ready_sheet_jpeg_url"),
+    ingestionSource: varchar("ingestion_source", { length: 32 })
+      .notNull()
+      .default("raw_supplier_flyer"),
+    extractionStatus: varchar("extraction_status", { length: 32 })
+      .notNull()
+      .default("completed"),
     extractedCardsCount: integer("extracted_cards_count").notNull().default(0),
     status: flyerStatusEnum("status").notNull().default("extracted"),
     receivedDate: date("received_date").notNull(),

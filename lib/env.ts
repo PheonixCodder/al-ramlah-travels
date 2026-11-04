@@ -29,13 +29,50 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
+
+  // Cloudflare R2 Object Storage (Presigned Uploads, 4K Posters, Social JPEGs & Luxury PDFs)
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_BUCKET_NAME: z.string().optional(),
   R2_PUBLIC_URL: z.string().optional(),
+
+  // Multimodal AI Extraction Gateway (Direct Google Gemini Primary + OpenRouter Secondary)
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+
+  // Trigger.dev Cloud Durable Background Jobs & Schedules
+  TRIGGER_SECRET_KEY: z.string().optional(),
+  TRIGGER_PROJECT_ID: z.string().optional(),
+  NEXT_PUBLIC_TRIGGER_PUBLIC_API_KEY: z.string().optional(),
+
+  // Oracle Cloud Always Free Gotenberg Rendering Microservice
+  GOTENBERG_API_URL: z.string().optional(),
+  GOTENBERG_API_KEY: z.string().optional(),
+
+  // AES-256-GCM Token Encryption Key (64-hex chars / 32 bytes; falls back safely in dev/test)
+  ENCRYPTION_KEY: z.string().optional(),
+
+  // Official Meta WhatsApp Cloud API (Native wacrm Port)
+  META_APP_ID: z.string().optional(),
+  META_APP_SECRET: z.string().optional(),
+  WHATSAPP_VERIFY_TOKEN: z.string().optional(),
+
+  // Native Social Publishing OAuth Credentials (Ported Postiz Core 5)
+  FACEBOOK_CLIENT_ID: z.string().optional(),
+  FACEBOOK_CLIENT_SECRET: z.string().optional(),
+  TIKTOK_CLIENT_KEY: z.string().optional(),
+  TIKTOK_CLIENT_SECRET: z.string().optional(),
+  TIKTOK_REDIRECT_BASE_URL: z.string().optional(),
+  GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
+
+  // Composio Managed OAuth Bridge (Zero-Config Instagram & Facebook Pages)
+  COMPOSIO_API_KEY: z.string().optional(),
+
+  // Legacy Optional Bridge Fallbacks
   POSTIZ_API_URL: z.string().optional(),
   POSTIZ_API_KEY: z.string().optional(),
   WACRM_API_URL: z.string().optional(),

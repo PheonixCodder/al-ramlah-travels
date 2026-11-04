@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertGroupPackage } from "@/app/actions/groups"
-import { Plus, Loader2, Gift, Baby } from "lucide-react"
+import { Plus, Loader2, Gift, Baby, Upload, Image as ImageIcon } from "lucide-react"
 
 export interface GroupPackageData {
   id?: string
@@ -127,6 +127,56 @@ export function GroupPackageDialog({
     pkg?.bannerUrl ??
       "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800"
   )
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null)
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null)
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingImage(true)
+    setUploadProgress("Preparing upload signature...")
+    try {
+      const presignRes = await fetch("/api/uploads/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type || "application/octet-stream",
+          folder: "posters/banners",
+          sizeBytes: file.size,
+        }),
+      })
+
+      if (!presignRes.ok) {
+        throw new Error("Failed to get presigned upload URL")
+      }
+
+      const { uploadUrl, publicUrl } = await presignRes.json()
+      setUploadProgress(`Uploading ${(file.size / (1024 * 1024)).toFixed(1)}MB direct to storage...`)
+
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      })
+
+      if (!uploadRes.ok) {
+        throw new Error("Direct upload to storage failed")
+      }
+
+      setBannerUrl(publicUrl)
+      setUploadProgress(null)
+    } catch (err) {
+      setUploadProgress(null)
+      alert(err instanceof Error ? err.message : "Failed to upload image")
+    } finally {
+      setUploadingImage(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
   const [isFeatured, setIsFeatured] = useState(pkg?.isFeatured ?? true)
   const [isActive, setIsActive] = useState(pkg?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(pkg?.sortOrder ?? 0)
@@ -514,14 +564,62 @@ export function GroupPackageDialog({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="gp-banner">Banner Image URL</Label>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="gp-banner">Banner Image</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  disabled={uploadingImage}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={uploadingImage}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-7 px-2.5 text-xs font-semibold gap-1.5 cursor-pointer border-gold/40 hover:bg-gold/10"
+                >
+                  {uploadingImage ? (
+                    <Loader2 className="size-3 animate-spin text-gold" />
+                  ) : (
+                    <Upload className="size-3 text-gold" />
+                  )}
+                  <span>{uploadingImage ? "Uploading..." : "Upload from Disk"}</span>
+                </Button>
+              </div>
+            </div>
+
             <Input
               id="gp-banner"
               value={bannerUrl}
               onChange={(e) => setBannerUrl(e.target.value)}
-              placeholder="https://..."
+              placeholder="https://pub-....r2.dev/... or https://images.unsplash.com/..."
             />
+
+            {uploadProgress && (
+              <p className="text-[11px] text-amber-700 animate-pulse font-medium">
+                {uploadProgress}
+              </p>
+            )}
+
+            {bannerUrl && (
+              <div className="relative h-28 w-full rounded-lg overflow-hidden border border-border bg-muted/40">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={bannerUrl}
+                  alt="Package Banner Preview"
+                  className="w-full h-full object-cover object-top"
+                />
+                <span className="absolute bottom-1 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
+                  Banner Preview
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Flags */}

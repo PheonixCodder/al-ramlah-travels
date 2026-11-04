@@ -546,8 +546,17 @@ export async function submitGroupBookingApplication(
   }
 }
 
-export const submitGroupPackageApplication = submitGroupBookingApplication
-export const submitGroupBooking = submitGroupBookingApplication
+export async function submitGroupPackageApplication(
+  rawInput: unknown
+): Promise<GroupBookingResult> {
+  return submitGroupBookingApplication(rawInput)
+}
+
+export async function submitGroupBooking(
+  rawInput: unknown
+): Promise<GroupBookingResult> {
+  return submitGroupBookingApplication(rawInput)
+}
 
 // ==========================================
 // 3. SUBMIT HAJJ INQUIRY APPLICATION
@@ -671,8 +680,17 @@ export async function submitHajjInquiryApplication(
   }
 }
 
-export const submitHajjApplication = submitHajjInquiryApplication
-export const submitHajjInquiry = submitHajjInquiryApplication
+export async function submitHajjApplication(
+  rawInput: unknown
+): Promise<HajjInquiryResult> {
+  return submitHajjInquiryApplication(rawInput)
+}
+
+export async function submitHajjInquiry(
+  rawInput: unknown
+): Promise<HajjInquiryResult> {
+  return submitHajjInquiryApplication(rawInput)
+}
 
 // ==========================================
 // 4. PUBLIC APPLICATION STATUS LOOKUP

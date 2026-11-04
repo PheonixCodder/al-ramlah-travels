@@ -126,6 +126,46 @@ export const sendOutreachMessageSchema = z.object({
   forceOverrideCooldown: z.boolean().default(false).optional(),
 })
 
+export const updateExtractedFlyerCardSchema = z.object({
+  id: z.string().uuid("Invalid card ID"),
+  makkahHotelName: z.string().trim().min(1, "Makkah hotel name is required"),
+  makkahNights: z.string().trim().min(1, "Makkah nights is required"),
+  makkahDistanceLabel: z.string().trim().min(1, "Makkah distance is required"),
+  madinahHotelName: z.string().trim().min(1, "Madinah hotel name is required"),
+  madinahNights: z.string().trim().min(1, "Madinah nights is required"),
+  madinahDistanceLabel: z.string().trim().min(1, "Madinah distance is required"),
+  mealPlanLabel: z.string().trim().optional().nullable(),
+  outboundFlightNo: z.string().trim().min(1, "Outbound flight number is required"),
+  outboundDateLabel: z.string().trim().min(1, "Outbound date label is required"),
+  outboundRoute: z.string().trim().min(1, "Outbound route is required"),
+  outboundDepTime: z.string().trim().min(1, "Outbound dep time is required"),
+  outboundArrTime: z.string().trim().min(1, "Outbound arr time is required"),
+  returnFlightNo: z.string().trim().min(1, "Return flight number is required"),
+  returnDateLabel: z.string().trim().min(1, "Return date label is required"),
+  returnRoute: z.string().trim().min(1, "Return route is required"),
+  returnDepTime: z.string().trim().min(1, "Return dep time is required"),
+  returnArrTime: z.string().trim().min(1, "Return arr time is required"),
+  commissionPkr: z.number().int().min(0, "Commission must be >= 0"),
+  rawSharingPkr: z.number().int().min(0, "Sharing price must be >= 0"),
+  rawQuadPkr: z.number().int().min(0, "Quad price must be >= 0"),
+  rawTriplePkr: z.number().int().min(0, "Triple price must be >= 0"),
+  rawDoublePkr: z.number().int().min(0, "Double price must be >= 0"),
+  spotlightPosterUrl: z.string().trim().optional().nullable(),
+})
+
+export const deleteSupplierFlyerSchema = z.object({
+  flyerId: z.string().uuid("Invalid flyer ID"),
+})
+
+export const publishAllFlyerCardsSchema = z.object({
+  flyerId: z.string().uuid("Invalid flyer ID"),
+})
+
+export const updatePackageSpotlightImageSchema = z.object({
+  cardId: z.string().uuid("Invalid package card ID"),
+  imageUrl: z.string().trim().min(1, "Image URL is required"),
+})
+
 export type SupplierInput = z.infer<typeof supplierSchema>
 export type ExtractedFlyerCardInput = z.infer<typeof extractedFlyerCardSchema>
 export type SupplierFlyerUpsertInput = z.infer<typeof supplierFlyerUpsertSchema>
@@ -133,3 +173,7 @@ export type MarketingChannelInput = z.infer<typeof marketingChannelSchema>
 export type LogDistributionInput = z.infer<typeof logDistributionSchema>
 export type OutreachContactInput = z.infer<typeof outreachContactSchema>
 export type SendOutreachMessageInput = z.infer<typeof sendOutreachMessageSchema>
+export type UpdateExtractedFlyerCardInput = z.infer<typeof updateExtractedFlyerCardSchema>
+export type DeleteSupplierFlyerInput = z.infer<typeof deleteSupplierFlyerSchema>
+export type PublishAllFlyerCardsInput = z.infer<typeof publishAllFlyerCardsSchema>
+export type UpdatePackageSpotlightImageInput = z.infer<typeof updatePackageSpotlightImageSchema>

@@ -1,9 +1,9 @@
 import {
   getAirlineBadgeHtml,
   getCompanyLogoBase64,
-  renderHtmlViaChromiumCdp,
 } from "./chromium-cdp"
-import { uploadAssetToR2 } from "../storage/r2"
+import { renderHtmlViaGotenberg } from "./gotenberg"
+import { optimizePosterForSocialToR2, uploadAssetToR2 } from "../storage/r2"
 
 export interface MultiPosterCardInput {
   num: string
@@ -265,10 +265,10 @@ export function buildMultiPackageSheetHtml(
 
 export async function renderAndUploadMultiPackageSheet(
   sheet: MultiPosterSheetInput
-): Promise<{ pngUrl: string; pdfUrl: string }> {
+): Promise<{ pngUrl: string; pdfUrl: string; socialJpegUrl?: string }> {
   const companyLogoB64 = await getCompanyLogoBase64()
   const html = buildMultiPackageSheetHtml(sheet, companyLogoB64)
-  const { pngBuffer, pdfBuffer } = await renderHtmlViaChromiumCdp({
+  const { pngBuffer, pdfBuffer } = await renderHtmlViaGotenberg({
     html,
     width: 1080,
     height: 1520,
@@ -289,9 +289,23 @@ export async function renderAndUploadMultiPackageSheet(
     "application/pdf"
   )
 
+  let socialJpegUrl: string | undefined
+  if (pngBuffer) {
+    try {
+      const socialRes = await optimizePosterForSocialToR2(pngBuffer, baseKey)
+      socialJpegUrl = socialRes.socialJpegUrl
+    } catch (optErr) {
+      console.warn(
+        "[Social Optimizer] Failed to generate social JPEG for multi-sheet:",
+        optErr
+      )
+    }
+  }
+
   return {
     pngUrl: pngUpload.url,
     pdfUrl: pdfUpload.url,
+    socialJpegUrl,
   }
 }
 
@@ -337,7 +351,7 @@ function parsePriceNumber(val: string | number): number {
 
 export async function renderAndUploadMultiPackagePoster(
   params: RenderMultiPackagePosterParams
-): Promise<{ pngUrl: string; pdfUrl: string }> {
+): Promise<{ pngUrl: string; pdfUrl: string; socialJpegUrl?: string }> {
   return renderAndUploadMultiPackageSheet({
     flyerCode: params.postCode,
     sheetNumber: 1,

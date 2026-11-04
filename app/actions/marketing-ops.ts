@@ -1,7 +1,9 @@
 "use server"
 
+import fs from "node:fs/promises"
+import path from "node:path"
 import { revalidatePath } from "next/cache"
-import { eq, asc } from "drizzle-orm"
+import { eq, asc, or } from "drizzle-orm"
 import { db } from "@/db"
 import * as schema from "@/db/schema"
 import { requireAdmin } from "@/lib/auth-guard"
@@ -12,14 +14,23 @@ import {
   logDistributionSchema,
   outreachContactSchema,
   sendOutreachMessageSchema,
+  updateExtractedFlyerCardSchema,
+  deleteSupplierFlyerSchema,
+  publishAllFlyerCardsSchema,
+  updatePackageSpotlightImageSchema,
 } from "@/lib/validations/marketing"
 import {
   calculateWrappedPackagePricing,
   computeOutreachCooldownState,
   generatePostReferenceCode,
 } from "@/lib/domain/marketing-ops"
-import { uploadBufferToR2 } from "@/lib/storage/r2"
+import { uploadBufferToR2, optimizePosterForSocialToR2 } from "@/lib/storage/r2"
 import { extractSupplierFlyerWithAi } from "@/lib/posters/extract-supplier-flyer"
+import { checkGotenbergHealth } from "@/lib/posters/gotenberg"
+import {
+  parseFlyerDateLabelsToIso,
+  extractPackagesMultimodal,
+} from "@/lib/ai/extract-packages"
 import { renderAndUploadMultiPackagePoster } from "@/lib/posters/render-multi-package-poster"
 import { renderAndUploadSinglePackagePoster } from "@/lib/posters/render-single-package-poster"
 import {
@@ -28,6 +39,15 @@ import {
   buildWhatsAppDirectUrl,
 } from "@/lib/bridges/marketing-bridges"
 import { generateApplicationReference } from "./applications"
+import { triggerByIdAndAwaitOrInline } from "@/trigger/dispatch"
+import type {
+  ExtractPackagesPayload,
+  ExtractPackagesTaskResult,
+} from "@/trigger/extract-packages.task"
+import type {
+  RenderGotenbergAssetPayload,
+  RenderGotenbergAssetTaskResult,
+} from "@/trigger/render-gotenberg-asset.task"
 
 // ==========================================
 // 1. SUPPLIERS CRUD
@@ -134,8 +154,37 @@ export async function extractSupplierFlyerDraftAction(params: {
 }) {
   await requireAdmin()
   try {
-    const draft = await extractSupplierFlyerWithAi(params)
-    return { success: true, draft }
+    const res = await triggerByIdAndAwaitOrInline<
+      ExtractPackagesPayload,
+      ExtractPackagesTaskResult
+    >({
+      taskId: "extract-packages",
+      payload: {
+        mode: "supplier_flyer_draft",
+        mediaUrl: params.imageUrl,
+        supplierSlug: params.supplierSlug,
+        presetKey: params.presetKey,
+      },
+      inlineRunner: async () => {
+        const draft = await extractSupplierFlyerWithAi(params)
+        return {
+          success: true,
+          title: draft.title,
+          extractedCount: draft.cards.length,
+          cardCodes: draft.cards.map((c) => c.cardNumber),
+          draft,
+        }
+      },
+    })
+
+    if (!res.success || !res.output?.draft) {
+      return {
+        success: false,
+        error: res.error || res.output?.error || "Extraction failed",
+      }
+    }
+
+    return { success: true, draft: res.output.draft }
   } catch (err: unknown) {
     return {
       success: false,
@@ -332,7 +381,7 @@ export async function generateMultiPackageSheetForFlyer(flyerId: string) {
     const batchSalt = flyer.id.replace(/-/g, "").slice(0, 3).toUpperCase()
     const sheetPostCode = `ART-${flyer.supplier.codePrefix}-${flyer.durationDays}D-ALL-${batchSalt}`
 
-    const rendered = await renderAndUploadMultiPackagePoster({
+    const multiPosterData = {
       postCode: sheetPostCode,
       airlineName: flyer.airlineName,
       airlineLogoUrl:
@@ -369,7 +418,47 @@ export async function generateMultiPackageSheetForFlyer(flyerId: string) {
         triplePrice: pkg.retailTriplePkr.toLocaleString(),
         doublePrice: pkg.retailDoublePkr.toLocaleString(),
       })),
+    }
+
+    const renderRes = await triggerByIdAndAwaitOrInline<
+      RenderGotenbergAssetPayload,
+      RenderGotenbergAssetTaskResult
+    >({
+      taskId: "render-gotenberg-asset",
+      payload: {
+        kind: "multi_poster",
+        flyerId: flyer.id,
+        data: multiPosterData,
+      },
+      inlineRunner: async () => {
+        const inlineOut = await renderAndUploadMultiPackagePoster(multiPosterData)
+        return {
+          success: true,
+          kind: "multi_poster",
+          pngUrl: inlineOut.pngUrl,
+          pdfUrl: inlineOut.pdfUrl,
+          socialJpegUrl: inlineOut.socialJpegUrl,
+        }
+      },
+      options: {
+        tags: [`flyer-multi-poster:${flyer.id}`],
+      },
     })
+
+    if (!renderRes.success || !renderRes.output?.pngUrl) {
+      return {
+        success: false,
+        error:
+          renderRes.error ||
+          renderRes.output?.error ||
+          "Failed to generate 4K Multi-Package Sheet",
+      }
+    }
+
+    const rendered = {
+      pngUrl: renderRes.output.pngUrl,
+      pdfUrl: renderRes.output.pdfUrl ?? null,
+    }
 
     const minSharing = Math.min(...flyer.packages.map((p) => p.retailSharingPkr))
 
@@ -456,7 +545,7 @@ export async function generateSingleSpotlightForCard(packageItemId: string) {
       return { success: false, error: "Package card not found" }
     }
 
-    const rendered = await renderAndUploadSinglePackagePoster({
+    const spotlightData = {
       postCode: pkg.postCode,
       cardNumber: pkg.cardNumber,
       airlineName: pkg.flyer.airlineName,
@@ -492,7 +581,46 @@ export async function generateSingleSpotlightForCard(packageItemId: string) {
       quadPricePkr: pkg.retailQuadPkr,
       triplePricePkr: pkg.retailTriplePkr,
       doublePricePkr: pkg.retailDoublePkr,
+    }
+
+    const renderRes = await triggerByIdAndAwaitOrInline<
+      RenderGotenbergAssetPayload,
+      RenderGotenbergAssetTaskResult
+    >({
+      taskId: "render-gotenberg-asset",
+      payload: {
+        kind: "single_poster",
+        data: spotlightData,
+      },
+      inlineRunner: async () => {
+        const inlineOut = await renderAndUploadSinglePackagePoster(spotlightData)
+        return {
+          success: true,
+          kind: "single_poster",
+          pngUrl: inlineOut.pngUrl,
+          pdfUrl: inlineOut.pdfUrl,
+          socialJpegUrl: inlineOut.socialJpegUrl,
+        }
+      },
+      options: {
+        tags: [`spotlight-poster:${pkg.postCode}`],
+      },
     })
+
+    if (!renderRes.success || !renderRes.output?.pngUrl) {
+      return {
+        success: false,
+        error:
+          renderRes.error ||
+          renderRes.output?.error ||
+          "Failed to render 4K Single-Package Spotlight Poster",
+      }
+    }
+
+    const rendered = {
+      pngUrl: renderRes.output.pngUrl,
+      pdfUrl: renderRes.output.pdfUrl ?? null,
+    }
 
     const captionWhatsapp = `*✨ AL RAMLAH TRAVELS — ${pkg.flyer.daysTitle} UMRAH SPOTLIGHT ✨*\n🔖 *Post Ref:* ${pkg.postCode}\n✈️ *Flight:* ${pkg.flyer.airlineName} (${pkg.outboundFlightNo} · ${pkg.outboundDateLabel} → ${pkg.returnDateLabel})\n🕋 *Makkah (${pkg.makkahNights}):* ${pkg.makkahHotelName} ${pkg.makkahDistanceLabel}\n🕌 *Madinah (${pkg.madinahNights}):* ${pkg.madinahHotelName} ${pkg.madinahDistanceLabel}\n🍽️ *Dining:* ${pkg.mealPlanLabel || "Room Only"}\n\n*PACKAGE RATES (PKR):*\n• Sharing: *${pkg.retailSharingPkr.toLocaleString()}*\n• Quad: *${pkg.retailQuadPkr.toLocaleString()}*\n• Triple: *${pkg.retailTriplePkr.toLocaleString()}*\n• Double: *${pkg.retailDoublePkr.toLocaleString()}*\n\n📞 *Book Now:* 03274029701 | 03190462638`
 
@@ -570,39 +698,70 @@ export async function generateSingleSpotlightForCard(packageItemId: string) {
 // 5. 1-CLICK PUBLISH WRAPPED CARD TO PUBLIC WEBSITE GROUP PACKAGES
 // ==========================================
 
-export async function publishFlyerCardToPublicGroupPackages(
-  packageItemId: string
-) {
-  await requireAdmin()
+/**
+ * Shared idempotent helper to publish or sync a single supplier flyer card to group_packages and group_departures.
+ */
+async function syncFlyerCardToGroupPackagesInternal(
+  pkg: typeof schema.supplierFlyerPackages.$inferSelect & {
+    flyer: typeof schema.supplierFlyers.$inferSelect
+    supplier: typeof schema.suppliers.$inferSelect
+  }
+): Promise<{ groupPackageId: string; groupDepartureId: string; batchCode: string }> {
+  const makkahNightsNum = parseInt(pkg.makkahNights.replace(/\D/g, ""), 10) || 10
+  const madinahNightsNum = parseInt(pkg.madinahNights.replace(/\D/g, ""), 10) || 5
+  const slug = `${pkg.postCode.toLowerCase()}-${pkg.makkahHotelName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}`
 
-  try {
-    const pkg = await db.query.supplierFlyerPackages.findFirst({
-      where: eq(schema.supplierFlyerPackages.id, packageItemId),
-      with: {
-        flyer: true,
-        supplier: true,
-      },
-    })
+  const tier: "economy" | "gold" | "vip_5star" =
+    pkg.retailSharingPkr >= 340000
+      ? "vip_5star"
+      : pkg.retailSharingPkr >= 275000
+        ? "gold"
+        : "economy"
 
-    if (!pkg) {
-      return { success: false, error: "Package card not found" }
+  let groupPkg: typeof schema.groupPackages.$inferSelect | undefined
+
+  if (pkg.publishedGroupPackageId) {
+    const [existing] = await db
+      .update(schema.groupPackages)
+      .set({
+        title: `${pkg.flyer.daysTitle} ${pkg.flyer.airlineName} Umrah — ${pkg.makkahHotelName}`,
+        tier,
+        durationDays: pkg.flyer.durationDays,
+        makkahNights: makkahNightsNum,
+        madinahNights: madinahNightsNum,
+        sharingPricePkr: pkg.retailSharingPkr,
+        quadPricePkr: pkg.retailQuadPkr,
+        triplePricePkr: pkg.retailTriplePkr,
+        doublePricePkr: pkg.retailDoublePkr,
+        infantPricePkr: 65000,
+        includesVisa: true,
+        includesTransport: true,
+        includesZiyarat: true,
+        giftedInclusions: pkg.flyer.giftedInclusions,
+        highlights: [
+          `Post Ref: ${pkg.postCode}`,
+          `Makkah (${pkg.makkahNights}): ${pkg.makkahHotelName} ${pkg.makkahDistanceLabel}`,
+          `Madinah (${pkg.madinahNights}): ${pkg.madinahHotelName} ${pkg.madinahDistanceLabel}`,
+          `Flights: ${pkg.outboundFlightNo} (${pkg.outboundDateLabel}) / ${pkg.returnFlightNo} (${pkg.returnDateLabel})`,
+        ],
+        bannerUrl: pkg.spotlightPosterUrl || pkg.flyer.multiSheetImageUrl,
+        isFeatured: true,
+        isActive: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.groupPackages.id, pkg.publishedGroupPackageId))
+      .returning()
+
+    if (existing) {
+      groupPkg = existing
     }
+  }
 
-    const makkahNightsNum = parseInt(pkg.makkahNights.replace(/\D/g, ""), 10) || 10
-    const madinahNightsNum = parseInt(pkg.madinahNights.replace(/\D/g, ""), 10) || 5
-    const slug = `${pkg.postCode.toLowerCase()}-${pkg.makkahHotelName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")}`
-
-    const tier: "economy" | "gold" | "vip_5star" =
-      pkg.retailSharingPkr >= 340000
-        ? "vip_5star"
-        : pkg.retailSharingPkr >= 275000
-          ? "gold"
-          : "economy"
-
-    const [groupPkg] = await db
+  if (!groupPkg) {
+    const [inserted] = await db
       .insert(schema.groupPackages)
       .values({
         slug,
@@ -633,59 +792,129 @@ export async function publishFlyerCardToPublicGroupPackages(
       .onConflictDoUpdate({
         target: schema.groupPackages.slug,
         set: {
+          title: `${pkg.flyer.daysTitle} ${pkg.flyer.airlineName} Umrah — ${pkg.makkahHotelName}`,
+          tier,
+          durationDays: pkg.flyer.durationDays,
+          makkahNights: makkahNightsNum,
+          madinahNights: madinahNightsNum,
           sharingPricePkr: pkg.retailSharingPkr,
           quadPricePkr: pkg.retailQuadPkr,
           triplePricePkr: pkg.retailTriplePkr,
           doublePricePkr: pkg.retailDoublePkr,
+          giftedInclusions: pkg.flyer.giftedInclusions,
+          highlights: [
+            `Post Ref: ${pkg.postCode}`,
+            `Makkah (${pkg.makkahNights}): ${pkg.makkahHotelName} ${pkg.makkahDistanceLabel}`,
+            `Madinah (${pkg.madinahNights}): ${pkg.madinahHotelName} ${pkg.madinahDistanceLabel}`,
+            `Flights: ${pkg.outboundFlightNo} (${pkg.outboundDateLabel}) / ${pkg.returnFlightNo} (${pkg.returnDateLabel})`,
+          ],
           bannerUrl: pkg.spotlightPosterUrl || pkg.flyer.multiSheetImageUrl,
           updatedAt: new Date(),
         },
       })
       .returning()
+    groupPkg = inserted
+  }
 
-    const [departureCity] = await db
-      .select()
-      .from(schema.departureCities)
-      .limit(1)
+  const cityCode = (pkg.flyer.departureCityCode || "LHE").trim().toUpperCase()
+  let departureCity = await db.query.departureCities.findFirst({
+    where: eq(schema.departureCities.airportCode, cityCode),
+  })
 
-    if (!departureCity) {
-      return {
-        success: false,
-        error: "No departure city configured in catalog",
-      }
-    }
+  if (!departureCity) {
+    departureCity = await db.query.departureCities.findFirst({
+      where: eq(schema.departureCities.isActive, true),
+    })
+  }
 
-    const todayIso = new Date().toISOString().split("T")[0]!
-    const [groupDep] = await db
-      .insert(schema.groupDepartures)
-      .values({
+  if (!departureCity) {
+    throw new Error(`No departure city found matching code ${cityCode} or active catalog`)
+  }
+
+  const { outboundIsoDate, returnIsoDate } = parseFlyerDateLabelsToIso(
+    pkg.outboundDateLabel,
+    pkg.returnDateLabel,
+    pkg.flyer.durationDays
+  )
+
+  const [groupDep] = await db
+    .insert(schema.groupDepartures)
+    .values({
+      packageId: groupPkg.id,
+      batchCode: pkg.postCode,
+      departureCityId: departureCity.id,
+      departureDate: outboundIsoDate,
+      returnDate: returnIsoDate,
+      outboundFlightNumber: pkg.outboundFlightNo,
+      returnFlightNumber: pkg.returnFlightNo,
+      flightScheduleSummary: `${pkg.outboundRoute} (${pkg.outboundDepTime}-${pkg.outboundArrTime}) | ${pkg.returnRoute} (${pkg.returnDepTime}-${pkg.returnArrTime})`,
+      baggageAllowance: `${pkg.flyer.outboundBaggage || "20Kg"} Out / ${pkg.flyer.inboundBaggage || "30Kg + Zamzam"} In`,
+      totalSeats: 35,
+      bookedSeats: 8,
+      status: "open",
+      sharingPriceOverridePkr: pkg.retailSharingPkr,
+      quadPriceOverridePkr: pkg.retailQuadPkr,
+      triplePriceOverridePkr: pkg.retailTriplePkr,
+      doublePriceOverridePkr: pkg.retailDoublePkr,
+    })
+    .onConflictDoUpdate({
+      target: schema.groupDepartures.batchCode,
+      set: {
         packageId: groupPkg.id,
-        batchCode: pkg.postCode,
         departureCityId: departureCity.id,
-        departureDate: todayIso,
-        returnDate: todayIso,
+        departureDate: outboundIsoDate,
+        returnDate: returnIsoDate,
         outboundFlightNumber: pkg.outboundFlightNo,
         returnFlightNumber: pkg.returnFlightNo,
         flightScheduleSummary: `${pkg.outboundRoute} (${pkg.outboundDepTime}-${pkg.outboundArrTime}) | ${pkg.returnRoute} (${pkg.returnDepTime}-${pkg.returnArrTime})`,
         baggageAllowance: `${pkg.flyer.outboundBaggage || "20Kg"} Out / ${pkg.flyer.inboundBaggage || "30Kg + Zamzam"} In`,
-        totalSeats: 35,
-        bookedSeats: 8,
-        status: "open",
         sharingPriceOverridePkr: pkg.retailSharingPkr,
         quadPriceOverridePkr: pkg.retailQuadPkr,
         triplePriceOverridePkr: pkg.retailTriplePkr,
         doublePriceOverridePkr: pkg.retailDoublePkr,
-      })
-      .returning()
+        updatedAt: new Date(),
+      },
+    })
+    .returning()
 
-    await db
-      .update(schema.supplierFlyerPackages)
-      .set({
-        publishedGroupPackageId: groupPkg.id,
-        publishedGroupDepartureId: groupDep.id,
-      })
-      .where(eq(schema.supplierFlyerPackages.id, pkg.id))
+  await db
+    .update(schema.supplierFlyerPackages)
+    .set({
+      publishedGroupPackageId: groupPkg.id,
+      publishedGroupDepartureId: groupDep.id,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.supplierFlyerPackages.id, pkg.id))
 
+  return {
+    groupPackageId: groupPkg.id,
+    groupDepartureId: groupDep.id,
+    batchCode: groupDep.batchCode,
+  }
+}
+
+export async function publishFlyerCardToPublicGroupPackages(
+  packageItemId: string
+) {
+  await requireAdmin()
+
+  try {
+    const pkg = await db.query.supplierFlyerPackages.findFirst({
+      where: eq(schema.supplierFlyerPackages.id, packageItemId),
+      with: {
+        flyer: true,
+        supplier: true,
+      },
+    })
+
+    if (!pkg) {
+      return { success: false, error: "Package card not found" }
+    }
+
+    const result = await syncFlyerCardToGroupPackagesInternal(pkg)
+
+    revalidatePath("/admin/studio")
+    revalidatePath("/admin")
     revalidatePath("/")
     revalidatePath("/groups")
     revalidatePath("/admin/groups")
@@ -693,8 +922,9 @@ export async function publishFlyerCardToPublicGroupPackages(
 
     return {
       success: true,
-      groupPackageId: groupPkg.id,
-      batchCode: groupDep.batchCode,
+      groupPackageId: result.groupPackageId,
+      groupDepartureId: result.groupDepartureId,
+      batchCode: result.batchCode,
     }
   } catch (err: unknown) {
     return {
@@ -703,6 +933,82 @@ export async function publishFlyerCardToPublicGroupPackages(
         err instanceof Error
           ? err.message
           : "Failed to publish package to public website",
+    }
+  }
+}
+
+export async function publishAllFlyerCardsToPublicGroupPackagesAction(rawInput: {
+  flyerId: string
+}) {
+  await requireAdmin()
+
+  const parseResult = publishAllFlyerCardsSchema.safeParse(rawInput)
+  if (!parseResult.success) {
+    return {
+      success: false,
+      error: parseResult.error.issues[0]?.message || "Invalid input",
+    }
+  }
+
+  const { flyerId } = parseResult.data
+
+  try {
+    const flyer = await db.query.supplierFlyers.findFirst({
+      where: eq(schema.supplierFlyers.id, flyerId),
+      with: {
+        supplier: true,
+        packages: {
+          orderBy: (p, { asc }) => [asc(p.cardNumber)],
+        },
+      },
+    })
+
+    if (!flyer) {
+      return { success: false, error: "Supplier flyer not found" }
+    }
+
+    if (!flyer.packages || flyer.packages.length === 0) {
+      return { success: false, error: "No package cards found in flyer" }
+    }
+
+    const updatedCards: Array<{
+      cardId: string
+      groupPackageId: string
+      groupDepartureId: string | null
+    }> = []
+
+    for (const card of flyer.packages) {
+      const synced = await syncFlyerCardToGroupPackagesInternal({
+        ...card,
+        flyer,
+        supplier: flyer.supplier,
+      })
+      updatedCards.push({
+        cardId: card.id,
+        groupPackageId: synced.groupPackageId,
+        groupDepartureId: synced.groupDepartureId,
+      })
+    }
+
+    revalidatePath("/admin/studio")
+    revalidatePath("/admin")
+    revalidatePath("/")
+    revalidatePath("/groups")
+    revalidatePath("/admin/groups")
+    revalidatePath("/admin/supplier-flyers")
+
+    return {
+      success: true,
+      publishedCount: updatedCards.length,
+      updatedCards,
+    }
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to bulk publish flyer cards to public website",
     }
   }
 }
@@ -947,7 +1253,12 @@ export async function dispatchOrLogDistribution(rawInput: unknown) {
           })
           externalJobId = bridgeRes.externalJobId
           status = "sent"
-        } else {
+        } else if (
+          ch.platform === "instagram" ||
+          ch.platform === "facebook" ||
+          ch.platform === "tiktok" ||
+          ch.platform === "youtube"
+        ) {
           const socialRes = await dispatchViaSocialBridge({
             platform: ch.platform,
             channelName: ch.name,
@@ -1180,6 +1491,639 @@ export async function markContactInboundReplyAction(contactId: string) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to mark inbound reply",
+    }
+  }
+}
+
+// ==========================================
+// 10. MULTIMODAL INGESTION & GOTENBERG HEALTH
+// ==========================================
+
+export async function testGotenbergConnectionAction() {
+  await requireAdmin()
+  try {
+    const health = await checkGotenbergHealth()
+    return {
+      success: true,
+      data: health,
+    }
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to test Gotenberg connection",
+    }
+  }
+}
+
+export interface IngestFinishedPosterOrFlyerInput {
+  supplierId: string
+  mediaUrl?: string
+  rawText?: string
+  ingestionMode: "gemini_ultra_poster" | "raw_supplier_flyer"
+  commissionMode?: "included_in_flyer" | "net_plus_markup"
+  commissionPkr?: number
+  departureCityCode?: string
+}
+
+export async function ingestFinishedPosterOrFlyerAction(
+  rawInput: IngestFinishedPosterOrFlyerInput
+) {
+  const session = await requireAdmin()
+
+  try {
+    const supplier = await db.query.suppliers.findFirst({
+      where: eq(schema.suppliers.id, rawInput.supplierId),
+    })
+
+    if (!supplier) {
+      return { success: false, error: "Supplier not found" }
+    }
+
+    const commissionMode =
+      rawInput.commissionMode || supplier.defaultCommissionMode || "included_in_flyer"
+    const commissionPkr =
+      rawInput.commissionPkr ?? supplier.defaultCommissionPkr ?? 22000
+
+    const socialPrefix = `posters/sheets/${supplier.codePrefix.toLowerCase()}_${Date.now()}`
+
+    // Offload multimodal AI extraction + sharp 1080p JPEG optimization to Trigger.dev Cloud (with inline local dev fallback)
+    const extractDispatch = await triggerByIdAndAwaitOrInline<
+      ExtractPackagesPayload,
+      ExtractPackagesTaskResult
+    >({
+      taskId: "extract-packages",
+      payload: {
+        mode: "multimodal",
+        mediaUrl: rawInput.mediaUrl,
+        rawText: rawInput.rawText,
+        ingestionMode: rawInput.ingestionMode,
+        supplierSlug: supplier.slug,
+        commissionMode,
+        commissionPkr,
+        defaultDepartureCityCode: rawInput.departureCityCode || "LHE",
+        socialKeyPrefix: socialPrefix,
+      },
+      options: {
+        tags: [`extract:${supplier.slug}`],
+      },
+      inlineRunner: async () => {
+        const inlineExtraction = await extractPackagesMultimodal({
+          mediaUrl: rawInput.mediaUrl,
+          rawText: rawInput.rawText,
+          ingestionMode: rawInput.ingestionMode,
+          supplierSlug: supplier.slug,
+          commissionMode,
+          commissionPkr,
+          defaultDepartureCityCode: rawInput.departureCityCode || "LHE",
+        })
+
+        let inlineSocialJpeg: string | undefined
+        if (
+          rawInput.mediaUrl &&
+          rawInput.ingestionMode === "gemini_ultra_poster"
+        ) {
+          try {
+            let buffer: Buffer | null = null
+            if (
+              rawInput.mediaUrl.startsWith("http://") ||
+              rawInput.mediaUrl.startsWith("https://")
+            ) {
+              const res = await fetch(rawInput.mediaUrl)
+              if (res.ok) {
+                const arr = await res.arrayBuffer()
+                buffer = Buffer.from(arr)
+              }
+            } else {
+              const localPath = rawInput.mediaUrl.startsWith("/")
+                ? path.join(
+                    process.cwd(),
+                    "public",
+                    ...rawInput.mediaUrl.slice(1).split("/")
+                  )
+                : rawInput.mediaUrl
+              buffer = await fs.readFile(/*turbopackIgnore: true*/ localPath)
+            }
+
+            if (buffer) {
+              const socialRes = await optimizePosterForSocialToR2(
+                buffer,
+                socialPrefix
+              )
+              inlineSocialJpeg = socialRes.socialJpegUrl
+            }
+          } catch (optErr) {
+            console.warn(
+              "[Social Optimizer] Failed to optimize poster for social:",
+              optErr
+            )
+          }
+        }
+
+        return {
+          success: true,
+          title: inlineExtraction.title,
+          extractedCount: inlineExtraction.cards.length,
+          cardCodes: inlineExtraction.cards.map((c) => c.cardNumber),
+          socialJpegUrl: inlineSocialJpeg,
+          cards: inlineExtraction.cards,
+          fullExtraction: inlineExtraction,
+        }
+      },
+    })
+
+    if (!extractDispatch.success || !extractDispatch.output?.fullExtraction) {
+      return {
+        success: false,
+        error:
+          extractDispatch.error ||
+          extractDispatch.output?.error ||
+          "Failed to extract packages from poster or flyer",
+      }
+    }
+
+    const extraction = extractDispatch.output.fullExtraction
+    const socialReadySheetJpegUrl: string | null =
+      extractDispatch.output.socialJpegUrl ?? null
+
+    const now = new Date()
+    const todayIso = now.toISOString().split("T")[0]!
+    const flyerCode = `${supplier.codePrefix}-${Date.now().toString().slice(-4)}`
+
+    const [flyer] = await db
+      .insert(schema.supplierFlyers)
+      .values({
+        flyerCode,
+        supplierId: supplier.id,
+        title: extraction.title,
+        rawFlyerImageUrl: rawInput.mediaUrl || "/placeholder-flyer.png",
+        airlineName: extraction.airlineName,
+        airlineIataCode: extraction.airlineIataCode,
+        airlineLogoUrl: extraction.airlineLogoUrl,
+        durationDays: extraction.durationDays,
+        daysTitle: extraction.daysTitle,
+        routePill: extraction.routePill,
+        departureCityCode: extraction.departureCityCode || "LHE",
+        arrivalAirportCode: extraction.arrivalAirportCode || "JED",
+        returnAirportCode: extraction.returnAirportCode || "JED",
+        outboundBaggage: extraction.outboundBaggage,
+        inboundBaggage: extraction.inboundBaggage,
+        giftedInclusions: extraction.giftedInclusions,
+        commissionMode,
+        commissionPkr,
+        multiSheetImageUrl:
+          rawInput.ingestionMode === "gemini_ultra_poster"
+            ? rawInput.mediaUrl
+            : null,
+        socialReadySheetJpegUrl,
+        ingestionSource: rawInput.ingestionMode,
+        extractionStatus: "completed",
+        extractedCardsCount: extraction.cards.length,
+        status: "wrapped",
+        receivedDate: todayIso,
+        createdByUserId: session?.user?.id ?? null,
+      })
+      .returning()
+
+    const createdPackages = []
+
+    for (let i = 0; i < extraction.cards.length; i++) {
+      const c = extraction.cards[i]!
+      const postCode =
+        c.postCode ||
+        generatePostReferenceCode({
+          supplierPrefix: supplier.codePrefix,
+          durationDays: extraction.durationDays,
+          cardNumber: i + 1,
+        })
+
+      const [pkgItem] = await db
+        .insert(schema.supplierFlyerPackages)
+        .values({
+          flyerId: flyer.id,
+          supplierId: supplier.id,
+          cardNumber: c.cardNumber,
+          postCode,
+          sheetIndex: 1,
+          outboundFlightNo: c.outboundFlightNo,
+          outboundDateLabel: c.outboundDateLabel,
+          outboundRoute: c.outboundRoute,
+          outboundDepTime: c.outboundDepTime,
+          outboundArrTime: c.outboundArrTime,
+          returnFlightNo: c.returnFlightNo,
+          returnDateLabel: c.returnDateLabel,
+          returnRoute: c.returnRoute,
+          returnDepTime: c.returnDepTime,
+          returnArrTime: c.returnArrTime,
+          makkahNights: c.makkahNights,
+          makkahHotelName: c.makkahHotelName,
+          makkahDistanceLabel: c.makkahDistanceLabel,
+          madinahNights: c.madinahNights,
+          madinahHotelName: c.madinahHotelName,
+          madinahDistanceLabel: c.madinahDistanceLabel,
+          mealPlanLabel: c.mealPlanLabel || "Room Only",
+          rawSharingPkr: c.rawSharingPkr,
+          rawQuadPkr: c.rawQuadPkr,
+          rawTriplePkr: c.rawTriplePkr,
+          rawDoublePkr: c.rawDoublePkr,
+          netSharingPkr: c.netSharingPkr,
+          netQuadPkr: c.netQuadPkr,
+          netTriplePkr: c.netTriplePkr,
+          netDoublePkr: c.netDoublePkr,
+          commissionPkr,
+          retailSharingPkr: c.retailSharingPkr,
+          retailQuadPkr: c.retailQuadPkr,
+          retailTriplePkr: c.retailTriplePkr,
+          retailDoublePkr: c.retailDoublePkr,
+          spotlightPosterUrl:
+            rawInput.ingestionMode === "gemini_ultra_poster"
+              ? rawInput.mediaUrl
+              : null,
+        })
+        .returning()
+
+      createdPackages.push(pkgItem)
+
+      // In Mode A (finished poster), also create the post_asset record immediately without re-rendering!
+      if (
+        rawInput.ingestionMode === "gemini_ultra_poster" &&
+        rawInput.mediaUrl
+      ) {
+        const captionWhatsapp = `*✨ AL RAMLAH TRAVELS — ${flyer.daysTitle} UMRAH SPOTLIGHT ✨*\n🔖 *Post Ref:* ${postCode}\n✈️ *Flight:* ${flyer.airlineName} (${c.outboundFlightNo} · ${c.outboundDateLabel} → ${c.returnDateLabel})\n🕋 *Makkah (${c.makkahNights}):* ${c.makkahHotelName} ${c.makkahDistanceLabel}\n🕌 *Madinah (${c.madinahNights}):* ${c.madinahHotelName} ${c.madinahDistanceLabel}\n🍽️ *Dining:* ${c.mealPlanLabel || "Room Only"}\n\n*PACKAGE RATES (PKR):*\n• Sharing: *${c.retailSharingPkr.toLocaleString()}*\n• Quad: *${c.retailQuadPkr.toLocaleString()}*\n• Triple: *${c.retailTriplePkr.toLocaleString()}*\n• Double: *${c.retailDoublePkr.toLocaleString()}*\n\n📞 *Book Now:* 03274029701 | 03190462638`
+
+        await db
+          .insert(schema.postAssets)
+          .values({
+            postCode,
+            kind: "single_package_spotlight",
+            title: `${flyer.daysTitle} Spotlight #${c.cardNumber} — ${c.makkahHotelName}`,
+            supplierId: supplier.id,
+            flyerId: flyer.id,
+            flyerPackageId: pkgItem.id,
+            imageUrl: rawInput.mediaUrl,
+            captionWhatsapp,
+            captionInstagram: `${captionWhatsapp}\n\n#AlRamlahTravels #UmrahSpotlight #Askari10 #DHALahore #Makkah #Madinah`,
+            searchableText: [
+              postCode,
+              flyer.title,
+              supplier.name,
+              flyer.airlineName,
+              c.outboundFlightNo,
+              c.outboundDateLabel,
+              c.returnDateLabel,
+              c.makkahHotelName,
+              c.madinahHotelName,
+              c.retailSharingPkr,
+              c.retailQuadPkr,
+              c.retailTriplePkr,
+              c.retailDoublePkr,
+            ].join(" "),
+          })
+          .onConflictDoNothing()
+      }
+    }
+
+    revalidatePath("/admin/supplier-flyers")
+    revalidatePath("/admin/post-lookup")
+    revalidatePath("/admin/distribution")
+    revalidatePath("/admin/studio")
+
+    return {
+      success: true,
+      flyerId: flyer.id,
+      packagesCount: createdPackages.length,
+      flyer,
+      modelUsed: extraction.modelUsed,
+    }
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to ingest finished poster or flyer",
+    }
+  }
+}
+
+// ==========================================
+// 17. QUICK CARD EDIT & FLYER BATCH DELETION
+// ==========================================
+
+export async function updateExtractedFlyerCardAction(rawInput: unknown) {
+  await requireAdmin()
+  const parsed = updateExtractedFlyerCardSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message || "Invalid card data",
+    }
+  }
+
+  const data = parsed.data
+
+  try {
+    const existingCard = await db.query.supplierFlyerPackages.findFirst({
+      where: eq(schema.supplierFlyerPackages.id, data.id),
+      with: {
+        flyer: true,
+      },
+    })
+
+    if (!existingCard) {
+      return { success: false, error: "Package card not found" }
+    }
+
+    const commissionMode = existingCard.flyer.commissionMode || "included_in_flyer"
+    const commissionPkr = data.commissionPkr
+
+    const pricing = calculateWrappedPackagePricing({
+      rawSharingPkr: data.rawSharingPkr,
+      rawQuadPkr: data.rawQuadPkr,
+      rawTriplePkr: data.rawTriplePkr,
+      rawDoublePkr: data.rawDoublePkr,
+      commissionMode,
+      commissionPkr,
+    })
+
+    const [updatedCard] = await db
+      .update(schema.supplierFlyerPackages)
+      .set({
+        outboundFlightNo: data.outboundFlightNo,
+        outboundDateLabel: data.outboundDateLabel,
+        outboundRoute: data.outboundRoute,
+        outboundDepTime: data.outboundDepTime,
+        outboundArrTime: data.outboundArrTime,
+        returnFlightNo: data.returnFlightNo,
+        returnDateLabel: data.returnDateLabel,
+        returnRoute: data.returnRoute,
+        returnDepTime: data.returnDepTime,
+        returnArrTime: data.returnArrTime,
+        makkahHotelName: data.makkahHotelName,
+        makkahNights: data.makkahNights,
+        makkahDistanceLabel: data.makkahDistanceLabel,
+        madinahHotelName: data.madinahHotelName,
+        madinahNights: data.madinahNights,
+        madinahDistanceLabel: data.madinahDistanceLabel,
+        mealPlanLabel: data.mealPlanLabel || "Room Only",
+        rawSharingPkr: data.rawSharingPkr,
+        rawQuadPkr: data.rawQuadPkr,
+        rawTriplePkr: data.rawTriplePkr,
+        rawDoublePkr: data.rawDoublePkr,
+        netSharingPkr: pricing.netSharingPkr,
+        netQuadPkr: pricing.netQuadPkr,
+        netTriplePkr: pricing.netTriplePkr,
+        netDoublePkr: pricing.netDoublePkr,
+        retailSharingPkr: pricing.retailSharingPkr,
+        retailQuadPkr: pricing.retailQuadPkr,
+        retailTriplePkr: pricing.retailTriplePkr,
+        retailDoublePkr: pricing.retailDoublePkr,
+        commissionPkr,
+        ...(data.spotlightPosterUrl !== undefined
+          ? { spotlightPosterUrl: data.spotlightPosterUrl }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.supplierFlyerPackages.id, data.id))
+      .returning()
+
+    // 3-Way Sync: Update linked post_assets image if a custom spotlight image was provided
+    if (data.spotlightPosterUrl) {
+      await db
+        .update(schema.postAssets)
+        .set({
+          imageUrl: data.spotlightPosterUrl,
+        })
+        .where(
+          or(
+            eq(schema.postAssets.flyerPackageId, data.id),
+            eq(schema.postAssets.postCode, existingCard.postCode)
+          )
+        )
+    }
+
+    // If card was already published to website, synchronize prices and hotel info
+    if (existingCard.publishedGroupPackageId) {
+      const makkahNightsNum = parseInt(data.makkahNights.replace(/\D/g, ""), 10) || 10
+      const madinahNightsNum = parseInt(data.madinahNights.replace(/\D/g, ""), 10) || 5
+
+      await db
+        .update(schema.groupPackages)
+        .set({
+          sharingPricePkr: pricing.retailSharingPkr,
+          quadPricePkr: pricing.retailQuadPkr,
+          triplePricePkr: pricing.retailTriplePkr,
+          doublePricePkr: pricing.retailDoublePkr,
+          makkahNights: makkahNightsNum,
+          madinahNights: madinahNightsNum,
+          highlights: [
+            `Post Ref: ${existingCard.postCode}`,
+            `Makkah (${data.makkahNights}): ${data.makkahHotelName} ${data.makkahDistanceLabel}`,
+            `Madinah (${data.madinahNights}): ${data.madinahHotelName} ${data.madinahDistanceLabel}`,
+            `Flights: ${data.outboundFlightNo} (${data.outboundDateLabel}) / ${data.returnFlightNo} (${data.returnDateLabel})`,
+          ],
+          ...(data.spotlightPosterUrl
+            ? { bannerUrl: data.spotlightPosterUrl }
+            : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.groupPackages.id, existingCard.publishedGroupPackageId))
+    }
+
+    revalidatePath("/admin/studio")
+    revalidatePath("/admin/supplier-flyers")
+    revalidatePath("/admin/campaigns")
+    revalidatePath("/")
+    revalidatePath("/groups")
+    revalidatePath("/admin/groups")
+
+    return { success: true, package: updatedCard }
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error:
+        err instanceof Error ? err.message : "Failed to update package card",
+    }
+  }
+}
+
+/**
+ * 3-Way image synchronization action:
+ * Updates supplier_flyer_packages.spotlightPosterUrl,
+ * post_assets.imageUrl (so 4K Social Gallery & Social Scheduler update),
+ * and group_packages.bannerUrl (so public homepage /#groups updates).
+ */
+export async function updatePackageSpotlightImageAction(rawInput: unknown) {
+  await requireAdmin()
+  const parsed = updatePackageSpotlightImageSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message || "Invalid input",
+    }
+  }
+
+  const { cardId, imageUrl } = parsed.data
+
+  try {
+    const existingCard = await db.query.supplierFlyerPackages.findFirst({
+      where: eq(schema.supplierFlyerPackages.id, cardId),
+      with: { flyer: true },
+    })
+
+    if (!existingCard) {
+      return { success: false, error: "Package card not found" }
+    }
+
+    // 1. Update supplier_flyer_packages
+    const [updatedCard] = await db
+      .update(schema.supplierFlyerPackages)
+      .set({
+        spotlightPosterUrl: imageUrl,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.supplierFlyerPackages.id, cardId))
+      .returning()
+
+    // 2. 3-Way Sync: Update linked post_assets
+    await db
+      .update(schema.postAssets)
+      .set({
+        imageUrl,
+      })
+      .where(
+        or(
+          eq(schema.postAssets.flyerPackageId, cardId),
+          eq(schema.postAssets.postCode, existingCard.postCode)
+        )
+      )
+
+    // 3. 3-Way Sync: If published to public website, update group_packages.bannerUrl
+    if (existingCard.publishedGroupPackageId) {
+      await db
+        .update(schema.groupPackages)
+        .set({
+          bannerUrl: imageUrl,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.groupPackages.id, existingCard.publishedGroupPackageId))
+    }
+
+    revalidatePath("/admin/studio")
+    revalidatePath("/admin/campaigns")
+    revalidatePath("/admin/supplier-flyers")
+    revalidatePath("/")
+    revalidatePath("/groups")
+    revalidatePath("/admin/groups")
+
+    return {
+      success: true,
+      cardId,
+      imageUrl,
+      postCode: existingCard.postCode,
+      publishedGroupPackageId: existingCard.publishedGroupPackageId,
+      package: updatedCard,
+    }
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to update package spotlight image",
+    }
+  }
+}
+
+export async function deleteSupplierFlyerAction(rawInput: unknown) {
+  await requireAdmin()
+  const parsed = deleteSupplierFlyerSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message || "Invalid flyer ID",
+    }
+  }
+
+  const { flyerId } = parsed.data
+
+  try {
+    const flyer = await db.query.supplierFlyers.findFirst({
+      where: eq(schema.supplierFlyers.id, flyerId),
+      with: {
+        packages: true,
+        postAssets: true,
+      },
+    })
+
+    if (!flyer) {
+      return { success: false, error: "Supplier flyer batch not found" }
+    }
+
+    // 1. If any packages were published to website, null out application links and delete group packages
+    const publishedPackageIds = flyer.packages
+      .map((p) => p.publishedGroupPackageId)
+      .filter((id): id is string => Boolean(id))
+
+    for (const pkgId of publishedPackageIds) {
+      await db
+        .update(schema.applications)
+        .set({ groupPackageId: null, groupDepartureId: null })
+        .where(eq(schema.applications.groupPackageId, pkgId))
+
+      await db
+        .delete(schema.groupPackages)
+        .where(eq(schema.groupPackages.id, pkgId))
+    }
+
+    // 2. Outreach logs referencing flyer or its assets
+    await db
+      .update(schema.outreachLogs)
+      .set({ flyerId: null, postAssetId: null })
+      .where(eq(schema.outreachLogs.flyerId, flyerId))
+
+    // 3. Post assets related distributions and scheduled posts
+    const assetIds = flyer.postAssets.map((a) => a.id)
+    for (const aId of assetIds) {
+      await db
+        .delete(schema.scheduledPosts)
+        .where(eq(schema.scheduledPosts.postAssetId, aId))
+
+      await db
+        .delete(schema.dailyPostDistributions)
+        .where(eq(schema.dailyPostDistributions.postAssetId, aId))
+    }
+
+    // 4. Delete post assets
+    await db
+      .delete(schema.postAssets)
+      .where(eq(schema.postAssets.flyerId, flyerId))
+
+    // 5. Delete flyer packages
+    await db
+      .delete(schema.supplierFlyerPackages)
+      .where(eq(schema.supplierFlyerPackages.flyerId, flyerId))
+
+    // 6. Delete flyer
+    await db
+      .delete(schema.supplierFlyers)
+      .where(eq(schema.supplierFlyers.id, flyerId))
+
+    revalidatePath("/admin/studio")
+    revalidatePath("/admin/supplier-flyers")
+    revalidatePath("/admin/campaigns")
+    revalidatePath("/")
+
+    return { success: true }
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to delete supplier flyer batch",
     }
   }
 }

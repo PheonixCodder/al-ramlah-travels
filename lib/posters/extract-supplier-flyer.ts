@@ -1,5 +1,5 @@
-import { env } from "@/lib/env"
 import type { ExtractedFlyerCardInput } from "@/lib/validations/marketing"
+import { extractPackagesMultimodal } from "../ai/extract-packages"
 
 export interface ExtractedSupplierFlyerDraft {
   title: string
@@ -431,91 +431,49 @@ export async function extractSupplierFlyerWithAi(params: {
     return structuredClone(UPSKY_SAUDIA_15D_PRESET)
   }
 
-  // If Gemini API Key is present and a remote/data imageUrl is provided, attempt Vision OCR
-  if (env.GEMINI_API_KEY && params.imageUrl && params.imageUrl.startsWith("http")) {
-    try {
-      const prompt = `Extract all Umrah package tiers from this B2B supplier flyer into JSON matching:
-      {
-        "title": string,
-        "airlineName": string,
-        "airlineIataCode": string,
-        "airlineLogoUrl": string,
-        "durationDays": number,
-        "daysTitle": string,
-        "routePill": string,
-        "departureCityCode": string,
-        "arrivalAirportCode": string,
-        "returnAirportCode": string,
-        "outboundBaggage": string,
-        "inboundBaggage": string,
-        "giftedInclusions": string[],
-        "cards": [{
-          "cardNumber": "01",
-          "outboundFlightNo": string,
-          "outboundDateLabel": string,
-          "outboundRoute": string,
-          "outboundDepTime": string,
-          "outboundArrTime": string,
-          "returnFlightNo": string,
-          "returnDateLabel": string,
-          "returnRoute": string,
-          "returnDepTime": string,
-          "returnArrTime": string,
-          "makkahNights": string,
-          "makkahHotelName": string,
-          "makkahDistanceLabel": string,
-          "madinahNights": string,
-          "madinahHotelName": string,
-          "madinahDistanceLabel": string,
-          "mealPlanLabel": string,
-          "rawSharingPkr": number,
-          "rawQuadPkr": number,
-          "rawTriplePkr": number,
-          "rawDoublePkr": number
-        }]
-      }`
+  const result = await extractPackagesMultimodal({
+    mediaUrl: params.imageUrl,
+    supplierSlug: params.supplierSlug,
+    ingestionMode: "raw_supplier_flyer",
+  })
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: prompt },
-                  { text: `Image URL: ${params.imageUrl}` },
-                ],
-              },
-            ],
-            generationConfig: {
-              responseMimeType: "application/json",
-            },
-          }),
-        }
-      )
-
-      if (response.ok) {
-        const json = await response.json()
-        const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text
-        if (rawText) {
-          const parsed = JSON.parse(rawText) as ExtractedSupplierFlyerDraft
-          if (Array.isArray(parsed.cards) && parsed.cards.length > 0) {
-            return parsed
-          }
-        }
-      }
-    } catch {
-      // Fallback to supplier-aware preset below
-    }
+  return {
+    title: result.title,
+    airlineName: result.airlineName,
+    airlineIataCode: result.airlineIataCode,
+    airlineLogoUrl: result.airlineLogoUrl,
+    durationDays: result.durationDays,
+    daysTitle: result.daysTitle,
+    routePill: result.routePill,
+    departureCityCode: result.departureCityCode,
+    arrivalAirportCode: result.arrivalAirportCode,
+    returnAirportCode: result.returnAirportCode,
+    outboundBaggage: result.outboundBaggage,
+    inboundBaggage: result.inboundBaggage,
+    giftedInclusions: result.giftedInclusions,
+    cards: result.cards.map((c) => ({
+      cardNumber: c.cardNumber,
+      outboundFlightNo: c.outboundFlightNo,
+      outboundDateLabel: c.outboundDateLabel,
+      outboundRoute: c.outboundRoute,
+      outboundDepTime: c.outboundDepTime,
+      outboundArrTime: c.outboundArrTime,
+      returnFlightNo: c.returnFlightNo,
+      returnDateLabel: c.returnDateLabel,
+      returnRoute: c.returnRoute,
+      returnDepTime: c.returnDepTime,
+      returnArrTime: c.returnArrTime,
+      makkahNights: c.makkahNights,
+      makkahHotelName: c.makkahHotelName,
+      makkahDistanceLabel: c.makkahDistanceLabel,
+      madinahNights: c.madinahNights,
+      madinahHotelName: c.madinahHotelName,
+      madinahDistanceLabel: c.madinahDistanceLabel,
+      mealPlanLabel: c.mealPlanLabel,
+      rawSharingPkr: c.rawSharingPkr,
+      rawQuadPkr: c.rawQuadPkr,
+      rawTriplePkr: c.rawTriplePkr,
+      rawDoublePkr: c.rawDoublePkr,
+    })),
   }
-
-  const slug = (params.supplierSlug ?? "").toLowerCase()
-  const img = (params.imageUrl ?? "").toLowerCase()
-  if (slug.includes("upsky") || img.includes("upsky") || img.includes("saudia")) {
-    return structuredClone(UPSKY_SAUDIA_15D_PRESET)
-  }
-
-  return structuredClone(AMMAAR_AIRBLUE_21D_PRESET)
 }

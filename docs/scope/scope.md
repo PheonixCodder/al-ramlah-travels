@@ -41,6 +41,10 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 28 | Production deployment readiness, security hardening & full stack bug fixes | Slice 24 | done |
 | 29 | Official contact details, demo UI removal, database cleanup & Hajj 2027 package guide | Slice 25 | done |
 | 30 | B2B supplier wrapping, 4K post studio, multi-channel distribution, 14-day outreach CRM & restored hotel meal plans | Slice 26 | done |
+| 31 | Multimodal BYO-poster studio, presigned R2, sharp normalizer & Oracle Gotenberg | Slice 27 | in-progress |
+| 32 | Native wacrm WhatsApp Cloud API, encryption, HMAC webhooks, inbox & broadcasts | Slice 28 | in-progress |
+| 33 | Native Postiz Core 5 social providers & Trigger.dev Cloud durable workers | Slice 29 | in-progress |
+| 34 | 4-Hub Admin reorganization (/studio, /campaigns, /desk, /catalog) & Kanban desk | Slice 30 | in-progress |
 
 ## Foundations
 
@@ -398,6 +402,54 @@ code in `db/schema/suppliers-and-marketing.ts`, `lib/storage/r2.ts`, `lib/domain
 - [x] Build it: `/develop B2B supplier wrapping, 4K post studio, multi-channel distribution, 14-day outreach CRM & restored hotel meal plans`
 - [x] Verify it: `/check verify B2B supplier wrapping, 4K post studio, multi-channel distribution, 14-day outreach CRM & restored hotel meal plans`
 - [x] Test it: `/test B2B supplier wrapping, 4K post studio, multi-channel distribution, 14-day outreach CRM & restored hotel meal plans` ([marketing-and-suppliers.test.ts](tests/marketing-and-suppliers.test.ts))
+
+## Slice 27: Multimodal BYO-poster studio, presigned R2, sharp normalizer & Oracle Gotenberg
+
+### 31. Multimodal BYO-poster studio, presigned R2, sharp normalizer & Oracle Gotenberg · done · Beta
+
+Enable direct browser-to-Cloudflare R2 presigned uploads, `sharp` 1080x1520 JPEG social normalization for TikTok/Instagram compliance, Oracle Cloud Always Free Gotenberg rendering (`scripts/oracle-gotenberg/` + `lib/posters/gotenberg.ts`), and Vercel AI SDK multimodal package extraction (`OpenRouter` + `Gemini` + Zod `Output.object()`) supporting both finished 4K Gemini Ultra posters and raw supplier flyers/PDFs/text, plus accurate ISO batch date parsing on website publish.
+**Done when:** spec `0008` is captured, presigned uploads + `sharp` normalizer + Gotenberg client + multimodal Zod extractor are built, and unit tests pass.
+spec [0008](docs/specs/0008-multimodal-studio-r2-and-gotenberg.md) · code in `lib/storage/r2.ts`, `lib/posters/`, `lib/ai/extract-packages.ts`, `app/api/uploads/presign/route.ts`, `scripts/oracle-gotenberg/`
+- [x] Design it (spec): `/architect multimodal BYO-poster studio, presigned R2, sharp normalizer & Oracle Gotenberg`
+- [x] Build it: `/develop multimodal BYO-poster studio, presigned R2, sharp normalizer & Oracle Gotenberg`
+- [x] Verify it: `/check verify multimodal BYO-poster studio, presigned R2, sharp normalizer & Oracle Gotenberg` ([verify-enterprise-multimodal-wacrm-postiz.md](docs/reviews/verify-enterprise-multimodal-wacrm-postiz.md))
+- [x] Test it: `/test multimodal BYO-poster studio, presigned R2, sharp normalizer & Oracle Gotenberg` ([multimodal-and-gotenberg.test.ts](tests/multimodal-and-gotenberg.test.ts))
+
+## Slice 28: Native wacrm WhatsApp Cloud API, encryption, HMAC webhooks, inbox & broadcasts
+
+### 32. Native wacrm WhatsApp Cloud API, encryption, HMAC webhooks, inbox & broadcasts · done · Beta
+
+Port `ArnasDon/wacrm` Official Meta WhatsApp Cloud API v21.0 engine natively into `web/` on Drizzle ORM + Neon PostgreSQL: AES-256-GCM token encryption, constant-time `x-hub-signature-256` HMAC webhook verification, inbound message & receipt ingestion, automatic 14-day outreach cooldown unlock on reply, `ART-...` Post Ref auto-detection, quick replies, 3-page PDF sending, and Meta template broadcasts.
+**Done when:** spec `0009` is captured, `db/schema/whatsapp-crm.ts`, `lib/whatsapp/*`, `/api/webhooks/whatsapp`, and `app/actions/whatsapp-crm.ts` compile and pass security & detector tests.
+spec [0009](docs/specs/0009-native-wacrm-whatsapp-cloud-crm.md) · code in `db/schema/whatsapp-crm.ts`, `lib/whatsapp/`, `app/api/webhooks/whatsapp/`, `app/actions/whatsapp-crm.ts`
+- [x] Design it (spec): `/architect native wacrm WhatsApp Cloud API, encryption, HMAC webhooks, inbox & broadcasts`
+- [x] Build it: `/develop native wacrm WhatsApp Cloud API, encryption, HMAC webhooks, inbox & broadcasts`
+- [x] Verify it: `/check verify native wacrm WhatsApp Cloud API, encryption, HMAC webhooks, inbox & broadcasts` ([verify-enterprise-multimodal-wacrm-postiz.md](docs/reviews/verify-enterprise-multimodal-wacrm-postiz.md))
+- [x] Test it: `/test native wacrm WhatsApp Cloud API, encryption, HMAC webhooks, inbox & broadcasts` ([whatsapp-security-and-detector.test.ts](tests/whatsapp-security-and-detector.test.ts))
+
+## Slice 29: Native Postiz Core 5 social providers & Trigger.dev Cloud durable workers
+
+### 33. Native Postiz Core 5 social providers & Trigger.dev Cloud durable workers · done · Beta
+
+Port `postiz-app` Core 5 OAuth + publishing specifications (`instagram`, `facebook`, `tiktok`, `youtube`, `gmb` Google Business Profile) natively into `web/lib/social/` + Drizzle ORM, and wire `Trigger.dev Cloud` (`trigger.config.ts` & `trigger/*`) for background multimodal extraction, scheduled multi-channel publishing (with 2-step Spotlight -> Sheet delays), paced WhatsApp broadcasts, and Gotenberg PDF rendering.
+**Done when:** spec `0010` is captured, `db/schema/social-scheduler.ts`, `lib/social/*`, OAuth routes, Server Actions, and Trigger.dev tasks compile cleanly and pass validation tests.
+spec [0010](docs/specs/0010-native-postiz-social-and-trigger-cloud.md) · code in `db/schema/social-scheduler.ts`, `lib/social/`, `app/api/oauth/social/`, `app/actions/social-scheduler.ts`, `trigger.config.ts`, `trigger/`
+- [x] Design it (spec): `/architect native Postiz Core 5 social providers & Trigger.dev Cloud durable workers`
+- [x] Build it: `/develop native Postiz Core 5 social providers & Trigger.dev Cloud durable workers`
+- [x] Verify it: `/check verify native Postiz Core 5 social providers & Trigger.dev Cloud durable workers` ([verify-enterprise-multimodal-wacrm-postiz.md](docs/reviews/verify-enterprise-multimodal-wacrm-postiz.md))
+- [x] Test it: `/test native Postiz Core 5 social providers & Trigger.dev Cloud durable workers` ([social-providers-validation.test.ts](tests/social-providers-validation.test.ts))
+
+## Slice 30: 4-Hub Admin reorganization (/studio, /campaigns, /desk, /catalog) & Kanban desk
+
+### 34. 4-Hub Admin reorganization (/studio, /campaigns, /desk, /catalog) & Kanban desk · done · Beta
+
+Consolidate the 15 scattered `/admin` pages into 4 unified daily hubs (`/admin/studio`, `/admin/campaigns`, `/admin/desk`, `/admin/catalog` + enhanced `/admin/settings` OAuth & WABA connections), add `@dnd-kit` Kanban pipeline for Applications, add a global `Cmd+K` Post Reverse-Lookup command palette in the Admin Topbar, and preserve clean redirects on legacy `/admin/*` URLs.
+**Done when:** spec `0011` is captured, all 4 hubs, `Cmd+K` lookup, Kanban board, and redirects render cleanly in the single Haramain Emerald/Ivory/Gold luxury theme, and `typecheck`, `lint`, `test`, and `build` pass with zero errors.
+spec [0011](docs/specs/0011-four-hub-admin-ia-and-kanban-desk.md) · code in `app/admin/(dashboard)/studio/`, `campaigns/`, `desk/`, `catalog/`, `settings/`, `components/admin/`, `components/layout/`
+- [x] Design it (spec): `/architect 4-Hub Admin reorganization (/studio, /campaigns, /desk, /catalog) & Kanban desk`
+- [x] Build it: `/develop 4-Hub Admin reorganization (/studio, /campaigns, /desk, /catalog) & Kanban desk`
+- [x] Verify it: `/check verify 4-Hub Admin reorganization (/studio, /campaigns, /desk, /catalog) & Kanban desk` ([verify-enterprise-multimodal-wacrm-postiz.md](docs/reviews/verify-enterprise-multimodal-wacrm-postiz.md))
+- [x] Test it: `/test 4-Hub Admin reorganization (/studio, /campaigns, /desk, /catalog) & Kanban desk` ([verify-enterprise-multimodal-wacrm-postiz.md](docs/reviews/verify-enterprise-multimodal-wacrm-postiz.md))
 
 ## Deferred
 

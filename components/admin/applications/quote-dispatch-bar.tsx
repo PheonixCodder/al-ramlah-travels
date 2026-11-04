@@ -6,6 +6,7 @@ import { MessageSquare, Mail, Printer, ExternalLink, FileText, Loader2 } from "l
 
 import { Button } from "@/components/ui/button"
 import { generateApplicationLuxuryPdf } from "@/app/actions/quotes"
+import { formatWhatsAppPhone } from "@/lib/phone"
 
 export interface QuoteDispatchBarProps {
   application: {
@@ -48,16 +49,6 @@ export interface QuoteDispatchBarProps {
     quoteNotesCustomer?: string | null
     quotationPdfUrl?: string | null
   } | null
-}
-
-export function formatWhatsAppPhone(raw: string): string {
-  let cleaned = raw.replace(/\D/g, "")
-  if (cleaned.startsWith("0092")) {
-    cleaned = cleaned.slice(2)
-  } else if (cleaned.startsWith("03") && cleaned.length === 11) {
-    cleaned = `92${cleaned.slice(1)}`
-  }
-  return cleaned
 }
 
 export function QuoteDispatchBar({

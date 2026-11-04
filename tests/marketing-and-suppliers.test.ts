@@ -6,6 +6,12 @@ import {
   generatePostReferenceCode,
 } from "../lib/domain/marketing-ops"
 import { calculateApplicationRateHints } from "../lib/domain/quote-hints"
+import {
+  updateExtractedFlyerCardSchema,
+  deleteSupplierFlyerSchema,
+  publishAllFlyerCardsSchema,
+  updatePackageSpotlightImageSchema,
+} from "../lib/validations/marketing"
 
 describe("B2B Supplier Commission Modes (Mode A vs Mode B)", () => {
   it("Mode A (included_in_flyer): keeps retail equal to flyer price and deducts commission for net payable", () => {
@@ -144,5 +150,143 @@ describe("Restored Hotel Meal Plans Rate Hint Calculation", () => {
     // Total Makkah SAR = 3800 SAR
     assert.equal(hints.makkahHotelHint.totalSar, 3800)
     assert.equal(hints.makkahHotelHint.totalPkr, 3800 * 75)
+  })
+})
+
+describe("Quick Edit Flyer Card & Delete Flyer Schemas Validation", () => {
+  it("validates valid payload for updateExtractedFlyerCardSchema", () => {
+    const validPayload = {
+      id: "a0000000-0000-4000-8000-000000000001",
+      makkahHotelName: "Dar Al Khalil Al Rushad",
+      makkahNights: "15N",
+      makkahDistanceLabel: "(600M)",
+      madinahHotelName: "Emaar Taiba",
+      madinahNights: "05N",
+      madinahDistanceLabel: "(400M)",
+      mealPlanLabel: "Room Only",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "10 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "01 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      commissionPkr: 22000,
+      rawSharingPkr: 275000,
+      rawQuadPkr: 285000,
+      rawTriplePkr: 305000,
+      rawDoublePkr: 340000,
+    }
+
+    const parsed = updateExtractedFlyerCardSchema.safeParse(validPayload)
+    assert.equal(parsed.success, true)
+    if (parsed.success) {
+      assert.equal(parsed.data.makkahHotelName, "Dar Al Khalil Al Rushad")
+      assert.equal(parsed.data.commissionPkr, 22000)
+    }
+  })
+
+  it("rejects invalid UUID or negative prices in updateExtractedFlyerCardSchema", () => {
+    const invalidPayload = {
+      id: "not-a-uuid",
+      makkahHotelName: "",
+      makkahNights: "15N",
+      makkahDistanceLabel: "(600M)",
+      madinahHotelName: "Emaar Taiba",
+      madinahNights: "05N",
+      madinahDistanceLabel: "(400M)",
+      outboundFlightNo: "PA 470",
+      outboundDateLabel: "10 NOV",
+      outboundRoute: "LHE - JED",
+      outboundDepTime: "06:35",
+      outboundArrTime: "10:35",
+      returnFlightNo: "PA 471",
+      returnDateLabel: "01 DEC",
+      returnRoute: "JED - LHE",
+      returnDepTime: "11:35",
+      returnArrTime: "18:20",
+      commissionPkr: -1000,
+      rawSharingPkr: -500,
+      rawQuadPkr: 285000,
+      rawTriplePkr: 305000,
+      rawDoublePkr: 340000,
+    }
+
+    const parsed = updateExtractedFlyerCardSchema.safeParse(invalidPayload)
+    assert.equal(parsed.success, false)
+  })
+
+  it("validates valid payload for deleteSupplierFlyerSchema", () => {
+    const valid = deleteSupplierFlyerSchema.safeParse({
+      flyerId: "b0000000-0000-4000-8000-000000000002",
+    })
+    assert.equal(valid.success, true)
+  })
+
+  it("rejects non-uuid in deleteSupplierFlyerSchema", () => {
+    const invalid = deleteSupplierFlyerSchema.safeParse({
+      flyerId: "invalid-id",
+    })
+    assert.equal(invalid.success, false)
+  })
+
+  it("validates valid payload for publishAllFlyerCardsSchema", () => {
+    const valid = publishAllFlyerCardsSchema.safeParse({
+      flyerId: "d2f8dc5c-9ec0-4332-8446-ad20768c1cf7",
+    })
+    assert.equal(valid.success, true)
+    if (valid.success) {
+      assert.equal(valid.data.flyerId, "d2f8dc5c-9ec0-4332-8446-ad20768c1cf7")
+    }
+  })
+
+  it("rejects non-uuid, empty string, or missing flyerId in publishAllFlyerCardsSchema", () => {
+    const invalidNonUuid = publishAllFlyerCardsSchema.safeParse({
+      flyerId: "not-a-uuid-string",
+    })
+    assert.equal(invalidNonUuid.success, false)
+
+    const invalidEmpty = publishAllFlyerCardsSchema.safeParse({
+      flyerId: "",
+    })
+    assert.equal(invalidEmpty.success, false)
+
+    const invalidMissing = publishAllFlyerCardsSchema.safeParse({})
+    assert.equal(invalidMissing.success, false)
+  })
+
+  it("validates valid payload for updatePackageSpotlightImageSchema", () => {
+    const valid = updatePackageSpotlightImageSchema.safeParse({
+      cardId: "d2f8dc5c-9ec0-4332-8446-ad20768c1cf7",
+      imageUrl: "https://pub-7f2c533d31cc45bb9eb2669af5a3b5ef.r2.dev/posters/spotlights/art-01.jpg",
+    })
+    assert.equal(valid.success, true)
+    if (valid.success) {
+      assert.equal(valid.data.cardId, "d2f8dc5c-9ec0-4332-8446-ad20768c1cf7")
+      assert.equal(
+        valid.data.imageUrl,
+        "https://pub-7f2c533d31cc45bb9eb2669af5a3b5ef.r2.dev/posters/spotlights/art-01.jpg"
+      )
+    }
+  })
+
+  it("rejects non-uuid or empty imageUrl in updatePackageSpotlightImageSchema", () => {
+    const invalidId = updatePackageSpotlightImageSchema.safeParse({
+      cardId: "not-uuid",
+      imageUrl: "https://pub-7f2c533d31cc45bb9eb2669af5a3b5ef.r2.dev/posters/spotlights/art-01.jpg",
+    })
+    assert.equal(invalidId.success, false)
+
+    const invalidUrl = updatePackageSpotlightImageSchema.safeParse({
+      cardId: "d2f8dc5c-9ec0-4332-8446-ad20768c1cf7",
+      imageUrl: "",
+    })
+    assert.equal(invalidUrl.success, false)
+
+    const missingFields = updatePackageSpotlightImageSchema.safeParse({})
+    assert.equal(missingFields.success, false)
   })
 })

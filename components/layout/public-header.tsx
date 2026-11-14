@@ -2,12 +2,17 @@
 
 import * as React from "react"
 import Link from "next/link"
-import Image from "next/image"
+import NextImage, { type ImageProps } from "next/image"
+
+const Image = (
+  typeof NextImage === "function"
+    ? NextImage
+    : (NextImage as { default: React.ComponentType<ImageProps> }).default
+) as React.ComponentType<ImageProps>
 import {
   Phone,
   MessageCircle,
   MapPin,
-  ShieldCheck,
   Search,
   Sparkles,
   Menu,
@@ -15,6 +20,7 @@ import {
   Package,
   Layers,
   ArrowRight,
+  Clock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -26,14 +32,19 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
+import { ArabicText } from "@/components/public/arabic-text"
+import {
+  computeHaramainPrayerTimes,
+  toWaMeUrl,
+} from "@/components/public/public-utils"
 
 const NAV_LINKS = [
-  { title: "Custom Umrah", href: "#journey-builder", icon: Compass },
-  { title: "Group Packages", href: "#group-packages", icon: Package },
-  { title: "Hajj 2027", href: "#hajj-inquiry", icon: Layers },
-  { title: "Ziyarat Guides", href: "#ziyarat", icon: Compass },
-  { title: "Track Request", href: "#track-status", icon: Search },
-  { title: "Concierge", href: "#contact", icon: MessageCircle },
+  { title: "Custom Umrah", href: "/#journey-builder", icon: Compass },
+  { title: "Group Packages", href: "/#group-packages", icon: Package },
+  { title: "Hajj 2027", href: "/#hajj-inquiry", icon: Layers },
+  { title: "Ziyarat Guides", href: "/#ziyarat", icon: Compass },
+  { title: "Track Request", href: "/#track-status", icon: Search },
+  { title: "Concierge", href: "/#contact", icon: MessageCircle },
 ]
 
 interface PublicHeaderProps {
@@ -50,13 +61,24 @@ export function PublicHeader({
   officeAddress = DEFAULT_COMPANY_INFO.officeAddress,
 }: PublicHeaderProps = {}) {
   const [mobileOpen, setMobileOpen] = React.useState(false)
+  const [prayerSchedule, setPrayerSchedule] = React.useState(() =>
+    computeHaramainPrayerTimes()
+  )
 
-  const normalizedWhatsapp = whatsappNumber
-    .replace(/\D/g, "")
-    .replace(/^03/, "923")
+  React.useEffect(() => {
+    setPrayerSchedule(computeHaramainPrayerTimes())
+    const timer = window.setInterval(() => {
+      setPrayerSchedule(computeHaramainPrayerTimes())
+    }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
   const telHref = `tel:${agencyPhone.replace(/\s+/g, "")}`
   const secTelHref = `tel:${secondaryPhone.replace(/\s+/g, "")}`
-  const waHref = `https://wa.me/${normalizedWhatsapp || DEFAULT_COMPANY_INFO.normalizedWhatsapp}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
+  const waHref = toWaMeUrl(
+    whatsappNumber,
+    "Assalam o Alaikum, I would like to inquire about Al Ramlah Travels pilgrimage packages."
+  )
 
   return (
     <div className="w-full">
@@ -95,23 +117,42 @@ export function PublicHeader({
               <MessageCircle className="size-3.5 shrink-0 text-emerald-400" />
               <span>24/7 Pilgrim Support</span>
             </a>
-            <span className="hidden text-primary-foreground/30 md:inline">
+            <span className="hidden text-primary-foreground/30 xl:inline">
               |
             </span>
-            <span className="hidden items-center gap-1 text-primary-foreground/80 md:inline-flex">
+            <span className="hidden items-center gap-1 text-primary-foreground/80 xl:inline-flex">
               <MapPin className="size-3.5 shrink-0 text-gold" />
               <span>{officeAddress}</span>
             </span>
           </div>
 
-          {/* Right: Regulatory Badges & Quick Jump */}
+          {/* Right: Zero-Network Haramain Prayer Time Pill (`OD-08`) & Quick Jump */}
           <div className="flex items-center gap-3">
-            <span className="hidden items-center gap-1.5 rounded bg-primary-foreground/10 px-2 py-0.5 text-[11px] font-medium text-primary-foreground/90 lg:inline-flex">
-              <ShieldCheck className="size-3.5 shrink-0 text-gold" />
-              <span>Where Purpose Meets Excellence · Hajj • Umrah • Flights • Hotels • Tours</span>
-            </span>
+            <div
+              className="hidden items-center gap-1.5 rounded-full border border-gold/25 bg-primary-foreground/10 px-2.5 py-0.5 text-[11px] font-medium text-primary-foreground/95 md:inline-flex"
+              title="Umm al-Qura astronomical Haramain prayer schedule in Arabia Standard Time (AST / UTC+3)"
+            >
+              <Clock className="size-3 shrink-0 text-gold" />
+              <span>Haramain Next:</span>
+              <span className="font-semibold text-gold" suppressHydrationWarning>
+                {prayerSchedule.nextPrayerName}
+              </span>
+              <ArabicText
+                className="text-[11px] text-gold/90"
+                suppressHydrationWarning
+              >
+                {prayerSchedule.nextPrayerArabic}
+              </ArabicText>
+              <span
+                className="font-mono tabular-nums text-primary-foreground/90"
+                suppressHydrationWarning
+              >
+                Makkah {prayerSchedule.makkahTime24} · Madinah{" "}
+                {prayerSchedule.madinahTime24} AST
+              </span>
+            </div>
             <Link
-              href="#track-status"
+              href="/#track-status"
               className="inline-flex items-center gap-1 text-[11px] font-medium underline underline-offset-4 transition-colors hover:text-gold"
             >
               <Search className="size-3 shrink-0" />
@@ -140,14 +181,17 @@ export function PublicHeader({
               <span className="font-display text-lg font-bold tracking-tight text-foreground transition-colors group-hover:text-primary sm:text-xl">
                 Al Ramlah Travels
               </span>
-              <span className="font-arabic text-xs font-semibold tracking-wide text-gold">
+              <ArabicText className="text-xs font-semibold tracking-wide text-gold">
                 الرملة للسفر والسياحة
-              </span>
+              </ArabicText>
             </div>
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden items-center gap-1 lg:flex">
+          <nav
+            aria-label="Primary navigation"
+            className="hidden items-center gap-1 lg:flex"
+          >
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.title}
@@ -163,7 +207,7 @@ export function PublicHeader({
           {/* Action CTA + Mobile Menu Button */}
           <div className="flex items-center gap-3">
             <Button
-              render={<Link href="#journey-builder" />}
+              render={<Link href="/#journey-builder" />}
               nativeButton={false}
               className="hidden gap-1.5 border border-gold/30 bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 sm:inline-flex"
             >
@@ -205,15 +249,42 @@ export function PublicHeader({
                           <SheetTitle className="font-display text-base font-bold text-foreground">
                             Al Ramlah Travels
                           </SheetTitle>
-                          <SheetDescription className="font-arabic text-xs font-medium text-gold">
-                            الرملة للسفر والسياحة
+                          <SheetDescription>
+                            <ArabicText className="text-xs font-medium text-gold">
+                              الرملة للسفر والسياحة
+                            </ArabicText>
                           </SheetDescription>
                         </div>
                       </div>
                     </SheetHeader>
 
+                    {/* Mobile Haramain Prayer Pill */}
+                    <div className="mt-4 rounded-lg border border-gold/25 bg-secondary/60 px-3 py-2 text-xs text-foreground">
+                      <div className="flex items-center justify-between font-medium">
+                        <span className="inline-flex items-center gap-1.5 text-primary">
+                          <Clock className="size-3.5 text-gold" />
+                          <span suppressHydrationWarning>
+                            Next Salah: {prayerSchedule.nextPrayerName}
+                          </span>
+                        </span>
+                        <ArabicText
+                          className="text-xs font-semibold text-gold"
+                          suppressHydrationWarning
+                        >
+                          {prayerSchedule.nextPrayerArabic}
+                        </ArabicText>
+                      </div>
+                      <p
+                        className="mt-1 font-mono text-[11px] tabular-nums text-muted-foreground"
+                        suppressHydrationWarning
+                      >
+                        Makkah {prayerSchedule.makkahTime24} · Madinah{" "}
+                        {prayerSchedule.madinahTime24} AST
+                      </p>
+                    </div>
+
                     {/* Navigation Items */}
-                    <div className="flex flex-col gap-1 py-6">
+                    <div className="flex flex-col gap-1 py-4">
                       {NAV_LINKS.map((link) => (
                         <Link
                           key={link.title}
@@ -234,7 +305,7 @@ export function PublicHeader({
                   {/* Drawer Footer Actions */}
                   <div className="flex flex-col gap-3 border-t border-border pt-6">
                     <Button
-                      render={<Link href="#journey-builder" />}
+                      render={<Link href="/#journey-builder" />}
                       nativeButton={false}
                       onClick={() => setMobileOpen(false)}
                       className="w-full justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90"

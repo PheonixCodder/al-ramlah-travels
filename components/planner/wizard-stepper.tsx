@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 function StepIconRenderer({
   id,

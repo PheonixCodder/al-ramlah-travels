@@ -15,7 +15,7 @@ import {
   ArrowLeft,
   UtensilsCrossed,
 } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 function formatShortDateRange(checkIn: string, checkOut: string): string {
   if (!checkIn || !checkOut) return ""

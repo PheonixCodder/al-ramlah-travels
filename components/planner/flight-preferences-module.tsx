@@ -13,7 +13,7 @@ import {
   ArrowRight,
   Check,
 } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 export function FlightPreferencesModule() {
   const {

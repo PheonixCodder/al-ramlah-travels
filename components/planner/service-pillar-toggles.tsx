@@ -3,7 +3,7 @@
 import React from "react"
 import { usePlanner, type ServicePillars } from "./planner-context"
 import { ShieldCheck, Plane, Building, Car, Compass, Check, Lock } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 interface PillarItem {
   key: keyof ServicePillars

@@ -27,7 +27,7 @@ export interface CustomJourneyBuilderProps {
   ziyaratPlaces: (typeof schema.ziyaratPlaces.$inferSelect)[]
   airlines: (typeof schema.airlines.$inferSelect)[]
   departureCities: (typeof schema.departureCities.$inferSelect)[]
-  agencyWhatsapp?: string
+  sarToPkrRate?: number
 }
 
 function CustomJourneyWizardLayout() {
@@ -45,7 +45,7 @@ function CustomJourneyWizardLayout() {
             Design Your Custom Umrah Pilgrimage
           </h2>
           <p className="mt-2 text-xs sm:text-sm text-[#686E65] max-w-2xl leading-relaxed">
-            Configure your bespoke sacred journey step-by-step across visas, Pakistani flights, Haram courtyard hotels, private transport fleets, and historical ziyarat sanctuaries.
+            Configure your bespoke sacred journey step-by-step across visas, Pakistani &amp; international flights, Haram courtyard hotels, private transport fleets, and historical ziyarat sanctuaries.
           </p>
         </div>
 
@@ -101,7 +101,7 @@ export function CustomJourneyBuilder(props: CustomJourneyBuilderProps) {
     ziyaratPlaces: props.ziyaratPlaces,
     airlines: props.airlines,
     departureCities: props.departureCities,
-    agencyWhatsapp: props.agencyWhatsapp,
+    sarToPkrRate: props.sarToPkrRate,
   }
 
   return (

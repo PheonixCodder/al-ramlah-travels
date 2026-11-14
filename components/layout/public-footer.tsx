@@ -1,9 +1,12 @@
-"use client"
-
 import * as React from "react"
-import { useState } from "react"
 import Link from "next/link"
-import Image from "next/image"
+import NextImage, { type ImageProps } from "next/image"
+
+const Image = (
+  typeof NextImage === "function"
+    ? NextImage
+    : (NextImage as { default: React.ComponentType<ImageProps> }).default
+) as React.ComponentType<ImageProps>
 import {
   Phone,
   MessageCircle,
@@ -14,23 +17,43 @@ import {
   Lock,
   Compass,
   ArrowUpRight,
+  ExternalLink,
 } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
 import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
+import { ArabicText } from "@/components/public/arabic-text"
+import { toWaMeUrl } from "@/components/public/public-utils"
 
-interface PublicFooterProps {
+export interface PublicFooterProps {
   agencyPhone?: string
   secondaryPhone?: string
   whatsappNumber?: string
   agencyName?: string
+  legalEntityName?: string
   supportEmail?: string
   officeAddress?: string
+  dtsLicense?: string | null
+  moraLicense?: string | null
+  iataCode?: string | null
+  ntnNumber?: string | null
+  facebookUrl?: string | null
+  instagramUrl?: string | null
+  youtubeUrl?: string | null
+  tiktokUrl?: string | null
+}
+
+function cleanOptionalText(val: string | null | undefined): string | null {
+  if (!val) return null
+  const trimmed = val.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function cleanHttpUrl(val: string | null | undefined): string | null {
+  const cleaned = cleanOptionalText(val)
+  if (!cleaned) return null
+  if (cleaned.startsWith("https://") || cleaned.startsWith("http://")) {
+    return cleaned
+  }
+  return null
 }
 
 export function PublicFooter({
@@ -38,20 +61,47 @@ export function PublicFooter({
   secondaryPhone = DEFAULT_COMPANY_INFO.secondaryPhone,
   whatsappNumber = DEFAULT_COMPANY_INFO.primaryWhatsapp,
   agencyName = DEFAULT_COMPANY_INFO.agencyName,
+  legalEntityName,
   supportEmail = DEFAULT_COMPANY_INFO.supportEmail,
   officeAddress = DEFAULT_COMPANY_INFO.officeAddress,
+  dtsLicense = null,
+  moraLicense = null,
+  iataCode = null,
+  ntnNumber = null,
+  facebookUrl = null,
+  instagramUrl = null,
+  youtubeUrl = null,
+  tiktokUrl = null,
 }: PublicFooterProps = {}) {
   const currentYear = new Date().getFullYear()
-  const [modalType, setModalType] = useState<
-    "privacy" | "terms" | "disclaimer" | null
-  >(null)
+  const resolvedLegalName = cleanOptionalText(legalEntityName) ?? agencyName
 
-  const normalizedWhatsapp = whatsappNumber
-    .replace(/\D/g, "")
-    .replace(/^03/, "923")
   const telHref = `tel:${agencyPhone.replace(/\s+/g, "")}`
   const secTelHref = `tel:${secondaryPhone.replace(/\s+/g, "")}`
-  const waHref = `https://wa.me/${normalizedWhatsapp || DEFAULT_COMPANY_INFO.normalizedWhatsapp}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
+  const waHref = toWaMeUrl(
+    whatsappNumber,
+    "Assalam o Alaikum, I would like to inquire about Al Ramlah Travels pilgrimage packages."
+  )
+
+  const licenseBadges: Array<{ label: string; value: string }> = []
+  const dts = cleanOptionalText(dtsLicense)
+  const mora = cleanOptionalText(moraLicense)
+  const iata = cleanOptionalText(iataCode)
+  const ntn = cleanOptionalText(ntnNumber)
+  if (dts) licenseBadges.push({ label: "DTS License", value: dts })
+  if (mora) licenseBadges.push({ label: "MoRA / HGO", value: mora })
+  if (iata) licenseBadges.push({ label: "IATA", value: iata })
+  if (ntn) licenseBadges.push({ label: "NTN", value: ntn })
+
+  const socialLinks: Array<{ label: string; href: string }> = []
+  const fb = cleanHttpUrl(facebookUrl)
+  const ig = cleanHttpUrl(instagramUrl)
+  const yt = cleanHttpUrl(youtubeUrl)
+  const tt = cleanHttpUrl(tiktokUrl)
+  if (fb) socialLinks.push({ label: "Facebook", href: fb })
+  if (ig) socialLinks.push({ label: "Instagram", href: ig })
+  if (yt) socialLinks.push({ label: "YouTube", href: yt })
+  if (tt) socialLinks.push({ label: "TikTok", href: tt })
 
   return (
     <footer className="relative overflow-hidden border-t border-primary-foreground/10 bg-primary text-primary-foreground">
@@ -76,28 +126,44 @@ export function PublicFooter({
                 <span className="font-display text-xl font-bold tracking-tight text-primary-foreground">
                   {agencyName}
                 </span>
-                <span className="font-arabic text-xs font-medium text-gold">
+                <ArabicText className="text-xs font-medium text-gold">
                   سفريات الرملة · خادم ضيوف الرحمن
-                </span>
+                </ArabicText>
               </div>
             </Link>
 
             <p className="max-w-sm text-sm leading-relaxed text-primary-foreground/80">
-              Pakistan&apos;s premier luxury pilgrimage concierge. Dedicated to
+              Pakistan&apos;s luxury Haramain pilgrimage concierge. Dedicated to
               crafting serene, spiritually elevating Umrah, Hajj, and Ziyarat
-              journeys with transparent pricing, handpicked 5-star Haramain
-              hotels, and 24/7 on-ground executive assistance.
+              journeys with transparent pricing, handpicked Haramain hotels, and
+              24/7 on-ground executive assistance.
             </p>
 
             <div className="pt-2">
-              <span className="mb-1 block font-arabic text-sm text-gold">
-                لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ، لَبَّيْكَ لا شَرِيكَ لَكَ
-                لَبَّيْكَ
-              </span>
+              <ArabicText className="mb-1 block text-sm text-gold">
+                لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ، لَبَّيْكَ لا شَرِيكَ لَكَ لَبَّيْكَ
+              </ArabicText>
               <span className="text-xs text-primary-foreground/60 italic">
                 &ldquo;At Your Service, O Lord, At Your Service&rdquo;
               </span>
             </div>
+
+            {socialLinks.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 pt-2">
+                {socialLinks.map((social) => (
+                  <a
+                    key={social.label}
+                    href={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-full border border-gold/30 bg-primary-foreground/10 px-3 py-1 text-xs font-medium text-primary-foreground/90 transition-colors hover:border-gold hover:text-gold"
+                  >
+                    <span>{social.label}</span>
+                    <ExternalLink className="size-3 shrink-0" />
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Column 2: Curated Journeys */}
@@ -108,7 +174,7 @@ export function PublicFooter({
             <ul className="flex flex-col gap-2.5 text-sm text-primary-foreground/80">
               <li>
                 <Link
-                  href="#journey-builder"
+                  href="/#journey-builder"
                   className="group inline-flex items-center gap-1 transition-colors hover:text-gold"
                 >
                   <span>Custom Umrah Builder</span>
@@ -117,7 +183,7 @@ export function PublicFooter({
               </li>
               <li>
                 <Link
-                  href="#group-packages"
+                  href="/#group-packages"
                   className="group inline-flex items-center gap-1 transition-colors hover:text-gold"
                 >
                   <span>VIP Executive Packages</span>
@@ -126,7 +192,7 @@ export function PublicFooter({
               </li>
               <li>
                 <Link
-                  href="#group-packages"
+                  href="/#group-packages"
                   className="group inline-flex items-center gap-1 transition-colors hover:text-gold"
                 >
                   <span>Family Comfort Umrah</span>
@@ -135,16 +201,16 @@ export function PublicFooter({
               </li>
               <li>
                 <Link
-                  href="#hajj-inquiry"
+                  href="/#hajj-inquiry"
                   className="group inline-flex items-center gap-1 transition-colors hover:text-gold"
                 >
-                  <span>Hajj 2027 Packages</span>
+                  <span>Hajj 2027 Pre-Registration</span>
                   <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
                 </Link>
               </li>
               <li>
                 <Link
-                  href="#ziyarat"
+                  href="/#ziyarat"
                   className="group inline-flex items-center gap-1 transition-colors hover:text-gold"
                 >
                   <span>Historical Ziyarat Tours</span>
@@ -162,7 +228,7 @@ export function PublicFooter({
             <ul className="flex flex-col gap-2.5 text-sm text-primary-foreground/80">
               <li>
                 <Link
-                  href="#track-status"
+                  href="/#track-status"
                   className="transition-colors hover:text-gold"
                 >
                   Live Application Tracker
@@ -170,7 +236,7 @@ export function PublicFooter({
               </li>
               <li>
                 <Link
-                  href="#journey-builder"
+                  href="/#journey-builder"
                   className="transition-colors hover:text-gold"
                 >
                   Instant Visa Quoting
@@ -178,7 +244,7 @@ export function PublicFooter({
               </li>
               <li>
                 <Link
-                  href="#journey-builder"
+                  href="/#journey-builder"
                   className="transition-colors hover:text-gold"
                 >
                   Makkah Clock Tower Hotels
@@ -186,7 +252,7 @@ export function PublicFooter({
               </li>
               <li>
                 <Link
-                  href="#journey-builder"
+                  href="/#journey-builder"
                   className="transition-colors hover:text-gold"
                 >
                   Madinah Markaziah Stays
@@ -194,10 +260,10 @@ export function PublicFooter({
               </li>
               <li>
                 <Link
-                  href="#journey-builder"
+                  href="/#contact"
                   className="transition-colors hover:text-gold"
                 >
-                  VIP Ground Transport
+                  Askari 10 Executive Desk
                 </Link>
               </li>
               <li>
@@ -223,8 +289,16 @@ export function PublicFooter({
                   className="flex items-center gap-2 transition-colors hover:text-gold"
                 >
                   <Phone className="size-4 shrink-0 text-gold" />
-                  <span className="font-mono tabular-nums">{agencyPhone} · {secondaryPhone}</span>
+                  <span className="font-mono tabular-nums">{agencyPhone}</span>
                 </a>
+                {secondaryPhone && (
+                  <a
+                    href={secTelHref}
+                    className="flex items-center gap-2 pl-6 text-xs text-primary-foreground/75 transition-colors hover:text-gold"
+                  >
+                    <span className="font-mono tabular-nums">{secondaryPhone}</span>
+                  </a>
+                )}
               </div>
               <a
                 href={waHref}
@@ -233,7 +307,7 @@ export function PublicFooter({
                 className="flex items-center gap-2 transition-colors hover:text-gold"
               >
                 <MessageCircle className="size-4 shrink-0 text-emerald-400" />
-                <span>WhatsApp: {whatsappNumber} (24/7 Ground Team)</span>
+                <span>WhatsApp: {whatsappNumber} (24/7 Desk)</span>
               </a>
               <a
                 href={`mailto:${supportEmail}`}
@@ -246,7 +320,7 @@ export function PublicFooter({
                 href="https://www.alramlahtravels.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 transition-colors hover:text-gold text-xs"
+                className="flex items-center gap-2 text-xs transition-colors hover:text-gold"
               >
                 <Compass className="size-4 shrink-0 text-gold" />
                 <span>www.alramlahtravels.com</span>
@@ -259,20 +333,35 @@ export function PublicFooter({
           </div>
         </div>
 
-        {/* Accreditation & Regulatory Strip */}
+        {/* Accreditation & Verified Regulatory Licenses Strip (`T-056`, `OD-10`) */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-primary-foreground/15 py-6">
-          <div className="flex flex-wrap items-center gap-6 text-xs text-primary-foreground/80">
+          <div className="flex flex-wrap items-center gap-5 text-xs text-primary-foreground/85">
             <div className="inline-flex items-center gap-2">
               <ShieldCheck className="size-4 text-gold" />
               <span>Hajj • Umrah • Flights • Hotels • Tours</span>
             </div>
-            <div className="inline-flex items-center gap-2">
-              <Award className="size-4 text-gold" />
-              <span>Where Purpose Meets Excellence</span>
-            </div>
+            {licenseBadges.length > 0 ? (
+              licenseBadges.map((badge) => (
+                <div
+                  key={badge.label}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-primary-foreground/10 px-3 py-1 font-mono text-[11px] tabular-nums text-primary-foreground"
+                >
+                  <Award className="size-3.5 text-gold" />
+                  <span className="font-sans font-semibold text-gold">
+                    {badge.label}:
+                  </span>
+                  <span>{badge.value}</span>
+                </div>
+              ))
+            ) : (
+              <div className="inline-flex items-center gap-2">
+                <Award className="size-4 text-gold" />
+                <span>Where Purpose Meets Excellence</span>
+              </div>
+            )}
             <div className="inline-flex items-center gap-2">
               <Lock className="size-4 text-gold" />
-              <span>256-Bit SSL Encrypted Verification</span>
+              <span>TLS Encrypted Pilgrim Dossiers</span>
             </div>
           </div>
           <div className="text-xs text-primary-foreground/75">
@@ -280,152 +369,38 @@ export function PublicFooter({
           </div>
         </div>
 
-        {/* Bottom Bar: Copyright & Legal */}
-        <div className="flex flex-col items-center justify-between gap-4 pt-6 text-xs text-primary-foreground/60 sm:flex-row">
+        {/* Bottom Bar: Copyright & Canonical Legal Routes */}
+        <div className="flex flex-col items-center justify-between gap-4 pt-6 text-xs text-primary-foreground/65 sm:flex-row">
           <div>
-            &copy; {currentYear} {agencyName} Pvt. Ltd. All rights reserved.
+            &copy; {currentYear} {resolvedLegalName}. All rights reserved.
           </div>
-          <div className="flex items-center gap-4">
+          <nav
+            aria-label="Legal policies"
+            className="flex flex-wrap items-center gap-4"
+          >
             <Link
               href="/privacy"
-              className="transition-colors hover:text-gold focus:outline-none"
+              className="transition-colors hover:text-gold focus-visible:underline focus-visible:outline-none"
             >
               Privacy Policy
             </Link>
-            <span>·</span>
+            <span aria-hidden="true">·</span>
             <Link
               href="/terms"
-              className="transition-colors hover:text-gold focus:outline-none"
+              className="transition-colors hover:text-gold focus-visible:underline focus-visible:outline-none"
             >
               Terms of Service
             </Link>
-            <span>·</span>
-            <button
-              type="button"
-              onClick={() => setModalType("disclaimer")}
-              className="transition-colors hover:text-gold focus:outline-none"
+            <span aria-hidden="true">·</span>
+            <Link
+              href="/refund-policy"
+              className="transition-colors hover:text-gold focus-visible:underline focus-visible:outline-none"
             >
-              Visa Regulations
-            </button>
-          </div>
+              Refund &amp; Cancellation Policy
+            </Link>
+          </nav>
         </div>
       </div>
-
-      {/* Informational Legal Dialogs */}
-      <Dialog
-        open={Boolean(modalType)}
-        onOpenChange={(open) => !open && setModalType(null)}
-      >
-        <DialogContent className="sm:max-w-lg bg-white text-[#1A1D1A] border-[#E6DEC8] p-6 max-h-[85vh] overflow-y-auto">
-          {modalType === "privacy" && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-lg font-bold text-[#0A3622]">
-                  Privacy Policy &amp; Pilgrim Data Protection
-                </DialogTitle>
-                <DialogDescription className="text-xs text-[#686E65]">
-                  Last updated: October 2026 · Ministry of Hajj &amp; Umrah Compliance
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 pt-3 text-xs leading-relaxed text-[#1A1D1A]">
-                <p>
-                  At <strong>{agencyName}</strong>, the sanctity of your personal
-                  data and travel documents is handled with utmost reverence and
-                  strict technical safeguards.
-                </p>
-                <h4 className="font-bold text-[#0A3622]">1. Passport &amp; Identification</h4>
-                <p>
-                  Passport scans, national identity numbers, and biometric
-                  records collected for Umrah visa issuance are transmitted
-                  directly to the Saudi Ministry of Foreign Affairs (MOFA) and
-                  Masar platform via 256-bit SSL encrypted channels.
-                </p>
-                <h4 className="font-bold text-[#0A3622]">2. Payment Confidentiality</h4>
-                <p>
-                  We do not sell, barter, or disclose pilgrim contact details,
-                  payment records, or itinerary schedules to any third-party
-                  marketing entities.
-                </p>
-                <h4 className="font-bold text-[#0A3622]">3. Data Retention</h4>
-                <p>
-                  In accordance with regulatory and aviation industry requirements, flight
-                  and hotel booking vouchers are archived securely for audit and
-                  tax verification purposes.
-                </p>
-              </div>
-            </>
-          )}
-
-          {modalType === "terms" && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-lg font-bold text-[#0A3622]">
-                  Terms of Pilgrimage &amp; Service Agreement
-                </DialogTitle>
-                <DialogDescription className="text-xs text-[#686E65]">
-                  Standard Pilgrimage Service Terms &amp; Conditions
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 pt-3 text-xs leading-relaxed text-[#1A1D1A]">
-                <h4 className="font-bold text-[#0A3622]">1. Quotation &amp; Provisional Holds</h4>
-                <p>
-                  Submissions through our Custom Journey Builder and Group
-                  Booking modules constitute a provisional reservation request.
-                  Final pricing and seat confirmation become binding upon
-                  review and official quotation issuance by our executive desk.
-                </p>
-                <h4 className="font-bold text-[#0A3622]">2. Hotel Check-In &amp; Occupancy</h4>
-                <p>
-                  Check-in and check-out times follow standard Saudi hospitality
-                  protocols (typically 4:00 PM check-in and 12:00 PM check-out).
-                  Room allocations strictly count Adults and Children for beds;
-                  infants are accommodated on existing bedding.
-                </p>
-                <h4 className="font-bold text-[#0A3622]">3. Flight &amp; Transit Schedules</h4>
-                <p>
-                  Airline schedule adjustments, baggage allowances, and flight
-                  timing revisions are governed by the respective operating
-                  carrier under IATA conditions of carriage.
-                </p>
-              </div>
-            </>
-          )}
-
-          {modalType === "disclaimer" && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-lg font-bold text-[#0A3622]">
-                  Saudi Umrah &amp; Hajj Visa Regulations
-                </DialogTitle>
-                <DialogDescription className="text-xs text-[#686E65]">
-                  Statutory guidelines enforced by the Ministry of Foreign Affairs (KSA)
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 pt-3 text-xs leading-relaxed text-[#1A1D1A]">
-                <h4 className="font-bold text-[#0A3622]">1. Passport Validity</h4>
-                <p>
-                  All pilgrims (including infants and children) must hold a
-                  machine-readable passport with a minimum validity of 6 months
-                  from the intended date of arrival in the Kingdom of Saudi Arabia.
-                </p>
-                <h4 className="font-bold text-[#0A3622]">2. Duration Tiers</h4>
-                <p>
-                  Saudi tourist/electronic visas and Umrah visas issued for stays
-                  up to 30 days qualify for short-term rate tiers. Stays exceeding
-                  30 days require extended authorization tiers subject to MOFA
-                  approvals.
-                </p>
-                <h4 className="font-bold text-[#0A3622]">3. Mandatory Insurance</h4>
-                <p>
-                  Every issued visa incorporates compulsory comprehensive health
-                  and emergency medical insurance covering COVID-19 and emergency
-                  hospitalization across licensed healthcare facilities in KSA.
-                </p>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </footer>
   )
 }

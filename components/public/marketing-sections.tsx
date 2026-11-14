@@ -1,10 +1,17 @@
 "use client"
 
 import * as React from "react"
-import Image from "next/image"
+import NextImage, { type ImageProps } from "next/image"
+
+const Image = (
+  typeof NextImage === "function"
+    ? NextImage
+    : (NextImage as { default: React.ComponentType<ImageProps> }).default
+) as React.ComponentType<ImageProps>
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ArabicText } from "@/components/public/arabic-text"
 import {
   Accordion,
   AccordionItem,
@@ -24,7 +31,6 @@ import {
   MapPin,
 } from "lucide-react"
 
-// Types
 export interface ZiyaratPreviewItem {
   id: string
   city: "makkah" | "madinah"
@@ -100,71 +106,43 @@ const DEFAULT_ZIYARAT: ZiyaratPreviewItem[] = [
   },
 ]
 
-const DEFAULT_TESTIMONIALS: TestimonialPreviewItem[] = [
-  {
-    id: "t-1",
-    pilgrimName: "Dr. Salman Tariq & Family",
-    city: "Lahore",
-    quote:
-      "Having our hotel directly across from King Abdulaziz Gate in Makkah made all the difference with our elderly parents. The private GMC transfer from Jeddah airport was waiting for us as soon as we exited customs. Flawless execution.",
-    packageOrJourneyType: "Custom Family Umrah (14 Days)",
-    rating: 5,
-  },
-  {
-    id: "t-2",
-    pilgrimName: "Al-Haj Zubair Chaudhry",
-    city: "Islamabad",
-    quote:
-      "Al Ramlah Travels handled our entire group departure from Islamabad with Saudia flights. The seat progress tracking and fixed quad rate gave our extended family complete peace of mind. May Allah reward your team.",
-    packageOrJourneyType: "VIP 5-Star Group Umrah",
-    rating: 5,
-  },
-  {
-    id: "t-3",
-    pilgrimName: "Mrs. Naila Rizwan",
-    city: "Karachi",
-    quote:
-      "The 24h itemized quote worksheet was transparent to the single Rupee. No surprise airport surcharges, no hidden shuttle fees. Truly sacred luxury crafted with dignity.",
-    packageOrJourneyType: "Custom Couple's Umrah (10 Days)",
-    rating: 5,
-  },
-]
-
 const DEFAULT_FAQS: FaqPreviewItem[] = [
   {
     id: "f-1",
     category: "visa",
     question: "How is the Umrah visa duration calculated for our journey?",
     answer:
-      "Our system automatically compares your KSA Arrival Date and KSA Departure Date. Stays up to 30 days are automatically assigned the Short-Term tourist/umrah rate, while stays beyond 30 days (up to 90 days) receive the extended Long-Term rate. You never have to guess or choose tiers manually.",
+      "Our system automatically compares your KSA Arrival Date and KSA Departure Date. Stays up to 30 days are automatically assigned the Short-Term Umrah tariff, while stays beyond 30 days (up to 90 days) receive the extended Long-Term tariff. You never have to guess or choose visa tiers manually.",
   },
   {
     id: "f-2",
     category: "hotels",
     question: "Do infants require their own hotel bed or transport seat?",
     answer:
-      "Under Saudi hospitality rules, infants under 2 years require their own visa and infant airline ticket, but count as 0 hotel beds and 0 vehicle seats. Hotel bed capacities and fleet vehicle seats are strictly calculated for Adults + Children (2-11 years).",
+      "Under Saudi hospitality rules, infants under 2 years require their own Umrah visa and infant airline ticket, but count as 0 hotel beds and 0 vehicle seats. Hotel bed capacities and fleet vehicle seats are strictly calculated for Adults + Children (2–11 years).",
   },
   {
     id: "f-3",
     category: "general",
-    question: "Why does the Custom Planner show a Live Itinerary Summary rather than fixed checkout?",
+    question:
+      "Why does the Custom Planner show a Live Itinerary Summary rather than a static checkout price?",
     answer:
-      "Unlike rigid pre-packaged tours, volatile services such as direct flights, 5-star hotel dates, and bullet train transfers fluctuate daily based on Saudi availability. To protect you from inflated pricing buffers, our ticketing directors verify live allotments within 24 hours and issue a guaranteed, itemized quote worksheet.",
+      "Unlike rigid pre-packaged tours, volatile services such as direct flights, 5-star Haram courtyard dates, and Haramain train transfers fluctuate daily based on Saudi availability. To protect you from inflated pricing buffers, our ticketing directors verify live allotments within 24 hours and issue a guaranteed, itemized PKR quote worksheet.",
   },
   {
     id: "f-4",
     category: "transport",
     question: "Can we start our Umrah itinerary directly in Makkah?",
     answer:
-      "Yes. Because Makkah does not have an international airport, itineraries beginning in Makkah automatically designate King Abdulaziz International Airport in Jeddah (JED) as your entry gateway, with immediate private transfer directly to your Makkah hotel.",
+      "Yes. Because Makkah does not have an international airport, itineraries beginning in Makkah automatically designate King Abdulaziz International Airport in Jeddah (JED) as your entry gateway, paired with private ground transfer directly to your Makkah hotel.",
   },
   {
     id: "f-5",
     category: "hajj",
-    question: "How do I reserve a package under the Hajj 2027 Package Guide?",
+    question:
+      "How does pre-registration work under the Hajj 2027 Indicative Package Guide?",
     answer:
-      "Our Hajj 2027 Package Guide offers comprehensive Maktab A, Maktab B, and Maktab C arrangements across 10, 14, and 20/22 day durations. Simply select your preferred package, submit your inquiry, and our dedicated Hajj directors will guide you through passport verification, seat confirmation, and Nusuk clearance.",
+      "Our Hajj 2027 Guide presents non-binding indicative Maktab A, Maktab B, and Maktab C structures across 10, 14, and 20/22 day durations for both resident and overseas Pakistani families. Submit your pre-registration inquiry and our Hajj directors will contact you as soon as official Ministry of Religious Affairs (MoRA) and Saudi Nusuk quotas are announced.",
   },
 ]
 
@@ -175,18 +153,18 @@ export function MarketingSections({
 }: MarketingSectionsProps) {
   const activeZiyarat =
     ziyaratSites.length > 0 ? ziyaratSites : DEFAULT_ZIYARAT
-  const activeTestimonials =
-    testimonials.length > 0 ? testimonials : DEFAULT_TESTIMONIALS
+  // T-056: Render testimonials strictly from verified DB rows; never fabricate fallback reviews
+  const verifiedTestimonials = testimonials
   const activeFaqs = faqs.length > 0 ? faqs : DEFAULT_FAQS
 
   return (
-    <div className="space-y-28 py-16 bg-background">
+    <div className="flex flex-col gap-24 py-16 bg-background">
       {/* ======================================================== */}
       {/* 1. WHY PILGRIMS CHOOSE AL RAMLAH (LUXURY BENTO GRID)     */}
       {/* ======================================================== */}
-      <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-12">
-        <div className="text-center max-w-3xl mx-auto space-y-3">
-          <Badge className="bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
+      <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-12">
+        <div className="text-center max-w-3xl mx-auto flex flex-col gap-3">
+          <Badge className="self-center bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
             Sacred Luxury Standard
           </Badge>
           <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
@@ -197,10 +175,8 @@ export function MarketingSections({
           </p>
         </div>
 
-        {/* Bento Grid */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3 lg:grid-cols-4">
-          {/* Bento Item 1: Courtyard Proximity (Large 2-col) */}
-          <div className="md:col-span-2 rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs space-y-4">
+          <div className="md:col-span-2 rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200">
               <Building2 className="size-6" />
             </div>
@@ -223,8 +199,7 @@ export function MarketingSections({
             </div>
           </div>
 
-          {/* Bento Item 2: Guaranteed 24h Quoting SLA */}
-          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs space-y-4">
+          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-800 border border-amber-200">
               <Clock className="size-6" />
             </div>
@@ -232,12 +207,11 @@ export function MarketingSections({
               24-Hour Quote SLA
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Submit your bespoke custom itinerary and receive an itemized, transparent PKR worksheet confirmed by our senior ticketing director within 24 hours.
+              Submit your bespoke custom itinerary and receive an itemized, transparent PKR worksheet confirmed by our senior ticketing director in Lahore within 24 hours.
             </p>
           </div>
 
-          {/* Bento Item 3: Purpose & Excellence */}
-          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs space-y-4">
+          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200">
               <ShieldCheck className="size-6" />
             </div>
@@ -245,12 +219,11 @@ export function MarketingSections({
               Purpose &amp; Excellence
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Where Purpose Meets Excellence. Authorized visa processing with rapid Nusuk electronic clearance and dedicated on-ground pilgrim assistance.
+              Where Purpose Meets Excellence. Authorized Umrah visa processing with Nusuk / Masar electronic clearance and dedicated on-ground pilgrim assistance.
             </p>
           </div>
 
-          {/* Bento Item 4: Private Fleet */}
-          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs space-y-4">
+          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20">
               <Car className="size-6" />
             </div>
@@ -262,18 +235,17 @@ export function MarketingSections({
             </p>
           </div>
 
-          {/* Bento Item 5: Transparent Pricing (Large 2-col) */}
-          <div className="md:col-span-2 rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs space-y-4">
+          <div className="md:col-span-2 rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-gold/15 text-gold border border-gold/30">
               <FileCheck className="size-6" />
             </div>
             <h3 className="font-display text-2xl font-bold text-foreground">
-              Transparent Pricing & Zero Hidden Surcharges
+              Transparent Pricing &amp; Zero Hidden Surcharges
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
               In Visa Only mode, you see an immediate guaranteed PKR total calculated per passport. In custom journeys, every hotel night, vehicle leg, and visa fee is itemized line by line in your worksheet.
             </p>
-            <div className="flex items-center gap-3 pt-1 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-muted-foreground">
               <span className="flex items-center gap-1 font-semibold text-foreground">
                 <CheckCircle2 className="size-4 text-emerald-600" /> No Currency Exchange Surprises
               </span>
@@ -283,8 +255,7 @@ export function MarketingSections({
             </div>
           </div>
 
-          {/* Bento Item 6: Guided Historical Ziyarat */}
-          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs space-y-4">
+          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-800 border border-amber-200">
               <Compass className="size-6" />
             </div>
@@ -292,7 +263,7 @@ export function MarketingSections({
               Sacred Heritage Tours
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Comprehensive visits to the Cave of Hira, Thawr, Masjid Quba, and Mount Uhud guided by certified Islamic scholars.
+              Comprehensive visits to the Cave of Hira, Thawr, Masjid Quba, and Mount Uhud guided by knowledgeable Islamic scholars.
             </p>
           </div>
         </div>
@@ -302,9 +273,9 @@ export function MarketingSections({
       {/* 2. HOW OUR LIVE QUOTING WORKS (4-STEP TIMELINE)          */}
       {/* ======================================================== */}
       <section className="bg-muted/30 py-20 border-y border-border">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-12">
-          <div className="text-center max-w-3xl mx-auto space-y-3">
-            <Badge className="bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-12">
+          <div className="text-center max-w-3xl mx-auto flex flex-col gap-3">
+            <Badge className="self-center bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
               The Al Ramlah Journey Process
             </Badge>
             <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
@@ -315,11 +286,9 @@ export function MarketingSections({
             </p>
           </div>
 
-          {/* 4-Step Cards */}
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Step 1 */}
-            <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs space-y-3">
-              <span className="font-mono text-3xl font-extrabold text-gold block">
+            <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs flex flex-col gap-3">
+              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold block">
                 01
               </span>
               <h3 className="font-display text-lg font-bold text-foreground">
@@ -330,9 +299,8 @@ export function MarketingSections({
               </p>
             </div>
 
-            {/* Step 2 */}
-            <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs space-y-3">
-              <span className="font-mono text-3xl font-extrabold text-gold block">
+            <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs flex flex-col gap-3">
+              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold block">
                 02
               </span>
               <h3 className="font-display text-lg font-bold text-foreground">
@@ -343,9 +311,8 @@ export function MarketingSections({
               </p>
             </div>
 
-            {/* Step 3 */}
-            <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs space-y-3">
-              <span className="font-mono text-3xl font-extrabold text-gold block">
+            <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs flex flex-col gap-3">
+              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold block">
                 03
               </span>
               <h3 className="font-display text-lg font-bold text-foreground">
@@ -356,16 +323,15 @@ export function MarketingSections({
               </p>
             </div>
 
-            {/* Step 4 */}
-            <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs space-y-3">
-              <span className="font-mono text-3xl font-extrabold text-gold block">
+            <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs flex flex-col gap-3">
+              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold block">
                 04
               </span>
               <h3 className="font-display text-lg font-bold text-foreground">
-                Sacred Departure
+                Online Approval &amp; Voucher
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Upon quotation approval, electronic visas and flight tickets are issued with complete hotel vouchers and airport driver contact details.
+                Accept your official quotation online on our self-service portal. Upon deposit verification, your QR-signed confirmation voucher unlocks immediately.
               </p>
             </div>
           </div>
@@ -375,10 +341,13 @@ export function MarketingSections({
       {/* ======================================================== */}
       {/* 3. SACRED ZIYARAT SITES PREVIEW                          */}
       {/* ======================================================== */}
-      <section id="ziyarat" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-12 scroll-mt-20">
+      <section
+        id="ziyarat"
+        className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-12 scroll-mt-20"
+      >
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <div className="space-y-3 max-w-2xl">
-            <Badge className="bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
+          <div className="flex flex-col gap-3 max-w-2xl">
+            <Badge className="self-start bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
               Historical Sanctuaries
             </Badge>
             <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
@@ -390,7 +359,8 @@ export function MarketingSections({
           </div>
           <Button
             variant="outline"
-            render={<Link href="#journey-builder" />}
+            nativeButton={false}
+            render={<Link href="/#journey-builder" />}
             className="gap-2 shrink-0 border-border"
           >
             <span>Include Ziyarat in Planner</span>
@@ -398,7 +368,6 @@ export function MarketingSections({
           </Button>
         </div>
 
-        {/* Ziyarat Grid */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {activeZiyarat.map((site) => (
             <div
@@ -435,16 +404,13 @@ export function MarketingSections({
                   </div>
                 </div>
 
-                <div className="p-4 space-y-2">
+                <div className="p-4 flex flex-col gap-2">
                   <h3 className="font-bold text-base text-foreground leading-snug">
                     {site.name}
                   </h3>
-                  <div
-                    dir="rtl"
-                    className="font-arabic text-sm text-gold font-medium"
-                  >
+                  <ArabicText className="text-sm text-gold font-medium block">
                     {site.arabicName}
-                  </div>
+                  </ArabicText>
                   <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
                     {site.description}
                   </p>
@@ -456,60 +422,67 @@ export function MarketingSections({
       </section>
 
       {/* ======================================================== */}
-      {/* 4. PILGRIM TESTIMONIALS                                  */}
+      {/* 4. VERIFIED PILGRIM TESTIMONIALS (`T-056` — DB-ONLY)     */}
       {/* ======================================================== */}
-      <section className="bg-muted/30 py-20 border-y border-border">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-12">
-          <div className="text-center max-w-3xl mx-auto space-y-3">
-            <Badge className="bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
-              Authentic Pilgrim Reviews
-            </Badge>
-            <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-              Cherished Words from Our Pilgrims
-            </h2>
-            <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-              Read verified experiences from Pakistani families who trusted Al Ramlah Travels for their sacred journeys.
-            </p>
-          </div>
+      {verifiedTestimonials.length > 0 && (
+        <section className="bg-muted/30 py-20 border-y border-border">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-12">
+            <div className="text-center max-w-3xl mx-auto flex flex-col gap-3">
+              <Badge className="self-center bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
+                Verified Pilgrim Reviews
+              </Badge>
+              <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+                Cherished Words from Our Pilgrims
+              </h2>
+              <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
+                Read verified experiences from families who entrusted Al Ramlah Travels with their sacred journeys.
+              </p>
+            </div>
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            {activeTestimonials.map((t) => (
-              <div
-                key={t.id}
-                className="flex flex-col justify-between rounded-2xl border border-border bg-card p-6 shadow-xs space-y-4"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center gap-1 text-gold">
-                    {Array.from({ length: t.rating }).map((_, i) => (
-                      <Star key={i} className="size-4 fill-gold text-gold" />
-                    ))}
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+              {verifiedTestimonials.map((t) => (
+                <div
+                  key={t.id}
+                  className="flex flex-col justify-between rounded-2xl border border-border bg-card p-6 shadow-xs gap-4"
+                >
+                  <div className="flex flex-col gap-3">
+                    <div
+                      className="flex items-center gap-1 text-gold"
+                      aria-label={`${t.rating} out of 5 stars`}
+                    >
+                      {Array.from({
+                        length: Math.max(1, Math.min(5, t.rating)),
+                      }).map((_, i) => (
+                        <Star key={i} className="size-4 fill-gold text-gold" />
+                      ))}
+                    </div>
+
+                    <p className="text-xs sm:text-sm text-foreground italic leading-relaxed">
+                      &ldquo;{t.quote}&rdquo;
+                    </p>
                   </div>
 
-                  <p className="text-xs sm:text-sm text-foreground italic leading-relaxed">
-                    &ldquo;{t.quote}&rdquo;
-                  </p>
+                  <div className="pt-4 border-t border-border/80">
+                    <h4 className="font-bold text-sm text-foreground">
+                      {t.pilgrimName}
+                    </h4>
+                    <p className="text-xs text-muted-foreground">
+                      {t.city} · {t.packageOrJourneyType}
+                    </p>
+                  </div>
                 </div>
-
-                <div className="pt-4 border-t border-border/80">
-                  <h4 className="font-bold text-sm text-foreground">
-                    {t.pilgrimName}
-                  </h4>
-                  <p className="text-xs text-muted-foreground">
-                    {t.city} · {t.packageOrJourneyType}
-                  </p>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ======================================================== */}
       {/* 5. FREQUENTLY ASKED QUESTIONS (ACCORDION)                */}
       {/* ======================================================== */}
-      <section className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 space-y-10">
-        <div className="text-center space-y-3">
-          <Badge className="bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
+      <section className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 flex flex-col gap-10 w-full">
+        <div className="text-center flex flex-col gap-3">
+          <Badge className="self-center bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
             Common Inquiries
           </Badge>
           <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
@@ -522,7 +495,11 @@ export function MarketingSections({
 
         <Accordion className="rounded-2xl border border-border bg-card p-2 sm:p-4 shadow-xs">
           {activeFaqs.map((faq, idx) => (
-            <AccordionItem key={faq.id || idx} value={`item-${idx}`} className="px-2">
+            <AccordionItem
+              key={faq.id || idx}
+              value={`item-${idx}`}
+              className="px-2"
+            >
               <AccordionTrigger className="text-left font-semibold text-sm sm:text-base text-foreground hover:text-primary py-4">
                 {faq.question}
               </AccordionTrigger>

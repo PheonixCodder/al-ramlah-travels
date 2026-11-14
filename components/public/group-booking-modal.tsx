@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -17,14 +17,29 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { submitGroupBooking } from "@/app/actions/applications"
+import { submitGroupBookingApplication } from "@/app/actions/applications"
+import { getTodayPktIso, toWaMeUrl } from "@/components/public/public-utils"
 import {
   CheckCircle2,
   AlertCircle,
   Loader2,
   MessageCircle,
+  Building2,
 } from "lucide-react"
 import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
+
+export interface BookingModalHotelOption {
+  pkgCode: string
+  label: string
+  makkahHotelName: string
+  makkahDistance: string
+  madinahHotelName: string
+  madinahDistance: string
+  sharingPricePkr: number
+  quadPricePkr: number
+  triplePricePkr: number
+  doublePricePkr: number
+}
 
 export interface BookingModalPackage {
   id: string
@@ -36,18 +51,7 @@ export interface BookingModalPackage {
   doublePricePkr: number
   infantPricePkr?: number
   giftedInclusions?: string[]
-  multiHotelOptions?: Array<{
-    pkgCode: string
-    label: string
-    makkahHotelName: string
-    makkahDistance: string
-    madinahHotelName: string
-    madinahDistance: string
-    sharingPricePkr: number
-    quadPricePkr: number
-    triplePricePkr: number
-    doublePricePkr: number
-  }>
+  multiHotelOptions?: BookingModalHotelOption[]
   departures: {
     id: string
     batchCode: string
@@ -76,6 +80,13 @@ interface GroupBookingModalProps {
   agencyWhatsapp?: string
 }
 
+function createSubmissionKey(prefix: string): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}_${crypto.randomUUID().replace(/-/g, "")}`
+  }
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+}
+
 export function GroupBookingModal({
   pkg,
   selectedBatchId,
@@ -85,20 +96,37 @@ export function GroupBookingModal({
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [submissionKey, setSubmissionKey] = useState(() =>
+    createSubmissionKey("grp")
+  )
+  const [honeypot, setHoneypot] = useState("")
   const [successResult, setSuccessResult] = useState<{
     referenceNumber: string
     grandTotalPkr: number
     whatsappUrl?: string
   } | null>(null)
 
-  // Filter available batches
-  const availableBatches = pkg.departures.filter(
-    (d) => d.status !== "closed" && d.totalSeats - d.bookedSeats > 0
+  const todayPkt = useMemo(() => getTodayPktIso(), [])
+  const availableBatches = useMemo(
+    () =>
+      pkg.departures.filter(
+        (d) =>
+          (d.status === "open" || d.status === "filling_fast") &&
+          d.departureDate >= todayPkt &&
+          d.totalSeats - d.bookedSeats > 0
+      ),
+    [pkg.departures, todayPkt]
   )
 
   const [batchId, setBatchId] = useState<string>(
-    selectedBatchId || availableBatches[0]?.id || pkg.departures[0]?.id || ""
+    selectedBatchId && availableBatches.some((b) => b.id === selectedBatchId)
+      ? selectedBatchId
+      : (availableBatches[0]?.id ?? "")
   )
+
+  const [selectedHotelOptionCode, setSelectedHotelOptionCode] =
+    useState<string>("")
   const [roomType, setRoomType] = useState<
     "sharing" | "double" | "triple" | "quad"
   >("quad")
@@ -116,7 +144,7 @@ export function GroupBookingModal({
   const [customerEmail, setCustomerEmail] = useState("")
   const [specialRequests, setSpecialRequests] = useState("")
 
-  const activeBatch = pkg.departures.find((d) => d.id === batchId)
+  const activeBatch = availableBatches.find((d) => d.id === batchId) ?? availableBatches[0]
   const remainingSeats = activeBatch
     ? activeBatch.totalSeats - activeBatch.bookedSeats
     : 0
@@ -124,23 +152,37 @@ export function GroupBookingModal({
   const totalPassports = adults + children + infants
   const isOverCapacity = partySeatCount > remainingSeats
 
-  // Price calculation
-  let pricePerPerson = 0
-  if (roomType === "sharing") {
-    pricePerPerson =
-      activeBatch?.sharingPriceOverridePkr ??
+  const matchedHotelOption = useMemo(
+    () =>
+      pkg.multiHotelOptions?.find(
+        (opt) =>
+          opt.pkgCode === selectedHotelOptionCode ||
+          opt.label === selectedHotelOptionCode
+      ) ?? null,
+    [pkg.multiHotelOptions, selectedHotelOptionCode]
+  )
+
+  const sharingTierRate = matchedHotelOption
+    ? (matchedHotelOption.sharingPricePkr ?? matchedHotelOption.quadPricePkr)
+    : (activeBatch?.sharingPriceOverridePkr ??
       pkg.sharingPricePkr ??
-      pkg.quadPricePkr
-  } else if (roomType === "quad") {
-    pricePerPerson =
-      activeBatch?.quadPriceOverridePkr ?? pkg.quadPricePkr
-  } else if (roomType === "triple") {
-    pricePerPerson =
-      activeBatch?.triplePriceOverridePkr ?? pkg.triplePricePkr
-  } else {
-    pricePerPerson =
-      activeBatch?.doublePriceOverridePkr ?? pkg.doublePricePkr
-  }
+      pkg.quadPricePkr)
+  const quadTierRate = matchedHotelOption
+    ? matchedHotelOption.quadPricePkr
+    : (activeBatch?.quadPriceOverridePkr ?? pkg.quadPricePkr)
+  const tripleTierRate = matchedHotelOption
+    ? matchedHotelOption.triplePricePkr
+    : (activeBatch?.triplePriceOverridePkr ?? pkg.triplePricePkr)
+  const doubleTierRate = matchedHotelOption
+    ? matchedHotelOption.doublePricePkr
+    : (activeBatch?.doublePriceOverridePkr ?? pkg.doublePricePkr)
+
+  let pricePerPerson = quadTierRate
+  if (roomType === "sharing") pricePerPerson = sharingTierRate
+  else if (roomType === "quad") pricePerPerson = quadTierRate
+  else if (roomType === "triple") pricePerPerson = tripleTierRate
+  else pricePerPerson = doubleTierRate
+
   const infantPrice = pkg.infantPricePkr ?? 65000
   const estimatedTotal =
     pricePerPerson * partySeatCount + infants * infantPrice
@@ -154,15 +196,19 @@ export function GroupBookingModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (isOverCapacity) return
+    if (loading || isOverCapacity || !activeBatch) return
     setLoading(true)
     setError(null)
+    setFieldErrors({})
 
     try {
-      const res = await submitGroupBooking({
+      const res = await submitGroupBookingApplication({
+        clientSubmissionId: submissionKey,
+        honeypot,
         groupPackageId: pkg.id,
-        groupDepartureId: batchId,
-        selectedRoomType: roomType,
+        groupDepartureId: activeBatch.id,
+        roomOccupancyTier: roomType,
+        selectedHotelOptionCode: selectedHotelOptionCode || undefined,
         passengers: { adults, children, infants },
         contact: {
           customerName,
@@ -172,17 +218,30 @@ export function GroupBookingModal({
           customerEmail: customerEmail || undefined,
           specialRequests: specialRequests || undefined,
         },
+        specialRequests: specialRequests || undefined,
       })
-      if (res.success && res.referenceNumber) {
-        setSuccessResult({
-          referenceNumber: res.referenceNumber,
-          grandTotalPkr: res.grandTotalPkr ?? estimatedTotal,
-          whatsappUrl: res.whatsappUrl,
-        })
+
+      // T-054: Surface server validation & capacity errors explicitly via role="alert"
+      if (!res.success || !res.referenceNumber) {
+        setError(
+          res.error ||
+            "Unable to reserve group seats. Please verify your details and try again."
+        )
+        setFieldErrors(res.fieldErrors ?? {})
+        return
       }
+
+      setSuccessResult({
+        referenceNumber: res.referenceNumber,
+        grandTotalPkr: res.grandTotalPkr ?? res.estimatedTotalPkr ?? estimatedTotal,
+        whatsappUrl: res.whatsappUrl,
+      })
     } catch (err: unknown) {
-      if (err instanceof Error) setError(err.message)
-      else setError("Failed to submit group booking.")
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to submit group booking. Please try again."
+      )
     } finally {
       setLoading(false)
     }
@@ -191,11 +250,22 @@ export function GroupBookingModal({
   function handleReset() {
     setSuccessResult(null)
     setError(null)
+    setFieldErrors({})
+    setSubmissionKey(createSubmissionKey("grp"))
     setOpen(false)
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (!nextOpen) {
+          setError(null)
+          setFieldErrors({})
+        }
+      }}
+    >
       <DialogTrigger
         render={
           trigger ? (
@@ -209,47 +279,47 @@ export function GroupBookingModal({
       />
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
         {successResult ? (
-          <div className="space-y-6 py-6 text-center">
+          <div className="flex flex-col gap-6 py-6 text-center">
             <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
               <CheckCircle2 className="size-8" />
             </div>
 
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <h3 className="font-display text-2xl font-bold text-foreground">
-                Group Booking Reserved!
+                Group Booking Inquiry Recorded!
               </h3>
               <p className="text-sm text-muted-foreground">
-                Your group seats on <strong>{pkg.title}</strong> have been provisionally held.
+                Your provisional reservation request on <strong>{pkg.title}</strong> is queued for ticketing confirmation.
               </p>
             </div>
 
-            {/* Reference Number Card */}
-            <div className="mx-auto max-w-sm rounded-xl border border-gold/40 bg-gold/5 p-4 space-y-2">
+            <div className="mx-auto max-w-sm w-full rounded-xl border border-gold/40 bg-gold/5 p-4 flex flex-col gap-2">
               <span className="text-xs uppercase font-semibold text-gold tracking-wider">
                 Booking Reference Code
               </span>
-              <div className="font-mono text-2xl font-extrabold text-foreground tracking-tight">
+              <div className="font-mono tabular-nums text-2xl font-extrabold text-foreground tracking-tight">
                 {successResult.referenceNumber}
               </div>
               <div className="text-xs text-muted-foreground pt-1 border-t border-border/80 flex justify-between">
                 <span>Total Estimated Cost:</span>
-                <span className="font-bold font-mono text-emerald-800">
+                <span className="font-bold font-mono tabular-nums text-emerald-800">
                   PKR {successResult.grandTotalPkr.toLocaleString()}
                 </span>
               </div>
             </div>
 
             <p className="text-xs text-muted-foreground max-w-md mx-auto">
-              Our dedicated ticketing concierge will contact you within 24 hours to confirm passport copies and verify group airline ticket issuance.
+              Our dedicated Lahore ticketing concierge will contact you within 24 hours to verify passport copies and confirm seat deposit.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
               <a
                 href={
                   successResult.whatsappUrl ||
-                  `https://wa.me/${agencyWhatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
-                    `Assalam-o-Alaikum, I just reserved group booking ${successResult.referenceNumber} for ${pkg.title}. Please guide me on payment and passport submission.`
-                  )}`
+                  toWaMeUrl(
+                    agencyWhatsapp,
+                    `Assalam-o-Alaikum Al Ramlah Travels, I submitted group booking ${successResult.referenceNumber} for ${pkg.title}. Please guide me on deposit verification and passport submission.`
+                  )
                 }
                 target="_blank"
                 rel="noopener noreferrer"
@@ -277,30 +347,47 @@ export function GroupBookingModal({
             </DialogHeader>
 
             {error && (
-              <div className="rounded-lg bg-red-50 p-2.5 text-xs text-red-800 border border-red-200">
-                {error}
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-xs text-red-800 border border-red-200"
+              >
+                <AlertCircle className="size-4 text-red-600 shrink-0 mt-0.5" />
+                <span>{error}</span>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4 py-2">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2" noValidate>
+              {/* Hidden Honeypot Trap (`T-055`) */}
+              <div className="sr-only" aria-hidden="true">
+                <label htmlFor={`gb-website-${pkg.id}`}>Company Website</label>
+                <input
+                  id={`gb-website-${pkg.id}`}
+                  name="website"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={honeypot}
+                  onChange={(e) => setHoneypot(e.target.value)}
+                />
+              </div>
+
               {/* Batch Selector */}
-              <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 <Label htmlFor="gb-batch">Select Departure Batch</Label>
                 <select
                   id="gb-batch"
-                  value={batchId}
-                  onChange={(e) => setBatchId(e.target.value)}
+                  value={activeBatch?.id ?? ""}
+                  onChange={(e) => {
+                    setBatchId(e.target.value)
+                    setSubmissionKey(createSubmissionKey("grp"))
+                  }}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
                   required
                 >
-                  {pkg.departures.map((d) => {
+                  {availableBatches.map((d) => {
                     const seatsLeft = d.totalSeats - d.bookedSeats
                     return (
-                      <option
-                        key={d.id}
-                        value={d.id}
-                        disabled={seatsLeft <= 0 || d.status === "closed"}
-                      >
+                      <option key={d.id} value={d.id}>
                         {d.batchCode} — {d.departureCity?.cityName || "Pakistan"} (
                         {d.departureDate} → {d.returnDate}) · {seatsLeft} seats left
                       </option>
@@ -310,11 +397,13 @@ export function GroupBookingModal({
                 {activeBatch && (
                   <div className="flex items-center justify-between text-xs text-muted-foreground pt-0.5">
                     <span>
-                      Gateway: {activeBatch.departureCity?.cityName} (
-                      {activeBatch.departureCity?.airportCode})
+                      Gateway: {activeBatch.departureCity?.cityName || "Pakistan"}
+                      {activeBatch.departureCity?.airportCode
+                        ? ` (${activeBatch.departureCity.airportCode})`
+                        : ""}
                     </span>
                     <span
-                      className={`font-semibold ${
+                      className={`font-semibold tabular-nums ${
                         remainingSeats <= 5 ? "text-red-700" : "text-emerald-700"
                       }`}
                     >
@@ -324,8 +413,91 @@ export function GroupBookingModal({
                 )}
               </div>
 
+              {/* Selectable Multi-Hotel Tier Options (`T-054`) */}
+              {pkg.multiHotelOptions && pkg.multiHotelOptions.length > 0 && (
+                <fieldset className="flex flex-col gap-2">
+                  <legend className="text-xs font-semibold text-foreground flex items-center gap-1.5 mb-1">
+                    <Building2 className="size-3.5 text-emerald-800" />
+                    <span>Choose Hotel Package Option</span>
+                  </legend>
+                  <div className="flex flex-col gap-2">
+                    <label
+                      className={`flex cursor-pointer items-center justify-between rounded-xl border p-2.5 text-xs transition-all ${
+                        selectedHotelOptionCode === ""
+                          ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                          : "border-border bg-card hover:bg-muted/30"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`hotel-option-${pkg.id}`}
+                          value=""
+                          checked={selectedHotelOptionCode === ""}
+                          onChange={() => {
+                            setSelectedHotelOptionCode("")
+                            setSubmissionKey(createSubmissionKey("grp"))
+                          }}
+                          className="accent-emerald-800"
+                        />
+                        <span className="font-semibold text-foreground">
+                          Standard Featured Package Hotels
+                        </span>
+                      </div>
+                      <span className="font-mono tabular-nums font-bold text-emerald-800">
+                        Quad PKR{" "}
+                        {(
+                          activeBatch?.quadPriceOverridePkr ?? pkg.quadPricePkr
+                        ).toLocaleString()}
+                      </span>
+                    </label>
+
+                    {pkg.multiHotelOptions.map((opt) => {
+                      const codeKey = opt.pkgCode || opt.label
+                      const isChosen = selectedHotelOptionCode === codeKey
+                      return (
+                        <label
+                          key={codeKey}
+                          className={`flex cursor-pointer items-center justify-between rounded-xl border p-2.5 text-xs transition-all gap-2 ${
+                            isChosen
+                              ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                              : "border-border bg-card hover:bg-muted/30"
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <input
+                              type="radio"
+                              name={`hotel-option-${pkg.id}`}
+                              value={codeKey}
+                              checked={isChosen}
+                              onChange={() => {
+                                setSelectedHotelOptionCode(codeKey)
+                                setSubmissionKey(createSubmissionKey("grp"))
+                              }}
+                              className="mt-0.5 accent-emerald-800"
+                            />
+                            <div>
+                              <span className="font-bold text-foreground block">
+                                {opt.label}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground block">
+                                {opt.makkahHotelName} ({opt.makkahDistance}) ·{" "}
+                                {opt.madinahHotelName} ({opt.madinahDistance})
+                              </span>
+                            </div>
+                          </div>
+                          <span className="font-mono tabular-nums font-bold text-emerald-800 shrink-0">
+                            Quad PKR {opt.quadPricePkr.toLocaleString()}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </fieldset>
+              )}
+
               {/* Room Sharing Tier */}
-              <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold">
                   Select Room Sharing Tier
                 </Label>
@@ -342,13 +514,8 @@ export function GroupBookingModal({
                     <span className="block text-xs font-bold text-foreground">
                       Sharing Bed
                     </span>
-                    <span className="font-mono text-xs font-semibold text-emerald-800">
-                      PKR{" "}
-                      {(
-                        activeBatch?.sharingPriceOverridePkr ??
-                        pkg.sharingPricePkr ??
-                        pkg.quadPricePkr
-                      ).toLocaleString()}
+                    <span className="font-mono tabular-nums text-xs font-semibold text-emerald-800">
+                      PKR {sharingTierRate.toLocaleString()}
                     </span>
                   </button>
 
@@ -364,11 +531,8 @@ export function GroupBookingModal({
                     <span className="block text-xs font-bold text-foreground">
                       Quad (4-Bed)
                     </span>
-                    <span className="font-mono text-xs font-semibold text-emerald-800">
-                      PKR{" "}
-                      {(
-                        activeBatch?.quadPriceOverridePkr ?? pkg.quadPricePkr
-                      ).toLocaleString()}
+                    <span className="font-mono tabular-nums text-xs font-semibold text-emerald-800">
+                      PKR {quadTierRate.toLocaleString()}
                     </span>
                   </button>
 
@@ -384,11 +548,8 @@ export function GroupBookingModal({
                     <span className="block text-xs font-bold text-foreground">
                       Triple (3-Bed)
                     </span>
-                    <span className="font-mono text-xs font-semibold text-emerald-800">
-                      PKR{" "}
-                      {(
-                        activeBatch?.triplePriceOverridePkr ?? pkg.triplePricePkr
-                      ).toLocaleString()}
+                    <span className="font-mono tabular-nums text-xs font-semibold text-emerald-800">
+                      PKR {tripleTierRate.toLocaleString()}
                     </span>
                   </button>
 
@@ -404,26 +565,23 @@ export function GroupBookingModal({
                     <span className="block text-xs font-bold text-foreground">
                       Double (2-Bed)
                     </span>
-                    <span className="font-mono text-xs font-semibold text-emerald-800">
-                      PKR{" "}
-                      {(
-                        activeBatch?.doublePriceOverridePkr ?? pkg.doublePricePkr
-                      ).toLocaleString()}
+                    <span className="font-mono tabular-nums text-xs font-semibold text-emerald-800">
+                      PKR {doubleTierRate.toLocaleString()}
                     </span>
                   </button>
                 </div>
               </div>
 
               {/* Passenger Demographics */}
-              <div className="rounded-xl border border-border/80 bg-muted/20 p-3 space-y-2">
-                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="rounded-xl border border-border/80 bg-muted/20 p-3 flex flex-col gap-2">
+                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider tabular-nums">
                   <span>Passenger Demographics</span>
                   <span>
                     Seats: {partySeatCount} · Passports: {totalPassports}
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1">
+                  <div className="flex flex-col gap-1">
                     <Label htmlFor="gb-adults" className="text-xs">
                       Adults (12+ yrs)
                     </Label>
@@ -431,15 +589,22 @@ export function GroupBookingModal({
                       id="gb-adults"
                       type="number"
                       min={1}
-                      max={20}
+                      max={30}
                       value={adults}
-                      onChange={(e) =>
-                        setAdults(Math.max(1, Number(e.target.value) || 1))
-                      }
+                      onChange={(e) => {
+                        const nextAdults = Math.max(
+                          1,
+                          Math.min(30, Number(e.target.value) || 1)
+                        )
+                        setAdults(nextAdults)
+                        if (infants > nextAdults) {
+                          setInfants(nextAdults)
+                        }
+                      }}
                       required
                     />
                   </div>
-                  <div className="space-y-1">
+                  <div className="flex flex-col gap-1">
                     <Label htmlFor="gb-children" className="text-xs">
                       Children (2–11 yrs)
                     </Label>
@@ -450,11 +615,13 @@ export function GroupBookingModal({
                       max={20}
                       value={children}
                       onChange={(e) =>
-                        setChildren(Math.max(0, Number(e.target.value) || 0))
+                        setChildren(
+                          Math.max(0, Math.min(20, Number(e.target.value) || 0))
+                        )
                       }
                     />
                   </div>
-                  <div className="space-y-1">
+                  <div className="flex flex-col gap-1">
                     <Label htmlFor="gb-infants" className="text-xs">
                       Infants (&lt;2 yrs)
                     </Label>
@@ -462,20 +629,29 @@ export function GroupBookingModal({
                       id="gb-infants"
                       type="number"
                       min={0}
-                      max={5}
+                      max={Math.min(10, adults)}
                       value={infants}
                       onChange={(e) =>
-                        setInfants(Math.max(0, Number(e.target.value) || 0))
+                        setInfants(
+                          Math.max(
+                            0,
+                            Math.min(10, adults, Number(e.target.value) || 0)
+                          )
+                        )
                       }
                     />
                   </div>
                 </div>
 
                 {isOverCapacity && (
-                  <div className="flex items-center gap-1.5 rounded-md bg-red-100 p-2 text-xs font-medium text-red-800">
+                  <div
+                    role="alert"
+                    className="flex items-center gap-1.5 rounded-md bg-red-100 p-2 text-xs font-medium text-red-800"
+                  >
                     <AlertCircle className="size-4 shrink-0" />
                     <span>
-                      Requested {partySeatCount} seats exceeds the {remainingSeats} available on this batch.
+                      Requested {partySeatCount} seat(s) exceeds the{" "}
+                      {remainingSeats} available on this batch (infants require 0 seats).
                     </span>
                   </div>
                 )}
@@ -483,52 +659,78 @@ export function GroupBookingModal({
 
               {/* Pilgrim Contact Info */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="gb-name">Lead Pilgrim Name</Label>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="gb-name">Lead Pilgrim Name *</Label>
                   <Input
                     id="gb-name"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     placeholder="e.g. Muhammad Farooq"
+                    aria-invalid={Boolean(fieldErrors["contact.customerName"])}
                     required
                   />
+                  {fieldErrors["contact.customerName"] && (
+                    <p className="text-[11px] font-medium text-red-700">
+                      {fieldErrors["contact.customerName"]}
+                    </p>
+                  )}
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="gb-city">City in Pakistan</Label>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="gb-city">City of Residence *</Label>
                   <Input
                     id="gb-city"
                     value={customerCity}
                     onChange={(e) => setCustomerCity(e.target.value)}
-                    placeholder="e.g. Lahore / Karachi"
+                    placeholder="e.g. Lahore / Karachi / London"
+                    aria-invalid={Boolean(fieldErrors["contact.customerCity"])}
                     required
                   />
+                  {fieldErrors["contact.customerCity"] && (
+                    <p className="text-[11px] font-medium text-red-700">
+                      {fieldErrors["contact.customerCity"]}
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="gb-phone">Phone Number</Label>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="gb-phone">Phone Number *</Label>
                   <Input
                     id="gb-phone"
+                    type="tel"
                     value={customerPhone}
                     onChange={(e) => syncPhoneToWhatsapp(e.target.value)}
                     placeholder="0327 4029701"
+                    aria-invalid={Boolean(fieldErrors["contact.customerPhone"])}
                     required
                   />
+                  {fieldErrors["contact.customerPhone"] && (
+                    <p className="text-[11px] font-medium text-red-700">
+                      {fieldErrors["contact.customerPhone"]}
+                    </p>
+                  )}
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="gb-wa">WhatsApp Number</Label>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="gb-wa">WhatsApp Number *</Label>
                   <Input
                     id="gb-wa"
+                    type="tel"
                     value={customerWhatsapp}
                     onChange={(e) => setCustomerWhatsapp(e.target.value)}
                     placeholder="0327 4029701"
+                    aria-invalid={Boolean(fieldErrors["contact.customerWhatsapp"])}
                     required
                   />
+                  {fieldErrors["contact.customerWhatsapp"] && (
+                    <p className="text-[11px] font-medium text-red-700">
+                      {fieldErrors["contact.customerWhatsapp"]}
+                    </p>
+                  )}
                 </div>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 <Label htmlFor="gb-email">Email Address (Optional)</Label>
                 <Input
                   id="gb-email"
@@ -536,11 +738,14 @@ export function GroupBookingModal({
                   value={customerEmail}
                   onChange={(e) => setCustomerEmail(e.target.value)}
                   placeholder="farooq@example.com"
+                  aria-invalid={Boolean(fieldErrors["contact.customerEmail"])}
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="gb-notes">Special Requests (Wheelchair, Dietary, etc.)</Label>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="gb-notes">
+                  Special Requests (Wheelchair, Dietary, etc.)
+                </Label>
                 <Textarea
                   id="gb-notes"
                   rows={2}
@@ -553,18 +758,24 @@ export function GroupBookingModal({
               {/* Price Estimation Bar */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-gold/30 bg-gold/5 p-3 text-xs gap-1">
                 <div>
-                  <span className="text-muted-foreground block">
-                    Estimated Total ({partySeatCount} seats × PKR {pricePerPerson.toLocaleString()}
+                  <span className="text-muted-foreground block tabular-nums">
+                    Estimated Total ({partySeatCount} seat
+                    {partySeatCount === 1 ? "" : "s"} × PKR{" "}
+                    {pricePerPerson.toLocaleString()}
                     {infants > 0
                       ? ` + ${infants} infant${infants > 1 ? "s" : ""} × PKR ${infantPrice.toLocaleString()}`
-                      : ""}):
+                      : ""}
+                    ):
                   </span>
-                  <span className="font-mono text-base font-extrabold text-foreground">
+                  <span className="font-mono tabular-nums text-base font-extrabold text-foreground">
                     PKR {estimatedTotal.toLocaleString()}
                   </span>
                 </div>
-                <Badge variant="outline" className="text-[10px] text-muted-foreground self-start sm:self-auto">
-                  Provisional Hold
+                <Badge
+                  variant="outline"
+                  className="text-[10px] text-muted-foreground self-start sm:self-auto"
+                >
+                  Soft Seat Hold
                 </Badge>
               </div>
 
@@ -574,7 +785,7 @@ export function GroupBookingModal({
                 </DialogClose>
                 <Button
                   type="submit"
-                  disabled={loading || isOverCapacity}
+                  disabled={loading || isOverCapacity || !activeBatch}
                   className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   {loading && <Loader2 className="size-4 animate-spin" />}

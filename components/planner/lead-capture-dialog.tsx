@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useRef, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,10 @@ import {
   submitCustomApplication,
   type CustomApplicationResult,
 } from "@/app/actions/applications"
-import type { CustomJourneyApplicationInput } from "@/lib/validations/application"
+import {
+  usePlanner,
+  type PlannerSubmissionPayload,
+} from "./planner-context"
 import {
   CheckCircle2,
   Copy,
@@ -28,10 +31,9 @@ import {
 interface LeadCaptureDialogProps {
   isOpen: boolean
   onClose: () => void
-  payload: Omit<CustomJourneyApplicationInput, "contact">
+  payload: Omit<PlannerSubmissionPayload, "contact">
   isVisaOnly: boolean
   calculatedVisaTotalPkr?: number
-  defaultCity?: string
 }
 
 export function LeadCaptureDialog({
@@ -39,51 +41,45 @@ export function LeadCaptureDialog({
   onClose,
   payload,
   isVisaOnly,
-  calculatedVisaTotalPkr: _calculatedVisaTotalPkr,
-  defaultCity = "Lahore",
 }: LeadCaptureDialogProps) {
-  const [customerName, setCustomerName] = useState("")
-  const [customerPhone, setCustomerPhone] = useState("")
-  const [customerWhatsapp, setCustomerWhatsapp] = useState("")
-  const [customerCity, setCustomerCity] = useState(defaultCity || "Lahore")
-  const [cityTouched, setCityTouched] = useState(false)
-  const [customerEmail, setCustomerEmail] = useState("")
-  const [specialRequests, setSpecialRequests] = useState("")
-  const [sameAsPhone, setSameAsPhone] = useState(true)
+  const {
+    contactDraft,
+    updateContactDraft,
+    clientSubmissionId,
+    resetSubmissionSession,
+  } = usePlanner()
 
-  React.useEffect(() => {
-    if (!cityTouched && defaultCity) {
-      setCustomerCity(defaultCity)
-    }
-  }, [defaultCity, cityTouched])
-
+  const [honeypot, setHoneypot] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [result, setResult] = useState<CustomApplicationResult | null>(null)
   const [copied, setCopied] = useState(false)
-
-  const handlePhoneChange = (val: string) => {
-    setCustomerPhone(val)
-    if (sameAsPhone) {
-      setCustomerWhatsapp(val)
-    }
-  }
+  const inFlightRef = useRef(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (inFlightRef.current || isLoading) return
+    inFlightRef.current = true
     setError(null)
+    setFieldErrors({})
     setIsLoading(true)
 
     try {
-      const fullPayload: CustomJourneyApplicationInput = {
+      const fullPayload: PlannerSubmissionPayload = {
         ...payload,
+        clientSubmissionId: payload.clientSubmissionId || clientSubmissionId,
+        honeypot,
         contact: {
-          customerName: customerName.trim(),
-          customerPhone: customerPhone.trim(),
-          customerWhatsapp: (sameAsPhone ? customerPhone : customerWhatsapp).trim(),
-          customerCity: customerCity.trim(),
-          customerEmail: customerEmail.trim() || undefined,
-          specialRequests: specialRequests.trim() || undefined,
+          customerName: contactDraft.customerName.trim(),
+          customerPhone: contactDraft.customerPhone.trim(),
+          customerWhatsapp: (contactDraft.sameAsPhone
+            ? contactDraft.customerPhone
+            : contactDraft.customerWhatsapp
+          ).trim(),
+          customerCity: contactDraft.customerCity.trim(),
+          customerEmail: contactDraft.customerEmail.trim() || undefined,
+          specialRequests: contactDraft.specialRequests.trim() || undefined,
         },
       }
 
@@ -92,10 +88,14 @@ export function LeadCaptureDialog({
         setResult(res)
       } else {
         setError(res.error || "Failed to submit request. Please check inputs.")
+        if (res.fieldErrors) {
+          setFieldErrors(res.fieldErrors)
+        }
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Submission failed.")
     } finally {
+      inFlightRef.current = false
       setIsLoading(false)
     }
   }
@@ -120,7 +120,6 @@ export function LeadCaptureDialog({
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md bg-white border border-[#E6DEC8] p-5">
         {result?.success ? (
-          /* ================= SUCCESS CONFIRMATION VIEW ================= */
           <div className="flex flex-col items-center text-center py-2">
             <div className="flex size-14 items-center justify-center rounded-full bg-[#D1FAE5] text-[#065F46] mb-3">
               <CheckCircle2 className="size-8" />
@@ -140,7 +139,7 @@ export function LeadCaptureDialog({
                 Official Reference Code
               </span>
               <div className="flex items-center gap-2 mt-1">
-                <span className="font-mono text-xl font-bold tracking-wider text-[#0A3622]">
+                <span className="font-mono text-xl font-bold tracking-wider text-[#0A3622] tabular-nums">
                   {result.referenceNumber}
                 </span>
                 <button
@@ -161,13 +160,14 @@ export function LeadCaptureDialog({
 
             {/* Pricing note if visa only */}
             {result.isVisaOnly && result.calculatedVisaTotalPkr && (
-              <div className="mt-3 w-full rounded-lg bg-[#FAF7F0] border border-[#E6DEC8] p-2.5 text-xs">
+              <div className="mt-3 w-full rounded-lg bg-[#FAF7F0] border border-[#E6DEC8] p-2.5 text-xs tabular-nums">
                 <span className="text-[#686E65]">Fixed Visa Total: </span>
                 <strong className="font-mono text-[#0A3622] text-sm font-bold">
                   PKR {result.calculatedVisaTotalPkr.toLocaleString()}
                 </strong>
                 <p className="text-[10px] text-[#686E65] mt-0.5">
-                  ({result.totalKsaDays} Days in KSA • {result.calculatedVisaTier?.replace("_", " ").toUpperCase()})
+                  ({result.totalKsaDays} Days in KSA •{" "}
+                  {result.calculatedVisaTier?.replace("_", " ").toUpperCase()})
                 </p>
               </div>
             )}
@@ -198,16 +198,19 @@ export function LeadCaptureDialog({
 
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => {
+                  setResult(null)
+                  resetSubmissionSession()
+                  onClose()
+                }}
                 className="text-[11px] text-[#686E65] hover:text-[#1A1D1A] mt-1"
               >
-                Close and return to planner
+                Close and start another inquiry
               </button>
             </div>
           </div>
         ) : (
-          /* ================= LEAD CAPTURE FORM VIEW ================= */
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} noValidate>
             <DialogHeader className="mb-3">
               <DialogTitle className="text-base font-bold text-[#0A3622]">
                 {isVisaOnly ? "Confirm Visa Inquiry" : "Request Official Journey Quote"}
@@ -217,8 +220,25 @@ export function LeadCaptureDialog({
               </DialogDescription>
             </DialogHeader>
 
+            {/* Hidden Anti-Spam Honeypot (T-055) */}
+            <div aria-hidden="true" className="sr-only">
+              <label htmlFor="dialog-lead-website">Website</label>
+              <input
+                id="dialog-lead-website"
+                name="website"
+                type="text"
+                tabIndex={-1}
+                autoComplete="off"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+              />
+            </div>
+
             {error && (
-              <div className="mb-3 flex items-start gap-2 rounded-lg bg-[#FEE2E2] border border-[#DC2626]/30 p-2.5 text-xs text-[#991B1B]">
+              <div
+                role="alert"
+                className="mb-3 flex items-start gap-2 rounded-lg bg-[#FEE2E2] border border-[#DC2626]/30 p-2.5 text-xs text-[#991B1B]"
+              >
                 <AlertCircle className="size-4 shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
@@ -237,14 +257,27 @@ export function LeadCaptureDialog({
                   id="dialog-lead-full-name"
                   type="text"
                   required
+                  aria-invalid={Boolean(fieldErrors["contact.customerName"])}
+                  aria-describedby={
+                    fieldErrors["contact.customerName"]
+                      ? "dialog-err-name"
+                      : undefined
+                  }
                   placeholder="e.g. Muhammad Usman Farooq"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  value={contactDraft.customerName}
+                  onChange={(e) =>
+                    updateContactDraft({ customerName: e.target.value })
+                  }
                   className="w-full rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-3 py-2 text-xs font-medium text-[#1A1D1A] focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
                 />
+                {fieldErrors["contact.customerName"] && (
+                  <p id="dialog-err-name" className="mt-1 text-[11px] text-[#991B1B]">
+                    {fieldErrors["contact.customerName"]}
+                  </p>
+                )}
               </div>
 
-              {/* Phone / WhatsApp */}
+              {/* Phone & City */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label
@@ -257,11 +290,24 @@ export function LeadCaptureDialog({
                     id="dialog-lead-phone"
                     type="tel"
                     required
-                    placeholder="0327 4029701"
-                    value={customerPhone}
-                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    aria-invalid={Boolean(fieldErrors["contact.customerPhone"])}
+                    aria-describedby={
+                      fieldErrors["contact.customerPhone"]
+                        ? "dialog-err-phone"
+                        : undefined
+                    }
+                    placeholder="0327 4029701 or +44..."
+                    value={contactDraft.customerPhone}
+                    onChange={(e) =>
+                      updateContactDraft({ customerPhone: e.target.value })
+                    }
                     className="w-full rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-3 py-2 text-xs font-medium text-[#1A1D1A] focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
                   />
+                  {fieldErrors["contact.customerPhone"] && (
+                    <p id="dialog-err-phone" className="mt-1 text-[11px] text-[#991B1B]">
+                      {fieldErrors["contact.customerPhone"]}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -269,20 +315,33 @@ export function LeadCaptureDialog({
                     htmlFor="dialog-lead-city"
                     className="block text-[11px] font-medium text-[#686E65] mb-1"
                   >
-                    City in Pakistan *
+                    City of Residence *
                   </label>
                   <input
                     id="dialog-lead-city"
                     type="text"
                     required
-                    placeholder="e.g. Lahore / Islamabad"
-                    value={customerCity}
-                    onChange={(e) => {
-                      setCityTouched(true)
-                      setCustomerCity(e.target.value)
-                    }}
+                    aria-invalid={Boolean(fieldErrors["contact.customerCity"])}
+                    aria-describedby={
+                      fieldErrors["contact.customerCity"]
+                        ? "dialog-err-city"
+                        : undefined
+                    }
+                    placeholder="e.g. Lahore / London / Dubai"
+                    value={contactDraft.customerCity}
+                    onChange={(e) =>
+                      updateContactDraft({
+                        cityTouched: true,
+                        customerCity: e.target.value,
+                      })
+                    }
                     className="w-full rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-3 py-2 text-xs font-medium text-[#1A1D1A] focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
                   />
+                  {fieldErrors["contact.customerCity"] && (
+                    <p id="dialog-err-city" className="mt-1 text-[11px] text-[#991B1B]">
+                      {fieldErrors["contact.customerCity"]}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -291,8 +350,10 @@ export function LeadCaptureDialog({
                 <input
                   id="dialog-lead-same-whatsapp"
                   type="checkbox"
-                  checked={sameAsPhone}
-                  onChange={(e) => setSameAsPhone(e.target.checked)}
+                  checked={contactDraft.sameAsPhone}
+                  onChange={(e) =>
+                    updateContactDraft({ sameAsPhone: e.target.checked })
+                  }
                   className="size-3.5 accent-[#0A3622] rounded"
                 />
                 <label
@@ -303,7 +364,7 @@ export function LeadCaptureDialog({
                 </label>
               </div>
 
-              {!sameAsPhone && (
+              {!contactDraft.sameAsPhone && (
                 <div>
                   <label
                     htmlFor="dialog-lead-whatsapp"
@@ -315,11 +376,19 @@ export function LeadCaptureDialog({
                     id="dialog-lead-whatsapp"
                     type="tel"
                     required
-                    placeholder="0327 4029701"
-                    value={customerWhatsapp}
-                    onChange={(e) => setCustomerWhatsapp(e.target.value)}
+                    aria-invalid={Boolean(fieldErrors["contact.customerWhatsapp"])}
+                    placeholder="0327 4029701 or +44..."
+                    value={contactDraft.customerWhatsapp}
+                    onChange={(e) =>
+                      updateContactDraft({ customerWhatsapp: e.target.value })
+                    }
                     className="w-full rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-3 py-2 text-xs font-medium text-[#1A1D1A] focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
                   />
+                  {fieldErrors["contact.customerWhatsapp"] && (
+                    <p className="mt-1 text-[11px] text-[#991B1B]">
+                      {fieldErrors["contact.customerWhatsapp"]}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -334,11 +403,19 @@ export function LeadCaptureDialog({
                 <input
                   id="dialog-lead-email"
                   type="email"
+                  aria-invalid={Boolean(fieldErrors["contact.customerEmail"])}
                   placeholder="name@example.com"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
+                  value={contactDraft.customerEmail}
+                  onChange={(e) =>
+                    updateContactDraft({ customerEmail: e.target.value })
+                  }
                   className="w-full rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-3 py-2 text-xs font-medium text-[#1A1D1A] focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
                 />
+                {fieldErrors["contact.customerEmail"] && (
+                  <p className="mt-1 text-[11px] text-[#991B1B]">
+                    {fieldErrors["contact.customerEmail"]}
+                  </p>
+                )}
               </div>
 
               {/* Special Requests */}
@@ -352,9 +429,12 @@ export function LeadCaptureDialog({
                 <textarea
                   id="dialog-lead-special-requests"
                   rows={2}
+                  aria-invalid={Boolean(fieldErrors["contact.specialRequests"])}
                   placeholder="e.g. Traveling with elderly parents; wheelchair assistance requested."
-                  value={specialRequests}
-                  onChange={(e) => setSpecialRequests(e.target.value)}
+                  value={contactDraft.specialRequests}
+                  onChange={(e) =>
+                    updateContactDraft({ specialRequests: e.target.value })
+                  }
                   className="w-full rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-3 py-2 text-xs font-medium text-[#1A1D1A] focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
                 />
               </div>
@@ -375,7 +455,12 @@ export function LeadCaptureDialog({
 
                 <Button
                   type="submit"
-                  disabled={isLoading || !customerName || !customerPhone}
+                  disabled={
+                    isLoading ||
+                    !contactDraft.customerName.trim() ||
+                    !contactDraft.customerPhone.trim() ||
+                    !contactDraft.customerCity.trim()
+                  }
                   size="sm"
                   className="bg-[#0A3622] hover:bg-[#0F4C31] text-white text-xs font-semibold px-4"
                 >

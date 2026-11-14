@@ -43,7 +43,7 @@ export const metadata: Metadata = {
   ),
   title: {
     default: "Al Ramlah Travels — Bespoke Umrah, Hajj & Haramain Journeys",
-    template: "%s | Al Ramlah Travels",
+    template: "%s",
   },
   description:
     "Where Purpose Meets Excellence — Hajj 2027, Custom Umrah Packages, Flights, Haramain Hotels & Ground Transport by Al Ramlah Travels.",
@@ -71,6 +71,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#0A3622",
+  colorScheme: "light",
   width: "device-width",
   initialScale: 1,
 }
@@ -83,9 +84,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      data-theme="light"
+      style={{ colorScheme: "light" }}
       suppressHydrationWarning
       className={cn(
-        "antialiased selection:bg-primary/20 selection:text-primary",
+        "light antialiased selection:bg-primary/20 selection:text-primary",
         fontSans.variable,
         fontDisplay.variable,
         fontMono.variable,

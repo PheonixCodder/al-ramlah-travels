@@ -1,9 +1,16 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
+import NextImage, { type ImageProps } from "next/image"
+
+const Image = (
+  typeof NextImage === "function"
+    ? NextImage
+    : (NextImage as { default: React.ComponentType<ImageProps> }).default
+) as React.ComponentType<ImageProps>
 import type * as schema from "@/db/schema"
 import { Star, Footprints, Bus, Check, Sparkles, ArrowRight } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 interface HotelCardProps {
   hotel: typeof schema.hotels.$inferSelect
@@ -11,14 +18,41 @@ interface HotelCardProps {
   onSelect: () => void
 }
 
+const FALLBACK_HOTEL_IMAGE =
+  "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=600"
+
+function isConfiguredImageHost(src: string): boolean {
+  if (src.startsWith("/")) return true
+  try {
+    const parsed = new URL(src)
+    if (parsed.protocol !== "https:") return false
+    const host = parsed.hostname.toLowerCase()
+    return (
+      host === "images.unsplash.com" ||
+      host === "plus.unsplash.com" ||
+      host === "r2.alramlahtravels.com" ||
+      host === "assets.alramlahtravels.com" ||
+      host.endsWith(".r2.dev") ||
+      host.endsWith(".r2.cloudflarestorage.com") ||
+      host.endsWith(".public.blob.vercel-storage.com")
+    )
+  } catch {
+    return false
+  }
+}
+
 export function HotelCard({ hotel, isSelected, onSelect }: HotelCardProps) {
   const isWalking = hotel.accessType === "walking"
+  const [imgSrc, setImgSrc] = useState<string>(
+    hotel.imageUrl?.trim() ? hotel.imageUrl : FALLBACK_HOTEL_IMAGE
+  )
 
   return (
     <div
       onClick={onSelect}
       role="button"
       tabIndex={0}
+      aria-pressed={isSelected}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault()
@@ -34,15 +68,17 @@ export function HotelCard({ hotel, isSelected, onSelect }: HotelCardProps) {
     >
       {/* Top Image Banner */}
       <div className="relative h-44 w-full shrink-0 overflow-hidden bg-[#0A3622]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={hotel.imageUrl}
+        <Image
+          src={imgSrc}
           alt={hotel.name}
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          onError={(e) => {
-            // Fallback placeholder image if external unsplash fails
-            ;(e.target as HTMLImageElement).src =
-              "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=600"
+          fill
+          sizes="(max-width: 640px) 100vw, 50vw"
+          unoptimized={!isConfiguredImageHost(imgSrc)}
+          className="object-cover transition-transform duration-300 group-hover:scale-105"
+          onError={() => {
+            if (imgSrc !== FALLBACK_HOTEL_IMAGE) {
+              setImgSrc(FALLBACK_HOTEL_IMAGE)
+            }
           }}
         />
 
@@ -91,21 +127,19 @@ export function HotelCard({ hotel, isSelected, onSelect }: HotelCardProps) {
             {hotel.starRating === 5
               ? "5-Star Luxury"
               : hotel.starRating === 4
-              ? "4-Star Premium"
-              : hotel.starRating === 3
-              ? "3-Star Comfort"
-              : hotel.starRating === 2
-              ? "2-Star Standard"
-              : "Economy"}
+                ? "4-Star Premium"
+                : hotel.starRating === 3
+                  ? "3-Star Comfort"
+                  : hotel.starRating === 2
+                    ? "2-Star Standard"
+                    : "Economy"}
           </span>
         </div>
 
-        {/* Bottom-Right: Sharing Rate Hint if available */}
-        {hotel.sharingPriceSar && hotel.sharingPriceSar > 0 ? (
-          <div className="absolute bottom-2.5 right-2.5 rounded-md bg-black/60 backdrop-blur-xs px-2 py-0.5 border border-white/10 text-[10px] font-semibold text-white/90">
-            From <span className="font-bold text-[#C5A059]">{hotel.sharingPriceSar} SAR</span>
-          </div>
-        ) : null}
+        {/* Bottom-Right: Invariant #2 — Never expose raw hotel rates; display Live Rate badge */}
+        <div className="absolute bottom-2.5 right-2.5 rounded-md bg-black/65 backdrop-blur-xs px-2 py-0.5 border border-[#C5A059]/40 text-[10px] font-semibold text-[#FAF7F0]">
+          Live Rate — Confirmed upon submission
+        </div>
       </div>
 
       {/* Full-Width Card Body */}
@@ -174,4 +208,3 @@ export function HotelCard({ hotel, isSelected, onSelect }: HotelCardProps) {
     </div>
   )
 }
-

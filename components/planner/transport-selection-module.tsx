@@ -13,7 +13,7 @@ import {
   Check,
   AlertTriangle,
 } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 const CATEGORY_LABELS: Record<string, string> = {
   sedan: "Sedan",

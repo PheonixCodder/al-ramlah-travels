@@ -38,8 +38,17 @@ export default async function PublicLayout({
         secondaryPhone={info.secondaryPhone}
         whatsappNumber={info.primaryWhatsapp}
         agencyName={info.agencyName}
+        legalEntityName={settings?.legalEntityName ?? info.agencyName}
         supportEmail={info.supportEmail}
         officeAddress={info.officeAddress}
+        dtsLicense={settings?.dtsLicense ?? null}
+        moraLicense={settings?.moraLicense ?? null}
+        iataCode={settings?.iataCode ?? null}
+        ntnNumber={settings?.ntnNumber ?? null}
+        facebookUrl={settings?.facebookUrl ?? null}
+        instagramUrl={settings?.instagramUrl ?? null}
+        youtubeUrl={settings?.youtubeUrl ?? null}
+        tiktokUrl={settings?.tiktokUrl ?? null}
       />
       <WhatsAppFab whatsappNumber={info.primaryWhatsapp} />
     </div>

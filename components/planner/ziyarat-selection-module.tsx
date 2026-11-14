@@ -2,6 +2,7 @@
 
 import React, { useMemo } from "react"
 import { usePlanner } from "./planner-context"
+import { ArabicText } from "@/components/public/arabic-text"
 import {
   Compass,
   Check,
@@ -10,7 +11,7 @@ import {
   Users,
   Luggage,
 } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 const CATEGORY_LABELS: Record<string, string> = {
   sedan: "Sedan",
@@ -28,6 +29,7 @@ export function ZiyaratSelectionModule() {
     catalog,
     ziyarat,
     derived,
+    hasCityLegs,
     itinerary,
     setZiyaratScope,
     toggleZiyaratPlace,
@@ -40,7 +42,6 @@ export function ZiyaratSelectionModule() {
   const { ziyaratPlaces, vehicles } = catalog
   const { leadVehicle } = derived
 
-  const hasCityLegs = Boolean(pillars.hotels || pillars.transport)
   const isSingleCityLocked =
     hasCityLegs &&
     (citySequence === "makkah_only" || citySequence === "madinah_only")
@@ -109,7 +110,7 @@ export function ZiyaratSelectionModule() {
               Select which holy cities and historical landmarks to include in your guided tour
             </p>
           </div>
-          <span className="self-start sm:self-auto rounded-full bg-[#FAF7F0] border border-[#C5A059] px-3 py-1 text-[10px] font-bold text-[#8F6E2A]">
+          <span className="self-start sm:self-auto rounded-full bg-[#FAF7F0] border border-[#C5A059] px-3 py-1 text-[10px] font-bold text-[#8F6E2A] tabular-nums">
             {selectedPlaceIds.length} Sacred{" "}
             {selectedPlaceIds.length === 1 ? "Site" : "Sites"} Selected
           </span>
@@ -147,12 +148,9 @@ export function ZiyaratSelectionModule() {
                   <span className="text-xs sm:text-sm font-bold text-[#0A3622] block">
                     Makkah &amp; Madinah
                   </span>
-                  <span
-                    className="font-arabic text-xs text-[#8F6E2A] block mt-0.5"
-                    dir="rtl"
-                  >
+                  <ArabicText className="text-xs text-[#8F6E2A] block mt-0.5">
                     مكة والمدينة
-                  </span>
+                  </ArabicText>
                 </div>
                 <span
                   className={cn(
@@ -168,7 +166,7 @@ export function ZiyaratSelectionModule() {
               <p className="text-[11px] text-[#686E65] leading-relaxed mb-3">
                 Guided historical tours in both holy cities
               </p>
-              <div className="border-t border-[#E6DEC8]/60 pt-2 flex items-center justify-between text-[10px] font-bold text-[#8F6E2A]">
+              <div className="border-t border-[#E6DEC8]/60 pt-2 flex items-center justify-between text-[10px] font-bold text-[#8F6E2A] tabular-nums">
                 <span>
                   {makkahPlaces.length + madinahPlaces.length} Landmarks
                 </span>
@@ -192,12 +190,9 @@ export function ZiyaratSelectionModule() {
                   <span className="text-xs sm:text-sm font-bold text-[#0A3622] block">
                     Makkah Only
                   </span>
-                  <span
-                    className="font-arabic text-xs text-[#8F6E2A] block mt-0.5"
-                    dir="rtl"
-                  >
+                  <ArabicText className="text-xs text-[#8F6E2A] block mt-0.5">
                     مكة المكرمة
-                  </span>
+                  </ArabicText>
                 </div>
                 <span
                   className={cn(
@@ -215,7 +210,7 @@ export function ZiyaratSelectionModule() {
               <p className="text-[11px] text-[#686E65] leading-relaxed mb-3">
                 Jabal al-Nour, Jabal Thawr, Arafat &amp; Makkah sites
               </p>
-              <div className="border-t border-[#E6DEC8]/60 pt-2 flex items-center justify-between text-[10px] font-bold text-[#8F6E2A]">
+              <div className="border-t border-[#E6DEC8]/60 pt-2 flex items-center justify-between text-[10px] font-bold text-[#8F6E2A] tabular-nums">
                 <span>{makkahPlaces.length} Landmarks</span>
                 <Compass className="size-3 text-[#C5A059]" />
               </div>
@@ -237,12 +232,9 @@ export function ZiyaratSelectionModule() {
                   <span className="text-xs sm:text-sm font-bold text-[#0A3622] block">
                     Madinah Only
                   </span>
-                  <span
-                    className="font-arabic text-xs text-[#8F6E2A] block mt-0.5"
-                    dir="rtl"
-                  >
+                  <ArabicText className="text-xs text-[#8F6E2A] block mt-0.5">
                     المدينة المنورة
-                  </span>
+                  </ArabicText>
                 </div>
                 <span
                   className={cn(
@@ -260,7 +252,7 @@ export function ZiyaratSelectionModule() {
               <p className="text-[11px] text-[#686E65] leading-relaxed mb-3">
                 Masjid Quba, Mount Uhud, Qiblatayn &amp; Madinah sites
               </p>
-              <div className="border-t border-[#E6DEC8]/60 pt-2 flex items-center justify-between text-[10px] font-bold text-[#8F6E2A]">
+              <div className="border-t border-[#E6DEC8]/60 pt-2 flex items-center justify-between text-[10px] font-bold text-[#8F6E2A] tabular-nums">
                 <span>{madinahPlaces.length} Landmarks</span>
                 <Compass className="size-3 text-[#C5A059]" />
               </div>
@@ -280,7 +272,7 @@ export function ZiyaratSelectionModule() {
                   <span className="text-xs font-bold text-[#0A3622]">
                     Assigned Excursion Vehicle: {leadVehicle.name}
                   </span>
-                  <span className="rounded-full bg-white border border-[#E6DEC8] px-2 py-0.5 text-[10px] font-bold text-[#8F6E2A]">
+                  <span className="rounded-full bg-white border border-[#E6DEC8] px-2 py-0.5 text-[10px] font-bold text-[#8F6E2A] tabular-nums">
                     {leadVehicle.seatCapacity} Seats ·{" "}
                     {leadVehicle.luggageCapacity} Bags
                   </span>
@@ -351,7 +343,7 @@ export function ZiyaratSelectionModule() {
                         )}
                       </span>
                     </div>
-                    <div className="mt-2 flex items-center gap-2 text-[11px] text-[#686E65]">
+                    <div className="mt-2 flex items-center gap-2 text-[11px] text-[#686E65] tabular-nums">
                       <span className="inline-flex items-center gap-1">
                         <Users className="size-3 text-[#C5A059]" />
                         <span>{v.seatCapacity} Seats</span>
@@ -387,7 +379,7 @@ export function ZiyaratSelectionModule() {
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
-              <span className="rounded-full bg-[#FAF7F0] border border-[#E6DEC8] px-2.5 py-1 text-[11px] font-semibold text-[#0A3622]">
+              <span className="rounded-full bg-[#FAF7F0] border border-[#E6DEC8] px-2.5 py-1 text-[11px] font-semibold text-[#0A3622] tabular-nums">
                 {selectedMakkahCount} of {makkahPlaces.length} Selected
               </span>
               {selectedMakkahCount === makkahPlaces.length ? (
@@ -416,6 +408,7 @@ export function ZiyaratSelectionModule() {
                   key={place.id}
                   role="button"
                   tabIndex={0}
+                  aria-pressed={isSelected}
                   onClick={() => toggleZiyaratPlace(place.id)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
@@ -436,12 +429,9 @@ export function ZiyaratSelectionModule() {
                         <h4 className="font-bold text-sm sm:text-base text-[#0A3622] leading-snug">
                           {place.name}
                         </h4>
-                        <p
-                          className="font-arabic text-base text-[#8F6E2A] mt-1 leading-normal"
-                          dir="rtl"
-                        >
+                        <ArabicText className="text-base text-[#8F6E2A] mt-1 leading-normal block">
                           {place.arabicName}
-                        </p>
+                        </ArabicText>
                       </div>
 
                       <div
@@ -506,7 +496,7 @@ export function ZiyaratSelectionModule() {
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
-              <span className="rounded-full bg-[#FAF7F0] border border-[#E6DEC8] px-2.5 py-1 text-[11px] font-semibold text-[#0A3622]">
+              <span className="rounded-full bg-[#FAF7F0] border border-[#E6DEC8] px-2.5 py-1 text-[11px] font-semibold text-[#0A3622] tabular-nums">
                 {selectedMadinahCount} of {madinahPlaces.length} Selected
               </span>
               {selectedMadinahCount === madinahPlaces.length ? (
@@ -535,6 +525,7 @@ export function ZiyaratSelectionModule() {
                   key={place.id}
                   role="button"
                   tabIndex={0}
+                  aria-pressed={isSelected}
                   onClick={() => toggleZiyaratPlace(place.id)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
@@ -555,12 +546,9 @@ export function ZiyaratSelectionModule() {
                         <h4 className="font-bold text-sm sm:text-base text-[#0A3622] leading-snug">
                           {place.name}
                         </h4>
-                        <p
-                          className="font-arabic text-base text-[#8F6E2A] mt-1 leading-normal"
-                          dir="rtl"
-                        >
+                        <ArabicText className="text-base text-[#8F6E2A] mt-1 leading-normal block">
                           {place.arabicName}
-                        </p>
+                        </ArabicText>
                       </div>
 
                       <div

@@ -3,6 +3,7 @@
 import * as React from "react"
 import { MessageCircle } from "lucide-react"
 import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
+import { toWaMeUrl } from "@/components/public/public-utils"
 
 interface WhatsAppFabProps {
   whatsappNumber?: string
@@ -11,10 +12,10 @@ interface WhatsAppFabProps {
 export function WhatsAppFab({
   whatsappNumber = DEFAULT_COMPANY_INFO.primaryWhatsapp,
 }: WhatsAppFabProps = {}) {
-  const normalizedWhatsapp = whatsappNumber
-    .replace(/\D/g, "")
-    .replace(/^03/, "923")
-  const whatsappUrl = `https://wa.me/${normalizedWhatsapp || DEFAULT_COMPANY_INFO.normalizedWhatsapp}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
+  const whatsappUrl = toWaMeUrl(
+    whatsappNumber,
+    "Assalam o Alaikum, I would like to inquire about Al Ramlah Travels pilgrimage packages."
+  )
 
   return (
     <div className="group fixed right-6 bottom-6 z-50 flex items-center">

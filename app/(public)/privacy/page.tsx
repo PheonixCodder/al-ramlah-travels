@@ -1,207 +1,376 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { ArrowLeft, Database, FileCheck2, Lock, ShieldCheck } from "lucide-react"
 import { db } from "@/db"
+import * as schema from "@/db/schema"
 import { getCompanyInfo } from "@/lib/company-info"
+import { toWaMeUrl } from "@/components/public/public-utils"
 
-export const dynamic = "force-dynamic"
+export const revalidate = 300
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Al Ramlah Travels",
+  title: "Privacy Policy & Data Protection | Al Ramlah Travels",
   description:
-    "Privacy Policy for Al Ramlah Travels covering customer visa data protection, WhatsApp communications, and social media integration.",
+    "How Al Ramlah Travels protects pilgrim personal data, passport records, sub-processor disclosures, cookie usage, retention schedules, and DSAR rights.",
 }
 
-export default async function PrivacyPage() {
-  const settings = await db.query.agencySettings.findFirst().catch((err) => {
-    console.error("Failed to query agencySettings in PrivacyPage:", err)
-    return null
-  })
-  const info = getCompanyInfo(settings)
+export default async function PrivacyPolicyPage() {
+  const [settings] = await db.select().from(schema.agencySettings).limit(1)
+  const company = getCompanyInfo(settings)
+  const legalEntityName =
+    settings?.legalEntityName?.trim() || company.agencyName
+  const waDsarHref = toWaMeUrl(
+    company.primaryWhatsapp,
+    "Assalam-o-Alaikum Al Ramlah Travels, I would like to submit a Data Subject Access / Deletion Request (DSAR)."
+  )
 
   return (
-    <div className="bg-[#FAF7F0] py-12 md:py-16">
+    <div className="bg-[#FAF7F0] min-h-screen py-14 sm:py-20">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-        {/* Header Breadcrumb & Title */}
-        <div className="mb-10 text-center">
-          <span className="inline-block rounded-full bg-[#062E22]/10 px-4 py-1 text-xs font-semibold tracking-wider text-[#062E22] uppercase">
-            Data Protection &amp; Compliance
-          </span>
-          <h1 className="mt-3 font-serif text-3xl font-bold tracking-tight text-[#062E22] sm:text-4xl">
-            Privacy Policy
-          </h1>
-          <p className="mt-2 text-sm text-[#062E22]/70">
-            Last Updated: November 2026 • {info.agencyName} (Pvt) Ltd.
-          </p>
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-[#0A3622] hover:text-[#8F6E2A] transition-colors"
+          >
+            <ArrowLeft className="size-4" />
+            <span>Back to Home</span>
+          </Link>
+          <div className="flex items-center gap-3 text-xs font-semibold text-[#0A3622]">
+            <Link href="/terms" className="hover:underline">
+              Terms of Service
+            </Link>
+            <span className="text-[#C5A059]">&bull;</span>
+            <Link href="/refund-policy" className="hover:underline">
+              Refund Policy
+            </Link>
+          </div>
         </div>
 
-        {/* Content Card */}
-        <div className="rounded-2xl border border-[#C8A24A]/30 bg-white p-6 shadow-sm sm:p-10">
-          <div className="space-y-8 text-sm leading-relaxed text-[#062E22]/85">
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                1. Overview &amp; Commitment to Privacy
-              </h2>
-              <p className="mt-2">
-                <strong>{info.agencyName}</strong> (&quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) is committed to safeguarding the
-                privacy and personal information of pilgrims, customers, and website visitors. This Privacy Policy
-                explains how we collect, process, protect, and retain personal data when you use our website, book Umrah
-                or Hajj packages, communicate with us via WhatsApp, or interact with our authorized social media
-                integrations.
-              </p>
-            </section>
+        <article className="rounded-3xl border border-[#E6DEC8] bg-white p-8 sm:p-12 shadow-sm space-y-10">
+          {/* Header */}
+          <header className="space-y-3 border-b border-[#E6DEC8] pb-6">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#C5A059]/40 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
+              <ShieldCheck className="size-3.5 text-[#C5A059]" />
+              <span>Pilgrim Data Governance &amp; Privacy Notice</span>
+            </div>
+            <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#0A3622]">
+              Privacy Policy
+            </h1>
+            <p className="text-xs sm:text-sm text-[#686E65]">
+              Controller: <strong>{legalEntityName}</strong> &middot; Effective &amp;
+              Verified for 2026–2027 Pilgrimage Operations
+            </p>
+          </header>
 
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                2. Information We Collect
+          <div className="space-y-8 text-sm leading-relaxed text-[#1A1D1A]">
+            {/* 1. Data We Collect */}
+            <section className="space-y-2.5">
+              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                1. Categories of Pilgrim Data Collected
               </h2>
-              <p className="mt-2">
-                To process international travel, hotel reservations, and official government visa applications, we
-                collect the following categories of information:
+              <p className="text-[#4A5048]">
+                When you configure a Custom Umrah Itinerary, reserve a Group Umrah
+                Departure, register for Indicative Hajj 2027 pre-registration, or
+                communicate with {legalEntityName} via WhatsApp, we collect only
+                the data necessary to fulfill Saudi visa, aviation, and hospitality
+                logistics:
               </p>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
+              <ul className="list-disc pl-5 space-y-1.5 text-[#4A5048]">
                 <li>
-                  <strong>Pilgrim Identity &amp; Passport Data:</strong> Full name, passport number, nationality, date of
-                  birth, passport issue and expiry dates, gender, and photograph/passport copy scans.
+                  <strong>Contact &amp; Lead Data:</strong> Full name, phone number,
+                  WhatsApp number, optional email address, and city/country of
+                  residence.
                 </li>
                 <li>
-                  <strong>Contact Information:</strong> Phone number, WhatsApp mobile number, email address, and
-                  residential city.
+                  <strong>Itinerary &amp; Quotation Parameters:</strong> KSA arrival
+                  and departure dates, adult/child/infant counts, Makkah &amp;
+                  Madinah hotel selections, flight gateway preferences, ground
+                  transport legs, and special mobility/dietary notes.
                 </li>
                 <li>
-                  <strong>Travel &amp; Itinerary Details:</strong> KSA arrival and departure dates, port of entry
-                  (Jeddah or Madinah), preferred airlines, hotel room configurations (Double, Triple, Quad), and ground
-                  transfer preferences.
-                </li>
-                <li>
-                  <strong>Administrative &amp; System Logs:</strong> Technical IP addresses, browser user-agent headers,
-                  and session cookies strictly necessary for authentication and secure CSRF verification.
+                  <strong>Identity &amp; Visa Documentation (Booked Pilgrims):</strong>{" "}
+                  Machine-readable passport bio-pages, CNIC / NADRA B-Form copies,
+                  white-background visa photographs, next-of-kin details, and
+                  vaccination/blood-group records required by the Saudi Ministry of
+                  Hajj &amp; Umrah (Nusuk / Masar) and airlines.
                 </li>
               </ul>
             </section>
 
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                3. Purpose of Data Processing
-              </h2>
-              <p className="mt-2">We process your personal information strictly for legitimate travel operations:</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
+            {/* 2. Sub-Processors & Cloud Infrastructure */}
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Database className="size-5 text-[#C5A059]" />
+                <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                  2. Authorized Sub-Processors &amp; Cloud Storage Architecture
+                </h2>
+              </div>
+              <p className="text-[#4A5048]">
+                We do not sell, rent, or broker pilgrim data to third-party
+                advertisers. Operational records are processed through audited
+                infrastructure providers under strict security controls:
+              </p>
+
+              <div className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
+                <table className="w-full text-left text-xs sm:text-sm">
+                  <thead className="bg-[#FAF7F0] text-[#0A3622] border-b border-[#E6DEC8]">
+                    <tr>
+                      <th className="px-4 py-3 font-bold">Sub-Processor</th>
+                      <th className="px-4 py-3 font-bold">Operational Role</th>
+                      <th className="px-4 py-3 font-bold">Safeguards</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E6DEC8] text-[#4A5048]">
+                    <tr>
+                      <td className="px-4 py-3 font-semibold text-[#1A1D1A]">
+                        Neon Serverless PostgreSQL
+                      </td>
+                      <td className="px-4 py-3">
+                        Primary relational database for dossiers, quotations, and
+                        immutable audit logs
+                      </td>
+                      <td className="px-4 py-3">
+                        TLS in transit, AES-256 encryption at rest, role-scoped
+                        access
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-semibold text-[#1A1D1A]">
+                        Cloudflare R2 Object Storage
+                      </td>
+                      <td className="px-4 py-3">
+                        Storage for pilgrim travel documents, inbound WhatsApp
+                        media, and quotation PDFs
+                      </td>
+                      <td className="px-4 py-3">
+                        Private bucket isolation; sensitive keys served exclusively
+                        via authenticated, short-lived signed proxy URLs
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-semibold text-[#1A1D1A]">
+                        Meta Platforms (WhatsApp Cloud API v21.0)
+                      </td>
+                      <td className="px-4 py-3">
+                        Concierge customer messaging, status notifications, and
+                        opt-in template broadcasts
+                      </td>
+                      <td className="px-4 py-3">
+                        AES-256-GCM token vault, HMAC-SHA256 webhook verification,
+                        instant <code className="font-mono">STOP</code> opt-out
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-semibold text-[#1A1D1A]">
+                        Google Gemini / OpenRouter AI
+                      </td>
+                      <td className="px-4 py-3">
+                        Supplier tariff extraction and internal staff quoting
+                        copilot assistance
+                      </td>
+                      <td className="px-4 py-3">
+                        Zero-Data-Retention (<code className="font-mono">data_collection: &quot;deny&quot;</code>);
+                        sanitized prompts; zero model training on pilgrim PII
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-semibold text-[#1A1D1A]">
+                        Trigger.dev Cloud v4 &amp; Gotenberg
+                      </td>
+                      <td className="px-4 py-3">
+                        Durable background job execution and isolated PDF rendering
+                      </td>
+                      <td className="px-4 py-3">
+                        Authenticated worker queues; Chromium JavaScript disabled
+                        and private-IP SSRF blocked
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-semibold text-[#1A1D1A]">
+                        Resend &amp; Vercel Inc.
+                      </td>
+                      <td className="px-4 py-3">
+                        Transactional email dispatch and global HTTPS edge hosting
+                      </td>
+                      <td className="px-4 py-3">
+                        TLS 1.2+, strict HSTS &amp; Content-Security-Policy headers
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-[#686E65]">
+                In addition, confirmed bookings are transmitted to official Kingdom
+                of Saudi Arabia visa platforms (MOFA / Nusuk / Masar), IATA
+                airlines, and contracted Makkah/Madinah hotels strictly to issue
+                your eVisa, tickets, and room reservations.
+              </p>
+            </section>
+
+            {/* 3. Cookies & Local Session Storage */}
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Lock className="size-5 text-[#C5A059]" />
+                <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                  3. Cookies &amp; Browser Storage Disclosure
+                </h2>
+              </div>
+              <p className="text-[#4A5048]">
+                We use strictly necessary security cookies and ephemeral tab
+                storage. We do not deploy third-party behavioral advertising cookies
+                or cross-site tracking pixels on public pilgrimage pages:
+              </p>
+              <ul className="list-disc pl-5 space-y-1.5 text-[#4A5048]">
                 <li>
-                  Facilitating Umrah, Tourist, and Transit visa applications through authorized portals connected to the
-                  Saudi Ministry of Foreign Affairs (MOFA) and the Ministry of Hajj and Umrah.
+                  <strong>
+                    <code className="font-mono text-xs">
+                      better-auth.session_token
+                    </code>{" "}
+                    (Strictly Necessary):
+                  </strong>{" "}
+                  <code className="font-mono text-xs">HttpOnly</code>,{" "}
+                  <code className="font-mono text-xs">Secure</code>,{" "}
+                  <code className="font-mono text-xs">SameSite=Lax</code>{" "}
+                  authentication and CSRF protection cookies issued only to
+                  authenticated administrative staff.
                 </li>
                 <li>
-                  Issuing airline tickets, reserving hotel accommodations in Makkah and Madinah, and arranging private
-                  ground transfers and Sacred Ziyarat tours.
+                  <strong>
+                    <code className="font-mono text-xs">
+                      social_oauth_state_*
+                    </code>{" "}
+                    (Strictly Necessary):
+                  </strong>{" "}
+                  Short-lived (10-minute) <code className="font-mono text-xs">HttpOnly</code>{" "}
+                  CSRF state verification cookie used solely during administrative
+                  OAuth account linking.
                 </li>
                 <li>
-                  Providing transparent itemized quotation worksheets, tracking booking statuses, and dispatching travel
-                  vouchers.
+                  <strong>
+                    Browser <code className="font-mono text-xs">sessionStorage</code>{" "}
+                    (<code className="font-mono text-xs">alramlah_planner_draft_v1</code>):
+                  </strong>{" "}
+                  Stores non-PII Umrah itinerary selections (dates, hotel choices,
+                  and passenger counts—never passport numbers or contact PII) within
+                  your active browser tab so you do not lose progress on refresh.
                 </li>
               </ul>
             </section>
 
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                4. WhatsApp Business &amp; Cloud Communications
+            {/* 4. Retention Schedule */}
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <FileCheck2 className="size-5 text-[#C5A059]" />
+                <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                  4. Data Retention Schedule &amp; Automated Purging
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-4 space-y-1">
+                  <span className="font-mono text-xs font-bold uppercase text-[#8F6E2A]">
+                    60 Days Post-Return
+                  </span>
+                  <h3 className="font-bold text-[#0A3622] text-sm">
+                    Passports &amp; Identity Scans
+                  </h3>
+                  <p className="text-xs text-[#686E65]">
+                    Passport bio-page scans, CNIC/B-Form images, and visa photos in
+                    private R2 storage are automatically purged 60 days after your
+                    scheduled KSA return date.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-4 space-y-1">
+                  <span className="font-mono text-xs font-bold uppercase text-[#8F6E2A]">
+                    24 Months
+                  </span>
+                  <h3 className="font-bold text-[#0A3622] text-sm">
+                    Unbooked Inquiries &amp; Leads
+                  </h3>
+                  <p className="text-xs text-[#686E65]">
+                    Web inquiries and WhatsApp intake threads that do not convert to
+                    confirmed bookings are purged or anonymized 24 months after last
+                    activity.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-4 space-y-1">
+                  <span className="font-mono text-xs font-bold uppercase text-[#8F6E2A]">
+                    6 Years (Statutory)
+                  </span>
+                  <h3 className="font-bold text-[#0A3622] text-sm">
+                    Financial &amp; Tax Ledgers
+                  </h3>
+                  <p className="text-xs text-[#686E65]">
+                    Confirmed booking invoices and payment ledgers are retained for
+                    6 years pursuant to Section 174 of the Pakistan Income Tax
+                    Ordinance, 2001.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* 5. WhatsApp Communications & STOP Opt-Out */}
+            <section className="space-y-2.5">
+              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                5. WhatsApp Messaging &amp; Instant Opt-Out
               </h2>
-              <p className="mt-2">
-                When you initiate an inquiry, submit an Umrah package request, or request booking updates via WhatsApp,
-                we utilize the official <strong>Meta WhatsApp Cloud API</strong>. Messages transmitted include itinerary
-                confirmations, visa approval notifications, and payment receipts. We do not sell your phone number to
-                third-party marketers, and you may opt out of promotional WhatsApp broadcasts at any time by replying
-                &quot;STOP&quot;.
+              <p className="text-[#4A5048]">
+                When you initiate a WhatsApp conversation or submit your WhatsApp
+                number on an inquiry form, our concierge desk may send quotation
+                updates, visa status alerts, and approved Meta template notices. You
+                may reply <strong className="font-mono text-[#0A3622]">STOP</strong>{" "}
+                or <strong className="font-mono text-[#0A3622]">UNSUBSCRIBE</strong>{" "}
+                at any time on WhatsApp to immediately suppress all promotional and
+                broadcast messages to your number.
               </p>
             </section>
 
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                5. Social Media Integrations &amp; OAuth Permissions
+            {/* 6. DSAR Rights & Verified Contact */}
+            <section className="space-y-3 rounded-2xl border border-[#C5A059]/40 bg-[#FAF7F0] p-6">
+              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                6. Your Data Rights &amp; DSAR Deletion / Access Workflow
               </h2>
-              <p className="mt-2">
-                {info.agencyName} operates administrative tools that integrate via OAuth with authorized social media
-                platforms, including <strong>Meta (Instagram and Facebook Pages)</strong>,{" "}
-                <strong>TikTok Content Posting API</strong>, <strong>YouTube Data API v3</strong>, and{" "}
-                <strong>Google Business Profile API</strong>:
+              <p className="text-[#4A5048]">
+                You have the right to request access to, correction of, or early
+                erasure of your personal data and uploaded travel documents (except
+                where retention is mandated by Pakistani tax or aviation law). To
+                submit a Data Subject Access or Deletion Request (DSAR), contact our
+                Data Protection Officer quoting your <code className="font-mono">ART-...</code>{" "}
+                reference and registered phone number. Verified requests are
+                completed within <strong>14 business days</strong>:
               </p>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                <li>
-                  <strong>Scope of Access:</strong> Authorized permissions are used strictly to publish agency posters,
-                  educational Umrah videos, and package updates to {info.agencyName}&apos;s official social media channels.
-                </li>
-                <li>
-                  <strong>Token Security:</strong> All OAuth access and refresh tokens are encrypted at rest using
-                  industry-standard <strong>AES-256-GCM</strong> encryption with unique initialization vectors (IV).
-                </li>
-                <li>
-                  <strong>No Personal Profile Scraping:</strong> We do not harvest, store, or sell third-party user data
-                  from social media platforms.
-                </li>
-              </ul>
-            </section>
-
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                6. Data Retention &amp; Security Measures
-              </h2>
-              <p className="mt-2">
-                We implement robust technical and organizational safeguards to protect your personal information against
-                unauthorized access, accidental loss, or destruction. Passport copies and visa documents are stored in
-                secure encrypted cloud storage with restricted staff-only access controls and are retained only for the
-                duration mandated by international travel and tax regulations.
-              </p>
-            </section>
-
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                7. Your Rights &amp; Data Deletion Requests
-              </h2>
-              <p className="mt-2">
-                You have the right to review, update, or request the deletion of your personal data held in our systems,
-                subject to legal retention requirements for issued airline tickets and official visas.
-              </p>
-              <p className="mt-2">
-                To submit a data access or deletion request, please email our designated privacy team at{" "}
-                <a href={`mailto:${info.supportEmail}`} className="font-semibold text-[#062E22] underline hover:text-[#C8A24A]">
-                  {info.supportEmail}
-                </a>{" "}
-                with your full name, passport reference number, and specific request. Requests are processed within 14
-                business days.
-              </p>
-            </section>
-
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                8. Contact Information
-              </h2>
-              <p className="mt-2">For any questions or concerns regarding this Privacy Policy:</p>
-              <div className="mt-3 rounded-lg border border-[#C8A24A]/20 bg-[#FAF7F0] p-4 text-xs sm:text-sm">
-                <p className="font-semibold text-[#062E22]">{info.agencyName} (Pvt) Ltd.</p>
-                <p className="mt-1">
-                  <strong>Office Address:</strong> {info.officeAddress}
+              <div className="pt-1 space-y-1 text-xs sm:text-sm text-[#1A1D1A]">
+                <p>
+                  <strong>Legal Entity:</strong> {legalEntityName}
                 </p>
-                <p className="mt-1">
-                  <strong>Privacy Officer Email:</strong>{" "}
-                  <a href={`mailto:${info.supportEmail}`} className="text-[#062E22] underline hover:text-[#C8A24A]">
-                    {info.supportEmail}
+                <p>
+                  <strong>Headquarters:</strong> {company.officeAddress}
+                </p>
+                <p>
+                  <strong>Privacy &amp; DSAR Email:</strong>{" "}
+                  <a
+                    href={`mailto:${company.supportEmail}?subject=DSAR%20Privacy%20Request`}
+                    className="font-semibold text-[#0A3622] underline"
+                  >
+                    {company.supportEmail}
                   </a>
                 </p>
-                <p className="mt-1">
-                  <strong>Phone / WhatsApp:</strong> {info.hotlineDisplay}
+                <p>
+                  <strong>Verified WhatsApp Concierge:</strong>{" "}
+                  <a
+                    href={waDsarHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-[#0A3622] underline tabular-nums"
+                  >
+                    {company.hotlineDisplay}
+                  </a>
                 </p>
               </div>
             </section>
           </div>
-
-          <div className="mt-8 border-t border-[#062E22]/10 pt-6 text-center text-xs text-[#062E22]/60">
-            <Link href="/terms" className="text-[#062E22] underline hover:text-[#C8A24A]">
-              View our Terms of Service
-            </Link>{" "}
-            •{" "}
-            <Link href="/" className="text-[#062E22] underline hover:text-[#C8A24A]">
-              Return to Homepage
-            </Link>
-          </div>
-        </div>
+        </article>
       </div>
     </div>
   )

@@ -1,42 +1,229 @@
 "use server"
 
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { revalidatePath } from "next/cache"
-import { db } from "@/db"
+import { headers } from "next/headers"
+import { and, desc, eq, inArray } from "drizzle-orm"
+import { z } from "zod"
+import { db, withTransaction, type DbOrTx } from "@/db"
 import * as schema from "@/db/schema"
 import {
-  calculateVisaTierAndCost,
-  type VisaRateTiers,
-} from "@/lib/domain/visa-calc"
+  DEPOSIT_PAID_PAYMENT_STATUS,
+  REVISION_REQUESTED_STATUS,
+} from "@/db/schema/applications"
+import { recordAuditLog } from "@/lib/audit-log"
+import { requireAdmin } from "@/lib/auth-guard"
+import { calculateVisaTierAndCost } from "@/lib/domain/visa-calc"
+import { calculateVehicleQuantity } from "@/lib/domain/vehicle-capacity"
+import { enforceRateLimit, extractClientIp } from "@/lib/rate-limit"
 import {
-  customJourneyApplicationSchema,
-  groupBookingSchema,
-  hajjInquirySchema,
-  statusLookupSchema,
-  type CustomJourneyApplicationInput,
-  type GroupBookingInput,
-  type HajjInquiryInput,
-} from "@/lib/validations/application"
-import { eq, ilike } from "drizzle-orm"
+  getTodayPktIso,
+  isStrictIsoCalendarDate,
+  normalizePublicPhone,
+  toWaMeUrl,
+} from "@/components/public/public-utils"
 
 // ==========================================
-// REFERENCE NUMBER GENERATOR
+// PUBLIC TYPES & RESULT CONTRACTS
 // ==========================================
 
-const REF_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // Ambiguity-free charset (no 0/O, 1/I)
-
-function generateRandomRefSuffix(length: number = 4): string {
-  let result = ""
-  for (let i = 0; i < length; i++) {
-    result += REF_CHARS.charAt(Math.floor(Math.random() * REF_CHARS.length))
-  }
-  return result
+export interface CustomApplicationResult {
+  success: boolean
+  referenceNumber?: string
+  applicationId?: string
+  isVisaOnly?: boolean
+  calculatedVisaTier?: "short_term" | "long_term" | null
+  calculatedVisaTotalPkr?: number | null
+  totalKsaDays?: number
+  whatsappUrl?: string
+  idempotentReplay?: boolean
+  error?: string
+  fieldErrors?: Record<string, string>
 }
 
-export async function generateApplicationReference(): Promise<string> {
-  const year = new Date().getFullYear()
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const candidate = `ART-${year}-${generateRandomRefSuffix(4)}`
-    const existing = await db.query.applications.findFirst({
+export interface GroupBookingResult {
+  success: boolean
+  referenceNumber?: string
+  applicationId?: string
+  estimatedTotalPkr?: number
+  grandTotalPkr?: number
+  whatsappUrl?: string
+  idempotentReplay?: boolean
+  error?: string
+  fieldErrors?: Record<string, string>
+}
+
+export interface HajjInquiryResult {
+  success: boolean
+  referenceNumber?: string
+  applicationId?: string
+  whatsappUrl?: string
+  idempotentReplay?: boolean
+  error?: string
+  fieldErrors?: Record<string, string>
+}
+
+export interface PublicStatusQuoteSummary {
+  version: number
+  visaTotalPkr: number
+  flightsTotalPkr: number
+  makkahHotelTotalPkr: number
+  madinahHotelTotalPkr: number
+  transportTotalPkr: number
+  ziyaratTotalPkr: number
+  discountPkr: number
+  grandTotalPkr: number
+  depositRequiredPkr: number
+  amountPaidPkr: number
+  paymentStatus: string
+  validUntil: Date | null
+  quoteNotesCustomer: string | null
+  quotationPdfUrl: string | null
+  quotedAt: Date | null
+}
+
+export interface PublicStatusApplicationDto {
+  referenceNumber: string
+  source: "custom_builder" | "group_booking" | "hajj_inquiry"
+  presetMode:
+    | "complete_umrah"
+    | "visa_only"
+    | "flights_only"
+    | "hotels_only"
+    | "transport_only"
+    | "custom_mix"
+    | "group_package"
+    | "hajj_consultation"
+  status: string
+  customerName: string
+  customerCity: string
+  adults: number
+  children: number
+  infants: number
+  totalPassportCount: number
+  bedAndSeatCount: number
+  includeVisa: boolean
+  includeFlights: boolean
+  includeHotels: boolean
+  includeTransport: boolean
+  includeZiyarat: boolean
+  ksaArrivalDate: string | null
+  ksaDepartureDate: string | null
+  totalKsaDays: number | null
+  citySequence:
+    | "makkah_madinah"
+    | "madinah_makkah"
+    | "makkah_madinah_makkah"
+    | "makkah_madinah_jeddah"
+    | "makkah_only"
+    | "madinah_only"
+    | null
+  entryAirport: "JED" | "MED" | null
+  exitAirport: "JED" | "MED" | null
+  calculatedVisaTier: "short_term" | "long_term" | null
+  calculatedVisaTotalPkr: number | null
+  specialRequests: string | null
+  revisionNotesCustomer: string | null
+  selectedRoomType: "sharing" | "double" | "triple" | "quad" | null
+  hajjConsultationType: string | null
+  hajjInquiryJson: Record<string, unknown> | null
+  createdAt: Date
+  quoteSentAt: Date | null
+  hotelStays: Array<{
+    stayOrder: number
+    city: "makkah" | "madinah"
+    nights: number
+    checkInDate: string
+    checkOutDate: string
+    roomCategory: "shared" | "private"
+    sharedRoomType: "sharing" | "double" | "triple" | "quad" | null
+    privateRoomAllocation: { double: number; triple: number; quad: number } | null
+    mealPlan: string
+    hotel: {
+      name: string
+      city: "makkah" | "madinah"
+      starRating: number
+      distanceLabel: string
+    } | null
+  }>
+  transportSegments: Array<{
+    segmentOrder: number
+    serviceType: "private" | "shared"
+    vehicleQuantity: number
+    pickupTime: string | null
+    scheduledDate: string | null
+    sector: { label: string; code: string } | null
+    vehicle: { name: string; category: string } | null
+  }>
+  groupPackage: {
+    title: string
+    tier: string
+    durationDays: number
+    makkahNights: number
+    madinahNights: number
+    giftedInclusions: string[]
+  } | null
+  groupDeparture: {
+    batchCode: string
+    departureDate: string
+    returnDate: string
+    outboundFlightNumber: string | null
+    returnFlightNumber: string | null
+    flightScheduleSummary: string | null
+    baggageAllowance: string | null
+  } | null
+  departureCity: { cityName: string; airportCode: string } | null
+  preferredAirline: { name: string; iataCode: string } | null
+  latestQuote: PublicStatusQuoteSummary | null
+  voucherUrl: string | null
+  voucherGateState: "unlocked" | "awaiting_deposit" | "locked"
+}
+
+export interface StatusLookupResult {
+  success: boolean
+  error?: string
+  application?: PublicStatusApplicationDto
+  quote?: PublicStatusQuoteSummary | null
+  agencyWhatsapp?: string
+}
+
+export interface RespondToQuoteResult {
+  success: boolean
+  status?: string
+  voucherUrl?: string | null
+  voucherGateState?: "unlocked" | "awaiting_deposit" | "locked"
+  error?: string
+}
+
+// ==========================================
+// INTERNAL SECURITY & VALIDATION HELPERS
+// ==========================================
+
+const GENERIC_STATUS_AUTH_ERROR =
+  "Unable to verify inquiry with the provided reference number and phone number."
+
+const CROCKFORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+function buildCsprngApplicationReference(now: Date = new Date()): string {
+  const datePart = getTodayPktIso(now).replace(/-/g, "")
+  const bytes = randomBytes(6) // 48 bits of CSPRNG entropy
+  let bits = 0n
+  for (const byte of bytes) {
+    bits = (bits << 8n) | BigInt(byte)
+  }
+  let code = ""
+  for (let i = 0; i < 10; i++) {
+    const idx = Number(bits & 31n)
+    code = CROCKFORD_ALPHABET[idx] + code
+    bits >>= 5n
+  }
+  return `ART-${datePart}-${code}`
+}
+
+async function allocateUniqueReferenceNumber(executor: DbOrTx): Promise<string> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const candidate = buildCsprngApplicationReference()
+    const existing = await executor.query.applications.findFirst({
       where: eq(schema.applications.referenceNumber, candidate),
       columns: { id: true },
     })
@@ -44,792 +231,1598 @@ export async function generateApplicationReference(): Promise<string> {
       return candidate
     }
   }
-  // Fallback to 6 characters if 4 collided
-  return `ART-${year}-${generateRandomRefSuffix(6)}`
+  throw new Error("Unable to allocate unique reference number. Please retry.")
 }
 
-function cleanPhoneNumber(phone: string): string {
-  const digits = phone.replace(/\D/g, "")
-  if (digits.startsWith("03")) {
-    return `92${digits.slice(1)}`
+/**
+ * Admin-guarded reference allocator preserved for cross-module admin callers
+ * (e.g. `convertPostLookupToApplication` in `app/actions/marketing-ops.ts`).
+ * Unauthenticated HTTP Server Action invocations are rejected by `requireAdmin()`.
+ */
+export async function generateApplicationReference(): Promise<string> {
+  await requireAdmin()
+  return allocateUniqueReferenceNumber(db)
+}
+
+function mintCapabilityVoucherToken(): string {
+  return randomBytes(24).toString("base64url")
+}
+
+function sha256Digest(value: string): Buffer {
+  return createHash("sha256").update(value, "utf8").digest()
+}
+
+function verifyPilgrimPhoneConstantTime(
+  inputRaw: string | null | undefined,
+  storedPhone: string | null | undefined,
+  storedWhatsapp: string | null | undefined
+): boolean {
+  const inputNorm = normalizePublicPhone(inputRaw)
+  const storedPhoneNorm = normalizePublicPhone(storedPhone)
+  const storedWaNorm = normalizePublicPhone(storedWhatsapp)
+
+  const inputDigest = sha256Digest(
+    inputNorm ? `valid:${inputNorm.e164Digits}` : "invalid:input"
+  )
+  const stored1Digest = sha256Digest(
+    storedPhoneNorm ? `valid:${storedPhoneNorm.e164Digits}` : "empty:stored1"
+  )
+  const stored2Digest = sha256Digest(
+    storedWaNorm ? `valid:${storedWaNorm.e164Digits}` : "empty:stored2"
+  )
+
+  const match1 = timingSafeEqual(inputDigest, stored1Digest)
+  const match2 = timingSafeEqual(inputDigest, stored2Digest)
+
+  if (!inputNorm || inputNorm.nationalDigits.length < 9) {
+    return false
   }
-  return digits
+
+  const validMatch1 = Boolean(
+    storedPhoneNorm && storedPhoneNorm.nationalDigits.length >= 9 && match1
+  )
+  const validMatch2 = Boolean(
+    storedWaNorm && storedWaNorm.nationalDigits.length >= 9 && match2
+  )
+
+  return validMatch1 || validMatch2
 }
 
-function formatWhatsAppUrl(agencyPhone: string, message: string): string {
-  const cleanPhone = cleanPhoneNumber(agencyPhone)
-  return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`
-}
-
-// ==========================================
-// 1. SUBMIT CUSTOM JOURNEY APPLICATION
-// ==========================================
-
-export interface CustomApplicationResult {
-  success: boolean
-  referenceNumber?: string
-  applicationId?: string
-  calculatedVisaTotalPkr?: number
-  calculatedVisaTier?: "short_term" | "long_term"
-  totalKsaDays?: number
-  isVisaOnly?: boolean
-  whatsappUrl?: string
-  error?: string
-}
-
-export async function submitCustomApplication(
-  rawInput: unknown
-): Promise<CustomApplicationResult> {
+async function resolveClientIp(rawInput: unknown): Promise<string> {
   try {
-    const parseResult = customJourneyApplicationSchema.safeParse(rawInput)
-    if (!parseResult.success) {
-      const firstError = parseResult.error.issues[0]?.message || "Invalid application data."
-      return { success: false, error: firstError }
-    }
-
-    const data: CustomJourneyApplicationInput = parseResult.data
-
-    const adults = data.passengers.adults
-    const children = data.passengers.children ?? 0
-    const infants = data.passengers.infants ?? 0
-    const totalPassportCount = adults + children + infants
-    const bedAndSeatCount = adults + children
-
-    // 1. Calculate Visa Tier & Cost if visa is included
-    let totalKsaDays: number | null = null
-    let calculatedVisaTier: "short_term" | "long_term" | null = null
-    let lockedVisaRatePerPersonPkr: number | null = null
-    let calculatedVisaTotalPkr: number | null = null
-
-    if (data.includeVisa && data.ksaArrivalDate && data.ksaDepartureDate) {
-      const dbVisaRates = await db.query.visaRates.findMany()
-      const shortTermRow = dbVisaRates.find((r) => r.tier === "short_term")
-      const longTermRow = dbVisaRates.find((r) => r.tier === "long_term")
-      const shortTerm = shortTermRow?.pricePkr ?? 42500
-      const longTerm = longTermRow?.pricePkr ?? 65000
-
-      const rates: VisaRateTiers = {
-        shortTermPricePkr: shortTerm,
-        longTermPricePkr: longTerm,
-        longTermPriceSar: longTermRow?.priceSar,
-        withoutMasarPriceSar: shortTermRow?.withoutMasarPriceSar ?? shortTermRow?.priceSar,
-        withMasar10DaysSar: shortTermRow?.withMasar10DaysSar,
-        withMasar15DaysSar: shortTermRow?.withMasar15DaysSar,
-        withMasar21DaysSar: shortTermRow?.withMasar21DaysSar,
-        withMasar28DaysSar: shortTermRow?.withMasar28DaysSar,
+    const reqHeaders = await headers()
+    return extractClientIp(reqHeaders)
+  } catch {
+    if (
+      process.env.NODE_ENV !== "production" &&
+      rawInput &&
+      typeof rawInput === "object" &&
+      "_testIp" in rawInput &&
+      typeof (rawInput as { _testIp?: unknown })._testIp === "string"
+    ) {
+      const candidate = (rawInput as { _testIp: string })._testIp.trim()
+      if (candidate.length > 0 && candidate.length <= 64) {
+        return candidate
       }
+    }
+    return "127.0.0.1"
+  }
+}
 
-      const visaCalc = calculateVisaTierAndCost(
-        data.ksaArrivalDate,
-        data.ksaDepartureDate,
-        totalPassportCount,
-        rates,
-        { withMasar: data.includeHotels }
-      )
+function hasTriggeredHoneypot(rawInput: unknown): boolean {
+  if (!rawInput || typeof rawInput !== "object") return false
+  const record = rawInput as Record<string, unknown>
+  const topLevel =
+    (typeof record.honeypot === "string" && record.honeypot.trim().length > 0) ||
+    (typeof record.website === "string" && record.website.trim().length > 0) ||
+    (typeof record.websiteUrl === "string" && record.websiteUrl.trim().length > 0)
+  if (topLevel) return true
 
-      totalKsaDays = visaCalc.totalKsaDays
-      calculatedVisaTier = visaCalc.tier
-      lockedVisaRatePerPersonPkr = visaCalc.pricePerPassportPkr
-      calculatedVisaTotalPkr = visaCalc.totalVisaCostPkr
+  if (record.contact && typeof record.contact === "object") {
+    const contactRec = record.contact as Record<string, unknown>
+    if (
+      (typeof contactRec.honeypot === "string" &&
+        contactRec.honeypot.trim().length > 0) ||
+      (typeof contactRec.website === "string" &&
+        contactRec.website.trim().length > 0) ||
+      (typeof contactRec.websiteUrl === "string" &&
+        contactRec.websiteUrl.trim().length > 0)
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+function collectZodFieldErrors(error: z.ZodError): Record<string, string> {
+  const fieldErrors: Record<string, string> = {}
+  for (const issue of error.issues) {
+    const key = issue.path.join(".") || "form"
+    if (!fieldErrors[key]) {
+      fieldErrors[key] = issue.message
+    }
+  }
+  return fieldErrors
+}
+
+function isUniqueViolationOnColumn(err: unknown, columnHint: string): boolean {
+  if (!err || typeof err !== "object") return false
+  const candidate = err as {
+    code?: unknown
+    detail?: unknown
+    constraint?: unknown
+    cause?: unknown
+  }
+  const checkSingle = (obj: {
+    code?: unknown
+    detail?: unknown
+    constraint?: unknown
+  }): boolean => {
+    if (obj.code !== "23505") return false
+    const text = `${String(obj.constraint ?? "")} ${String(obj.detail ?? "")}`.toLowerCase()
+    return text.includes(columnHint.toLowerCase())
+  }
+  if (checkSingle(candidate)) return true
+  if (candidate.cause && typeof candidate.cause === "object") {
+    return checkSingle(
+      candidate.cause as { code?: unknown; detail?: unknown; constraint?: unknown }
+    )
+  }
+  return false
+}
+
+function computeInclusiveDaysStrict(startIso: string, endIso: string): number {
+  const [y1, m1, d1] = startIso.split("-").map(Number)
+  const [y2, m2, d2] = endIso.split("-").map(Number)
+  const t1 = Date.UTC(y1!, m1! - 1, d1!)
+  const t2 = Date.UTC(y2!, m2! - 1, d2!)
+  return Math.floor((t2 - t1) / 86_400_000) + 1
+}
+
+function isVoucherUnlocked(
+  appStatus: string,
+  voucherToken: string | null | undefined,
+  paymentStatus: string | null | undefined
+): boolean {
+  if (!voucherToken || appStatus !== "approved") return false
+  return (
+    paymentStatus === "paid_in_full" ||
+    paymentStatus === String(DEPOSIT_PAID_PAYMENT_STATUS)
+  )
+}
+
+function coerceAirportCode(val: string | null | undefined): "JED" | "MED" | null {
+  if (val === "JED" || val === "MED") return val
+  return null
+}
+
+// ==========================================
+// STRICT PUBLIC ZOD SCHEMAS (`F-PUB`)
+// ==========================================
+
+const strictPhoneString = z
+  .string()
+  .trim()
+  .min(7, "Please enter a valid phone number")
+  .max(32, "Phone number is too long")
+  .refine((val) => normalizePublicPhone(val) !== null, {
+    message:
+      "Enter a valid Pakistani (03XX XXXXXXX) or international (+44 / +1 / +966 / +971) number",
+  })
+
+const strictContactSchema = z.object({
+  customerName: z
+    .string()
+    .trim()
+    .min(2, "Full name must be at least 2 characters")
+    .max(120, "Full name must not exceed 120 characters"),
+  customerPhone: strictPhoneString,
+  customerWhatsapp: z
+    .string()
+    .trim()
+    .max(32, "WhatsApp number is too long")
+    .optional()
+    .or(z.literal(""))
+    .refine((val) => !val || normalizePublicPhone(val) !== null, {
+      message: "Enter a valid WhatsApp phone number",
+    }),
+  customerEmail: z
+    .string()
+    .trim()
+    .max(160, "Email address is too long")
+    .email("Enter a valid email address")
+    .optional()
+    .or(z.literal("")),
+  customerCity: z
+    .string()
+    .trim()
+    .min(2, "City is required")
+    .max(100, "City name is too long"),
+  customerCountry: z
+    .string()
+    .trim()
+    .min(2, "Country is required")
+    .max(80, "Country name is too long")
+    .optional(),
+  specialRequests: z
+    .string()
+    .trim()
+    .max(1500, "Special requests must be 1,500 characters or fewer")
+    .optional()
+    .or(z.literal("")),
+})
+
+const strictPassengerSchema = z
+  .object({
+    adults: z
+      .number()
+      .int()
+      .min(1, "At least 1 adult pilgrim is required")
+      .max(30, "For groups over 30 adults, please use our group desk"),
+    children: z.number().int().min(0).max(20).default(0),
+    infants: z.number().int().min(0).max(10).default(0),
+  })
+  .refine((p) => p.infants <= p.adults, {
+    message: "Number of infants (<2 yrs) cannot exceed accompanying adults",
+    path: ["infants"],
+  })
+
+const clientSubmissionIdSchema = z
+  .string()
+  .trim()
+  .min(8)
+  .max(64)
+  .regex(/^[a-zA-Z0-9_-]+$/, "Invalid submission key")
+  .optional()
+
+const strictHotelStaySchema = z.object({
+  stayOrder: z.number().int().min(1).max(4),
+  city: z.enum(["makkah", "madinah"]),
+  hotelId: z.string().uuid("Please select a valid hotel"),
+  nights: z.number().int().min(1, "Minimum 1 night per stay").max(60),
+  checkInDate: z
+    .string()
+    .refine(isStrictIsoCalendarDate, "Invalid check-in calendar date"),
+  checkOutDate: z
+    .string()
+    .refine(isStrictIsoCalendarDate, "Invalid check-out calendar date"),
+  roomCategory: z.enum(["shared", "private"]),
+  sharedRoomType: z.enum(["sharing", "double", "triple", "quad"]).optional(),
+  privateRoomAllocation: z
+    .object({
+      double: z.number().int().min(0).max(20).default(0),
+      triple: z.number().int().min(0).max(20).default(0),
+      quad: z.number().int().min(0).max(20).default(0),
+    })
+    .optional(),
+  mealPlan: z
+    .enum(["room_only", "breakfast", "half_board", "full_board"])
+    .default("room_only"),
+  includeBreakfast: z.boolean().default(false),
+  includeLunch: z.boolean().default(false),
+  includeDinner: z.boolean().default(false),
+})
+
+const strictTransportSegmentSchema = z.object({
+  segmentOrder: z.number().int().min(1).max(12),
+  sectorId: z.string().min(1, "Transport sector is required").max(64),
+  serviceType: z.enum(["private", "shared"]),
+  vehicleId: z.string().uuid("Please select a valid vehicle"),
+  pickupTime: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Invalid pickup time")
+    .optional()
+    .or(z.literal("")),
+  scheduledDate: z
+    .string()
+    .refine(isStrictIsoCalendarDate, "Invalid transit calendar date")
+    .optional()
+    .or(z.literal("")),
+})
+
+const strictCustomUmrahSchema = z
+  .object({
+    clientSubmissionId: clientSubmissionIdSchema,
+    presetMode: z.enum([
+      "complete_umrah",
+      "visa_only",
+      "flights_only",
+      "hotels_only",
+      "transport_only",
+      "custom_mix",
+    ]),
+    includeVisa: z.boolean(),
+    includeFlights: z.boolean(),
+    includeHotels: z.boolean(),
+    includeTransport: z.boolean(),
+    includeZiyarat: z.boolean(),
+    passengers: strictPassengerSchema,
+    ksaArrivalDate: z
+      .string()
+      .optional()
+      .refine((v) => !v || isStrictIsoCalendarDate(v), {
+        message: "Please select a valid KSA arrival date",
+      }),
+    ksaDepartureDate: z
+      .string()
+      .optional()
+      .refine((v) => !v || isStrictIsoCalendarDate(v), {
+        message: "Please select a valid KSA departure date",
+      }),
+    citySequence: z
+      .enum([
+        "makkah_madinah",
+        "madinah_makkah",
+        "makkah_madinah_makkah",
+        "makkah_madinah_jeddah",
+        "makkah_only",
+        "madinah_only",
+      ])
+      .optional(),
+    entryAirport: z.enum(["JED", "MED"]).optional(),
+    exitAirport: z.enum(["JED", "MED"]).optional(),
+    departureCityId: z.string().uuid().optional().or(z.literal("")),
+    flightRouteType: z.enum(["direct", "connecting"]).optional(),
+    cabinClass: z.enum(["economy", "business"]).optional(),
+    preferredAirlineId: z.string().uuid().optional().or(z.literal("")),
+    hotelStays: z.array(strictHotelStaySchema).max(4).optional(),
+    transportSegments: z.array(strictTransportSegmentSchema).max(12).optional(),
+    ziyaratScope: z.enum(["makkah_only", "madinah_only", "both"]).optional(),
+    ziyaratVehicleId: z.string().uuid().optional().or(z.literal("")),
+    selectedZiyaratPlaceIds: z.array(z.string().uuid()).max(40).optional(),
+    contact: strictContactSchema,
+  })
+  .superRefine((val, ctx) => {
+    if (
+      !val.includeVisa &&
+      !val.includeFlights &&
+      !val.includeHotels &&
+      !val.includeTransport &&
+      !val.includeZiyarat
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["presetMode"],
+        message: "At least one service pillar must be selected.",
+      })
     }
 
-    // 2. Enforce Airport Rules
-    let entryAirport: "JED" | "MED" | null = null
-    let exitAirport: "JED" | "MED" | null = null
+    // OD-09c: Visa-Only, Flights, and Hotels require valid KSA arrival & departure dates
+    const requiresDates =
+      val.includeVisa || val.includeFlights || val.includeHotels
+    if (requiresDates && (!val.ksaArrivalDate || !val.ksaDepartureDate)) {
+      if (!val.ksaArrivalDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["ksaArrivalDate"],
+          message: "KSA arrival date is required.",
+        })
+      }
+      if (!val.ksaDepartureDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["ksaDepartureDate"],
+          message: "KSA departure date is required.",
+        })
+      }
+    }
 
-    if (data.includeFlights || data.includeHotels) {
-      entryAirport = data.entryAirport ?? "JED"
-      exitAirport = data.exitAirport ?? "MED"
-
-      if (data.citySequence) {
-        if (
-          data.citySequence === "makkah_madinah" ||
-          data.citySequence === "makkah_madinah_makkah" ||
-          data.citySequence === "makkah_madinah_jeddah" ||
-          data.citySequence === "makkah_only"
-        ) {
-          entryAirport = "JED" // Invariant: Makkah has no airport, must fly to JED
-          exitAirport =
-            data.citySequence === "makkah_only" ||
-            data.citySequence === "makkah_madinah_makkah" ||
-            data.citySequence === "makkah_madinah_jeddah"
-              ? "JED"
-              : data.exitAirport ?? "MED"
-        } else if (data.citySequence === "madinah_makkah") {
-          entryAirport = data.entryAirport ?? "MED"
-          exitAirport = "JED"
-        } else if (data.citySequence === "madinah_only") {
-          entryAirport = data.entryAirport ?? "MED"
-          exitAirport = data.exitAirport ?? "MED"
+    if (
+      val.ksaArrivalDate &&
+      val.ksaDepartureDate &&
+      isStrictIsoCalendarDate(val.ksaArrivalDate) &&
+      isStrictIsoCalendarDate(val.ksaDepartureDate)
+    ) {
+      if (val.ksaDepartureDate < val.ksaArrivalDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["ksaDepartureDate"],
+          message: "KSA departure date must be on or after arrival date.",
+        })
+      } else {
+        const totalDays = computeInclusiveDaysStrict(
+          val.ksaArrivalDate,
+          val.ksaDepartureDate
+        )
+        if (totalDays > 90) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["ksaDepartureDate"],
+            message: "Umrah itinerary duration cannot exceed 90 days.",
+          })
         }
       }
     }
 
-    const isVisaOnly =
-      data.presetMode === "visa_only" ||
-      (data.includeVisa &&
-        !data.includeFlights &&
-        !data.includeHotels &&
-        !data.includeTransport &&
-        !data.includeZiyarat)
+    if (val.includeHotels) {
+      if (!val.hotelStays || val.hotelStays.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["hotelStays"],
+          message: "Please configure at least one Haramain hotel stay.",
+        })
+      } else {
+        for (let i = 0; i < val.hotelStays.length; i++) {
+          const stay = val.hotelStays[i]!
+          if (stay.checkOutDate <= stay.checkInDate) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["hotelStays", i, "checkOutDate"],
+              message: "Hotel check-out date must be after check-in date.",
+            })
+          }
+          if (i > 0) {
+            const prev = val.hotelStays[i - 1]!
+            if (stay.checkInDate !== prev.checkOutDate) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["hotelStays", i, "checkInDate"],
+                message:
+                  "Consecutive hotel stays must chain seamlessly without date gaps.",
+              })
+            }
+          }
+        }
+      }
+    }
+  })
 
-    const referenceNumber = await generateApplicationReference()
+const strictGroupBookingSchema = z
+  .object({
+    clientSubmissionId: clientSubmissionIdSchema,
+    groupPackageId: z.string().uuid("Invalid group package selection"),
+    groupDepartureId: z
+      .string()
+      .uuid("Invalid departure batch selection")
+      .optional()
+      .or(z.literal("")),
+    roomOccupancyTier: z
+      .enum(["sharing", "quad", "triple", "double"])
+      .optional(),
+    selectedRoomType: z
+      .enum(["sharing", "quad", "triple", "double"])
+      .optional(),
+    selectedHotelOptionCode: z.string().trim().max(80).optional().or(z.literal("")),
+    passengers: strictPassengerSchema,
+    contact: strictContactSchema,
+    specialRequests: z
+      .string()
+      .trim()
+      .max(1500, "Special requests must be 1,500 characters or fewer")
+      .optional()
+      .or(z.literal("")),
+  })
+  .refine((v) => Boolean(v.roomOccupancyTier || v.selectedRoomType), {
+    message: "Please select a room occupancy tier.",
+    path: ["roomOccupancyTier"],
+  })
 
-    // 3. Database Persistence (neon-http compatible sequential inserts)
-    const [newApp] = await db
-      .insert(schema.applications)
-      .values({
-        referenceNumber,
-        source: "custom_builder",
-        status: "pending_quote",
-        presetMode: data.presetMode,
-        customerName: data.contact.customerName,
-        customerPhone: data.contact.customerPhone,
-        customerWhatsapp: data.contact.customerWhatsapp,
-        customerCity: data.contact.customerCity,
-        customerEmail: data.contact.customerEmail || null,
-        specialRequests: data.contact.specialRequests || null,
-        adults,
-        children,
-        infants,
-        totalPassportCount,
-        bedAndSeatCount,
-        includeVisa: data.includeVisa,
-        includeFlights: data.includeFlights,
-        includeHotels: data.includeHotels,
-        includeTransport: data.includeTransport,
-        includeZiyarat: data.includeZiyarat,
-        ksaArrivalDate: data.ksaArrivalDate || null,
-        ksaDepartureDate: data.ksaDepartureDate || null,
-        totalKsaDays,
-        calculatedVisaTier,
-        lockedVisaRatePerPersonPkr,
-        calculatedVisaTotalPkr,
-        citySequence:
-          data.includeFlights || data.includeHotels
-            ? data.citySequence || null
-            : null,
-        entryAirport,
-        exitAirport,
-        departureCityId: data.includeFlights ? data.departureCityId || null : null,
-        flightRouteType: data.includeFlights ? data.flightRouteType || null : null,
-        cabinClass: data.includeFlights ? data.cabinClass || null : null,
-        preferredAirlineId: data.includeFlights ? data.preferredAirlineId || null : null,
-        ziyaratScope: data.includeZiyarat ? data.ziyaratScope || null : null,
-        ziyaratVehicleId: data.includeZiyarat ? data.ziyaratVehicleId || null : null,
-        selectedZiyaratPlaceIds: data.includeZiyarat
-          ? data.selectedZiyaratPlaceIds || []
-          : [],
-      })
-      .returning()
+const strictHajjInquirySchema = z.object({
+  clientSubmissionId: clientSubmissionIdSchema,
+  hajjConsultationType: z.string().trim().min(2).max(160),
+  hajjPackageSlug: z.string().trim().max(120).optional().or(z.literal("")),
+  maktabTier: z.string().trim().max(24).optional().or(z.literal("")),
+  roomType: z.enum(["sharing", "quad", "triple", "double"]).optional(),
+  indicativePricePkr: z.number().int().nonnegative().optional(),
+  durationLabel: z.string().trim().max(60).optional().or(z.literal("")),
+  includeQurbani: z.boolean().optional(),
+  includeTrainTicket: z.boolean().optional(),
+  bloodGroup: z.string().trim().max(10).optional().or(z.literal("")),
+  passengers: strictPassengerSchema,
+  contact: strictContactSchema,
+  notes: z
+    .string()
+    .trim()
+    .max(1000, "Special inquiries must be 1,000 characters or fewer")
+    .optional()
+    .or(z.literal("")),
+})
 
-    if (!newApp) {
-      throw new Error("Failed to insert application record.")
+const strictStatusLookupSchema = z.object({
+  referenceNumber: z
+    .string()
+    .trim()
+    .min(8, "Reference number is required")
+    .max(32, "Reference number is too long")
+    .regex(
+      /^ART(?:-[A-Z0-9]{2,14}){2,4}$/i,
+      "Invalid reference number format"
+    ),
+  customerPhone: z.string().trim().min(1).max(32),
+})
+
+const strictRespondToQuoteSchema = z.object({
+  referenceNumber: z
+    .string()
+    .trim()
+    .min(8)
+    .max(32)
+    .regex(/^ART(?:-[A-Z0-9]{2,14}){2,4}$/i),
+  customerPhone: z.string().trim().min(1).max(32),
+  decision: z.enum(["accept", "request_revision"]),
+  revisionNotes: z
+    .string()
+    .trim()
+    .max(1000, "Revision notes must be 1,000 characters or fewer")
+    .optional()
+    .or(z.literal("")),
+})
+
+// ==========================================
+// 1. SUBMIT CUSTOM UMRAH APPLICATION (`T-018`, `T-053`, `T-083`)
+// ==========================================
+
+function buildIdempotentCustomReplay(
+  existingApp: typeof schema.applications.$inferSelect,
+  agencyWhatsapp: string
+): CustomApplicationResult {
+  const isVisaOnly =
+    existingApp.presetMode === "visa_only" ||
+    (existingApp.includeVisa &&
+      !existingApp.includeFlights &&
+      !existingApp.includeHotels &&
+      !existingApp.includeTransport &&
+      !existingApp.includeZiyarat)
+
+  const totalKsaDays =
+    existingApp.totalKsaDays ??
+    (existingApp.ksaArrivalDate && existingApp.ksaDepartureDate
+      ? computeInclusiveDaysStrict(
+          existingApp.ksaArrivalDate,
+          existingApp.ksaDepartureDate
+        )
+      : 15)
+
+  const waMessage = isVisaOnly
+    ? `Assalam-o-Alaikum Al Ramlah Travels! I have submitted my Umrah Visa-Only booking.\nReference: *${existingApp.referenceNumber}*\nPilgrim: ${existingApp.customerName}\nPassports: ${existingApp.totalPassportCount}\nTotal Locked Amount: PKR ${(existingApp.calculatedVisaTotalPkr ?? 0).toLocaleString()}`
+    : `Assalam-o-Alaikum Al Ramlah Travels! I have configured a Custom Umrah Itinerary.\nReference: *${existingApp.referenceNumber}*\nPilgrim: ${existingApp.customerName}\nTravellers: ${existingApp.adults} Adults, ${existingApp.children} Children, ${existingApp.infants} Infants\nPlease prepare my confirmed live rate quotation.`
+
+  return {
+    success: true,
+    idempotentReplay: true,
+    referenceNumber: existingApp.referenceNumber,
+    applicationId: existingApp.id,
+    isVisaOnly,
+    calculatedVisaTier: existingApp.calculatedVisaTier,
+    calculatedVisaTotalPkr: existingApp.calculatedVisaTotalPkr,
+    totalKsaDays,
+    whatsappUrl: toWaMeUrl(agencyWhatsapp, waMessage),
+  }
+}
+
+export async function submitCustomApplication(
+  rawInput: unknown,
+  _testExecutor?: DbOrTx
+): Promise<CustomApplicationResult> {
+  if (hasTriggeredHoneypot(rawInput)) {
+    return {
+      success: false,
+      error: "Unable to process submission. Please refresh and try again.",
+    }
+  }
+
+  const parsed = strictCustomUmrahSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    const fieldErrors = collectZodFieldErrors(parsed.error)
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid application parameters.",
+      fieldErrors,
+    }
+  }
+
+  const execDb: DbOrTx =
+    process.env.NODE_ENV !== "production" &&
+    _testExecutor &&
+    typeof (_testExecutor as { select?: unknown }).select === "function"
+      ? _testExecutor
+      : db
+
+  const runAtomic = async <T>(fn: (tx: DbOrTx) => Promise<T>): Promise<T> => {
+    if (execDb !== db) {
+      return fn(execDb)
+    }
+    return withTransaction(fn)
+  }
+
+  const data = parsed.data
+  const [settings] = await execDb.select().from(schema.agencySettings).limit(1)
+  const agencyWhatsapp = settings?.primaryWhatsapp ?? "923274029701"
+
+  // T-053: Idempotency check BEFORE rate-limit consumption for safe retries
+  if (data.clientSubmissionId) {
+    const existing = await execDb.query.applications.findFirst({
+      where: eq(schema.applications.clientSubmissionId, data.clientSubmissionId),
+    })
+    if (existing) {
+      return buildIdempotentCustomReplay(existing, agencyWhatsapp)
+    }
+  }
+
+  const clientIp = await resolveClientIp(rawInput)
+  const rl = await enforceRateLimit("submit-custom", clientIp, {
+    max: 10,
+    windowSec: 600,
+  })
+  if (!rl.allowed) {
+    return {
+      success: false,
+      error:
+        "Too many submissions from your network. Please wait a few minutes and try again.",
+    }
+  }
+
+  const normalizedPhone = normalizePublicPhone(data.contact.customerPhone)
+  if (!normalizedPhone) {
+    return {
+      success: false,
+      error: "Please enter a valid phone number.",
+      fieldErrors: { "contact.customerPhone": "Please enter a valid phone number." },
+    }
+  }
+  const normalizedWhatsapp = data.contact.customerWhatsapp
+    ? normalizePublicPhone(data.contact.customerWhatsapp)
+    : normalizedPhone
+
+  const { adults, children, infants } = data.passengers
+  const totalPassportCount = adults + children + infants
+  const bedAndSeatCount = adults + children
+
+  const isVisaOnly =
+    data.presetMode === "visa_only" ||
+    (data.includeVisa &&
+      !data.includeFlights &&
+      !data.includeHotels &&
+      !data.includeTransport &&
+      !data.includeZiyarat)
+
+  // Resolve arrival/departure dates (including transport_only fallback from segment dates)
+  let arrivalIso = data.ksaArrivalDate ?? null
+  let departureIso = data.ksaDepartureDate ?? null
+  if ((!arrivalIso || !departureIso) && data.transportSegments?.length) {
+    const segDates = data.transportSegments
+      .map((s) => s.scheduledDate)
+      .filter((d): d is string => Boolean(d && isStrictIsoCalendarDate(d)))
+      .sort()
+    if (segDates.length > 0) {
+      arrivalIso = arrivalIso ?? segDates[0]!
+      departureIso = departureIso ?? segDates[segDates.length - 1]!
+    }
+  }
+
+  // T-018 & OD-09a: Fail closed if required visa_rates row is missing; use live sarToPkrRate when Masar applies
+  let calculatedVisaTier: "short_term" | "long_term" | null = null
+  let lockedVisaPerPersonPkr: number | null = null
+  let calculatedVisaTotalPkr: number | null = null
+  let totalKsaDays: number | null = null
+
+  if (arrivalIso && departureIso) {
+    totalKsaDays = computeInclusiveDaysStrict(arrivalIso, departureIso)
+  }
+
+  if (data.includeVisa) {
+    if (!arrivalIso || !departureIso || totalKsaDays === null) {
+      return {
+        success: false,
+        error:
+          "KSA arrival and departure dates are required for Umrah visa calculation.",
+        fieldErrors: {
+          ksaArrivalDate: "KSA arrival date is required.",
+          ksaDepartureDate: "KSA departure date is required.",
+        },
+      }
     }
 
-    try {
-      // Insert Hotel Stays if enabled
+    const visaRateRows = await execDb.select().from(schema.visaRates)
+    const shortTermRow = visaRateRows.find((r) => r.tier === "short_term")
+    const longTermRow = visaRateRows.find((r) => r.tier === "long_term")
+    const requiredRow = totalKsaDays <= 30 ? shortTermRow : longTermRow
+
+    if (!requiredRow || requiredRow.pricePkr <= 0) {
+      return {
+        success: false,
+        error:
+          "Official Umrah visa tariff schedule is temporarily unavailable. Please contact our desk on WhatsApp.",
+      }
+    }
+
+    const liveSarToPkrRate = Number(settings?.sarToPkrRate ?? 0)
+    if (
+      data.includeHotels &&
+      (!Number.isFinite(liveSarToPkrRate) || liveSarToPkrRate <= 0)
+    ) {
+      return {
+        success: false,
+        error:
+          "Live Masar SAR conversion tariff is temporarily unavailable. Please contact our desk on WhatsApp.",
+      }
+    }
+
+    const visaCalc = calculateVisaTierAndCost(
+      arrivalIso,
+      departureIso,
+      totalPassportCount,
+      {
+        shortTermPricePkr: shortTermRow?.pricePkr ?? requiredRow.pricePkr,
+        longTermPricePkr: longTermRow?.pricePkr ?? requiredRow.pricePkr,
+        longTermPriceSar: longTermRow?.priceSar ?? requiredRow.priceSar,
+        withoutMasarPriceSar:
+          shortTermRow?.withoutMasarPriceSar ?? requiredRow.withoutMasarPriceSar,
+        withMasar10DaysSar:
+          shortTermRow?.withMasar10DaysSar ?? requiredRow.withMasar10DaysSar,
+        withMasar15DaysSar:
+          shortTermRow?.withMasar15DaysSar ?? requiredRow.withMasar15DaysSar,
+        withMasar21DaysSar:
+          shortTermRow?.withMasar21DaysSar ?? requiredRow.withMasar21DaysSar,
+        withMasar28DaysSar:
+          shortTermRow?.withMasar28DaysSar ?? requiredRow.withMasar28DaysSar,
+      },
+      {
+        withMasar: data.includeHotels,
+        sarToPkrRate: data.includeHotels ? liveSarToPkrRate : undefined,
+      }
+    )
+
+    if (
+      !Number.isFinite(visaCalc.totalVisaCostPkr) ||
+      visaCalc.totalVisaCostPkr <= 0
+    ) {
+      return {
+        success: false,
+        error:
+          "Unable to compute valid Umrah visa total. Please contact our desk on WhatsApp.",
+      }
+    }
+
+    calculatedVisaTier = visaCalc.tier
+    lockedVisaPerPersonPkr = Math.round(visaCalc.pricePerPassportPkr)
+    calculatedVisaTotalPkr = Math.round(visaCalc.totalVisaCostPkr)
+    totalKsaDays = visaCalc.totalKsaDays
+  }
+
+  // T-018 & OD-09c: Preserve route, flight preferences, and Makkah-first JED entry lock across all pillar mixes
+  const hasRoutingContext =
+    data.includeHotels ||
+    data.includeFlights ||
+    (data.includeTransport && data.presetMode !== "transport_only")
+
+  const resolvedCitySequence = hasRoutingContext
+    ? (data.citySequence ?? null)
+    : null
+  const startsInMakkah = Boolean(
+    resolvedCitySequence && resolvedCitySequence.startsWith("makkah")
+  )
+
+  let resolvedEntryAirport: "JED" | "MED" | null = null
+  let resolvedExitAirport: "JED" | "MED" | null = null
+
+  if (hasRoutingContext) {
+    if (startsInMakkah) {
+      // Business Invariant #3: Makkah has no airport; sequences starting in Makkah lock Entry Airport to JED
+      resolvedEntryAirport = "JED"
+    } else if (data.entryAirport) {
+      resolvedEntryAirport = data.entryAirport
+    } else if (resolvedCitySequence?.startsWith("madinah")) {
+      resolvedEntryAirport = "MED"
+    }
+
+    if (data.exitAirport) {
+      resolvedExitAirport = data.exitAirport
+    } else if (
+      resolvedCitySequence === "makkah_madinah" ||
+      resolvedCitySequence === "madinah_only"
+    ) {
+      resolvedExitAirport = "MED"
+    } else if (resolvedCitySequence) {
+      resolvedExitAirport = "JED"
+    }
+  }
+
+  const allVehicles = data.includeTransport
+    ? await execDb.select().from(schema.vehicles)
+    : []
+  const allSectors = data.includeTransport
+    ? await execDb.select().from(schema.transportSectors)
+    : []
+
+  try {
+    const txResult = await runAtomic(async (tx) => {
+      const referenceNumber = await allocateUniqueReferenceNumber(tx)
+      const now = new Date()
+
+      const [insertedApp] = await tx
+        .insert(schema.applications)
+        .values({
+          referenceNumber,
+          clientSubmissionId: data.clientSubmissionId || null,
+          source: "custom_builder",
+          presetMode: data.presetMode,
+          status: isVisaOnly ? "quoted" : "pending_quote",
+          customerName: data.contact.customerName,
+          customerPhone: normalizedPhone.e164,
+          customerWhatsapp: (normalizedWhatsapp ?? normalizedPhone).e164,
+          customerEmail: data.contact.customerEmail || null,
+          customerCity: data.contact.customerCity,
+          adults,
+          children,
+          infants,
+          totalPassportCount,
+          bedAndSeatCount,
+          includeVisa: data.includeVisa,
+          includeFlights: data.includeFlights,
+          includeHotels: data.includeHotels,
+          includeTransport: data.includeTransport,
+          includeZiyarat: data.includeZiyarat,
+          ksaArrivalDate: arrivalIso,
+          ksaDepartureDate: departureIso,
+          totalKsaDays,
+          citySequence: resolvedCitySequence,
+          entryAirport: resolvedEntryAirport,
+          exitAirport: resolvedExitAirport,
+          departureCityId:
+            data.includeFlights && data.departureCityId
+              ? data.departureCityId
+              : null,
+          flightRouteType: data.includeFlights
+            ? (data.flightRouteType ?? "direct")
+            : null,
+          cabinClass: data.includeFlights
+            ? (data.cabinClass ?? "economy")
+            : null,
+          preferredAirlineId:
+            data.includeFlights && data.preferredAirlineId
+              ? data.preferredAirlineId
+              : null,
+          ziyaratScope: data.includeZiyarat ? (data.ziyaratScope ?? "both") : null,
+          ziyaratVehicleId:
+            data.includeZiyarat && data.ziyaratVehicleId
+              ? data.ziyaratVehicleId
+              : null,
+          selectedZiyaratPlaceIds: data.includeZiyarat
+            ? (data.selectedZiyaratPlaceIds ?? [])
+            : [],
+          calculatedVisaTier,
+          lockedVisaRatePerPersonPkr: lockedVisaPerPersonPkr,
+          calculatedVisaTotalPkr,
+          specialRequests: data.contact.specialRequests || null,
+          quoteSentAt: isVisaOnly ? now : null,
+        })
+        .returning()
+
+      if (!insertedApp) {
+        throw new Error("Failed to persist application dossier.")
+      }
+
       if (data.includeHotels && data.hotelStays && data.hotelStays.length > 0) {
-        const staysToInsert = data.hotelStays.map((stay) => {
-          return {
-            applicationId: newApp.id,
+        await tx.insert(schema.applicationHotelStays).values(
+          data.hotelStays.map((stay) => ({
+            applicationId: insertedApp.id,
             stayOrder: stay.stayOrder,
             city: stay.city,
             hotelId: stay.hotelId,
-            checkInDate:
-              stay.checkInDate ||
-              data.ksaArrivalDate ||
-              new Date().toISOString().split("T")[0]!,
-            checkOutDate:
-              stay.checkOutDate ||
-              data.ksaDepartureDate ||
-              new Date().toISOString().split("T")[0]!,
             nights: stay.nights,
+            checkInDate: stay.checkInDate,
+            checkOutDate: stay.checkOutDate,
             roomCategory: stay.roomCategory,
-            sharedRoomType: stay.sharedRoomType || null,
-            privateRoomAllocation: stay.privateRoomAllocation || {
-              double: 0,
-              triple: 0,
-              quad: 0,
-            },
+            sharedRoomType:
+              stay.roomCategory === "shared"
+                ? (stay.sharedRoomType ?? "sharing")
+                : null,
+            privateRoomAllocation:
+              stay.roomCategory === "private"
+                ? (stay.privateRoomAllocation ?? {
+                    double: 0,
+                    triple: 0,
+                    quad: 0,
+                  })
+                : null,
             mealPlan: stay.mealPlan ?? "room_only",
-            includeBreakfast: stay.includeBreakfast ?? false,
-            includeLunch: stay.includeLunch ?? false,
-            includeDinner: stay.includeDinner ?? false,
-          }
-        })
-
-        await db.insert(schema.applicationHotelStays).values(staysToInsert)
+            includeBreakfast:
+              stay.includeBreakfast ||
+              ["breakfast", "half_board", "full_board"].includes(
+                stay.mealPlan ?? ""
+              ),
+            includeLunch: stay.includeLunch || stay.mealPlan === "full_board",
+            includeDinner:
+              stay.includeDinner ||
+              ["half_board", "full_board"].includes(stay.mealPlan ?? ""),
+          }))
+        )
       }
 
-      // Insert Transport Segments if enabled
       if (
         data.includeTransport &&
         data.transportSegments &&
         data.transportSegments.length > 0
       ) {
-        const allVehicles = await db.select().from(schema.vehicles)
-        const vehicleSeatMap = new Map(
-          allVehicles.map((v) => [v.id, v.seatCapacity])
-        )
+        const segmentRows = data.transportSegments.map((seg) => {
+          const veh = allVehicles.find((v) => v.id === seg.vehicleId)
+          const resolvedSector = allSectors.find(
+            (s) => s.id === seg.sectorId || s.code === seg.sectorId
+          )
+          if (!veh || !resolvedSector) {
+            throw new Error("Invalid transport sector or vehicle selection.")
+          }
 
-        const segmentsToInsert = data.transportSegments.map((segment) => {
-          const seatCap = vehicleSeatMap.get(segment.vehicleId) ?? 4
-          const quantity =
-            segment.serviceType === "private"
-              ? Math.max(1, Math.ceil(bedAndSeatCount / Math.max(1, seatCap)))
-              : 1
+          let vehicleQuantity = 1
+          if (seg.serviceType === "private") {
+            const capCalc = calculateVehicleQuantity(bedAndSeatCount, {
+              seatCapacity: veh.seatCapacity,
+              bookingMode: veh.bookingMode,
+            })
+            vehicleQuantity = Math.max(1, capCalc.requiredQuantity)
+          }
+
+          // T-083: Shared bus/rail operates on fixed station schedule; private preserves chosen pickupTime
+          const persistedPickupTime =
+            seg.serviceType === "shared"
+              ? null
+              : seg.pickupTime && seg.pickupTime.trim()
+                ? seg.pickupTime.trim()
+                : "10:00"
 
           return {
-            applicationId: newApp.id,
-            segmentOrder: segment.segmentOrder,
-            sectorId: segment.sectorId,
-            serviceType: segment.serviceType,
-            vehicleId: segment.vehicleId,
-            vehicleQuantity: quantity,
-            scheduledDate: segment.scheduledDate || data.ksaArrivalDate || null,
-            pickupTime: segment.pickupTime || null,
+            applicationId: insertedApp.id,
+            segmentOrder: seg.segmentOrder,
+            sectorId: resolvedSector.id,
+            serviceType: seg.serviceType,
+            vehicleId: seg.vehicleId,
+            vehicleQuantity,
+            pickupTime: persistedPickupTime,
+            scheduledDate: seg.scheduledDate || null,
           }
         })
 
-        await db
-          .insert(schema.applicationTransportSegments)
-          .values(segmentsToInsert)
+        await tx.insert(schema.applicationTransportSegments).values(segmentRows)
       }
 
-      // Create Initial Quote Record
-      await db.insert(schema.applicationQuotes).values({
-        applicationId: newApp.id,
-        version: 1,
-        visaTotalPkr: calculatedVisaTotalPkr || 0,
-        flightsTotalPkr: 0,
-        makkahHotelTotalPkr: 0,
-        madinahHotelTotalPkr: 0,
-        transportTotalPkr: 0,
-        ziyaratTotalPkr: 0,
-        discountPkr: 0,
-        grandTotalPkr: isVisaOnly ? calculatedVisaTotalPkr || 0 : 0,
-        paymentStatus: "unpaid",
-      })
-    } catch (childErr) {
-      // Compensating rollback: delete parent application if child inserts fail
-      try {
-        await db
-          .delete(schema.applications)
-          .where(eq(schema.applications.id, newApp.id))
-      } catch (rollbackErr) {
-        console.error(
-          "Compensating rollback failed for application",
-          newApp.id,
-          rollbackErr
-        )
+      if (isVisaOnly && calculatedVisaTotalPkr && calculatedVisaTotalPkr > 0) {
+        await tx.insert(schema.applicationQuotes).values({
+          applicationId: insertedApp.id,
+          version: 1,
+          visaTotalPkr: calculatedVisaTotalPkr,
+          flightsTotalPkr: 0,
+          makkahHotelTotalPkr: 0,
+          madinahHotelTotalPkr: 0,
+          transportTotalPkr: 0,
+          ziyaratTotalPkr: 0,
+          discountPkr: 0,
+          grandTotalPkr: calculatedVisaTotalPkr,
+          paymentStatus: "unpaid",
+          quoteNotesCustomer: `Official Fixed Umrah Visa Rate (${
+            calculatedVisaTier === "long_term"
+              ? "Long-Term >30 Days"
+              : "Short-Term <=30 Days"
+          }) for ${totalPassportCount} passport(s).`,
+          quotedAt: now,
+        })
       }
-      throw childErr
-    }
 
-    revalidatePath("/admin")
-    revalidatePath("/admin/applications")
-
-    // Fetch agency WhatsApp number for handoff link
-    const settings = await db.query.agencySettings.findFirst({
-      where: eq(schema.agencySettings.id, "default"),
+      return insertedApp
     })
-    const agencyWhatsapp = settings?.primaryWhatsapp ?? "03274029701"
 
-    const whatsappMessage = `As-salamu alaykum Al Ramlah Travels,\n\nI have submitted a Custom Journey inquiry on your portal.\n*Reference Code:* ${referenceNumber}\n*Lead Pilgrim:* ${data.contact.customerName}\n*City:* ${data.contact.customerCity}\n*Travellers:* ${adults} Adults, ${children} Children, ${infants} Infants\n*Selected Services:* ${[
-      data.includeVisa ? "Visa" : null,
-      data.includeFlights ? "Flights" : null,
-      data.includeHotels ? "Hotels" : null,
-      data.includeTransport ? "Transport" : null,
-      data.includeZiyarat ? "Ziyarat" : null,
-    ]
-      .filter(Boolean)
-      .join(", ")}\n\nPlease review our itinerary and share the official quotation. JazakAllah Khair!`
-
-    const whatsappUrl = formatWhatsAppUrl(agencyWhatsapp, whatsappMessage)
+    const waMessage = isVisaOnly
+      ? `Assalam-o-Alaikum Al Ramlah Travels! I have submitted my Umrah Visa-Only booking.\nReference: *${txResult.referenceNumber}*\nPilgrim: ${data.contact.customerName}\nPassports: ${totalPassportCount}\nTotal Locked Amount: PKR ${(calculatedVisaTotalPkr ?? 0).toLocaleString()}`
+      : `Assalam-o-Alaikum Al Ramlah Travels! I have configured a Custom Umrah Itinerary.\nReference: *${txResult.referenceNumber}*\nPilgrim: ${data.contact.customerName}\nTravellers: ${adults} Adults, ${children} Children, ${infants} Infants\nPlease prepare my confirmed live rate quotation.`
 
     return {
       success: true,
-      referenceNumber: newApp.referenceNumber,
-      applicationId: newApp.id,
-      calculatedVisaTotalPkr: calculatedVisaTotalPkr ?? undefined,
-      calculatedVisaTier: calculatedVisaTier ?? undefined,
-      totalKsaDays: totalKsaDays ?? undefined,
+      referenceNumber: txResult.referenceNumber,
+      applicationId: txResult.id,
       isVisaOnly,
-      whatsappUrl,
+      calculatedVisaTier,
+      calculatedVisaTotalPkr,
+      totalKsaDays: totalKsaDays ?? 15,
+      whatsappUrl: toWaMeUrl(agencyWhatsapp, waMessage),
     }
   } catch (err: unknown) {
-    console.error("submitCustomApplication error:", err)
+    if (
+      data.clientSubmissionId &&
+      isUniqueViolationOnColumn(err, "client_submission_id")
+    ) {
+      const existing = await execDb.query.applications.findFirst({
+        where: eq(
+          schema.applications.clientSubmissionId,
+          data.clientSubmissionId
+        ),
+      })
+      if (existing) {
+        return buildIdempotentCustomReplay(existing, agencyWhatsapp)
+      }
+    }
     return {
       success: false,
       error:
         err instanceof Error
           ? err.message
-          : "Failed to submit application. Please try again.",
+          : "Unable to submit custom pilgrimage request. Please try again.",
     }
   }
 }
 
-// ==========================================
-// 2. SUBMIT GROUP BOOKING APPLICATION
-// ==========================================
-
-export interface GroupBookingResult {
-  success: boolean
-  referenceNumber?: string
-  applicationId?: string
-  grandTotalPkr?: number
-  remainingSeats?: number
-  whatsappUrl?: string
-  error?: string
+export async function submitCustomUmrahApplication(
+  rawInput: unknown,
+  _testExecutor?: DbOrTx
+): Promise<CustomApplicationResult> {
+  return submitCustomApplication(rawInput, _testExecutor)
 }
+
+// ==========================================
+// 2. SUBMIT GROUP PACKAGE BOOKING APPLICATION (`T-019`, `T-054`, `OD-09d`)
+// ==========================================
 
 export async function submitGroupBookingApplication(
   rawInput: unknown
 ): Promise<GroupBookingResult> {
+  if (hasTriggeredHoneypot(rawInput)) {
+    return {
+      success: false,
+      error: "Unable to process submission. Please refresh and try again.",
+    }
+  }
+
+  const parsed = strictGroupBookingSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid group booking details.",
+      fieldErrors: collectZodFieldErrors(parsed.error),
+    }
+  }
+
+  const data = parsed.data
+  const roomOccupancyTier = (data.roomOccupancyTier ??
+    data.selectedRoomType ??
+    "quad") as "sharing" | "quad" | "triple" | "double"
+
+  const [settings] = await db.select().from(schema.agencySettings).limit(1)
+  const agencyWhatsapp = settings?.primaryWhatsapp ?? "923274029701"
+
+  if (data.clientSubmissionId) {
+    const existing = await db.query.applications.findFirst({
+      where: eq(schema.applications.clientSubmissionId, data.clientSubmissionId),
+      with: {
+        quotes: {
+          orderBy: [desc(schema.applicationQuotes.version)],
+          limit: 1,
+        },
+      },
+    })
+    if (existing) {
+      const existingTotal = existing.quotes[0]?.grandTotalPkr ?? 0
+      return {
+        success: true,
+        idempotentReplay: true,
+        referenceNumber: existing.referenceNumber,
+        applicationId: existing.id,
+        estimatedTotalPkr: existingTotal,
+        grandTotalPkr: existingTotal,
+        whatsappUrl: toWaMeUrl(
+          agencyWhatsapp,
+          `Assalam-o-Alaikum Al Ramlah Travels! I have submitted a Group Umrah Reservation.\nReference: *${existing.referenceNumber}*\nPilgrim: ${existing.customerName}`
+        ),
+      }
+    }
+  }
+
+  const clientIp = await resolveClientIp(rawInput)
+  const rl = await enforceRateLimit("submit-group", clientIp, {
+    max: 10,
+    windowSec: 600,
+  })
+  if (!rl.allowed) {
+    return {
+      success: false,
+      error:
+        "Too many booking requests from your network. Please wait a few minutes and try again.",
+    }
+  }
+
+  const normalizedPhone = normalizePublicPhone(data.contact.customerPhone)
+  if (!normalizedPhone) {
+    return {
+      success: false,
+      error: "Please enter a valid phone number.",
+      fieldErrors: { "contact.customerPhone": "Please enter a valid phone number." },
+    }
+  }
+  const normalizedWhatsapp = data.contact.customerWhatsapp
+    ? normalizePublicPhone(data.contact.customerWhatsapp)
+    : normalizedPhone
+
+  const { adults, children, infants } = data.passengers
+  const totalPassportCount = adults + children + infants
+  const bedAndSeatCount = adults + children // Infants (<2 yrs) consume 0 beds and 0 seats
+  const todayPktIso = getTodayPktIso()
+
   try {
-    const parseResult = groupBookingSchema.safeParse(rawInput)
-    if (!parseResult.success) {
-      return {
-        success: false,
-        error: parseResult.error.issues[0]?.message || "Invalid group booking data.",
+    const txOut = await withTransaction(async (tx) => {
+      const [pkg] = await tx
+        .select()
+        .from(schema.groupPackages)
+        .where(
+          and(
+            eq(schema.groupPackages.id, data.groupPackageId),
+            eq(schema.groupPackages.isActive, true)
+          )
+        )
+        .limit(1)
+
+      if (!pkg) {
+        throw new Error("Selected group Umrah package is not available.")
       }
-    }
 
-    const data: GroupBookingInput = parseResult.data
+      let selectedDeparture: typeof schema.groupDepartures.$inferSelect | null =
+        null
 
-    const adults = data.passengers.adults
-    const children = data.passengers.children ?? 0
-    const infants = data.passengers.infants ?? 0
-    const totalPassportCount = adults + children + infants
-    const bedAndSeatCount = adults + children
+      if (data.groupDepartureId) {
+        // T-019: Strictly bind departure.id AND departure.packageId inside transaction
+        const [dep] = await tx
+          .select()
+          .from(schema.groupDepartures)
+          .where(
+            and(
+              eq(schema.groupDepartures.id, data.groupDepartureId),
+              eq(schema.groupDepartures.packageId, pkg.id)
+            )
+          )
+          .limit(1)
 
-    // Check departure availability
-    const departure = await db.query.groupDepartures.findFirst({
-      where: eq(schema.groupDepartures.id, data.groupDepartureId),
-    })
+        if (!dep) {
+          throw new Error(
+            "Selected departure batch does not belong to this group package."
+          )
+        }
 
-    if (!departure) {
-      return { success: false, error: "Selected departure batch not found." }
-    }
+        if (dep.status !== "open" && dep.status !== "filling_fast") {
+          throw new Error(
+            "This departure batch is closed or sold out. Please select another departure."
+          )
+        }
 
-    if (departure.status === "sold_out" || departure.status === "closed") {
-      return {
-        success: false,
-        error: "This departure batch is sold out or closed for new reservations.",
+        if (dep.departureDate < todayPktIso) {
+          throw new Error(
+            "This departure date has already passed. Please choose an upcoming departure."
+          )
+        }
+
+        const remainingSeats = dep.totalSeats - dep.bookedSeats
+        if (remainingSeats < bedAndSeatCount) {
+          throw new Error(
+            `Only ${Math.max(0, remainingSeats)} seat(s) remain on batch ${dep.batchCode}, which cannot accommodate ${bedAndSeatCount} seated pilgrim(s).`
+          )
+        }
+
+        selectedDeparture = dep
+      } else {
+        const allDeps = await tx
+          .select()
+          .from(schema.groupDepartures)
+          .where(eq(schema.groupDepartures.packageId, pkg.id))
+
+        if (allDeps.length > 0) {
+          const validOpen = allDeps
+            .filter(
+              (d) =>
+                (d.status === "open" || d.status === "filling_fast") &&
+                d.departureDate >= todayPktIso &&
+                d.totalSeats - d.bookedSeats >= bedAndSeatCount
+            )
+            .sort((a, b) => a.departureDate.localeCompare(b.departureDate))
+
+          if (validOpen.length === 0) {
+            throw new Error(
+              "No open upcoming departure batches with sufficient seats are available for this package."
+            )
+          }
+          selectedDeparture = validOpen[0]!
+        }
       }
-    }
 
-    const availableSeats = departure.totalSeats - departure.bookedSeats
-    if (availableSeats < bedAndSeatCount) {
-      return {
-        success: false,
-        error: `Only ${availableSeats} seat(s) remaining on this batch. You requested ${bedAndSeatCount}.`,
+      // T-054: Resolve pricing from selected multiHotelOptions (if chosen) or departure/package tier
+      let selectedHotelOptionLabel: string | null = null
+      let ratePerPersonPkr = pkg.quadPricePkr
+
+      if (
+        data.selectedHotelOptionCode &&
+        pkg.multiHotelOptions &&
+        pkg.multiHotelOptions.length > 0
+      ) {
+        const matchedOpt = pkg.multiHotelOptions.find(
+          (opt) =>
+            opt.pkgCode === data.selectedHotelOptionCode ||
+            opt.label === data.selectedHotelOptionCode
+        )
+        if (!matchedOpt) {
+          throw new Error("Selected hotel package tier option is invalid.")
+        }
+        selectedHotelOptionLabel = `${matchedOpt.label} (${matchedOpt.makkahHotelName} / ${matchedOpt.madinahHotelName})`
+
+        if (roomOccupancyTier === "sharing") {
+          ratePerPersonPkr =
+            matchedOpt.sharingPricePkr ?? matchedOpt.quadPricePkr ?? pkg.quadPricePkr
+        } else if (roomOccupancyTier === "quad") {
+          ratePerPersonPkr =
+            matchedOpt.quadPricePkr ?? matchedOpt.sharingPricePkr ?? pkg.quadPricePkr
+        } else if (roomOccupancyTier === "triple") {
+          ratePerPersonPkr =
+            matchedOpt.triplePricePkr ??
+            matchedOpt.quadPricePkr ??
+            pkg.triplePricePkr
+        } else {
+          ratePerPersonPkr =
+            matchedOpt.doublePricePkr ??
+            matchedOpt.triplePricePkr ??
+            pkg.doublePricePkr
+        }
+      } else {
+        if (roomOccupancyTier === "sharing") {
+          ratePerPersonPkr =
+            selectedDeparture?.sharingPriceOverridePkr ??
+            pkg.sharingPricePkr ??
+            pkg.quadPricePkr
+        } else if (roomOccupancyTier === "quad") {
+          ratePerPersonPkr =
+            selectedDeparture?.quadPriceOverridePkr ?? pkg.quadPricePkr
+        } else if (roomOccupancyTier === "triple") {
+          ratePerPersonPkr =
+            selectedDeparture?.triplePriceOverridePkr ?? pkg.triplePricePkr
+        } else {
+          ratePerPersonPkr =
+            selectedDeparture?.doublePriceOverridePkr ?? pkg.doublePricePkr
+        }
       }
-    }
 
-    const pkg = await db.query.groupPackages.findFirst({
-      where: eq(schema.groupPackages.id, data.groupPackageId),
-    })
+      const infantTotalPkr = infants * (pkg.infantPricePkr ?? 0)
+      const estimatedTotalPkr = bedAndSeatCount * ratePerPersonPkr + infantTotalPkr
 
-    if (!pkg) {
-      return { success: false, error: "Selected group package not found." }
-    }
+      const referenceNumber = await allocateUniqueReferenceNumber(tx)
+      const userRequests = (
+        data.specialRequests ||
+        data.contact.specialRequests ||
+        ""
+      ).trim()
+      const tierSummary = selectedHotelOptionLabel
+        ? `Hotel Tier: ${selectedHotelOptionLabel}`
+        : ""
+      const combinedRequests = [tierSummary, userRequests]
+        .filter(Boolean)
+        .join(" | ")
+        .slice(0, 1500)
 
-    // Rate calculation based on room type
-    let ratePerPersonPkr = pkg.quadPricePkr
-    if (data.selectedRoomType === "sharing") {
-      ratePerPersonPkr =
-        departure.sharingPriceOverridePkr ??
-        pkg.sharingPricePkr ??
-        pkg.quadPricePkr
-    } else if (data.selectedRoomType === "triple") {
-      ratePerPersonPkr =
-        departure.triplePriceOverridePkr ?? pkg.triplePricePkr
-    } else if (data.selectedRoomType === "double") {
-      ratePerPersonPkr =
-        departure.doublePriceOverridePkr ?? pkg.doublePricePkr
-    } else if (data.selectedRoomType === "quad") {
-      ratePerPersonPkr =
-        departure.quadPriceOverridePkr ?? pkg.quadPricePkr
-    }
+      const now = new Date()
+      const totalDays =
+        selectedDeparture?.departureDate && selectedDeparture?.returnDate
+          ? computeInclusiveDaysStrict(
+              selectedDeparture.departureDate,
+              selectedDeparture.returnDate
+            )
+          : pkg.durationDays
 
-    const infantPricePkr = pkg.infantPricePkr ?? 65000
-    const infantTotalPkr = (data.passengers.infants || 0) * infantPricePkr
-    const packageTotalPkr = ratePerPersonPkr * bedAndSeatCount + infantTotalPkr
-    const referenceNumber = await generateApplicationReference()
+      // OD-09d: Do NOT increment bookedSeats on unverified web inquiry; deferred to admin 'approved'
+      const [insertedApp] = await tx
+        .insert(schema.applications)
+        .values({
+          referenceNumber,
+          clientSubmissionId: data.clientSubmissionId || null,
+          source: "group_booking",
+          presetMode: "group_package",
+          status: "quoted",
+          customerName: data.contact.customerName,
+          customerPhone: normalizedPhone.e164,
+          customerWhatsapp: (normalizedWhatsapp ?? normalizedPhone).e164,
+          customerEmail: data.contact.customerEmail || null,
+          customerCity: data.contact.customerCity,
+          adults,
+          children,
+          infants,
+          totalPassportCount,
+          bedAndSeatCount,
+          includeVisa: pkg.includesVisa,
+          includeFlights: true,
+          includeHotels: true,
+          includeTransport: pkg.includesTransport,
+          includeZiyarat: pkg.includesZiyarat,
+          ksaArrivalDate: selectedDeparture?.departureDate ?? null,
+          ksaDepartureDate: selectedDeparture?.returnDate ?? null,
+          totalKsaDays: totalDays,
+          departureCityId: selectedDeparture?.departureCityId ?? null,
+          preferredAirlineId: pkg.airlineId ?? null,
+          groupPackageId: pkg.id,
+          groupDepartureId: selectedDeparture?.id ?? null,
+          selectedRoomType: roomOccupancyTier,
+          specialRequests: combinedRequests || null,
+          quoteSentAt: now,
+        })
+        .returning()
 
-    const arrival = new Date(departure.departureDate)
-    const dep = new Date(departure.returnDate)
-    const diffDays = Math.max(
-      1,
-      Math.round((dep.getTime() - arrival.getTime()) / (1000 * 60 * 60 * 24)) + 1
-    )
-    const visaTier: "short_term" | "long_term" =
-      diffDays <= 30 ? "short_term" : "long_term"
+      if (!insertedApp) {
+        throw new Error("Failed to persist group booking dossier.")
+      }
 
-    const [groupApp] = await db
-      .insert(schema.applications)
-      .values({
-        referenceNumber,
-        source: "group_booking",
-        status: "pending_quote",
-        presetMode: "group_package",
-        groupPackageId: pkg.id,
-        groupDepartureId: departure.id,
-        selectedRoomType: data.selectedRoomType,
-        departureCityId: departure.departureCityId,
-        preferredAirlineId: pkg.airlineId,
-        customerName: data.contact.customerName,
-        customerPhone: data.contact.customerPhone,
-        customerWhatsapp: data.contact.customerWhatsapp,
-        customerCity: data.contact.customerCity,
-        customerEmail: data.contact.customerEmail || null,
-        specialRequests: data.contact.specialRequests || null,
-        adults,
-        children,
-        infants,
-        totalPassportCount,
-        bedAndSeatCount,
-        includeVisa: pkg.includesVisa,
-        includeFlights: true,
-        includeHotels: true,
-        includeTransport: pkg.includesTransport,
-        includeZiyarat: pkg.includesZiyarat,
-        ksaArrivalDate: departure.departureDate,
-        ksaDepartureDate: departure.returnDate,
-        totalKsaDays: diffDays,
-        calculatedVisaTier: visaTier,
-      })
-      .returning()
-
-    if (!groupApp) {
-      throw new Error("Failed to insert group application.")
-    }
-
-    try {
-      await db.insert(schema.applicationQuotes).values({
-        applicationId: groupApp.id,
+      await tx.insert(schema.applicationQuotes).values({
+        applicationId: insertedApp.id,
         version: 1,
         visaTotalPkr: 0,
         flightsTotalPkr: 0,
-        makkahHotelTotalPkr: 0,
+        makkahHotelTotalPkr: estimatedTotalPkr,
         madinahHotelTotalPkr: 0,
         transportTotalPkr: 0,
         ziyaratTotalPkr: 0,
         discountPkr: 0,
-        grandTotalPkr: packageTotalPkr,
-        currency: "PKR",
-        quoteNotesCustomer: `${pkg.title} (${departure.batchCode}) - ${data.selectedRoomType.toUpperCase()} Room Sharing for ${bedAndSeatCount} passenger(s)${data.passengers.infants > 0 ? ` + ${data.passengers.infants} Infant(s)` : ""}.`,
-        internalNotesAdmin: `Online Group Booking submitted via public website. Batch code: ${departure.batchCode}. Room tier: ${data.selectedRoomType} @ PKR ${ratePerPersonPkr.toLocaleString()}/pax.${infantTotalPkr > 0 ? ` Infant charge: PKR ${infantTotalPkr.toLocaleString()}.` : ""}`,
+        grandTotalPkr: estimatedTotalPkr,
         paymentStatus: "unpaid",
+        quoteNotesCustomer: `Group Package: ${pkg.title}${
+          selectedHotelOptionLabel ? ` [${selectedHotelOptionLabel}]` : ""
+        } (${roomOccupancyTier.toUpperCase()} tier) — ${bedAndSeatCount} seated pilgrim(s)${
+          infants > 0 ? ` + ${infants} infant(s)` : ""
+        }. Seats are soft-held pending deposit verification.`,
+        quotedAt: now,
       })
-    } catch (quoteErr) {
-      try {
-        await db
-          .delete(schema.applications)
-          .where(eq(schema.applications.id, groupApp.id))
-      } catch (delErr) {
-        console.error("Compensating rollback failed for group application:", delErr)
-      }
-      throw quoteErr
-    }
 
-    revalidatePath("/admin")
-    revalidatePath("/admin/desk")
-    revalidatePath("/admin/groups")
-    revalidatePath("/admin/applications")
-
-    const settings = await db.query.agencySettings.findFirst({
-      where: eq(schema.agencySettings.id, "default"),
+      return { insertedApp, pkg, selectedDeparture, estimatedTotalPkr }
     })
-    const agencyWhatsapp = settings?.primaryWhatsapp ?? "03274029701"
 
-    const message = `As-salamu alaykum Al Ramlah Travels,\n\nI have requested a seat reservation for Group Package: *${pkg.title}* (${departure.batchCode}).\n*Reference Code:* ${referenceNumber}\n*Passenger:* ${data.contact.customerName} (${bedAndSeatCount} seats, ${data.selectedRoomType.toUpperCase()} Room)\n*Total Estimated:* PKR ${packageTotalPkr.toLocaleString()}\n\nPlease verify seat allotment and share payment instructions.`
-
-    const whatsappUrl = formatWhatsAppUrl(agencyWhatsapp, message)
+    const waMessage = `Assalam-o-Alaikum Al Ramlah Travels! I have submitted a Group Umrah Reservation.\nReference: *${txOut.insertedApp.referenceNumber}*\nPackage: ${txOut.pkg.title}\nRoom Tier: ${roomOccupancyTier.toUpperCase()}\nPilgrim: ${data.contact.customerName}\nTravellers: ${adults} Adults, ${children} Children, ${infants} Infants\nEstimated Total: PKR ${txOut.estimatedTotalPkr.toLocaleString()}`
 
     return {
       success: true,
-      referenceNumber,
-      applicationId: groupApp.id,
-      grandTotalPkr: packageTotalPkr,
-      remainingSeats: availableSeats,
-      whatsappUrl,
+      referenceNumber: txOut.insertedApp.referenceNumber,
+      applicationId: txOut.insertedApp.id,
+      estimatedTotalPkr: txOut.estimatedTotalPkr,
+      grandTotalPkr: txOut.estimatedTotalPkr,
+      whatsappUrl: toWaMeUrl(agencyWhatsapp, waMessage),
     }
   } catch (err: unknown) {
-    console.error("submitGroupBookingApplication error:", err)
     return {
       success: false,
       error:
         err instanceof Error
           ? err.message
-          : "Failed to submit group booking. Please try again.",
+          : "Unable to submit group booking request.",
     }
   }
 }
 
-export async function submitGroupPackageApplication(
-  rawInput: unknown
-): Promise<GroupBookingResult> {
-  return submitGroupBookingApplication(rawInput)
-}
-
-export async function submitGroupBooking(
-  rawInput: unknown
-): Promise<GroupBookingResult> {
-  return submitGroupBookingApplication(rawInput)
-}
-
 // ==========================================
-// 3. SUBMIT HAJJ INQUIRY APPLICATION
+// 3. SUBMIT HAJJ 2027 PRE-REGISTRATION INQUIRY (`T-055`, `T-084`, `OD-09e`)
 // ==========================================
 
-export interface HajjInquiryResult {
-  success: boolean
-  referenceNumber?: string
-  applicationId?: string
-  whatsappUrl?: string
-  error?: string
-}
+const HAJJ_2027_REGULATORY_DISCLAIMER =
+  "Indicative 2027 Pre-Registration Estimate — Subject to Ministry of Religious Affairs (MoRA) & Saudi Nusuk official quota and tariff announcement."
 
 export async function submitHajjInquiryApplication(
   rawInput: unknown
 ): Promise<HajjInquiryResult> {
-  try {
-    const parseResult = hajjInquirySchema.safeParse(rawInput)
-    if (!parseResult.success) {
-      return {
-        success: false,
-        error: parseResult.error.issues[0]?.message || "Invalid Hajj consultation data.",
-      }
+  if (hasTriggeredHoneypot(rawInput)) {
+    return {
+      success: false,
+      error: "Unable to process submission. Please refresh and try again.",
     }
+  }
 
-    const data: HajjInquiryInput = parseResult.data
-    const adults = data.passengers.adults
-    const children = data.passengers.children ?? 0
-    const infants = data.passengers.infants ?? 0
-    const totalPassportCount = adults + children + infants
-    const bedAndSeatCount = adults + children
-
-    const referenceNumber = await generateApplicationReference()
-
-    const [hajjApp] = await db
-      .insert(schema.applications)
-      .values({
-        referenceNumber,
-        source: "hajj_inquiry",
-        status: "pending_quote",
-        presetMode: "hajj_consultation",
-        hajjConsultationType: data.hajjConsultationType,
-        customerName: data.contact.customerName,
-        customerPhone: data.contact.customerPhone,
-        customerWhatsapp: data.contact.customerWhatsapp,
-        customerCity: data.contact.customerCity,
-        customerEmail: data.contact.customerEmail || null,
-        specialRequests: data.notes || null,
-        adults,
-        children,
-        infants,
-        totalPassportCount,
-        bedAndSeatCount,
-        includeVisa: true,
-        includeFlights: true,
-        includeHotels: true,
-        includeTransport: true,
-        includeZiyarat: true,
-      })
-      .returning()
-
-    if (!hajjApp) {
-      throw new Error("Failed to insert Hajj application.")
+  const parsed = strictHajjInquirySchema.safeParse(rawInput)
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid Hajj inquiry details.",
+      fieldErrors: collectZodFieldErrors(parsed.error),
     }
+  }
 
-    try {
-      await db.insert(schema.applicationQuotes).values({
-        applicationId: hajjApp.id,
-        version: 1,
-        visaTotalPkr: 0,
-        flightsTotalPkr: 0,
-        makkahHotelTotalPkr: 0,
-        madinahHotelTotalPkr: 0,
-        transportTotalPkr: 0,
-        ziyaratTotalPkr: 0,
-        discountPkr: 0,
-        grandTotalPkr: 0,
-        currency: "PKR",
-        quoteNotesCustomer: `Hajj Consultation Request: ${data.hajjConsultationType}`,
-        internalNotesAdmin: `VIP Hajj Inquiry submitted via public website. Category: ${data.hajjConsultationType}`,
-        paymentStatus: "unpaid",
-      })
-    } catch (quoteErr) {
-      try {
-        await db
-          .delete(schema.applications)
-          .where(eq(schema.applications.id, hajjApp.id))
-      } catch (delErr) {
-        console.error("Compensating rollback failed for Hajj application:", delErr)
-      }
-      throw quoteErr
-    }
+  const data = parsed.data
+  const [settings] = await db.select().from(schema.agencySettings).limit(1)
+  const agencyWhatsapp = settings?.primaryWhatsapp ?? "923274029701"
 
-    revalidatePath("/admin")
-    revalidatePath("/admin/applications")
-
-    const settings = await db.query.agencySettings.findFirst({
-      where: eq(schema.agencySettings.id, "default"),
+  if (data.clientSubmissionId) {
+    const existing = await db.query.applications.findFirst({
+      where: eq(schema.applications.clientSubmissionId, data.clientSubmissionId),
     })
-    const agencyWhatsapp = settings?.primaryWhatsapp ?? "03274029701"
+    if (existing) {
+      return {
+        success: true,
+        idempotentReplay: true,
+        referenceNumber: existing.referenceNumber,
+        applicationId: existing.id,
+        whatsappUrl: toWaMeUrl(
+          agencyWhatsapp,
+          `Assalam-o-Alaikum Al Ramlah Travels! I have registered for Hajj 2027 Consultation.\nReference: *${existing.referenceNumber}*\nPilgrim: ${existing.customerName}`
+        ),
+      }
+    }
+  }
 
-    const message = `As-salamu alaykum Al Ramlah Travels,\n\nI have requested a Hajj VIP Consultation.\n*Reference Code:* ${referenceNumber}\n*Lead Pilgrim:* ${data.contact.customerName}\n*Consultation Type:* ${data.hajjConsultationType}\n*Family Count:* ${totalPassportCount} Pilgrim(s)\n\nPlease connect me with a senior Hajj advisor.`
+  const clientIp = await resolveClientIp(rawInput)
+  const rl = await enforceRateLimit("submit-hajj", clientIp, {
+    max: 10,
+    windowSec: 600,
+  })
+  if (!rl.allowed) {
+    return {
+      success: false,
+      error:
+        "Too many inquiries from your network. Please wait a few minutes and try again.",
+    }
+  }
 
-    const whatsappUrl = formatWhatsAppUrl(agencyWhatsapp, message)
+  const normalizedPhone = normalizePublicPhone(data.contact.customerPhone)
+  if (!normalizedPhone) {
+    return {
+      success: false,
+      error: "Please enter a valid phone number.",
+      fieldErrors: { "contact.customerPhone": "Please enter a valid phone number." },
+    }
+  }
+  const normalizedWhatsapp = data.contact.customerWhatsapp
+    ? normalizePublicPhone(data.contact.customerWhatsapp)
+    : normalizedPhone
+
+  const { adults, children, infants } = data.passengers
+  const totalPassportCount = adults + children + infants
+  const bedAndSeatCount = adults + children
+  const customerCountry = data.contact.customerCountry?.trim() || "Pakistan"
+  const customerCityDisplay =
+    customerCountry.toLowerCase() === "pakistan"
+      ? data.contact.customerCity
+      : `${data.contact.customerCity}, ${customerCountry}`.slice(0, 100)
+
+  // Hydrate against DB hajj_packages catalog row if slug is provided (`OD-09e`, `T-084`)
+  let matchedDbPkg: typeof schema.hajjPackages.$inferSelect | undefined
+  if (data.hajjPackageSlug) {
+    const [row] = await db
+      .select()
+      .from(schema.hajjPackages)
+      .where(
+        and(
+          eq(schema.hajjPackages.slug, data.hajjPackageSlug),
+          eq(schema.hajjPackages.isActive, true)
+        )
+      )
+      .limit(1)
+    matchedDbPkg = row
+  }
+
+  const roomType = data.roomType ?? "quad"
+  let resolvedIndicativePrice = data.indicativePricePkr ?? null
+  if (matchedDbPkg) {
+    if (roomType === "sharing") {
+      resolvedIndicativePrice =
+        matchedDbPkg.indicativeSharingPkr ?? matchedDbPkg.indicativeQuadPkr
+    } else if (roomType === "quad") {
+      resolvedIndicativePrice =
+        matchedDbPkg.indicativeQuadPkr ?? matchedDbPkg.indicativeSharingPkr
+    } else if (roomType === "triple") {
+      resolvedIndicativePrice =
+        matchedDbPkg.indicativeTriplePkr ?? matchedDbPkg.indicativeSharingPkr
+    } else if (roomType === "double") {
+      resolvedIndicativePrice =
+        matchedDbPkg.indicativeDoublePkr ?? matchedDbPkg.indicativeSharingPkr
+    }
+  }
+
+  const structuredHajjJson: Record<string, unknown> = {
+    seasonYear: matchedDbPkg?.seasonYear ?? 2027,
+    isIndicativeEstimate: true,
+    regulatoryDisclaimer:
+      matchedDbPkg?.regulatoryDisclaimer ?? HAJJ_2027_REGULATORY_DISCLAIMER,
+    hajjPackageId: matchedDbPkg?.id ?? null,
+    packageSlug: matchedDbPkg?.slug ?? (data.hajjPackageSlug || null),
+    packageTitle: matchedDbPkg?.title ?? data.hajjConsultationType,
+    maktabTier: matchedDbPkg?.maktabTier ?? (data.maktabTier || null),
+    roomType,
+    indicativeRatePerPersonPkr: resolvedIndicativePrice,
+    durationLabel:
+      data.durationLabel ||
+      (matchedDbPkg ? `${matchedDbPkg.durationDays} Days` : null),
+    includeQurbani: Boolean(data.includeQurbani),
+    includeTrainTicket: Boolean(data.includeTrainTicket),
+    bloodGroup: data.bloodGroup?.trim() || null,
+    customerCountry,
+    customerCity: data.contact.customerCity,
+  }
+
+  const conciseSpecialRequests = (
+    data.notes ||
+    data.contact.specialRequests ||
+    ""
+  )
+    .trim()
+    .slice(0, 1000)
+
+  try {
+    const insertedApp = await withTransaction(async (tx) => {
+      const referenceNumber = await allocateUniqueReferenceNumber(tx)
+      const [row] = await tx
+        .insert(schema.applications)
+        .values({
+          referenceNumber,
+          clientSubmissionId: data.clientSubmissionId || null,
+          source: "hajj_inquiry",
+          presetMode: "hajj_consultation",
+          status: "pending_quote",
+          customerName: data.contact.customerName,
+          customerPhone: normalizedPhone.e164,
+          customerWhatsapp: (normalizedWhatsapp ?? normalizedPhone).e164,
+          customerEmail: data.contact.customerEmail || null,
+          customerCity: customerCityDisplay,
+          adults,
+          children,
+          infants,
+          totalPassportCount,
+          bedAndSeatCount,
+          includeVisa: true,
+          includeFlights: true,
+          includeHotels: true,
+          includeTransport: true,
+          includeZiyarat: true,
+          selectedRoomType: roomType,
+          hajjConsultationType: data.hajjConsultationType.slice(0, 160),
+          hajjInquiryJson: structuredHajjJson,
+          specialRequests: conciseSpecialRequests || null,
+        })
+        .returning()
+
+      if (!row) {
+        throw new Error("Failed to persist Hajj 2027 pre-registration dossier.")
+      }
+      return row
+    })
+
+    const waMessage = `Assalam-o-Alaikum Al Ramlah Travels! I have submitted an Indicative Hajj 2027 Pre-Registration Inquiry.\nReference: *${insertedApp.referenceNumber}*\nSelection: ${data.hajjConsultationType}\nLocation: ${customerCityDisplay}\nPilgrim: ${data.contact.customerName}\nTravellers: ${adults} Adults, ${children} Children, ${infants} Infants`
 
     return {
       success: true,
-      referenceNumber,
-      applicationId: hajjApp.id,
-      whatsappUrl,
+      referenceNumber: insertedApp.referenceNumber,
+      applicationId: insertedApp.id,
+      whatsappUrl: toWaMeUrl(agencyWhatsapp, waMessage),
     }
   } catch (err: unknown) {
-    console.error("submitHajjInquiryApplication error:", err)
     return {
       success: false,
       error:
         err instanceof Error
           ? err.message
-          : "Failed to submit Hajj inquiry. Please try again.",
+          : "Unable to submit Hajj 2027 pre-registration inquiry.",
     }
   }
 }
 
-export async function submitHajjApplication(
-  rawInput: unknown
-): Promise<HajjInquiryResult> {
-  return submitHajjInquiryApplication(rawInput)
-}
-
-export async function submitHajjInquiry(
-  rawInput: unknown
-): Promise<HajjInquiryResult> {
-  return submitHajjInquiryApplication(rawInput)
-}
-
 // ==========================================
-// 4. PUBLIC APPLICATION STATUS LOOKUP
+// 4. PUBLIC APPLICATION STATUS TRACKER (`T-016`)
 // ==========================================
-
-export interface StatusLookupResult {
-  success: boolean
-  error?: string
-  application?: {
-    id: string
-    referenceNumber: string
-    source: string
-    status: "pending_quote" | "quoted" | "approved" | "rejected" | "cancelled"
-    presetMode: string
-    customerName: string
-    customerCity: string
-    createdAt: string
-    ksaArrivalDate?: string | null
-    ksaDepartureDate?: string | null
-    totalKsaDays?: number | null
-    citySequence?: string | null
-    entryAirport?: string | null
-    exitAirport?: string | null
-    calculatedVisaTotalPkr?: number | null
-    adults: number
-    children: number
-    infants: number
-    totalPassportCount: number
-    bedAndSeatCount: number
-    pillars: {
-      visa: boolean
-      flights: boolean
-      hotels: boolean
-      transport: boolean
-      ziyarat: boolean
-    }
-    hotelStays: Array<{
-      stayOrder: number
-      city: string
-      hotelName: string
-      starRating: number
-      distanceLabel: string
-      checkInDate: string
-      checkOutDate: string
-      nights: number
-      roomCategory: string
-      sharedRoomType?: string | null
-      mealPlan?: string | null
-    }>
-    transportSegments: Array<{
-      segmentOrder: number
-      sectorLabel: string
-      serviceType: string
-      vehicleName: string
-      vehicleQuantity: number
-      pickupTime?: string | null
-    }>
-    groupPackageTitle?: string | null
-    groupBatchCode?: string | null
-    groupBookingDetails?: {
-      packageTitle: string
-      packageTier: string
-      batchCode: string | null
-      selectedRoomType: string | null
-      durationDays: number
-      makkahNights: number
-      madinahNights: number
-      departureCityName: string | null
-      airlineName: string | null
-      outboundFlightNumber: string | null
-      returnFlightNumber: string | null
-      flightScheduleSummary: string | null
-      baggageAllowance: string | null
-      giftedInclusions: string[]
-    } | null
-  }
-  quote?: {
-    visaTotalPkr: number
-    flightsTotalPkr: number
-    makkahHotelTotalPkr: number
-    madinahHotelTotalPkr: number
-    transportTotalPkr: number
-    ziyaratTotalPkr: number
-    discountPkr: number
-    grandTotalPkr: number
-    paymentStatus: string
-    amountPaidPkr: number
-    quoteNotesCustomer?: string | null
-    quotationPdfUrl?: string | null
-    validUntil?: string | null
-    approvedAt?: string | null
-  } | null
-  agencyWhatsapp?: string
-}
 
 export async function lookupApplicationStatus(
   rawInput: unknown
 ): Promise<StatusLookupResult> {
-  try {
-    const parseResult = statusLookupSchema.safeParse(rawInput)
-    if (!parseResult.success) {
-      return {
-        success: false,
-        error: "Please enter a valid Reference Number (e.g. ART-2026-XXXX) and Phone Number.",
-      }
+  const clientIp = await resolveClientIp(rawInput)
+  const rl = await enforceRateLimit("status-tracker", clientIp, {
+    max: 5,
+    windowSec: 900, // 5 attempts per 15 minutes per IP
+  })
+
+  if (!rl.allowed) {
+    return {
+      success: false,
+      error:
+        "Too many lookup attempts. Please wait 15 minutes before trying again.",
     }
+  }
 
-    const { referenceNumber, customerPhone } = parseResult.data
-    const normalizedInputDigits = cleanPhoneNumber(customerPhone)
-    const inputSuffix = normalizedInputDigits.slice(-9) // Last 9 digits match regional phone formats
+  const parsed = strictStatusLookupSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    verifyPilgrimPhoneConstantTime("", null, null)
+    return {
+      success: false,
+      error: GENERIC_STATUS_AUTH_ERROR,
+    }
+  }
 
-    const cleanRef = referenceNumber.trim().toUpperCase()
+  const cleanRef = parsed.data.referenceNumber.trim().toUpperCase()
+  const rawPhone = parsed.data.customerPhone
 
-    // Query application
-    const app = await db.query.applications.findFirst({
-      where: ilike(schema.applications.referenceNumber, cleanRef),
+  const [app, settingsRows] = await Promise.all([
+    db.query.applications.findFirst({
+      where: eq(schema.applications.referenceNumber, cleanRef),
       with: {
         hotelStays: {
           with: { hotel: true },
@@ -837,163 +1830,538 @@ export async function lookupApplicationStatus(
         },
         transportSegments: {
           with: { sector: true, vehicle: true },
-          orderBy: (segments, { asc }) => [asc(segments.segmentOrder)],
-        },
-        groupPackage: {
-          with: { airline: true },
-        },
-        groupDeparture: {
-          with: { departureCity: true },
+          orderBy: (segs, { asc }) => [asc(segs.segmentOrder)],
         },
         quotes: {
-          orderBy: (quotes, { desc }) => [desc(quotes.version)],
+          orderBy: [desc(schema.applicationQuotes.version)],
           limit: 1,
         },
+        groupPackage: true,
+        groupDeparture: true,
+        departureCity: true,
+        preferredAirline: true,
       },
-    })
+    }),
+    db.select().from(schema.agencySettings).limit(1),
+  ])
 
-    if (!app) {
-      return {
-        success: false,
-        error: "No application found matching this reference code. Please verify the code.",
-      }
+  if (!app) {
+    verifyPilgrimPhoneConstantTime(rawPhone, null, null)
+    return {
+      success: false,
+      error: GENERIC_STATUS_AUTH_ERROR,
     }
+  }
 
-    // Verify phone identity
-    const storedPhoneDigits = cleanPhoneNumber(app.customerPhone)
-    const storedWhatsappDigits = cleanPhoneNumber(app.customerWhatsapp)
+  const phoneVerified = verifyPilgrimPhoneConstantTime(
+    rawPhone,
+    app.customerPhone,
+    app.customerWhatsapp
+  )
 
-    const matchesPhone =
-      storedPhoneDigits.endsWith(inputSuffix) ||
-      storedWhatsappDigits.endsWith(inputSuffix) ||
-      normalizedInputDigits.endsWith(storedPhoneDigits.slice(-9)) ||
-      normalizedInputDigits.endsWith(storedWhatsappDigits.slice(-9))
-
-    if (!matchesPhone) {
-      return {
-        success: false,
-        error:
-          "The phone number provided does not match the contact number registered with this reference code.",
-      }
+  if (!phoneVerified) {
+    return {
+      success: false,
+      error: GENERIC_STATUS_AUTH_ERROR,
     }
+  }
 
-    const settings = await db.query.agencySettings.findFirst({
-      where: eq(schema.agencySettings.id, "default"),
+  const latestQuote = app.quotes[0] ?? null
+  const unlocked = isVoucherUnlocked(
+    app.status,
+    app.voucherToken,
+    latestQuote?.paymentStatus
+  )
+
+  const voucherGateState: "unlocked" | "awaiting_deposit" | "locked" = unlocked
+    ? "unlocked"
+    : app.status === "approved"
+      ? "awaiting_deposit"
+      : "locked"
+
+  const sanitizedQuote: PublicStatusQuoteSummary | null = latestQuote
+    ? {
+        version: latestQuote.version,
+        visaTotalPkr: latestQuote.visaTotalPkr,
+        flightsTotalPkr: latestQuote.flightsTotalPkr,
+        makkahHotelTotalPkr: latestQuote.makkahHotelTotalPkr,
+        madinahHotelTotalPkr: latestQuote.madinahHotelTotalPkr,
+        transportTotalPkr: latestQuote.transportTotalPkr,
+        ziyaratTotalPkr: latestQuote.ziyaratTotalPkr,
+        discountPkr: latestQuote.discountPkr,
+        grandTotalPkr: latestQuote.grandTotalPkr,
+        depositRequiredPkr: latestQuote.depositRequiredPkr,
+        amountPaidPkr: latestQuote.amountPaidPkr,
+        paymentStatus: latestQuote.paymentStatus,
+        validUntil: latestQuote.validUntil,
+        quoteNotesCustomer: latestQuote.quoteNotesCustomer,
+        quotationPdfUrl: latestQuote.quotationPdfUrl,
+        quotedAt: latestQuote.quotedAt,
+      }
+    : null
+
+  // T-016: Strictly strip internalNotesAdmin, supplierNetCostPkr, commissionPkr, supplierId, assignedStaffUserId, raw phones/emails, and locked voucherToken
+  const sanitizedDto: PublicStatusApplicationDto = {
+    referenceNumber: app.referenceNumber,
+    source: app.source,
+    presetMode: app.presetMode,
+    status: app.status,
+    customerName: app.customerName,
+    customerCity: app.customerCity,
+    adults: app.adults,
+    children: app.children,
+    infants: app.infants,
+    totalPassportCount: app.totalPassportCount,
+    bedAndSeatCount: app.bedAndSeatCount,
+    includeVisa: app.includeVisa,
+    includeFlights: app.includeFlights,
+    includeHotels: app.includeHotels,
+    includeTransport: app.includeTransport,
+    includeZiyarat: app.includeZiyarat,
+    ksaArrivalDate: app.ksaArrivalDate,
+    ksaDepartureDate: app.ksaDepartureDate,
+    totalKsaDays: app.totalKsaDays,
+    citySequence: app.citySequence,
+    entryAirport: coerceAirportCode(app.entryAirport),
+    exitAirport: coerceAirportCode(app.exitAirport),
+    calculatedVisaTier: app.calculatedVisaTier,
+    calculatedVisaTotalPkr: app.calculatedVisaTotalPkr,
+    specialRequests: app.specialRequests,
+    revisionNotesCustomer: app.revisionNotesCustomer,
+    selectedRoomType: app.selectedRoomType,
+    hajjConsultationType: app.hajjConsultationType,
+    hajjInquiryJson: app.hajjInquiryJson ?? null,
+    createdAt: app.createdAt,
+    quoteSentAt: app.quoteSentAt,
+    hotelStays: app.hotelStays.map((s) => ({
+      stayOrder: s.stayOrder,
+      city: s.city,
+      nights: s.nights,
+      checkInDate: s.checkInDate,
+      checkOutDate: s.checkOutDate,
+      roomCategory: s.roomCategory,
+      sharedRoomType: s.sharedRoomType,
+      privateRoomAllocation: s.privateRoomAllocation,
+      mealPlan: s.mealPlan,
+      hotel: s.hotel
+        ? {
+            name: s.hotel.name,
+            city: s.hotel.city,
+            starRating: s.hotel.starRating,
+            distanceLabel: s.hotel.distanceLabel,
+          }
+        : null,
+    })),
+    transportSegments: app.transportSegments.map((seg) => ({
+      segmentOrder: seg.segmentOrder,
+      serviceType: seg.serviceType,
+      vehicleQuantity: seg.vehicleQuantity,
+      pickupTime: seg.pickupTime,
+      scheduledDate: seg.scheduledDate,
+      sector: seg.sector
+        ? { label: seg.sector.label, code: seg.sector.code }
+        : null,
+      vehicle: seg.vehicle
+        ? { name: seg.vehicle.name, category: seg.vehicle.category }
+        : null,
+    })),
+    groupPackage: app.groupPackage
+      ? {
+          title: app.groupPackage.title,
+          tier: app.groupPackage.tier,
+          durationDays: app.groupPackage.durationDays,
+          makkahNights: app.groupPackage.makkahNights,
+          madinahNights: app.groupPackage.madinahNights,
+          giftedInclusions: app.groupPackage.giftedInclusions ?? [],
+        }
+      : null,
+    groupDeparture: app.groupDeparture
+      ? {
+          batchCode: app.groupDeparture.batchCode,
+          departureDate: app.groupDeparture.departureDate,
+          returnDate: app.groupDeparture.returnDate,
+          outboundFlightNumber: app.groupDeparture.outboundFlightNumber,
+          returnFlightNumber: app.groupDeparture.returnFlightNumber,
+          flightScheduleSummary: app.groupDeparture.flightScheduleSummary,
+          baggageAllowance: app.groupDeparture.baggageAllowance,
+        }
+      : null,
+    departureCity: app.departureCity
+      ? {
+          cityName: app.departureCity.cityName,
+          airportCode: app.departureCity.airportCode,
+        }
+      : null,
+    preferredAirline: app.preferredAirline
+      ? {
+          name: app.preferredAirline.name,
+          iataCode: app.preferredAirline.iataCode,
+        }
+      : null,
+    latestQuote: sanitizedQuote,
+    voucherUrl:
+      unlocked && app.voucherToken
+        ? `/voucher/${encodeURIComponent(app.voucherToken)}`
+        : null,
+    voucherGateState,
+  }
+
+  return {
+    success: true,
+    application: sanitizedDto,
+    quote: sanitizedQuote,
+    agencyWhatsapp: settingsRows[0]?.primaryWhatsapp ?? "03274029701",
+  }
+}
+
+// ==========================================
+// 5. PILGRIM QUOTE ACCEPTANCE / REVISION (`T-017`, `OD-04`)
+// ==========================================
+
+export async function respondToApplicationQuoteAction(
+  rawInput: unknown
+): Promise<RespondToQuoteResult> {
+  const clientIp = await resolveClientIp(rawInput)
+  const rl = await enforceRateLimit("quote-response", clientIp, {
+    max: 10,
+    windowSec: 900,
+  })
+  if (!rl.allowed) {
+    return {
+      success: false,
+      error: "Too many attempts. Please wait a few minutes before trying again.",
+    }
+  }
+
+  const parsed = strictRespondToQuoteSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    verifyPilgrimPhoneConstantTime("", null, null)
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? GENERIC_STATUS_AUTH_ERROR,
+    }
+  }
+
+  const { decision, revisionNotes } = parsed.data
+  if (
+    decision === "request_revision" &&
+    (!revisionNotes || revisionNotes.trim().length < 5)
+  ) {
+    return {
+      success: false,
+      error:
+        "Please share brief notes (at least 5 characters) explaining what you would like adjusted in your quotation.",
+    }
+  }
+
+  const cleanRef = parsed.data.referenceNumber.trim().toUpperCase()
+  const app = await db.query.applications.findFirst({
+    where: eq(schema.applications.referenceNumber, cleanRef),
+    with: {
+      quotes: {
+        orderBy: [desc(schema.applicationQuotes.version)],
+        limit: 1,
+      },
+    },
+  })
+
+  if (!app) {
+    verifyPilgrimPhoneConstantTime(parsed.data.customerPhone, null, null)
+    return {
+      success: false,
+      error: GENERIC_STATUS_AUTH_ERROR,
+    }
+  }
+
+  const verified = verifyPilgrimPhoneConstantTime(
+    parsed.data.customerPhone,
+    app.customerPhone,
+    app.customerWhatsapp
+  )
+  if (!verified) {
+    return {
+      success: false,
+      error: GENERIC_STATUS_AUTH_ERROR,
+    }
+  }
+
+  const latestQuote = app.quotes[0] ?? null
+  if (!latestQuote) {
+    return {
+      success: false,
+      error: "No official quotation has been issued for this dossier yet.",
+    }
+  }
+
+  if (
+    decision === "accept" &&
+    latestQuote.validUntil &&
+    latestQuote.validUntil.getTime() < Date.now()
+  ) {
+    return {
+      success: false,
+      error:
+        "This quotation's validity window has expired. Please request a revised quotation for updated live rates.",
+    }
+  }
+
+  if (decision === "accept" && app.status === "approved") {
+    const token = app.voucherToken
+    const unlocked = isVoucherUnlocked("approved", token, latestQuote.paymentStatus)
+    return {
+      success: true,
+      status: "approved",
+      voucherUrl: unlocked && token ? `/voucher/${encodeURIComponent(token)}` : null,
+      voucherGateState: unlocked ? "unlocked" : "awaiting_deposit",
+    }
+  }
+
+  const allowedSourceStatuses = ["quoted", String(REVISION_REQUESTED_STATUS)]
+  if (!allowedSourceStatuses.includes(String(app.status))) {
+    return {
+      success: false,
+      error: `Quotation response cannot be recorded while dossier status is '${app.status}'.`,
+    }
+  }
+
+  try {
+    const outcome = await withTransaction(async (tx) => {
+      if (decision === "accept") {
+        const voucherToken = app.voucherToken || mintCapabilityVoucherToken()
+        const now = new Date()
+
+        await tx
+          .update(schema.applications)
+          .set({
+            status: "approved",
+            voucherToken,
+            decisionAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.applications.id, app.id),
+              inArray(schema.applications.status, [
+                "quoted",
+                REVISION_REQUESTED_STATUS,
+              ])
+            )
+          )
+
+        await tx
+          .update(schema.applicationQuotes)
+          .set({ approvedAt: now })
+          .where(eq(schema.applicationQuotes.id, latestQuote.id))
+
+        await recordAuditLog(
+          {
+            actorId: null,
+            actorRole: "pilgrim",
+            action: "pilgrim.quote.accepted",
+            entityType: "application",
+            entityId: app.id,
+            before: { status: app.status },
+            after: {
+              status: "approved",
+              quoteVersion: latestQuote.version,
+              grandTotalPkr: latestQuote.grandTotalPkr,
+            },
+            ipAddress: clientIp,
+          },
+          tx
+        )
+
+        const unlocked = isVoucherUnlocked(
+          "approved",
+          voucherToken,
+          latestQuote.paymentStatus
+        )
+
+        return {
+          status: "approved" as const,
+          voucherUrl: unlocked
+            ? `/voucher/${encodeURIComponent(voucherToken)}`
+            : null,
+          voucherGateState: (unlocked
+            ? "unlocked"
+            : "awaiting_deposit") as "unlocked" | "awaiting_deposit",
+        }
+      } else {
+        const cleanedNotes = (revisionNotes ?? "").trim().slice(0, 1000)
+        const now = new Date()
+
+        await tx
+          .update(schema.applications)
+          .set({
+            status: REVISION_REQUESTED_STATUS,
+            revisionNotesCustomer: cleanedNotes,
+            decisionAt: now,
+            updatedAt: now,
+          })
+          .where(eq(schema.applications.id, app.id))
+
+        await recordAuditLog(
+          {
+            actorId: null,
+            actorRole: "pilgrim",
+            action: "pilgrim.quote.revision_requested",
+            entityType: "application",
+            entityId: app.id,
+            before: { status: app.status },
+            after: {
+              status: String(REVISION_REQUESTED_STATUS),
+              revisionNotesCustomer: cleanedNotes,
+            },
+            ipAddress: clientIp,
+          },
+          tx
+        )
+
+        return {
+          status: String(REVISION_REQUESTED_STATUS),
+          voucherUrl: null,
+          voucherGateState: "locked" as const,
+        }
+      }
     })
-    const agencyWhatsapp = settings?.primaryWhatsapp ?? "03274029701"
-
-    const latestQuote = app.quotes && app.quotes.length > 0 ? app.quotes[0] : null
-    const canExposeQuote =
-      app.status === "quoted" ||
-      app.status === "approved" ||
-      app.presetMode === "visa_only"
 
     return {
       success: true,
-      agencyWhatsapp,
-      application: {
-        id: app.id,
-        referenceNumber: app.referenceNumber,
-        source: app.source,
-        status: app.status,
-        presetMode: app.presetMode,
-        customerName: app.customerName,
-        customerCity: app.customerCity,
-        createdAt: app.createdAt.toISOString(),
-        ksaArrivalDate: app.ksaArrivalDate,
-        ksaDepartureDate: app.ksaDepartureDate,
-        totalKsaDays: app.totalKsaDays,
-        citySequence: app.citySequence,
-        entryAirport: app.entryAirport,
-        exitAirport: app.exitAirport,
-        calculatedVisaTotalPkr: app.calculatedVisaTotalPkr,
-        adults: app.adults,
-        children: app.children,
-        infants: app.infants,
-        totalPassportCount: app.totalPassportCount,
-        bedAndSeatCount: app.bedAndSeatCount,
-        pillars: {
-          visa: app.includeVisa,
-          flights: app.includeFlights,
-          hotels: app.includeHotels,
-          transport: app.includeTransport,
-          ziyarat: app.includeZiyarat,
-        },
-        hotelStays: (app.hotelStays || []).map((stay) => ({
-          stayOrder: stay.stayOrder,
-          city: stay.city,
-          hotelName: stay.hotel.name,
-          starRating: stay.hotel.starRating,
-          distanceLabel: stay.hotel.distanceLabel,
-          checkInDate: stay.checkInDate,
-          checkOutDate: stay.checkOutDate,
-          nights: stay.nights,
-          roomCategory: stay.roomCategory,
-          sharedRoomType: stay.sharedRoomType,
-          mealPlan: stay.mealPlan,
-        })),
-        transportSegments: (app.transportSegments || []).map((seg) => ({
-          segmentOrder: seg.segmentOrder,
-          sectorLabel: seg.sector.label,
-          serviceType: seg.serviceType,
-          vehicleName: seg.vehicle.name,
-          vehicleQuantity: seg.vehicleQuantity,
-          pickupTime: seg.pickupTime,
-        })),
-        groupPackageTitle: app.groupPackage?.title || null,
-        groupBatchCode: app.groupDeparture?.batchCode || null,
-        groupBookingDetails: app.groupPackage
-          ? {
-              packageTitle: app.groupPackage.title,
-              packageTier: app.groupPackage.tier,
-              batchCode: app.groupDeparture?.batchCode ?? null,
-              selectedRoomType: app.selectedRoomType ?? null,
-              durationDays: app.groupPackage.durationDays,
-              makkahNights: app.groupPackage.makkahNights,
-              madinahNights: app.groupPackage.madinahNights,
-              departureCityName:
-                app.groupDeparture?.departureCity?.cityName ?? null,
-              airlineName: app.groupPackage?.airline?.name ?? null,
-              outboundFlightNumber:
-                app.groupDeparture?.outboundFlightNumber ?? null,
-              returnFlightNumber:
-                app.groupDeparture?.returnFlightNumber ?? null,
-              flightScheduleSummary:
-                app.groupDeparture?.flightScheduleSummary ?? null,
-              baggageAllowance:
-                app.groupDeparture?.baggageAllowance ?? null,
-              giftedInclusions: app.groupPackage.giftedInclusions ?? [],
-            }
-          : null,
-      },
-      quote:
-        canExposeQuote && latestQuote
-          ? {
-              visaTotalPkr: latestQuote.visaTotalPkr,
-              flightsTotalPkr: latestQuote.flightsTotalPkr,
-              makkahHotelTotalPkr: latestQuote.makkahHotelTotalPkr,
-              madinahHotelTotalPkr: latestQuote.madinahHotelTotalPkr,
-              transportTotalPkr: latestQuote.transportTotalPkr,
-              ziyaratTotalPkr: latestQuote.ziyaratTotalPkr,
-              discountPkr: latestQuote.discountPkr,
-              grandTotalPkr: latestQuote.grandTotalPkr,
-              paymentStatus: latestQuote.paymentStatus,
-              amountPaidPkr: latestQuote.amountPaidPkr,
-              quoteNotesCustomer: latestQuote.quoteNotesCustomer,
-              quotationPdfUrl: latestQuote.quotationPdfUrl,
-              validUntil: latestQuote.validUntil?.toISOString() || null,
-              approvedAt: latestQuote.approvedAt?.toISOString() || null,
-            }
-          : null,
+      ...outcome,
     }
   } catch (err: unknown) {
-    console.error("lookupApplicationStatus error:", err)
     return {
       success: false,
       error:
         err instanceof Error
           ? err.message
-          : "An unexpected error occurred while looking up your inquiry.",
+          : "Unable to record quotation decision.",
     }
   }
 }
+
+// ==========================================
+// 6. RATE-LIMITED & HONEYPOT-PROTECTED PUBLIC CONTACT SUBMISSION (`T-055`)
+// ==========================================
+
+export interface PublicContactInquiryResult {
+  success: boolean
+  id?: string
+  error?: string
+  fieldErrors?: Record<string, string>
+}
+
+const strictPublicContactMessageSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Full name must be at least 2 characters")
+    .max(120, "Full name is too long"),
+  phone: strictPhoneString,
+  whatsapp: z
+    .string()
+    .trim()
+    .max(32, "WhatsApp number is too long")
+    .optional()
+    .or(z.literal(""))
+    .refine((val) => !val || normalizePublicPhone(val) !== null, {
+      message: "Enter a valid WhatsApp phone number",
+    }),
+  email: z
+    .string()
+    .trim()
+    .max(160, "Email address is too long")
+    .email("Enter a valid email address")
+    .optional()
+    .or(z.literal("")),
+  subject: z
+    .string()
+    .trim()
+    .min(3, "Subject is required")
+    .max(160, "Subject is too long"),
+  message: z
+    .string()
+    .trim()
+    .min(10, "Please share at least 10 characters so our concierge can assist")
+    .max(2000, "Message must be 2,000 characters or fewer"),
+})
+
+export async function submitPublicContactInquiryAction(
+  rawInput: unknown
+): Promise<PublicContactInquiryResult> {
+  if (hasTriggeredHoneypot(rawInput)) {
+    return {
+      success: false,
+      error: "Unable to process message. Please refresh and try again.",
+    }
+  }
+
+  const parsed = strictPublicContactMessageSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Please check your message details.",
+      fieldErrors: collectZodFieldErrors(parsed.error),
+    }
+  }
+
+  const clientIp = await resolveClientIp(rawInput)
+  const rl = await enforceRateLimit("submit-contact", clientIp, {
+    max: 5,
+    windowSec: 600,
+  })
+  if (!rl.allowed) {
+    return {
+      success: false,
+      error:
+        "Too many messages sent recently from your network. Please wait a few minutes or contact us via WhatsApp.",
+    }
+  }
+
+  const normPhone = normalizePublicPhone(parsed.data.phone)
+  if (!normPhone) {
+    return {
+      success: false,
+      error: "Please enter a valid phone number.",
+      fieldErrors: { phone: "Please enter a valid phone number." },
+    }
+  }
+  const normWa = parsed.data.whatsapp
+    ? normalizePublicPhone(parsed.data.whatsapp)
+    : normPhone
+
+  try {
+    const [inserted] = await db
+      .insert(schema.contactMessages)
+      .values({
+        name: parsed.data.name,
+        email: parsed.data.email || null,
+        phone: normPhone.e164,
+        whatsapp: normWa ? normWa.e164 : null,
+        subject: parsed.data.subject,
+        message: parsed.data.message,
+        status: "unread",
+      })
+      .returning({ id: schema.contactMessages.id })
+
+    try {
+      revalidatePath("/admin/catalog")
+    } catch {
+      // Safe no-op outside Next.js request context (e.g. unit test runner)
+    }
+
+    return {
+      success: true,
+      id: inserted?.id,
+    }
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Unable to dispatch message right now. Please WhatsApp us directly.",
+    }
+  }
+}
+

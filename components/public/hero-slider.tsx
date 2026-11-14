@@ -2,9 +2,16 @@
 
 import * as React from "react"
 import { useState, useEffect } from "react"
-import Image from "next/image"
+import NextImage, { type ImageProps } from "next/image"
+
+const Image = (
+  typeof NextImage === "function"
+    ? NextImage
+    : (NextImage as { default: React.ComponentType<ImageProps> }).default
+) as React.ComponentType<ImageProps>
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { ArabicText } from "@/components/public/arabic-text"
 import {
   ChevronLeft,
   ChevronRight,
@@ -36,9 +43,9 @@ const DEFAULT_SLIDES: PublicHeroSlide[] = [
     imageUrl:
       "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=85&w=1920",
     primaryCtaLabel: "Build Custom Umrah Journey",
-    primaryCtaUrl: "#journey-builder",
+    primaryCtaUrl: "/#journey-builder",
     secondaryCtaLabel: "Explore Pre-Built Group Packages",
-    secondaryCtaUrl: "#group-packages",
+    secondaryCtaUrl: "/#group-packages",
   },
   {
     badge: "لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ",
@@ -48,11 +55,23 @@ const DEFAULT_SLIDES: PublicHeroSlide[] = [
     imageUrl:
       "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&q=85&w=1920",
     primaryCtaLabel: "Plan Family Pilgrimage",
-    primaryCtaUrl: "#journey-builder",
+    primaryCtaUrl: "/#journey-builder",
     secondaryCtaLabel: "Hajj 2027 Package Guide",
-    secondaryCtaUrl: "#hajj-inquiry",
+    secondaryCtaUrl: "/#hajj-inquiry",
   },
 ]
+
+function normalizeCtaHref(href: string): string {
+  const trimmed = href.trim()
+  if (trimmed.startsWith("#")) {
+    return `/${trimmed}`
+  }
+  return trimmed || "/#journey-builder"
+}
+
+function containsArabicScript(value: string): boolean {
+  return /[\u0600-\u06FF]/.test(value)
+}
 
 interface HeroSliderProps {
   slides?: PublicHeroSlide[]
@@ -61,14 +80,38 @@ interface HeroSliderProps {
 export function HeroSlider({ slides = [] }: HeroSliderProps) {
   const activeSlides = slides.length > 0 ? slides : DEFAULT_SLIDES
   const [current, setCurrent] = useState(0)
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+  const [isPausedByInteraction, setIsPausedByInteraction] = useState(false)
 
+  // T-085: Subscribe to OS prefers-reduced-motion media query
   useEffect(() => {
-    if (activeSlides.length <= 1) return
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return
+    }
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)")
+    setPrefersReducedMotion(mq.matches)
+
+    const onChange = (event: MediaQueryListEvent) => {
+      setPrefersReducedMotion(event.matches)
+    }
+    mq.addEventListener("change", onChange)
+    return () => mq.removeEventListener("change", onChange)
+  }, [])
+
+  // T-085: Pause auto-rotation when reduced-motion is requested or pointer/keyboard focus is inside
+  useEffect(() => {
+    if (
+      activeSlides.length <= 1 ||
+      prefersReducedMotion ||
+      isPausedByInteraction
+    ) {
+      return
+    }
     const timer = setInterval(() => {
       setCurrent((prev) => (prev + 1) % activeSlides.length)
     }, 7000)
     return () => clearInterval(timer)
-  }, [activeSlides.length])
+  }, [activeSlides.length, prefersReducedMotion, isPausedByInteraction])
 
   function prevSlide() {
     setCurrent((prev) => (prev === 0 ? activeSlides.length - 1 : prev - 1))
@@ -78,17 +121,36 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
     setCurrent((prev) => (prev + 1) % activeSlides.length)
   }
 
-  const slide = activeSlides[current]
+  const slide = activeSlides[current] ?? activeSlides[0]!
 
   return (
-    <section className="relative overflow-hidden bg-emerald-950 text-white">
+    <section
+      aria-roledescription="carousel"
+      aria-label="Al Ramlah Travels Featured Journeys"
+      onMouseEnter={() => setIsPausedByInteraction(true)}
+      onMouseLeave={() => setIsPausedByInteraction(false)}
+      onFocusCapture={() => setIsPausedByInteraction(true)}
+      onBlurCapture={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setIsPausedByInteraction(false)
+        }
+      }}
+      className="relative overflow-hidden bg-emerald-950 text-white"
+    >
       {/* Background Visual Carousel */}
       <div className="relative h-[640px] sm:h-[700px] lg:h-[760px] w-full">
         {activeSlides.map((s, idx) => (
           <div
-            key={idx}
-            className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
-              idx === current ? "opacity-100 z-10" : "opacity-0 z-0 pointer-events-none"
+            key={s.id ?? idx}
+            aria-hidden={idx !== current}
+            className={`absolute inset-0 ${
+              prefersReducedMotion
+                ? ""
+                : "transition-opacity duration-1000 ease-in-out"
+            } ${
+              idx === current
+                ? "opacity-100 z-10"
+                : "opacity-0 z-0 pointer-events-none"
             }`}
           >
             <Image
@@ -96,10 +158,13 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
               alt={s.title}
               fill
               priority={idx === 0}
-              className="object-cover object-center scale-105 transition-transform duration-10000"
+              className={`object-cover object-center ${
+                prefersReducedMotion
+                  ? ""
+                  : "scale-105 transition-transform duration-10000"
+              }`}
               sizes="100vw"
             />
-            {/* Multi-layered luxury gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/65 to-black/30" />
             <div className="absolute inset-0 bg-gradient-to-t from-emerald-950 via-transparent to-black/40" />
           </div>
@@ -107,16 +172,19 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
 
         {/* Hero Content Overlay */}
         <div className="relative z-20 mx-auto flex h-full max-w-7xl flex-col justify-center px-4 sm:px-6 lg:px-8">
-          <div className="max-w-2xl space-y-6">
+          <div className="max-w-2xl flex flex-col gap-6">
             {/* Arabic Calligraphy Banner Badge */}
             {slide.badge && (
-              <div className="inline-flex items-center gap-2 rounded-full border border-gold/40 bg-black/40 px-4 py-1.5 backdrop-blur-md">
-                <span
-                  dir="rtl"
-                  className="font-arabic text-base sm:text-lg text-gold font-medium tracking-wide"
-                >
-                  {slide.badge}
-                </span>
+              <div className="inline-flex self-start items-center gap-2 rounded-full border border-gold/40 bg-black/40 px-4 py-1.5 backdrop-blur-md">
+                {containsArabicScript(slide.badge) ? (
+                  <ArabicText className="text-base sm:text-lg text-gold font-medium tracking-wide">
+                    {slide.badge}
+                  </ArabicText>
+                ) : (
+                  <span className="text-xs sm:text-sm text-gold font-semibold tracking-wide uppercase">
+                    {slide.badge}
+                  </span>
+                )}
               </div>
             )}
 
@@ -135,7 +203,7 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
               <Button
                 size="lg"
                 nativeButton={false}
-                render={<Link href={slide.primaryCtaUrl} />}
+                render={<Link href={normalizeCtaHref(slide.primaryCtaUrl)} />}
                 className="gap-2 bg-gold px-7 py-3 text-sm sm:text-base font-bold text-emerald-950 hover:bg-gold/90 shadow-lg shadow-gold/20"
               >
                 <span>{slide.primaryCtaLabel}</span>
@@ -147,7 +215,9 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
                   size="lg"
                   variant="outline"
                   nativeButton={false}
-                  render={<Link href={slide.secondaryCtaUrl} />}
+                  render={
+                    <Link href={normalizeCtaHref(slide.secondaryCtaUrl)} />
+                  }
                   className="border-white/30 bg-white/10 px-6 py-3 text-sm sm:text-base font-medium text-white backdrop-blur-xs hover:bg-white/20 hover:text-white"
                 >
                   <span>{slide.secondaryCtaLabel}</span>
@@ -175,6 +245,7 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
                   type="button"
                   onClick={() => setCurrent(i)}
                   aria-label={`Go to slide ${i + 1}`}
+                  aria-current={i === current ? "true" : undefined}
                   className={`h-1.5 rounded-full transition-all ${
                     i === current ? "w-6 bg-gold" : "w-2 bg-white/40"
                   }`}
@@ -196,40 +267,40 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
       {/* Trust Metrics Bar */}
       <div className="relative z-30 border-t border-gold/20 bg-emerald-950/95 py-5 px-4 backdrop-blur-md sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-4 text-center sm:grid-cols-4 lg:gap-8">
-          <div className="flex flex-col items-center justify-center space-y-1">
+          <div className="flex flex-col items-center justify-center gap-1">
             <div className="flex items-center gap-1.5 text-gold">
               <Award className="size-4" />
-              <span className="font-mono text-xl sm:text-2xl font-extrabold text-white">
+              <span className="font-mono tabular-nums text-xl sm:text-2xl font-extrabold text-white">
                 15,000+
               </span>
             </div>
             <span className="text-xs text-white/70">Pilgrims Served Since 2014</span>
           </div>
 
-          <div className="flex flex-col items-center justify-center space-y-1">
+          <div className="flex flex-col items-center justify-center gap-1">
             <div className="flex items-center gap-1.5 text-gold">
               <Clock className="size-4" />
-              <span className="font-mono text-xl sm:text-2xl font-extrabold text-white">
+              <span className="font-mono tabular-nums text-xl sm:text-2xl font-extrabold text-white">
                 24h SLA
               </span>
             </div>
             <span className="text-xs text-white/70">Guaranteed Quote Turnaround</span>
           </div>
 
-          <div className="flex flex-col items-center justify-center space-y-1">
+          <div className="flex flex-col items-center justify-center gap-1">
             <div className="flex items-center gap-1.5 text-gold">
               <Sparkles className="size-4" />
-              <span className="font-mono text-xl sm:text-2xl font-extrabold text-white">
+              <span className="font-mono tabular-nums text-xl sm:text-2xl font-extrabold text-white">
                 50-Meter
               </span>
             </div>
             <span className="text-xs text-white/70">Courtyard Luxury Properties</span>
           </div>
 
-          <div className="flex flex-col items-center justify-center space-y-1">
+          <div className="flex flex-col items-center justify-center gap-1">
             <div className="flex items-center gap-1.5 text-gold">
               <ShieldCheck className="size-4" />
-              <span className="font-mono text-xl sm:text-2xl font-extrabold text-white">
+              <span className="font-mono tabular-nums text-xl sm:text-2xl font-extrabold text-white">
                 100%
               </span>
             </div>

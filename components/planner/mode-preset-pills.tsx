@@ -3,7 +3,7 @@
 import React from "react"
 import { usePlanner, type PlannerPresetMode } from "./planner-context"
 import { Sparkles, FileText, Plane, Building2, Car, Sliders } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 interface PresetOption {
   id: PlannerPresetMode

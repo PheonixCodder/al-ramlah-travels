@@ -244,7 +244,7 @@ async function resolveAuditClientIp(): Promise<string | null> {
 // HOTELS & PROPERTY GALLERY ACTIONS
 // ==========================================
 
-const hardenedHotelSchema = hotelSchema.extend({
+const hardenedHotelSchema = hotelSchema.safeExtend({
   imageUrl: z
     .string()
     .trim()

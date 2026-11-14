@@ -350,9 +350,10 @@ describe("F-ADMIN T-076: Drizzle 23503 Soft-Deactivation, Public Contact Rate-Li
     if (!airlineRes.success) return
     createdAirlineIds.push(airlineRes.data.id)
 
+    const alphaCode = `Q${Array.from(crypto.randomBytes(2), (b) => String.fromCharCode(65 + (b % 26))).join("")}`
     const { result: cityRes } = await runActionWithContext(superCookie, () =>
       upsertDepartureCity({
-        airportCode: `C${suffix.slice(0, 2)}`,
+        airportCode: alphaCode,
         cityName: `F-ADMIN City ${suffix}`,
         airportName: `F-ADMIN Intl ${suffix}`,
         isActive: true,

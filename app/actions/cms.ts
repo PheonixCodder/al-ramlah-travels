@@ -95,7 +95,7 @@ async function resolveRequestClientIp(): Promise<string> {
 // HERO SLIDES ACTIONS (`super_admin`)
 // ==========================================
 
-const hardenedHeroSlideSchema = heroSlideSchema.extend({
+const hardenedHeroSlideSchema = heroSlideSchema.safeExtend({
   imageUrl: z
     .string()
     .trim()
@@ -262,7 +262,7 @@ export async function deleteHeroSlide(id: string) {
 // TESTIMONIALS ACTIONS (`super_admin`)
 // ==========================================
 
-const hardenedTestimonialSchema = testimonialSchema.extend({
+const hardenedTestimonialSchema = testimonialSchema.safeExtend({
   avatarUrl: z
     .string()
     .trim()
@@ -683,7 +683,7 @@ export async function deleteContactMessage(id: string) {
 // PUBLIC CONTACT SUBMISSION (`T-076`, `T-091`)
 // ==========================================
 
-const hardenedContactMessageSchema = contactMessageSchema.extend({
+const hardenedContactMessageSchema = contactMessageSchema.safeExtend({
   name: z.string().trim().min(2, "Name is required.").max(120),
   email: z
     .string()

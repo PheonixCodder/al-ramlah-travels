@@ -1,110 +1,95 @@
-import "dotenv/config"
-import fs from "node:fs"
+import crypto from "node:crypto"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { eq, or, sql } from "drizzle-orm"
-import { db } from "./index"
+import { closeDatabasePool, db } from "./index"
 import * as schema from "./schema"
-import { auth } from "../lib/auth"
+import { provisionStaffAccountInternal } from "../lib/auth"
+import { resolveGuardedScriptDatabaseUrl } from "../scripts/_guard"
 
-async function seed() {
+export interface RunSeedOptions {
+  closePool?: boolean
+  argv?: readonly string[]
+}
+
+function resolveBootstrapPassword(): string {
+  const configured = process.env.ADMIN_BOOTSTRAP_PASSWORD?.trim() ?? ""
+  const isProd = process.env.NODE_ENV === "production"
+
+  if (isProd && configured.length < 12) {
+    throw new Error(
+      "ADMIN_BOOTSTRAP_PASSWORD (>= 12 chars) is required when running db/seed.ts in NODE_ENV=production."
+    )
+  }
+
+  if (configured.length >= 12) {
+    return configured
+  }
+
+  return `Art!${crypto.randomBytes(16).toString("base64url")}`
+}
+
+export async function runSeed(options?: RunSeedOptions): Promise<void> {
+  resolveGuardedScriptDatabaseUrl(options?.argv ?? process.argv)
   console.log("🌱 Starting Al Ramlah Travels database seed...")
 
   // ==========================================
   // 1. ADMIN & STAFF ACCOUNTS (BETTER AUTH)
   // ==========================================
   console.log("👤 Seeding admin & staff accounts...")
+  const bootstrapPassword = resolveBootstrapPassword()
 
-  // Super Admin
-  const existingAdmin = await db.query.user.findFirst({
-    where: eq(schema.user.email, "admin@alramlahtravels.com"),
+  const adminProvisioned = await provisionStaffAccountInternal({
+    email: "admin@alramlahtravels.com",
+    password: bootstrapPassword,
+    name: "Muhammad Tariq (Super Admin)",
+    role: "super_admin",
+    mustChangePassword: true,
   })
+  const adminUserId = adminProvisioned.id
 
-  let adminUserId = existingAdmin?.id
-
-  if (!existingAdmin) {
-    try {
-      const adminRes = await auth.api.signUpEmail({
-        body: {
-          email: "admin@alramlahtravels.com",
-          password: "Admin@123456",
-          name: "Muhammad Tariq (Super Admin)",
-        },
-      })
-      if (adminRes?.user) {
-        adminUserId = adminRes.user.id
-        await db
-          .update(schema.user)
-          .set({ role: "super_admin", isActive: true })
-          .where(eq(schema.user.id, adminUserId))
-        console.log("   ✅ Created Super Admin: admin@alramlahtravels.com")
-      }
-    } catch (err: unknown) {
-      console.log(
-        "   ℹ️ Admin account creation note:",
-        err instanceof Error ? err.message : err
-      )
-    }
+  if (adminProvisioned.created) {
+    console.log(
+      "   ✅ Provisioned Super Admin (admin@alramlahtravels.com) with mustChangePassword=true."
+    )
   } else {
-    await db
-      .update(schema.user)
-      .set({ role: "super_admin", isActive: true })
-      .where(eq(schema.user.id, existingAdmin.id))
-    console.log("   ✅ Super Admin exists and role verified.")
+    console.log("   ✅ Super Admin exists (existing credentials preserved).")
   }
 
-  // Staff Account
-  const existingStaff = await db.query.user.findFirst({
-    where: eq(schema.user.email, "staff@alramlahtravels.com"),
+  const staffProvisioned = await provisionStaffAccountInternal({
+    email: "staff@alramlahtravels.com",
+    password: bootstrapPassword,
+    name: "Bilal Khan (Senior Quoting Agent)",
+    role: "staff",
+    mustChangePassword: true,
   })
 
-  let staffUserId = existingStaff?.id
-
-  if (!existingStaff) {
-    try {
-      const staffRes = await auth.api.signUpEmail({
-        body: {
-          email: "staff@alramlahtravels.com",
-          password: "Staff@123456",
-          name: "Bilal Khan (Senior Quoting Agent)",
-        },
-      })
-      if (staffRes?.user) {
-        staffUserId = staffRes.user.id
-        await db
-          .update(schema.user)
-          .set({ role: "staff", isActive: true })
-          .where(eq(schema.user.id, staffUserId))
-        console.log("   ✅ Created Staff: staff@alramlahtravels.com")
-      }
-    } catch (err: unknown) {
-      console.log(
-        "   ℹ️ Staff account creation note:",
-        err instanceof Error ? err.message : err
-      )
-    }
+  if (staffProvisioned.created) {
+    console.log(
+      "   ✅ Provisioned Staff (staff@alramlahtravels.com) with mustChangePassword=true."
+    )
   } else {
-    await db
-      .update(schema.user)
-      .set({ role: "staff", isActive: true })
-      .where(eq(schema.user.id, existingStaff.id))
-    console.log("   ✅ Staff exists and role verified.")
+    console.log("   ✅ Staff exists (existing credentials preserved).")
   }
 
   // ==========================================
-  // 2. AGENCY SETTINGS (SINGLETON)
+  // 2. AGENCY SETTINGS (SINGLETON — OD-10)
   // ==========================================
   console.log("🏢 Seeding agency settings...")
+  const verifiedOfficeAddress =
+    "Office No. 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt, Pakistan"
+
   await db
     .insert(schema.agencySettings)
     .values({
       id: "default",
       agencyName: "Al Ramlah Travels",
+      legalEntityName: "Al Ramlah Travels",
       tagline: "Where Purpose Meets Excellence",
       primaryWhatsapp: "03274029701",
       secondaryPhone: "03190462638",
       supportEmail: "alramlahtravels@gmail.com",
-      officeAddress:
-        "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
+      officeAddress: verifiedOfficeAddress,
       mapsEmbedUrl:
         "https://maps.google.com/?q=Sector+C+Askari+10+Airport+Road+Lahore+Cantt",
       facebookUrl: "https://facebook.com/alramlahtravels",
@@ -114,28 +99,31 @@ async function seed() {
       workingHours: "Monday to Saturday: 9:00 AM to 8:00 PM PKT",
       slaOverdueHours: 24,
       sarToPkrRate: 75,
+      officialIban: null,
+      ibanVerified: false,
       updatedByUserId: adminUserId,
     })
     .onConflictDoUpdate({
       target: schema.agencySettings.id,
       set: {
+        agencyName: "Al Ramlah Travels",
+        legalEntityName: "Al Ramlah Travels",
         tagline: "Where Purpose Meets Excellence",
         primaryWhatsapp: "03274029701",
         secondaryPhone: "03190462638",
         supportEmail: "alramlahtravels@gmail.com",
-        officeAddress:
-          "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
+        officeAddress: verifiedOfficeAddress,
         mapsEmbedUrl:
           "https://maps.google.com/?q=Sector+C+Askari+10+Airport+Road+Lahore+Cantt",
         workingHours: "Monday to Saturday: 9:00 AM to 8:00 PM PKT",
-        slaOverdueHours: 24,
-        sarToPkrRate: 75,
       },
     })
-  console.log("   ✅ Agency settings configured (SAR to PKR: 75).")
+  console.log(
+    "   ✅ Agency settings configured (Askari 10 Lahore HQ, ibanVerified=false)."
+  )
 
   // ==========================================
-  // 3. DYNAMIC VISA RATES
+  // 3. DYNAMIC VISA RATES (T-007 excluded.* upsert)
   // ==========================================
   console.log("🛂 Seeding visa rates...")
   await db
@@ -175,18 +163,21 @@ async function seed() {
     .onConflictDoUpdate({
       target: schema.visaRates.tier,
       set: {
-        pricePkr: 42500,
-        priceSar: 470,
-        withoutMasarPriceSar: 470,
-        withMasar10DaysSar: 500,
-        withMasar15DaysSar: 515,
-        withMasar21DaysSar: 530,
-        withMasar28DaysSar: 545,
-        maxDays: 30,
+        label: sql`excluded.label`,
+        maxDays: sql`excluded.max_days`,
+        pricePkr: sql`excluded.price_pkr`,
+        priceSar: sql`excluded.price_sar`,
+        withoutMasarPriceSar: sql`excluded.without_masar_price_sar`,
+        withMasar10DaysSar: sql`excluded.with_masar_10_days_sar`,
+        withMasar15DaysSar: sql`excluded.with_masar_15_days_sar`,
+        withMasar21DaysSar: sql`excluded.with_masar_21_days_sar`,
+        withMasar28DaysSar: sql`excluded.with_masar_28_days_sar`,
+        notes: sql`excluded.notes`,
+        updatedAt: new Date(),
       },
     })
   console.log(
-    "   ✅ Visa rates configured (Short: 470 SAR / PKR 42,500, Long: 750 SAR / PKR 68,000)."
+    "   ✅ Visa rates configured idempotently (Short: 30d / 470 SAR / PKR 42,500, Long: 90d / 750 SAR / PKR 68,000)."
   )
 
   // ==========================================
@@ -2331,17 +2322,153 @@ async function seed() {
     }
   }
 
-  console.log(
-    "   ✅ Hero slides and FAQs seeded."
-  )
+  console.log("   ✅ Hero slides and FAQs seeded (0 fake testimonials).")
+
+  // ==========================================
+  // 12. HAJJ 2027 INDICATIVE PACKAGES (OD-09e)
+  // ==========================================
+  console.log("🕋 Seeding Hajj 2027 indicative packages...")
+  const hajj2027Disclaimer =
+    "Indicative 2027 package structure — final Maktab tariff & quota subject to Saudi Ministry of Hajj & Umrah and Pakistan MORA announcement."
+
+  const hajjPackagesData: Array<typeof schema.hajjPackages.$inferInsert> = [
+    {
+      slug: "hajj-2027-maktab-a-plus-courtyard-vip",
+      title: "Hajj 2027 — Maktab A+ Royal Courtyard Executive (16 Days)",
+      seasonYear: 2027,
+      maktabTier: "A+",
+      durationDays: 16,
+      makkahHotelName: "Fairmont Makkah Clock Royal Tower / Swissôtel Al Maqam",
+      makkahDistanceLabel: "0–50m Direct Haram Courtyard Access",
+      madinahHotelName: "The Oberoi Madina / Dar Al Taqwa",
+      madinahDistanceLabel: "30–50m Facing Masjid an-Nabawi Courtyard",
+      aziziyahStayNotes:
+        "Non-shifting courtyard stay with private VIP Maktab A+ Mina tent near Jamarat & Mashair train pass.",
+      indicativeSharingPkr: 3450000,
+      indicativeQuadPkr: 3650000,
+      indicativeTriplePkr: 3950000,
+      indicativeDoublePkr: 4450000,
+      isIndicative: true,
+      regulatoryDisclaimer: hajj2027Disclaimer,
+      highlights: [
+        "Maktab A+ Gypsum Air-Conditioned Suites Near Jamarat",
+        "Non-Shifting 5-Star Haramain Courtyard Hotels",
+        "Haramain High-Speed Rail & Mashair Metro Access",
+        "Dedicated Resident Scholar & Medical Support",
+      ],
+      isFeatured: true,
+      isActive: true,
+      sortOrder: 1,
+    },
+    {
+      slug: "hajj-2027-maktab-a-executive-shifting",
+      title: "Hajj 2027 — Maktab A Executive Gold Shifting (21 Days)",
+      seasonYear: 2027,
+      maktabTier: "A",
+      durationDays: 21,
+      makkahHotelName: "Jabal Omar Hyatt Regency / Mövenpick Hajar Tower",
+      makkahDistanceLabel: "80–100m Walk to Haram Courtyard",
+      madinahHotelName: "Madinah Hilton / Crowne Plaza Madinah",
+      madinahDistanceLabel: "100–200m Southern Courtyard",
+      aziziyahStayNotes:
+        "Dedicated executive building in Aziziyah North during Manasik days (4–13 Dhul Hijjah) with 24/7 catering.",
+      indicativeSharingPkr: 2450000,
+      indicativeQuadPkr: 2590000,
+      indicativeTriplePkr: 2790000,
+      indicativeDoublePkr: 3150000,
+      isIndicative: true,
+      regulatoryDisclaimer: hajj2027Disclaimer,
+      highlights: [
+        "Verified Maktab A Camp Zone with Sofa-Cum-Beds",
+        "5-Star Makkah & Madinah Markaziyah Stays",
+        "3 Buffet Pakistani & Continental Meals Daily",
+        "Pre-Departure Manasik Workshop in Lahore HQ",
+      ],
+      isFeatured: true,
+      isActive: true,
+      sortOrder: 2,
+    },
+    {
+      slug: "hajj-2027-maktab-b-classic-long-stay",
+      title: "Hajj 2027 — Maktab B Classic Guided Pilgrimage (30 Days)",
+      seasonYear: 2027,
+      maktabTier: "B",
+      durationDays: 30,
+      makkahHotelName: "Voco Makkah (IHG) / Emaar Grand Makkah",
+      makkahDistanceLabel: "750m Walk or 24/7 Dedicated Shuttle",
+      madinahHotelName: "Emaar Elite Madinah / Leader Al Muna Kareem",
+      madinahDistanceLabel: "150–450m Markaziyah Walk",
+      aziziyahStayNotes:
+        "Furnished Aziziyah transit residence during peak Manasik days with group bus transfers.",
+      indicativeSharingPkr: 1790000,
+      indicativeQuadPkr: 1890000,
+      indicativeTriplePkr: 2020000,
+      indicativeDoublePkr: 2250000,
+      isIndicative: true,
+      regulatoryDisclaimer: hajj2027Disclaimer,
+      highlights: [
+        "Official Maktab B Camp Allocation & Mashair Transport",
+        "Extended Spiritual Stay in Makkah & Madinah",
+        "Scholar-Guided Group Manasik & Ziyarat",
+        "Overseas Diaspora & Pakistan Passport Support",
+      ],
+      isFeatured: false,
+      isActive: true,
+      sortOrder: 3,
+    },
+  ]
+
+  for (const hp of hajjPackagesData) {
+    await db
+      .insert(schema.hajjPackages)
+      .values(hp)
+      .onConflictDoUpdate({
+        target: schema.hajjPackages.slug,
+        set: {
+          title: hp.title,
+          seasonYear: hp.seasonYear,
+          maktabTier: hp.maktabTier,
+          durationDays: hp.durationDays,
+          makkahHotelName: hp.makkahHotelName,
+          makkahDistanceLabel: hp.makkahDistanceLabel,
+          madinahHotelName: hp.madinahHotelName,
+          madinahDistanceLabel: hp.madinahDistanceLabel,
+          aziziyahStayNotes: hp.aziziyahStayNotes,
+          indicativeSharingPkr: hp.indicativeSharingPkr,
+          indicativeQuadPkr: hp.indicativeQuadPkr,
+          indicativeTriplePkr: hp.indicativeTriplePkr,
+          indicativeDoublePkr: hp.indicativeDoublePkr,
+          isIndicative: true,
+          regulatoryDisclaimer: hajj2027Disclaimer,
+          highlights: hp.highlights,
+          isFeatured: hp.isFeatured,
+          sortOrder: hp.sortOrder,
+          updatedAt: new Date(),
+        },
+      })
+  }
+  console.log("   ✅ 3 indicative Hajj 2027 packages seeded.")
 
   console.log(
     "✨ Seed completed successfully! Core foundation catalog data populated."
   )
-  process.exit(0)
+
+  if (options?.closePool !== false) {
+    await closeDatabasePool()
+  }
 }
 
-seed().catch((error) => {
-  console.error("❌ Seed execution failed:", error)
-  process.exit(1)
-})
+const isSeedEntrypoint =
+  process.argv[1] !== undefined &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+
+if (isSeedEntrypoint) {
+  runSeed({ closePool: true })
+    .then(() => {
+      process.exit(0)
+    })
+    .catch((error: unknown) => {
+      console.error("❌ Seed execution failed:", error)
+      process.exit(1)
+    })
+}

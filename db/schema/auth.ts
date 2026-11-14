@@ -1,12 +1,13 @@
 import { relations } from "drizzle-orm"
 import {
+  bigint,
   boolean,
   index,
+  integer,
   pgEnum,
   pgTable,
   text,
   timestamp,
-  uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core"
 import { applications, applicationQuotes } from "./applications"
@@ -23,17 +24,18 @@ export const user = pgTable(
     image: text("image"),
     role: roleEnum("role").notNull().default("staff"),
     isActive: boolean("is_active").notNull().default(true),
+    mustChangePassword: boolean("must_change_password")
+      .notNull()
+      .default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
-  (table) => [
-    index("idx_user_email").on(table.email),
-    index("idx_user_role").on(table.role),
-  ]
+  (table) => [index("idx_user_role").on(table.role)]
 )
 
 export const session = pgTable(
@@ -52,11 +54,12 @@ export const session = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_session_user_id").on(table.userId),
-    uniqueIndex("idx_session_token").on(table.token),
+    index("idx_session_expires_at").on(table.expiresAt),
   ]
 )
 
@@ -85,7 +88,8 @@ export const account = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [index("idx_account_user_id").on(table.userId)]
 )
@@ -97,11 +101,29 @@ export const verification = pgTable(
     identifier: text("identifier").notNull(),
     value: text("value").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
-  (table) => [index("verification_identifier_idx").on(table.identifier)]
+  (table) => [
+    index("verification_identifier_idx").on(table.identifier),
+    index("idx_verification_expires_at").on(table.expiresAt),
+  ]
 )
+
+/**
+ * Better Auth database-backed rate-limit store (`rateLimit.storage = "database"`, `T-004`).
+ */
+export const rateLimit = pgTable("rate_limit", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  count: integer("count").notNull(),
+  lastRequest: bigint("last_request", { mode: "number" }).notNull(),
+})
 
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),

@@ -15,6 +15,13 @@
       "when": 1794219930354,
       "tag": "0001_cynical_proudstar",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794671801273,
+      "tag": "0002_production_hardening_foundation",
+      "breakpoints": true
     }
   ]
 }

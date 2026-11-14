@@ -1,6 +1,8 @@
-import { relations } from "drizzle-orm"
+import { relations, sql } from "drizzle-orm"
 import {
+  bigint,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -27,7 +29,7 @@ import {
   visaTierEnum,
 } from "./catalog"
 import { groupDepartures, groupPackages } from "./packages"
-import { suppliers } from "./suppliers-and-marketing"
+import { marketingChannels, suppliers } from "./suppliers-and-marketing"
 
 // ==========================================
 // APPLICATION ENUMS
@@ -46,6 +48,17 @@ export const applicationStatusEnum = pgEnum("application_status", [
   "rejected",
   "cancelled",
 ])
+
+/**
+ * Extended status value already provisioned in PostgreSQL `application_status` enum
+ * (`0002_production_hardening_foundation.sql`) for W3B pilgrim quote-revision flows (`T-017`).
+ */
+export type ExtendedApplicationStatus =
+  | (typeof applicationStatusEnum.enumValues)[number]
+  | "revision_requested"
+
+export const REVISION_REQUESTED_STATUS =
+  "revision_requested" as unknown as (typeof applicationStatusEnum.enumValues)[number]
 
 export const builderPresetModeEnum = pgEnum("builder_preset_mode", [
   "complete_umrah",
@@ -91,6 +104,21 @@ export const paymentStatusEnum = pgEnum("payment_status", [
   "paid_in_full",
 ])
 
+export type ExtendedPaymentStatus =
+  | (typeof paymentStatusEnum.enumValues)[number]
+  | "deposit_paid"
+
+export const DEPOSIT_PAID_PAYMENT_STATUS =
+  "deposit_paid" as unknown as (typeof paymentStatusEnum.enumValues)[number]
+
+export const paymentMethodEnum = pgEnum("payment_method", [
+  "bank_transfer",
+  "cash_lahore_hq",
+  "cheque_pay_order",
+  "online_gateway",
+  "other",
+])
+
 // ==========================================
 // APPLICATIONS TABLE
 // ==========================================
@@ -102,6 +130,10 @@ export const applications = pgTable(
     referenceNumber: varchar("reference_number", { length: 32 })
       .notNull()
       .unique(),
+    clientSubmissionId: varchar("client_submission_id", {
+      length: 64,
+    }).unique(),
+    voucherToken: varchar("voucher_token", { length: 128 }).unique(),
     source: applicationSourceEnum("source").notNull(),
     status: applicationStatusEnum("status").notNull().default("pending_quote"),
     presetMode: builderPresetModeEnum("preset_mode").notNull(),
@@ -113,6 +145,7 @@ export const applications = pgTable(
     customerCity: text("customer_city").notNull(),
     customerEmail: varchar("customer_email", { length: 255 }),
     specialRequests: text("special_requests"),
+    revisionNotesCustomer: text("revision_notes_customer"),
 
     // Traveller Counts
     adults: integer("adults").notNull().default(1),
@@ -133,8 +166,12 @@ export const applications = pgTable(
     ksaDepartureDate: date("ksa_departure_date"),
     totalKsaDays: integer("total_ksa_days"),
     calculatedVisaTier: visaTierEnum("calculated_visa_tier"),
-    lockedVisaRatePerPersonPkr: integer("locked_visa_rate_per_person_pkr"),
-    calculatedVisaTotalPkr: integer("calculated_visa_total_pkr"),
+    lockedVisaRatePerPersonPkr: bigint("locked_visa_rate_per_person_pkr", {
+      mode: "number",
+    }),
+    calculatedVisaTotalPkr: bigint("calculated_visa_total_pkr", {
+      mode: "number",
+    }),
 
     // Flight Configuration & Airport Rules
     citySequence: citySequenceEnum("city_sequence"),
@@ -156,11 +193,20 @@ export const applications = pgTable(
     ),
     selectedRoomType: roomTypeEnum("selected_room_type"),
     hajjConsultationType: text("hajj_consultation_type"),
+    hajjInquiryJson: jsonb("hajj_inquiry_json").$type<Record<
+      string,
+      unknown
+    > | null>(),
 
     // Marketing Post & B2B Supplier Attribution
     sourcePostCode: varchar("source_post_code", { length: 64 }),
-    sourceChannelId: uuid("source_channel_id"),
-    supplierId: uuid("supplier_id"),
+    sourceChannelId: uuid("source_channel_id").references(
+      () => marketingChannels.id,
+      { onDelete: "set null" }
+    ),
+    supplierId: uuid("supplier_id").references(() => suppliers.id, {
+      onDelete: "set null",
+    }),
 
     // Ziyarat Selection
     ziyaratScope: ziyaratScopeEnum("ziyarat_scope"),
@@ -177,20 +223,25 @@ export const applications = pgTable(
     ),
     lastContactedAt: timestamp("last_contacted_at", { withTimezone: true }),
     quoteSentAt: timestamp("quote_sent_at", { withTimezone: true }),
+    slaEscalatedAt: timestamp("sla_escalated_at", { withTimezone: true }),
     decisionAt: timestamp("decision_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex("idx_app_ref_number").on(table.referenceNumber),
     index("idx_app_phone").on(table.customerPhone),
-    index("idx_app_status").on(table.status),
+    index("idx_app_status_created").on(table.status, table.createdAt),
     index("idx_app_created").on(table.createdAt),
     index("idx_app_assigned_staff").on(table.assignedStaffUserId),
+    check(
+      "chk_applications_traveller_invariants",
+      sql`${table.adults} >= 1 AND ${table.children} >= 0 AND ${table.infants} >= 0 AND ${table.totalPassportCount} = (${table.adults} + ${table.children} + ${table.infants}) AND ${table.bedAndSeatCount} = (${table.adults} + ${table.children}) AND (${table.ksaArrivalDate} IS NULL OR ${table.ksaDepartureDate} IS NULL OR ${table.ksaDepartureDate} >= ${table.ksaArrivalDate})`
+    ),
   ]
 )
 
@@ -229,11 +280,16 @@ export const applicationHotelStays = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_stay_app_id").on(table.applicationId),
     index("idx_stay_hotel_id").on(table.hotelId),
+    check(
+      "chk_app_hotel_stays_dates_nights",
+      sql`${table.nights} >= 1 AND ${table.checkOutDate} > ${table.checkInDate}`
+    ),
   ]
 )
 
@@ -267,11 +323,13 @@ export const applicationTransportSegments = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_segment_app_id").on(table.applicationId),
     index("idx_segment_sector_id").on(table.sectorId),
+    check("chk_app_transport_segments_qty", sql`${table.vehicleQuantity} >= 1`),
   ]
 )
 
@@ -287,19 +345,42 @@ export const applicationQuotes = pgTable(
       .notNull()
       .references(() => applications.id, { onDelete: "cascade" }),
     version: integer("version").notNull().default(1),
-    visaTotalPkr: integer("visa_total_pkr").notNull().default(0),
-    flightsTotalPkr: integer("flights_total_pkr").notNull().default(0),
-    makkahHotelTotalPkr: integer("makkah_hotel_total_pkr").notNull().default(0),
-    madinahHotelTotalPkr: integer("madinah_hotel_total_pkr")
+    visaTotalPkr: bigint("visa_total_pkr", { mode: "number" })
       .notNull()
       .default(0),
-    transportTotalPkr: integer("transport_total_pkr").notNull().default(0),
-    ziyaratTotalPkr: integer("ziyarat_total_pkr").notNull().default(0),
-    discountPkr: integer("discount_pkr").notNull().default(0),
-    grandTotalPkr: integer("grand_total_pkr").notNull().default(0),
-    supplierId: uuid("supplier_id"),
-    supplierNetCostPkr: integer("supplier_net_cost_pkr").notNull().default(0),
-    commissionPkr: integer("commission_pkr").notNull().default(25000),
+    flightsTotalPkr: bigint("flights_total_pkr", { mode: "number" })
+      .notNull()
+      .default(0),
+    makkahHotelTotalPkr: bigint("makkah_hotel_total_pkr", { mode: "number" })
+      .notNull()
+      .default(0),
+    madinahHotelTotalPkr: bigint("madinah_hotel_total_pkr", { mode: "number" })
+      .notNull()
+      .default(0),
+    transportTotalPkr: bigint("transport_total_pkr", { mode: "number" })
+      .notNull()
+      .default(0),
+    ziyaratTotalPkr: bigint("ziyarat_total_pkr", { mode: "number" })
+      .notNull()
+      .default(0),
+    discountPkr: bigint("discount_pkr", { mode: "number" })
+      .notNull()
+      .default(0),
+    grandTotalPkr: bigint("grand_total_pkr", { mode: "number" })
+      .notNull()
+      .default(0),
+    supplierId: uuid("supplier_id").references(() => suppliers.id, {
+      onDelete: "set null",
+    }),
+    supplierNetCostPkr: bigint("supplier_net_cost_pkr", { mode: "number" })
+      .notNull()
+      .default(0),
+    commissionPkr: bigint("commission_pkr", { mode: "number" })
+      .notNull()
+      .default(25000),
+    depositRequiredPkr: bigint("deposit_required_pkr", { mode: "number" })
+      .notNull()
+      .default(0),
     quotationPdfUrl: text("quotation_pdf_url"),
     quotationPdfGeneratedAt: timestamp("quotation_pdf_generated_at", {
       withTimezone: true,
@@ -310,7 +391,9 @@ export const applicationQuotes = pgTable(
     paymentStatus: paymentStatusEnum("payment_status")
       .notNull()
       .default("unpaid"),
-    amountPaidPkr: integer("amount_paid_pkr").notNull().default(0),
+    amountPaidPkr: bigint("amount_paid_pkr", { mode: "number" })
+      .notNull()
+      .default(0),
     quotedByUserId: text("quoted_by_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
@@ -322,13 +405,60 @@ export const applicationQuotes = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("idx_quote_app_version").on(table.applicationId, table.version),
+    index("idx_quote_payment_status").on(table.paymentStatus),
+    check(
+      "chk_application_quotes_non_negative",
+      sql`${table.version} >= 1 AND ${table.visaTotalPkr} >= 0 AND ${table.flightsTotalPkr} >= 0 AND ${table.makkahHotelTotalPkr} >= 0 AND ${table.madinahHotelTotalPkr} >= 0 AND ${table.transportTotalPkr} >= 0 AND ${table.ziyaratTotalPkr} >= 0 AND ${table.discountPkr} >= 0 AND ${table.grandTotalPkr} >= 0 AND ${table.depositRequiredPkr} >= 0 AND ${table.amountPaidPkr} >= 0`
+    ),
+  ]
+)
+
+// ==========================================
+// APPLICATION PAYMENTS LEDGER (`OD-03`, `T-042`)
+// ==========================================
+
+export const applicationPayments = pgTable(
+  "application_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    applicationId: uuid("application_id")
+      .notNull()
+      .references(() => applications.id, { onDelete: "restrict" }),
+    quoteId: uuid("quote_id")
+      .notNull()
+      .references(() => applicationQuotes.id, { onDelete: "restrict" }),
+    amountPkr: bigint("amount_pkr", { mode: "number" }).notNull(),
+    paymentMethod: paymentMethodEnum("payment_method")
+      .notNull()
+      .default("bank_transfer"),
+    bankReference: varchar("bank_reference", { length: 128 }),
+    receiptR2Key: text("receipt_r2_key"),
+    notes: text("notes"),
+    recordedById: text("recorded_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    verifiedById: text("verified_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
       .defaultNow(),
   },
   (table) => [
-    index("idx_quote_app_id").on(table.applicationId),
-    index("idx_quote_payment_status").on(table.paymentStatus),
+    index("idx_payment_app_created").on(table.applicationId, table.createdAt),
+    index("idx_payment_quote_id").on(table.quoteId),
+    check("chk_application_payments_positive_amount", sql`${table.amountPkr} > 0`),
   ]
 )
+
+export type ApplicationPayment = typeof applicationPayments.$inferSelect
+export type NewApplicationPayment = typeof applicationPayments.$inferInsert
 
 // ==========================================
 // DRIZZLE RELATIONS GRAPH
@@ -365,9 +495,14 @@ export const applicationsRelations = relations(
       fields: [applications.supplierId],
       references: [suppliers.id],
     }),
+    sourceChannel: one(marketingChannels, {
+      fields: [applications.sourceChannelId],
+      references: [marketingChannels.id],
+    }),
     hotelStays: many(applicationHotelStays),
     transportSegments: many(applicationTransportSegments),
     quotes: many(applicationQuotes),
+    payments: many(applicationPayments),
   })
 )
 
@@ -405,14 +540,43 @@ export const applicationTransportSegmentsRelations = relations(
 
 export const applicationQuotesRelations = relations(
   applicationQuotes,
-  ({ one }) => ({
+  ({ one, many }) => ({
     application: one(applications, {
       fields: [applicationQuotes.applicationId],
       references: [applications.id],
     }),
+    supplier: one(suppliers, {
+      fields: [applicationQuotes.supplierId],
+      references: [suppliers.id],
+    }),
     quotedByUser: one(user, {
       fields: [applicationQuotes.quotedByUserId],
       references: [user.id],
+    }),
+    payments: many(applicationPayments),
+  })
+)
+
+export const applicationPaymentsRelations = relations(
+  applicationPayments,
+  ({ one }) => ({
+    application: one(applications, {
+      fields: [applicationPayments.applicationId],
+      references: [applications.id],
+    }),
+    quote: one(applicationQuotes, {
+      fields: [applicationPayments.quoteId],
+      references: [applicationQuotes.id],
+    }),
+    recordedBy: one(user, {
+      fields: [applicationPayments.recordedById],
+      references: [user.id],
+      relationName: "paymentRecordedBy",
+    }),
+    verifiedBy: one(user, {
+      fields: [applicationPayments.verifiedById],
+      references: [user.id],
+      relationName: "paymentVerifiedBy",
     }),
   })
 )

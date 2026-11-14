@@ -1,6 +1,7 @@
-import { relations } from "drizzle-orm"
+import { relations, sql } from "drizzle-orm"
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -68,24 +69,46 @@ export const sectorPointTypeEnum = pgEnum("sector_point_type", [
 // DYNAMIC VISA PRICING
 // ==========================================
 
-export const visaRates = pgTable("visa_rates", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  tier: visaTierEnum("tier").notNull().unique(),
-  label: text("label").notNull(),
-  maxDays: integer("max_days").notNull(),
-  pricePkr: integer("price_pkr").notNull(),
-  priceSar: integer("price_sar").notNull().default(470),
-  withoutMasarPriceSar: integer("without_masar_price_sar").notNull().default(470),
-  withMasar10DaysSar: integer("with_masar_10_days_sar").notNull().default(500),
-  withMasar15DaysSar: integer("with_masar_15_days_sar").notNull().default(515),
-  withMasar21DaysSar: integer("with_masar_21_days_sar").notNull().default(530),
-  withMasar28DaysSar: integer("with_masar_28_days_sar").notNull().default(545),
-  notes: text("notes"),
-  updatedByUserId: text("updated_by_user_id").references(() => user.id),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-})
+export const visaRates = pgTable(
+  "visa_rates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tier: visaTierEnum("tier").notNull().unique(),
+    label: text("label").notNull(),
+    maxDays: integer("max_days").notNull(),
+    pricePkr: integer("price_pkr").notNull(),
+    priceSar: integer("price_sar").notNull().default(470),
+    withoutMasarPriceSar: integer("without_masar_price_sar")
+      .notNull()
+      .default(470),
+    withMasar10DaysSar: integer("with_masar_10_days_sar")
+      .notNull()
+      .default(500),
+    withMasar15DaysSar: integer("with_masar_15_days_sar")
+      .notNull()
+      .default(515),
+    withMasar21DaysSar: integer("with_masar_21_days_sar")
+      .notNull()
+      .default(530),
+    withMasar28DaysSar: integer("with_masar_28_days_sar")
+      .notNull()
+      .default(545),
+    notes: text("notes"),
+    updatedByUserId: text("updated_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    check(
+      "chk_visa_rates_positive",
+      sql`${table.maxDays} > 0 AND ${table.pricePkr} >= 0 AND ${table.priceSar} >= 0`
+    ),
+  ]
+)
 
 // ==========================================
 // FLIGHTS REFERENCE CATALOG
@@ -109,7 +132,8 @@ export const airlines = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_airline_active").on(table.isActive),
@@ -131,7 +155,8 @@ export const departureCities = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_departure_city_active").on(table.isActive),
@@ -195,13 +220,18 @@ export const hotels = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_hotel_city").on(table.city),
     index("idx_hotel_rating").on(table.starRating),
     index("idx_hotel_active").on(table.isActive),
     index("idx_hotel_featured").on(table.isFeatured),
+    check(
+      "chk_hotels_star_rating",
+      sql`${table.starRating} BETWEEN 1 AND 5 AND ${table.distanceMeters} >= 0`
+    ),
   ]
 )
 
@@ -232,12 +262,17 @@ export const vehicles = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_vehicle_category").on(table.category),
     index("idx_vehicle_active").on(table.isActive),
     index("idx_vehicle_sort").on(table.sortOrder),
+    check(
+      "chk_vehicles_capacity",
+      sql`${table.seatCapacity} >= 1 AND ${table.luggageCapacity} >= 0`
+    ),
   ]
 )
 
@@ -270,12 +305,10 @@ export const transportSectors = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
-  (table) => [
-    index("idx_sector_code").on(table.code),
-    index("idx_sector_active").on(table.isActive),
-  ]
+  (table) => [index("idx_sector_active").on(table.isActive)]
 )
 
 // ==========================================
@@ -288,24 +321,25 @@ export const transportRates = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     sectorId: uuid("sector_id")
       .notNull()
-      .references(() => transportSectors.id, { onDelete: "cascade" }),
+      .references(() => transportSectors.id, { onDelete: "restrict" }),
     vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => vehicles.id, { onDelete: "cascade" }),
+      .references(() => vehicles.id, { onDelete: "restrict" }),
     rateSar: integer("rate_sar").notNull(),
     ratePkrOverride: integer("rate_pkr_override"),
     notes: text("notes"),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("idx_transport_rate_sector_vehicle").on(
       table.sectorId,
       table.vehicleId
     ),
-    index("idx_transport_rate_sector").on(table.sectorId),
     index("idx_transport_rate_vehicle").on(table.vehicleId),
+    check("chk_transport_rates_non_negative", sql`${table.rateSar} >= 0`),
   ]
 )
 
@@ -351,7 +385,8 @@ export const ziyaratPlaces = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_ziyarat_city").on(table.city),

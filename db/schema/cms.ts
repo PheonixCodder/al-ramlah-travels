@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm"
 import {
   boolean,
+  check,
   index,
   integer,
   pgEnum,
@@ -55,7 +57,8 @@ export const heroSlides = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_hero_active").on(table.isActive),
@@ -81,11 +84,13 @@ export const testimonials = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_testimonial_active").on(table.isActive),
     index("idx_testimonial_featured").on(table.isFeatured),
+    check("chk_testimonials_rating", sql`${table.rating} BETWEEN 1 AND 5`),
   ]
 )
 
@@ -103,7 +108,8 @@ export const faqs = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_faq_category").on(table.category),
@@ -128,7 +134,8 @@ export const contactMessages = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_contact_status").on(table.status),

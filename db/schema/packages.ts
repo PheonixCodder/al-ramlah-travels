@@ -1,6 +1,8 @@
-import { relations } from "drizzle-orm"
+import { relations, sql } from "drizzle-orm"
 import {
+  bigint,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -54,12 +56,19 @@ export const groupPackages = pgTable(
     includesVisa: boolean("includes_visa").notNull().default(true),
     includesTransport: boolean("includes_transport").notNull().default(true),
     includesZiyarat: boolean("includes_ziyarat").notNull().default(true),
-    quadPricePkr: integer("quad_price_pkr").notNull(),
-    triplePricePkr: integer("triple_price_pkr").notNull(),
-    doublePricePkr: integer("double_price_pkr").notNull(),
-    sharingPricePkr: integer("sharing_price_pkr").notNull().default(258299),
-    infantPricePkr: integer("infant_price_pkr").notNull().default(65000),
-    giftedInclusions: jsonb("gifted_inclusions").$type<string[]>().notNull().default([]),
+    quadPricePkr: bigint("quad_price_pkr", { mode: "number" }).notNull(),
+    triplePricePkr: bigint("triple_price_pkr", { mode: "number" }).notNull(),
+    doublePricePkr: bigint("double_price_pkr", { mode: "number" }).notNull(),
+    sharingPricePkr: bigint("sharing_price_pkr", { mode: "number" })
+      .notNull()
+      .default(258299),
+    infantPricePkr: bigint("infant_price_pkr", { mode: "number" })
+      .notNull()
+      .default(65000),
+    giftedInclusions: jsonb("gifted_inclusions")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
     multiHotelOptions: jsonb("multi_hotel_options")
       .$type<
         Array<{
@@ -87,12 +96,17 @@ export const groupPackages = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_package_tier").on(table.tier),
     index("idx_package_active").on(table.isActive),
     index("idx_package_featured").on(table.isFeatured),
+    check(
+      "chk_group_packages_durations_and_prices",
+      sql`${table.durationDays} >= 1 AND ${table.makkahNights} >= 0 AND ${table.madinahNights} >= 0 AND ${table.quadPricePkr} >= 0 AND ${table.triplePricePkr} >= 0 AND ${table.doublePricePkr} >= 0 AND ${table.sharingPricePkr} >= 0 AND ${table.infantPricePkr} >= 0`
+    ),
   ]
 )
 
@@ -102,7 +116,7 @@ export const groupDepartures = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     packageId: uuid("package_id")
       .notNull()
-      .references(() => groupPackages.id, { onDelete: "cascade" }),
+      .references(() => groupPackages.id, { onDelete: "restrict" }),
     batchCode: varchar("batch_code", { length: 32 }).notNull().unique(),
     departureCityId: uuid("departure_city_id")
       .notNull()
@@ -112,10 +126,16 @@ export const groupDepartures = pgTable(
     totalSeats: integer("total_seats").notNull(),
     bookedSeats: integer("booked_seats").notNull().default(0),
     status: groupDepartureStatusEnum("status").notNull().default("open"),
-    quadPriceOverridePkr: integer("quad_price_override_pkr"),
-    triplePriceOverridePkr: integer("triple_price_override_pkr"),
-    doublePriceOverridePkr: integer("double_price_override_pkr"),
-    sharingPriceOverridePkr: integer("sharing_price_override_pkr"),
+    quadPriceOverridePkr: bigint("quad_price_override_pkr", { mode: "number" }),
+    triplePriceOverridePkr: bigint("triple_price_override_pkr", {
+      mode: "number",
+    }),
+    doublePriceOverridePkr: bigint("double_price_override_pkr", {
+      mode: "number",
+    }),
+    sharingPriceOverridePkr: bigint("sharing_price_override_pkr", {
+      mode: "number",
+    }),
     outboundFlightNumber: text("outbound_flight_number"),
     returnFlightNumber: text("return_flight_number"),
     flightScheduleSummary: text("flight_schedule_summary"),
@@ -128,14 +148,73 @@ export const groupDepartures = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_departure_package").on(table.packageId),
     index("idx_departure_date").on(table.departureDate),
     index("idx_departure_status").on(table.status),
+    check(
+      "chk_group_departures_seats_and_dates",
+      sql`${table.totalSeats} > 0 AND ${table.bookedSeats} >= 0 AND ${table.bookedSeats} <= ${table.totalSeats} AND ${table.returnDate} >= ${table.departureDate}`
+    ),
   ]
 )
+
+// ==========================================
+// HAJJ 2027 INDICATIVE PACKAGES (`OD-09e`)
+// ==========================================
+
+export const hajjPackages = pgTable(
+  "hajj_packages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: varchar("slug", { length: 96 }).notNull().unique(),
+    title: text("title").notNull(),
+    seasonYear: integer("season_year").notNull().default(2027),
+    maktabTier: varchar("maktab_tier", { length: 32 }).notNull().default("A"),
+    durationDays: integer("duration_days").notNull().default(21),
+    makkahHotelName: text("makkah_hotel_name").notNull(),
+    makkahDistanceLabel: text("makkah_distance_label").notNull(),
+    madinahHotelName: text("madinah_hotel_name").notNull(),
+    madinahDistanceLabel: text("madinah_distance_label").notNull(),
+    aziziyahStayNotes: text("aziziyah_stay_notes"),
+    indicativeSharingPkr: bigint("indicative_sharing_pkr", {
+      mode: "number",
+    }).notNull(),
+    indicativeQuadPkr: bigint("indicative_quad_pkr", { mode: "number" }),
+    indicativeTriplePkr: bigint("indicative_triple_pkr", { mode: "number" }),
+    indicativeDoublePkr: bigint("indicative_double_pkr", { mode: "number" }),
+    isIndicative: boolean("is_indicative").notNull().default(true),
+    regulatoryDisclaimer: text("regulatory_disclaimer")
+      .notNull()
+      .default(
+        "Indicative 2027 package structure — final Maktab tariff & quota subject to Saudi Ministry of Hajj & Umrah and Pakistan MORA announcement."
+      ),
+    highlights: jsonb("highlights").$type<string[]>().notNull().default([]),
+    isFeatured: boolean("is_featured").notNull().default(false),
+    isActive: boolean("is_active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("idx_hajj_packages_active_sort").on(table.isActive, table.sortOrder),
+    check(
+      "chk_hajj_packages_positive_prices",
+      sql`${table.durationDays} >= 1 AND ${table.indicativeSharingPkr} >= 0`
+    ),
+  ]
+)
+
+export type HajjPackage = typeof hajjPackages.$inferSelect
+export type NewHajjPackage = typeof hajjPackages.$inferInsert
 
 // ==========================================
 // DRIZZLE RELATIONS GRAPH

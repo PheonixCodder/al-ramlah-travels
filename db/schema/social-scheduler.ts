@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm"
 import {
   boolean,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -14,7 +15,10 @@ import {
 } from "drizzle-orm/pg-core"
 import { user } from "./auth"
 import { postAssets } from "./suppliers-and-marketing"
-import type { EngagementPlugConfig, PlatformCaptionsMap } from "@/lib/social/types"
+import type {
+  EngagementPlugConfig,
+  PlatformCaptionsMap,
+} from "@/lib/social/types"
 
 // ==========================================
 // 1. SOCIAL SCHEDULER ENUMS
@@ -101,9 +105,7 @@ export const socialIntegrations = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
-    status: socialIntegrationStatusEnum("status")
-      .notNull()
-      .default("ACTIVE"),
+    status: socialIntegrationStatusEnum("status").notNull().default("ACTIVE"),
     isActive: boolean("is_active").notNull().default(true),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     createdByUserId: text("created_by_user_id").references(() => user.id, {
@@ -114,14 +116,14 @@ export const socialIntegrations = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("idx_social_integrations_provider_acc").on(
       table.provider,
       table.internalAccountId
     ),
-    index("idx_social_integrations_provider").on(table.provider),
     index("idx_social_integrations_active").on(table.isActive),
   ]
 )
@@ -141,17 +143,15 @@ export const scheduledPosts = pgTable(
     postType: scheduledPostTypeEnum("post_type")
       .notNull()
       .default("single_image"),
-    postFormat: socialPostFormatEnum("post_format")
-      .notNull()
-      .default("FEED"),
+    postFormat: socialPostFormatEnum("post_format").notNull().default("FEED"),
     firstComment: text("first_comment"),
     platformCaptions: jsonb("platform_captions")
       .$type<PlatformCaptionsMap>()
       .notNull()
       .default({}),
-    engagementPlugConfig: jsonb("engagement_plug_config")
-      .$type<EngagementPlugConfig | null>()
-      .default(null),
+    engagementPlugConfig: jsonb("engagement_plug_config").$type<
+      EngagementPlugConfig | null
+    >(),
     mediaUrls: jsonb("media_urls").$type<string[]>().notNull().default([]),
     socialJpegUrls: jsonb("social_jpeg_urls")
       .$type<string[]>()
@@ -175,13 +175,19 @@ export const scheduledPosts = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_scheduled_posts_scheduled_for").on(table.scheduledFor),
     index("idx_scheduled_posts_status").on(table.status),
     index("idx_scheduled_posts_post_asset").on(table.postAssetId),
     index("idx_scheduled_posts_trigger_run").on(table.triggerRunId),
+    foreignKey({
+      columns: [table.pairedFollowUpPostId],
+      foreignColumns: [table.id],
+      name: "fk_scheduled_posts_paired_followup",
+    }).onDelete("set null"),
   ]
 )
 
@@ -198,7 +204,7 @@ export const scheduledPostTargets = pgTable(
       .references(() => scheduledPosts.id, { onDelete: "cascade" }),
     integrationId: uuid("integration_id")
       .notNull()
-      .references(() => socialIntegrations.id, { onDelete: "cascade" }),
+      .references(() => socialIntegrations.id, { onDelete: "restrict" }),
     status: scheduledPostTargetStatusEnum("status")
       .notNull()
       .default("pending"),
@@ -208,9 +214,9 @@ export const scheduledPostTargets = pgTable(
     firstCommentPostedAt: timestamp("first_comment_posted_at", {
       withTimezone: true,
     }),
-    analyticsData: jsonb("analytics_data")
-      .$type<SocialPostAnalyticsData | null>()
-      .default(null),
+    analyticsData: jsonb("analytics_data").$type<
+      SocialPostAnalyticsData | null
+    >(),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     errorMessage: text("error_message"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
@@ -220,7 +226,8 @@ export const scheduledPostTargets = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("idx_scheduled_post_targets_idempotency").on(

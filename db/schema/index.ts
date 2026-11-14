@@ -1,4 +1,5 @@
 export * from "./auth"
+export * from "./audit-logs"
 export * from "./settings"
 export * from "./catalog"
 export * from "./packages"

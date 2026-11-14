@@ -1,23 +1,31 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertHotel } from "@/app/actions/catalog"
-import { Plus, Loader2, Coins, Calendar, MapPin } from "lucide-react"
+import {
+  Calendar,
+  Coins,
+  Images,
+  Loader2,
+  MapPin,
+  Plus,
+  Trash2,
+} from "lucide-react"
 
 export interface HotelData {
   id?: string
@@ -64,7 +72,9 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
 
   // Form State
   const [name, setName] = useState(hotel?.name ?? "")
-  const [city, setCity] = useState<"makkah" | "madinah">(hotel?.city ?? "makkah")
+  const [city, setCity] = useState<"makkah" | "madinah">(
+    hotel?.city ?? "makkah"
+  )
   const [starRating, setStarRating] = useState<number>(hotel?.starRating ?? 5)
   const [distanceMeters, setDistanceMeters] = useState<number>(
     hotel?.distanceMeters ?? 150
@@ -79,6 +89,10 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
     hotel?.imageUrl ??
       "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&q=80&w=800"
   )
+  const [galleryUrls, setGalleryUrls] = useState<string[]>(
+    hotel?.galleryUrls ?? []
+  )
+  const [newGalleryUrl, setNewGalleryUrl] = useState("")
   const [amenitiesStr, setAmenitiesStr] = useState(
     hotel?.amenities
       ? hotel.amenities.join(", ")
@@ -140,6 +154,58 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
     hotel?.availableRoomTypes?.includes("quad") ?? true
   )
 
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setName(hotel?.name ?? "")
+    setCity(hotel?.city ?? "makkah")
+    setStarRating(hotel?.starRating ?? 5)
+    setDistanceMeters(hotel?.distanceMeters ?? 150)
+    setDistanceLabel(hotel?.distanceLabel ?? "150m from Haram Courtyard")
+    setAccessType(hotel?.accessType ?? "walking")
+    setImageUrl(
+      hotel?.imageUrl ??
+        "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&q=80&w=800"
+    )
+    setGalleryUrls(hotel?.galleryUrls ?? [])
+    setNewGalleryUrl("")
+    setAmenitiesStr(
+      hotel?.amenities
+        ? hotel.amenities.join(", ")
+        : "Free WiFi, 24/7 Room Service, Haram View"
+    )
+    setAllowsSharedRooms(hotel?.allowsSharedRooms ?? true)
+    setAllowsPrivateRooms(hotel?.allowsPrivateRooms ?? true)
+    setIsFeatured(hotel?.isFeatured ?? false)
+    setIsActive(hotel?.isActive ?? true)
+    setSortOrder(hotel?.sortOrder ?? 0)
+    setSharingPriceSar(hotel?.sharingPriceSar ?? 120)
+    setRoomPriceSar(hotel?.roomPriceSar ?? 450)
+    setQuadPriceSar(hotel?.quadPriceSar ?? 480)
+    setTriplePriceSar(hotel?.triplePriceSar ?? 420)
+    setDoublePriceSar(hotel?.doublePriceSar ?? 360)
+    setOffersDining(hotel?.offersDining ?? true)
+    setBreakfastPriceSarPerPax(hotel?.breakfastPriceSarPerPax ?? 35)
+    setLunchPriceSarPerPax(hotel?.lunchPriceSarPerPax ?? 45)
+    setDinnerPriceSarPerPax(hotel?.dinnerPriceSarPerPax ?? 50)
+    setFullBoardPriceSarPerPax(hotel?.fullBoardPriceSarPerPax ?? 110)
+    setValidFrom(hotel?.validFrom ?? "")
+    setValidUntil(hotel?.validUntil ?? "")
+    setLocationNotes(hotel?.locationNotes ?? "")
+    setDoubleRoom(hotel?.availableRoomTypes?.includes("double") ?? true)
+    setTripleRoom(hotel?.availableRoomTypes?.includes("triple") ?? true)
+    setQuadRoom(hotel?.availableRoomTypes?.includes("quad") ?? true)
+  }, [open, hotel])
+
+  function handleAddGalleryItem() {
+    const trimmed = newGalleryUrl.trim()
+    if (!trimmed) return
+    if (!galleryUrls.includes(trimmed)) {
+      setGalleryUrls((prev) => [...prev, trimmed])
+    }
+    setNewGalleryUrl("")
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -165,7 +231,7 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
         distanceLabel,
         accessType,
         imageUrl,
-        galleryUrls: hotel?.galleryUrls ?? [],
+        galleryUrls,
         amenities: amenitiesList,
         allowsSharedRooms,
         allowsPrivateRooms,
@@ -195,7 +261,7 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
         setOpen(false)
         router.refresh()
       } else {
-        setError("Failed to save hotel. Please check your inputs.")
+        setError(res.error || "Failed to save hotel. Please check your inputs.")
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -222,13 +288,17 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
           )
         }
       />
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent
+        key={open ? (hotel?.id ?? "new") : "closed"}
+        className="max-h-[90vh] overflow-y-auto sm:max-w-xl"
+      >
         <DialogHeader>
           <DialogTitle>
             {hotel ? `Edit ${hotel.name}` : "Add New Hotel to Catalog"}
           </DialogTitle>
           <DialogDescription>
-            Configure hotel rating, courtyard proximity, room options, and seasonal SAR rate matrices.
+            Configure hotel rating, courtyard proximity, photo gallery, room
+            options, and seasonal SAR rate matrices.
           </DialogDescription>
         </DialogHeader>
 
@@ -335,11 +405,64 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
             </div>
           </div>
 
+          {/* Multi-Photo Gallery URLs */}
+          <div className="rounded-lg border border-border/80 bg-muted/20 p-3 space-y-2.5">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <Images className="size-3.5 text-gold" />
+              <span>Property Photo Gallery ({galleryUrls.length})</span>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={newGalleryUrl}
+                onChange={(e) => setNewGalleryUrl(e.target.value)}
+                placeholder="Add room / lobby / courtyard photo URL..."
+                className="h-8 text-xs"
+              />
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={handleAddGalleryItem}
+                className="shrink-0 cursor-pointer"
+              >
+                Add URL
+              </Button>
+            </div>
+            {galleryUrls.length > 0 && (
+              <div className="space-y-1 max-h-28 overflow-y-auto">
+                {galleryUrls.map((gUrl, idx) => (
+                  <div
+                    key={`${gUrl}-${idx}`}
+                    className="flex items-center justify-between gap-2 rounded border border-border/60 bg-background px-2.5 py-1 text-[11px]"
+                  >
+                    <span className="truncate font-mono text-muted-foreground">
+                      {gUrl}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setGalleryUrls((prev) =>
+                          prev.filter((_, i) => i !== idx)
+                        )
+                      }
+                      className="text-red-500 hover:text-red-700 cursor-pointer shrink-0"
+                      title="Remove photo"
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Location Notes */}
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5">
               <MapPin className="size-3.5 text-muted-foreground" />
-              <Label htmlFor="hotel-notes">Location & Gate Landmark Notes</Label>
+              <Label htmlFor="hotel-notes">
+                Location &amp; Gate Landmark Notes
+              </Label>
             </div>
             <Input
               id="hotel-notes"
@@ -511,7 +634,10 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
             {/* Validity Dates */}
             <div className="grid grid-cols-2 gap-3 pt-1 border-t border-border/60">
               <div className="space-y-1">
-                <Label htmlFor="valid-from" className="text-xs text-muted-foreground flex items-center gap-1">
+                <Label
+                  htmlFor="valid-from"
+                  className="text-xs text-muted-foreground flex items-center gap-1"
+                >
                   <Calendar className="size-3" /> Valid From
                 </Label>
                 <Input
@@ -522,7 +648,10 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="valid-until" className="text-xs text-muted-foreground flex items-center gap-1">
+                <Label
+                  htmlFor="valid-until"
+                  className="text-xs text-muted-foreground flex items-center gap-1"
+                >
                   <Calendar className="size-3" /> Valid Until
                 </Label>
                 <Input
@@ -604,7 +733,6 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
             </div>
           </div>
 
-
           {/* Visibility & Flags */}
           <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-3">
             <div className="flex items-center gap-6">
@@ -636,7 +764,7 @@ export function HotelDialog({ hotel, trigger }: HotelDialogProps) {
                 type="number"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="w-16 h-8 text-xs"
+                className="w-16 h-8 text-xs font-mono"
               />
             </div>
           </div>

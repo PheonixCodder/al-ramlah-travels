@@ -1,26 +1,27 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition, useEffect } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
-  updateContactMessageStatus,
   deleteContactMessage,
+  updateContactMessageStatus,
 } from "@/app/actions/cms"
-import { Button } from "@/components/ui/button"
+import { buildWhatsappUrl, normalizeWhatsappNumber } from "@/lib/company-info"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  Phone,
-  MessageCircle,
-  Mail,
+  Archive,
   Calendar,
   CheckCircle,
-  Archive,
-  Trash2,
+  Mail,
+  MessageCircle,
+  Phone,
   Save,
   Search,
+  Trash2,
 } from "lucide-react"
 
 export interface ContactMessageData {
@@ -46,31 +47,49 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
     useState<ContactMessageData[]>(initialMessages)
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [search, setSearch] = useState("")
-  const [selectedMessage, setSelectedMessage] =
-    useState<ContactMessageData | null>(messages[0] ?? null)
-  const [adminNotes, setAdminNotes] = useState(
-    selectedMessage?.adminNotes ?? ""
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialMessages[0]?.id ?? null
   )
+  const [adminNotes, setAdminNotes] = useState(
+    initialMessages[0]?.adminNotes ?? ""
+  )
+  const [feedback, setFeedback] = useState<{
+    tone: "error" | "success"
+    text: string
+  } | null>(null)
   const [, startTransition] = useTransition()
 
   useEffect(() => {
     setMessages(initialMessages)
   }, [initialMessages])
 
-  // Filter messages
-  const filteredMessages = messages.filter((m) => {
-    const matchesStatus = statusFilter === "all" || m.status === statusFilter
-    const matchesSearch =
-      m.name.toLowerCase().includes(search.toLowerCase()) ||
-      m.subject.toLowerCase().includes(search.toLowerCase()) ||
-      m.phone.includes(search)
-    return matchesStatus && matchesSearch
-  })
+  const selectedMessage = React.useMemo(
+    () => messages.find((m) => m.id === selectedId) ?? null,
+    [messages, selectedId]
+  )
+
+  // Keep active message pinned in list even if marking unread -> read under statusFilter === "unread"
+  const filteredMessages = React.useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return messages.filter((m) => {
+      const isCurrentlySelected = m.id === selectedId
+      const matchesStatus =
+        statusFilter === "all" ||
+        m.status === statusFilter ||
+        isCurrentlySelected
+      const matchesSearch =
+        !q ||
+        m.name.toLowerCase().includes(q) ||
+        m.subject.toLowerCase().includes(q) ||
+        m.phone.includes(q)
+      return matchesStatus && matchesSearch
+    })
+  }, [messages, statusFilter, search, selectedId])
 
   function handleSelect(m: ContactMessageData) {
-    setSelectedMessage(m)
+    setSelectedId(m.id)
     setAdminNotes(m.adminNotes ?? "")
-    // Auto-mark as read if unread
+    setFeedback(null)
     if (m.status === "unread") {
       updateStatus(m.id, "read")
     }
@@ -80,61 +99,130 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
     id: string,
     status: "unread" | "read" | "replied" | "archived"
   ) {
+    const previous = messages
     setMessages((prev) =>
       prev.map((m) => (m.id === id ? { ...m, status } : m))
     )
-    if (selectedMessage?.id === id) {
-      setSelectedMessage((prev) => (prev ? { ...prev, status } : null))
-    }
     startTransition(async () => {
-      await updateContactMessageStatus({ id, status })
+      const res = await updateContactMessageStatus({ id, status })
+      if (!res.success) {
+        setMessages(previous)
+        setFeedback({
+          tone: "error",
+          text: res.error || "Failed to update message status.",
+        })
+        return
+      }
+      router.refresh()
     })
   }
 
   function handleSaveNotes() {
     if (!selectedMessage) return
     const id = selectedMessage.id
+    const currentStatus = selectedMessage.status
+    setFeedback(null)
     setMessages((prev) =>
       prev.map((m) => (m.id === id ? { ...m, adminNotes } : m))
     )
     startTransition(async () => {
-      await updateContactMessageStatus({
+      const res = await updateContactMessageStatus({
         id,
-        status: selectedMessage.status,
+        status: currentStatus,
         adminNotes,
       })
+      if (!res.success) {
+        setFeedback({
+          tone: "error",
+          text: res.error || "Failed to save internal notes.",
+        })
+        return
+      }
+      setFeedback({ tone: "success", text: "Internal staff notes saved." })
+      router.refresh()
     })
   }
 
   function handleDelete(id: string) {
-    if (!window.confirm("Delete this contact message?")) return
+    if (!window.confirm("Permanently delete this contact message?")) return
+    const previous = messages
+    setFeedback(null)
     setMessages((prev) => prev.filter((m) => m.id !== id))
-    if (selectedMessage?.id === id) {
-      setSelectedMessage(null)
+    if (selectedId === id) {
+      const fallbackNext = messages.find((m) => m.id !== id) ?? null
+      setSelectedId(fallbackNext?.id ?? null)
+      setAdminNotes(fallbackNext?.adminNotes ?? "")
     }
     startTransition(async () => {
-      await deleteContactMessage(id)
+      try {
+        const res = await deleteContactMessage(id)
+        if (!res.success) {
+          setMessages(previous)
+          setSelectedId(id)
+          setFeedback({
+            tone: "error",
+            text: res.error || "Only Super Admins can permanently delete inquiries.",
+          })
+          return
+        }
+        router.refresh()
+      } catch (err: unknown) {
+        setMessages(previous)
+        setSelectedId(id)
+        setFeedback({
+          tone: "error",
+          text:
+            err instanceof Error
+              ? err.message
+              : "Only Super Admins can permanently delete inquiries.",
+        })
+      }
     })
   }
+
+  const whatsappCandidate =
+    selectedMessage?.whatsapp?.trim() || selectedMessage?.phone?.trim() || ""
+  const hasValidWhatsapp =
+    normalizeWhatsappNumber(whatsappCandidate).length >= 10
+  const whatsappReplyHref = hasValidWhatsapp
+    ? buildWhatsappUrl(
+        whatsappCandidate,
+        selectedMessage
+          ? `Assalamu Alaikum ${selectedMessage.name}, regarding your inquiry "${selectedMessage.subject}" with Al Ramlah Travels:`
+          : undefined
+      )
+    : null
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+        <h2 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           Contact Messages Inbox
-        </h1>
+        </h2>
         <p className="text-sm text-muted-foreground">
-          Pilgrim inquiries, callback requests, and direct customer communication.
+          Pilgrim inquiries, callback requests, and direct WhatsApp/email triage.
         </p>
       </div>
 
+      {feedback && (
+        <div
+          className={`rounded-xl border p-3 text-xs font-medium ${
+            feedback.tone === "error"
+              ? "border-red-300 bg-red-50 text-red-800"
+              : "border-emerald-300 bg-emerald-50 text-emerald-900"
+          }`}
+        >
+          {feedback.text}
+        </div>
+      )}
+
       {/* Filter and Search Bar */}
       <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-2xs sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-1 rounded-lg bg-muted p-1 text-xs">
+        <div className="flex flex-wrap items-center gap-1 rounded-lg bg-muted p-1 text-xs">
           <button
             type="button"
             onClick={() => setStatusFilter("all")}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
               statusFilter === "all"
                 ? "bg-card text-foreground shadow-xs font-semibold"
                 : "text-muted-foreground hover:text-foreground"
@@ -145,7 +233,7 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
           <button
             type="button"
             onClick={() => setStatusFilter("unread")}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
               statusFilter === "unread"
                 ? "bg-card text-amber-900 shadow-xs font-semibold"
                 : "text-muted-foreground hover:text-foreground"
@@ -155,8 +243,19 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
           </button>
           <button
             type="button"
+            onClick={() => setStatusFilter("read")}
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+              statusFilter === "read"
+                ? "bg-card text-foreground shadow-xs font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Read ({messages.filter((m) => m.status === "read").length})
+          </button>
+          <button
+            type="button"
             onClick={() => setStatusFilter("replied")}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
               statusFilter === "replied"
                 ? "bg-card text-emerald-900 shadow-xs font-semibold"
                 : "text-muted-foreground hover:text-foreground"
@@ -167,7 +266,7 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
           <button
             type="button"
             onClick={() => setStatusFilter("archived")}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
               statusFilter === "archived"
                 ? "bg-card text-foreground shadow-xs font-semibold"
                 : "text-muted-foreground hover:text-foreground"
@@ -230,7 +329,7 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                   {m.message}
                 </p>
                 <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-2 mt-1 border-t border-border/50">
-                  <span>{m.phone}</span>
+                  <span className="font-mono">{m.phone}</span>
                   <span>{new Date(m.createdAt).toLocaleDateString()}</span>
                 </div>
               </div>
@@ -245,9 +344,14 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
               {/* Message Header */}
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between border-b border-border pb-4">
                 <div>
-                  <h2 className="text-lg font-bold text-foreground">
-                    {selectedMessage.subject}
-                  </h2>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-foreground">
+                      {selectedMessage.subject}
+                    </h3>
+                    <Badge variant="outline" className="text-[10px] uppercase">
+                      {selectedMessage.status}
+                    </Badge>
+                  </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                     <span className="font-semibold text-foreground">
                       {selectedMessage.name}
@@ -263,19 +367,27 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                 {/* Status Switcher Buttons */}
                 <div className="flex items-center gap-1.5">
                   <Button
-                    variant={selectedMessage.status === "replied" ? "default" : "outline"}
+                    variant={
+                      selectedMessage.status === "replied"
+                        ? "default"
+                        : "outline"
+                    }
                     size="xs"
                     onClick={() => updateStatus(selectedMessage.id, "replied")}
-                    className="gap-1 text-xs"
+                    className="gap-1 text-xs cursor-pointer"
                   >
                     <CheckCircle className="size-3.5" />
                     <span>Replied</span>
                   </Button>
                   <Button
-                    variant={selectedMessage.status === "archived" ? "default" : "outline"}
+                    variant={
+                      selectedMessage.status === "archived"
+                        ? "default"
+                        : "outline"
+                    }
                     size="xs"
                     onClick={() => updateStatus(selectedMessage.id, "archived")}
-                    className="gap-1 text-xs"
+                    className="gap-1 text-xs cursor-pointer"
                   >
                     <Archive className="size-3.5" />
                     <span>Archive</span>
@@ -284,7 +396,8 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => handleDelete(selectedMessage.id)}
-                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700"
+                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                    title="Delete Inquiry (Super Admin)"
                   >
                     <Trash2 className="size-3.5" />
                   </Button>
@@ -301,15 +414,17 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                   <span>Call {selectedMessage.phone}</span>
                 </a>
 
-                {selectedMessage.whatsapp && (
+                {whatsappReplyHref && (
                   <a
-                    href={`https://wa.me/${selectedMessage.whatsapp.replace(/[^0-9]/g, "")}`}
+                    href={whatsappReplyHref}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 font-medium text-emerald-800 hover:bg-emerald-100"
                   >
                     <MessageCircle className="size-3.5 text-emerald-600" />
-                    <span>WhatsApp Pilgrim</span>
+                    <span>
+                      WhatsApp Pilgrim (+{normalizeWhatsappNumber(whatsappCandidate)})
+                    </span>
                   </a>
                 )}
 
@@ -346,7 +461,7 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                 <Button
                   size="xs"
                   onClick={handleSaveNotes}
-                  className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+                  className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
                 >
                   <Save className="size-3" />
                   <span>Save Internal Notes</span>

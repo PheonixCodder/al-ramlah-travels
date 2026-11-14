@@ -1,23 +1,23 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertAirline } from "@/app/actions/catalog"
-import { Plus, Loader2 } from "lucide-react"
+import { Loader2, Plus } from "lucide-react"
 
 export interface AirlineData {
   id?: string
@@ -53,6 +53,18 @@ export function AirlineDialog({ airline, trigger }: AirlineDialogProps) {
   const [isActive, setIsActive] = useState(airline?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(airline?.sortOrder ?? 0)
 
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setName(airline?.name ?? "")
+    setIataCode(airline?.iataCode ?? "")
+    setLogoUrl(airline?.logoUrl ?? "")
+    setIsDirectAvailable(airline?.isDirectAvailable ?? true)
+    setIsConnectingAvailable(airline?.isConnectingAvailable ?? true)
+    setIsActive(airline?.isActive ?? true)
+    setSortOrder(airline?.sortOrder ?? 0)
+  }, [open, airline])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -73,7 +85,7 @@ export function AirlineDialog({ airline, trigger }: AirlineDialogProps) {
         setOpen(false)
         router.refresh()
       } else {
-        setError("Failed to save airline.")
+        setError(res.error || "Failed to save airline.")
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -93,14 +105,17 @@ export function AirlineDialog({ airline, trigger }: AirlineDialogProps) {
           trigger ? (
             (trigger as React.ReactElement)
           ) : (
-            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
               <Plus className="size-4" />
               <span>Add Airline</span>
             </Button>
           )
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        key={open ? (airline?.id ?? "new") : "closed"}
+        className="sm:max-w-md"
+      >
         <DialogHeader>
           <DialogTitle>
             {airline ? `Edit ${airline.name}` : "Add Partner Airline"}
@@ -129,7 +144,7 @@ export function AirlineDialog({ airline, trigger }: AirlineDialogProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="a-iata">IATA (3-char)</Label>
+              <Label htmlFor="a-iata">IATA (2–3 char)</Label>
               <Input
                 id="a-iata"
                 maxLength={3}
@@ -192,7 +207,7 @@ export function AirlineDialog({ airline, trigger }: AirlineDialogProps) {
                 type="number"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="w-14 h-7 text-xs"
+                className="w-14 h-7 text-xs font-mono"
               />
             </div>
           </div>
@@ -204,7 +219,7 @@ export function AirlineDialog({ airline, trigger }: AirlineDialogProps) {
             <Button
               type="submit"
               disabled={loading}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
             >
               {loading && <Loader2 className="size-4 animate-spin" />}
               <span>{airline ? "Save Changes" : "Create Airline"}</span>

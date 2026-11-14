@@ -1,23 +1,24 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertGroupPackage } from "@/app/actions/groups"
-import { Plus, Loader2, Gift, Baby, Upload, Image as ImageIcon } from "lucide-react"
+import { Baby, Gift, Loader2, Plus, Upload } from "lucide-react"
 
 export interface GroupPackageData {
   id?: string
@@ -86,7 +87,9 @@ export function GroupPackageDialog({
   const [madinahNights, setMadinahNights] = useState(pkg?.madinahNights ?? 6)
   const [airlineId, setAirlineId] = useState(pkg?.airlineId ?? "")
   const [makkahHotelId, setMakkahHotelId] = useState(pkg?.makkahHotelId ?? "")
-  const [madinahHotelId, setMadinahHotelId] = useState(pkg?.madinahHotelId ?? "")
+  const [madinahHotelId, setMadinahHotelId] = useState(
+    pkg?.madinahHotelId ?? ""
+  )
   const [includesVisa, setIncludesVisa] = useState(pkg?.includesVisa ?? true)
   const [includesTransport, setIncludesTransport] = useState(
     pkg?.includesTransport ?? true
@@ -95,7 +98,6 @@ export function GroupPackageDialog({
     pkg?.includesZiyarat ?? true
   )
 
-  // Pricing
   const [sharingPricePkr, setSharingPricePkr] = useState<number>(
     pkg?.sharingPricePkr ?? 258299
   )
@@ -131,6 +133,49 @@ export function GroupPackageDialog({
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
 
+  const [isFeatured, setIsFeatured] = useState(pkg?.isFeatured ?? true)
+  const [isActive, setIsActive] = useState(pkg?.isActive ?? true)
+  const [sortOrder, setSortOrder] = useState(pkg?.sortOrder ?? 0)
+
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setTitle(pkg?.title ?? "")
+    setSlug(pkg?.slug ?? "")
+    setTier(pkg?.tier ?? "vip_5star")
+    setDurationDays(pkg?.durationDays ?? 14)
+    setMakkahNights(pkg?.makkahNights ?? 8)
+    setMadinahNights(pkg?.madinahNights ?? 6)
+    setAirlineId(pkg?.airlineId ?? "")
+    setMakkahHotelId(pkg?.makkahHotelId ?? "")
+    setMadinahHotelId(pkg?.madinahHotelId ?? "")
+    setIncludesVisa(pkg?.includesVisa ?? true)
+    setIncludesTransport(pkg?.includesTransport ?? true)
+    setIncludesZiyarat(pkg?.includesZiyarat ?? true)
+    setSharingPricePkr(pkg?.sharingPricePkr ?? 258299)
+    setQuadPricePkr(pkg?.quadPricePkr ?? 385000)
+    setTriplePricePkr(pkg?.triplePricePkr ?? 425000)
+    setDoublePricePkr(pkg?.doublePricePkr ?? 495000)
+    setInfantPricePkr(pkg?.infantPricePkr ?? 65000)
+    setGiftedInclusionsStr(
+      pkg?.giftedInclusions && pkg.giftedInclusions.length > 0
+        ? pkg.giftedInclusions.join(", ")
+        : "5L Zamzam Water Canister, Luxury Al-Ramlah Pilgrim Backpack, Haramain Bullet Train Ticket"
+    )
+    setHighlightsStr(
+      pkg?.highlights && pkg.highlights.length > 0
+        ? pkg.highlights.join(", ")
+        : "Direct Saudi Airlines, 50m Clock Tower Hotel, Dedicated Scholar Guide, Private Ziyarat Coach"
+    )
+    setBannerUrl(
+      pkg?.bannerUrl ??
+        "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800"
+    )
+    setIsFeatured(pkg?.isFeatured ?? true)
+    setIsActive(pkg?.isActive ?? true)
+    setSortOrder(pkg?.sortOrder ?? 0)
+  }, [open, pkg])
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -153,8 +198,13 @@ export function GroupPackageDialog({
         throw new Error("Failed to get presigned upload URL")
       }
 
-      const { uploadUrl, publicUrl } = await presignRes.json()
-      setUploadProgress(`Uploading ${(file.size / (1024 * 1024)).toFixed(1)}MB direct to storage...`)
+      const { uploadUrl, publicUrl } = (await presignRes.json()) as {
+        uploadUrl: string
+        publicUrl: string
+      }
+      setUploadProgress(
+        `Uploading ${(file.size / (1024 * 1024)).toFixed(1)}MB direct to storage...`
+      )
 
       const uploadRes = await fetch(uploadUrl, {
         method: "PUT",
@@ -168,20 +218,15 @@ export function GroupPackageDialog({
 
       setBannerUrl(publicUrl)
       setUploadProgress(null)
-    } catch (err) {
+    } catch (err: unknown) {
       setUploadProgress(null)
-      alert(err instanceof Error ? err.message : "Failed to upload image")
+      setError(err instanceof Error ? err.message : "Failed to upload image")
     } finally {
       setUploadingImage(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
     }
   }
 
-  const [isFeatured, setIsFeatured] = useState(pkg?.isFeatured ?? true)
-  const [isActive, setIsActive] = useState(pkg?.isActive ?? true)
-  const [sortOrder, setSortOrder] = useState(pkg?.sortOrder ?? 0)
-
-  // Auto slug generation from title
   function handleTitleChange(val: string) {
     setTitle(val)
     if (!pkg) {
@@ -241,7 +286,10 @@ export function GroupPackageDialog({
         setOpen(false)
         router.refresh()
       } else {
-        setError("Failed to save package.")
+        const maybeError = "error" in res && typeof res.error === "string"
+          ? res.error
+          : "Failed to save package."
+        setError(maybeError)
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -271,13 +319,17 @@ export function GroupPackageDialog({
           )
         }
       />
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent
+        key={open ? (pkg?.id ?? "new") : "closed"}
+        className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"
+      >
         <DialogHeader>
           <DialogTitle>
             {pkg ? `Edit ${pkg.title}` : "Create Group Package"}
           </DialogTitle>
           <DialogDescription>
-            Configure package tier, hotel stays, airline partner, room sharing price matrix, and gifted inclusions.
+            Configure package tier, hotel stays, airline partner, room sharing
+            price matrix, and gifted inclusions.
           </DialogDescription>
         </DialogHeader>
 
@@ -288,7 +340,6 @@ export function GroupPackageDialog({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
-          {/* Title & Slug */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="gp-title">Package Title</Label>
@@ -307,12 +358,12 @@ export function GroupPackageDialog({
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
                 placeholder="14-days-executive-umrah"
+                className="font-mono text-xs"
                 required
               />
             </div>
           </div>
 
-          {/* Tier & Duration */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="space-y-1.5">
               <Label htmlFor="gp-tier">Tier</Label>
@@ -373,7 +424,6 @@ export function GroupPackageDialog({
             </div>
           </div>
 
-          {/* Partner Airline & Hotels */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="gp-airline">Partner Airline</Label>
@@ -425,7 +475,6 @@ export function GroupPackageDialog({
             </div>
           </div>
 
-          {/* Pricing Matrix (All 4 Room Categories + Infant) */}
           <div className="rounded-xl border border-gold/40 bg-card p-4 space-y-3">
             <span className="text-xs font-semibold uppercase tracking-wider text-foreground">
               Rate per Pilgrim by Room Category (PKR)
@@ -441,7 +490,7 @@ export function GroupPackageDialog({
                   min={0}
                   value={sharingPricePkr}
                   onChange={(e) => setSharingPricePkr(Number(e.target.value))}
-                  className="font-mono text-sm font-semibold"
+                  className="font-mono text-sm font-semibold tabular-nums"
                   required
                 />
               </div>
@@ -455,7 +504,7 @@ export function GroupPackageDialog({
                   min={0}
                   value={quadPricePkr}
                   onChange={(e) => setQuadPricePkr(Number(e.target.value))}
-                  className="font-mono text-sm font-semibold"
+                  className="font-mono text-sm font-semibold tabular-nums"
                   required
                 />
               </div>
@@ -469,7 +518,7 @@ export function GroupPackageDialog({
                   min={0}
                   value={triplePricePkr}
                   onChange={(e) => setTriplePricePkr(Number(e.target.value))}
-                  className="font-mono text-sm font-semibold"
+                  className="font-mono text-sm font-semibold tabular-nums"
                   required
                 />
               </div>
@@ -483,7 +532,7 @@ export function GroupPackageDialog({
                   min={0}
                   value={doublePricePkr}
                   onChange={(e) => setDoublePricePkr(Number(e.target.value))}
-                  className="font-mono text-sm font-semibold"
+                  className="font-mono text-sm font-semibold tabular-nums"
                   required
                 />
               </div>
@@ -493,7 +542,9 @@ export function GroupPackageDialog({
               <div className="space-y-1 w-full sm:w-1/2">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
                   <Baby className="size-3.5 text-gold" />
-                  <Label htmlFor="gp-infant">Infant Price (&lt;2 yrs) (PKR)</Label>
+                  <Label htmlFor="gp-infant">
+                    Infant Price (&lt;2 yrs) (PKR)
+                  </Label>
                 </div>
                 <Input
                   id="gp-infant"
@@ -501,18 +552,19 @@ export function GroupPackageDialog({
                   min={0}
                   value={infantPricePkr}
                   onChange={(e) => setInfantPricePkr(Number(e.target.value))}
-                  className="font-mono text-sm"
+                  className="font-mono text-sm tabular-nums"
                   required
                 />
               </div>
             </div>
           </div>
 
-          {/* Gifted Inclusions */}
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5">
               <Gift className="size-3.5 text-gold" />
-              <Label htmlFor="gp-gifted">Gifted Inclusions & Complimentary Amenities</Label>
+              <Label htmlFor="gp-gifted">
+                Gifted Inclusions &amp; Complimentary Amenities
+              </Label>
             </div>
             <Input
               id="gp-gifted"
@@ -522,7 +574,6 @@ export function GroupPackageDialog({
             />
           </div>
 
-          {/* Inclusions */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 items-center">
             <label className="flex items-center gap-2 text-xs cursor-pointer">
               <input
@@ -553,7 +604,6 @@ export function GroupPackageDialog({
             </label>
           </div>
 
-          {/* Highlights & Banner */}
           <div className="space-y-1.5">
             <Label htmlFor="gp-highlights">Highlights (comma-separated)</Label>
             <Input
@@ -589,7 +639,9 @@ export function GroupPackageDialog({
                   ) : (
                     <Upload className="size-3 text-gold" />
                   )}
-                  <span>{uploadingImage ? "Uploading..." : "Upload from Disk"}</span>
+                  <span>
+                    {uploadingImage ? "Uploading..." : "Upload from Disk"}
+                  </span>
                 </Button>
               </div>
             </div>
@@ -609,11 +661,12 @@ export function GroupPackageDialog({
 
             {bannerUrl && (
               <div className="relative h-28 w-full rounded-lg overflow-hidden border border-border bg-muted/40">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <Image
                   src={bannerUrl}
                   alt="Package Banner Preview"
-                  className="w-full h-full object-cover object-top"
+                  fill
+                  unoptimized
+                  className="object-cover object-top"
                 />
                 <span className="absolute bottom-1 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
                   Banner Preview
@@ -622,7 +675,6 @@ export function GroupPackageDialog({
             )}
           </div>
 
-          {/* Flags */}
           <div className="flex items-center justify-between border-t border-border pt-3">
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -653,7 +705,7 @@ export function GroupPackageDialog({
                 type="number"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="w-14 h-7 text-xs"
+                className="w-14 h-7 text-xs font-mono"
               />
             </div>
           </div>

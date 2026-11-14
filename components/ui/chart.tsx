@@ -11,6 +11,44 @@ const THEMES = { light: "", dark: ".dark" } as const
 const INITIAL_DIMENSION = { width: 320, height: 200 } as const
 type TooltipNameType = number | string
 
+const SAFE_CHART_IDENTIFIER_REGEX = /^[a-zA-Z0-9_-]+$/
+const SAFE_HEX_COLOR_REGEX =
+  /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/
+const SAFE_CSS_VAR_REGEX = /^var\(--[a-zA-Z0-9_-]+\)$/
+const SAFE_COLOR_FN_REGEX =
+  /^(?:rgb|rgba|hsl|hsla|oklch)\([0-9.+\-%degturnrad,\s/]+\)$/i
+const UNSAFE_CSS_TOKEN_REGEX =
+  /[;{}<>\\"'@]|\/\*|\*\/|\burl\s*\(|\bexpression\s*\(/i
+
+export function sanitizeChartIdentifier(raw: string): string | null {
+  if (typeof raw !== "string") return null
+  const trimmed = raw.trim()
+  if (!trimmed || trimmed.length > 128) return null
+  return SAFE_CHART_IDENTIFIER_REGEX.test(trimmed) ? trimmed : null
+}
+
+export function sanitizeChartColor(rawColor: string | undefined): string | null {
+  if (typeof rawColor !== "string") return null
+  const trimmed = rawColor.trim()
+  if (!trimmed || trimmed.length > 128) return null
+  if (UNSAFE_CSS_TOKEN_REGEX.test(trimmed)) return null
+
+  if (SAFE_HEX_COLOR_REGEX.test(trimmed)) {
+    return trimmed
+  }
+
+  if (SAFE_CSS_VAR_REGEX.test(trimmed)) {
+    return trimmed
+  }
+
+  const varSubstituted = trimmed.replace(/var\(--[a-zA-Z0-9_-]+\)/g, "0")
+  if (SAFE_COLOR_FN_REGEX.test(varSubstituted)) {
+    return trimmed
+  }
+
+  return null
+}
+
 export type ChartConfig = Record<
   string,
   {
@@ -56,7 +94,9 @@ function ChartContainer({
   }
 }) {
   const uniqueId = React.useId()
-  const chartId = `chart-${id ?? uniqueId.replace(/:/g, "")}`
+  const sanitizedBaseId =
+    (id ?? uniqueId).replace(/[^a-zA-Z0-9_-]/g, "") || "default"
+  const chartId = `chart-${sanitizedBaseId}`
 
   return (
     <ChartContext.Provider value={{ config }}>
@@ -81,33 +121,54 @@ function ChartContainer({
 }
 
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
+  const safeId = sanitizeChartIdentifier(id)
+  if (!safeId) {
+    return null
+  }
+
   const colorConfig = Object.entries(config).filter(
-    ([, config]) => config.theme ?? config.color
+    ([key, itemConfig]) =>
+      sanitizeChartIdentifier(key) !== null &&
+      Boolean(itemConfig.theme ?? itemConfig.color)
   )
 
   if (!colorConfig.length) {
     return null
   }
 
+  const cssBlocks: string[] = []
+
+  for (const [theme, prefix] of Object.entries(THEMES)) {
+    const declarations: string[] = []
+    for (const [rawKey, itemConfig] of colorConfig) {
+      const safeKey = sanitizeChartIdentifier(rawKey)
+      if (!safeKey) continue
+
+      const rawColor =
+        itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ??
+        itemConfig.color
+      const safeColor = sanitizeChartColor(rawColor)
+      if (!safeColor) continue
+
+      declarations.push(`  --color-${safeKey}: ${safeColor};`)
+    }
+
+    if (declarations.length > 0) {
+      const selectorPrefix = prefix ? `${prefix} ` : ""
+      cssBlocks.push(
+        `${selectorPrefix}[data-chart=${safeId}] {\n${declarations.join("\n")}\n}`
+      )
+    }
+  }
+
+  if (cssBlocks.length === 0) {
+    return null
+  }
+
   return (
     <style
       dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
-  .map(([key, itemConfig]) => {
-    const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ??
-      itemConfig.color
-    return color ? `  --color-${key}: ${color};` : null
-  })
-  .join("\n")}
-}
-`
-          )
-          .join("\n"),
+        __html: cssBlocks.join("\n\n"),
       }}
     />
   )
@@ -201,7 +262,13 @@ function ChartTooltipContent({
           .map((item, index) => {
             const key = `${nameKey ?? item.name ?? item.dataKey ?? "value"}`
             const itemConfig = getPayloadConfigFromPayload(config, item, key)
-            const indicatorColor = color ?? item.payload?.fill ?? item.color
+            const rawIndicatorColor = color ?? item.payload?.fill ?? item.color
+            const indicatorColor =
+              sanitizeChartColor(
+                typeof rawIndicatorColor === "string"
+                  ? rawIndicatorColor
+                  : undefined
+              ) ?? undefined
 
             return (
               <div
@@ -314,7 +381,10 @@ function ChartLegendContent({
                 <div
                   className="h-2 w-2 shrink-0 rounded-[2px]"
                   style={{
-                    backgroundColor: item.color,
+                    backgroundColor:
+                      sanitizeChartColor(
+                        typeof item.color === "string" ? item.color : undefined
+                      ) ?? undefined,
                   }}
                 />
               )}

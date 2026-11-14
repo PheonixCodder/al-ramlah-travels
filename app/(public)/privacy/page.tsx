@@ -1,5 +1,9 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { db } from "@/db"
+import { getCompanyInfo } from "@/lib/company-info"
+
+export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
   title: "Privacy Policy | Al Ramlah Travels",
@@ -7,7 +11,13 @@ export const metadata: Metadata = {
     "Privacy Policy for Al Ramlah Travels covering customer visa data protection, WhatsApp communications, and social media integration.",
 }
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const settings = await db.query.agencySettings.findFirst().catch((err) => {
+    console.error("Failed to query agencySettings in PrivacyPage:", err)
+    return null
+  })
+  const info = getCompanyInfo(settings)
+
   return (
     <div className="bg-[#FAF7F0] py-12 md:py-16">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
@@ -20,7 +30,7 @@ export default function PrivacyPage() {
             Privacy Policy
           </h1>
           <p className="mt-2 text-sm text-[#062E22]/70">
-            Last Updated: November 2026 • Al Ramlah Travels (Pvt) Ltd.
+            Last Updated: November 2026 • {info.agencyName} (Pvt) Ltd.
           </p>
         </div>
 
@@ -32,7 +42,7 @@ export default function PrivacyPage() {
                 1. Overview &amp; Commitment to Privacy
               </h2>
               <p className="mt-2">
-                <strong>Al Ramlah Travels</strong> (&quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) is committed to safeguarding the
+                <strong>{info.agencyName}</strong> (&quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) is committed to safeguarding the
                 privacy and personal information of pilgrims, customers, and website visitors. This Privacy Policy
                 explains how we collect, process, protect, and retain personal data when you use our website, book Umrah
                 or Hajj packages, communicate with us via WhatsApp, or interact with our authorized social media
@@ -108,7 +118,7 @@ export default function PrivacyPage() {
                 5. Social Media Integrations &amp; OAuth Permissions
               </h2>
               <p className="mt-2">
-                Al Ramlah Travels operates administrative tools that integrate via OAuth with authorized social media
+                {info.agencyName} operates administrative tools that integrate via OAuth with authorized social media
                 platforms, including <strong>Meta (Instagram and Facebook Pages)</strong>,{" "}
                 <strong>TikTok Content Posting API</strong>, <strong>YouTube Data API v3</strong>, and{" "}
                 <strong>Google Business Profile API</strong>:
@@ -116,7 +126,7 @@ export default function PrivacyPage() {
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 <li>
                   <strong>Scope of Access:</strong> Authorized permissions are used strictly to publish agency posters,
-                  educational Umrah videos, and package updates to Al Ramlah Travels&apos; official social media channels.
+                  educational Umrah videos, and package updates to {info.agencyName}&apos;s official social media channels.
                 </li>
                 <li>
                   <strong>Token Security:</strong> All OAuth access and refresh tokens are encrypted at rest using
@@ -151,8 +161,8 @@ export default function PrivacyPage() {
               </p>
               <p className="mt-2">
                 To submit a data access or deletion request, please email our designated privacy team at{" "}
-                <a href="mailto:alramlahtravels@gmail.com" className="font-semibold text-[#062E22] underline hover:text-[#C8A24A]">
-                  alramlahtravels@gmail.com
+                <a href={`mailto:${info.supportEmail}`} className="font-semibold text-[#062E22] underline hover:text-[#C8A24A]">
+                  {info.supportEmail}
                 </a>{" "}
                 with your full name, passport reference number, and specific request. Requests are processed within 14
                 business days.
@@ -165,19 +175,18 @@ export default function PrivacyPage() {
               </h2>
               <p className="mt-2">For any questions or concerns regarding this Privacy Policy:</p>
               <div className="mt-3 rounded-lg border border-[#C8A24A]/20 bg-[#FAF7F0] p-4 text-xs sm:text-sm">
-                <p className="font-semibold text-[#062E22]">Al Ramlah Travels (Pvt) Ltd.</p>
+                <p className="font-semibold text-[#062E22]">{info.agencyName} (Pvt) Ltd.</p>
                 <p className="mt-1">
-                  <strong>Office Address:</strong> Office # 16, Street # 2, Main Commercial Market, Sector E, Askari-X,
-                  Lahore, Pakistan
+                  <strong>Office Address:</strong> {info.officeAddress}
                 </p>
                 <p className="mt-1">
                   <strong>Privacy Officer Email:</strong>{" "}
-                  <a href="mailto:alramlahtravels@gmail.com" className="text-[#062E22] underline hover:text-[#C8A24A]">
-                    alramlahtravels@gmail.com
+                  <a href={`mailto:${info.supportEmail}`} className="text-[#062E22] underline hover:text-[#C8A24A]">
+                    {info.supportEmail}
                   </a>
                 </p>
                 <p className="mt-1">
-                  <strong>Phone / WhatsApp:</strong> +92 327 4029701 / +92 319 0462638
+                  <strong>Phone / WhatsApp:</strong> {info.hotlineDisplay}
                 </p>
               </div>
             </section>

@@ -1,5 +1,9 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { db } from "@/db"
+import { getCompanyInfo } from "@/lib/company-info"
+
+export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
   title: "Terms of Service | Al Ramlah Travels",
@@ -7,7 +11,13 @@ export const metadata: Metadata = {
     "Terms of Service, booking policies, visa processing conditions, and sacred travel guidelines for Al Ramlah Travels.",
 }
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  const settings = await db.query.agencySettings.findFirst().catch((err) => {
+    console.error("Failed to query agencySettings in TermsPage:", err)
+    return null
+  })
+  const info = getCompanyInfo(settings)
+
   return (
     <div className="bg-[#FAF7F0] py-12 md:py-16">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
@@ -20,7 +30,7 @@ export default function TermsPage() {
             Terms of Service
           </h1>
           <p className="mt-2 text-sm text-[#062E22]/70">
-            Last Updated: November 2026 • Al Ramlah Travels (Pvt) Ltd.
+            Last Updated: November 2026 • {info.agencyName} (Pvt) Ltd.
           </p>
         </div>
 
@@ -33,7 +43,7 @@ export default function TermsPage() {
               </h2>
               <p className="mt-2">
                 By accessing, browsing, or utilizing the services provided by{" "}
-                <strong>Al Ramlah Travels</strong> (&quot;Company&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) via our website,
+                <strong>{info.agencyName}</strong> (&quot;Company&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) via our website,
                 WhatsApp business lines, or in-person at our registered office, you agree to be bound by these
                 Terms of Service and our Privacy Policy. If you do not agree to these terms, please do not proceed
                 with booking inquiries or service submissions.
@@ -45,14 +55,14 @@ export default function TermsPage() {
                 2. Umrah, Hajj &amp; Sacred Visa Processing Services
               </h2>
               <p className="mt-2">
-                Al Ramlah Travels acts as an authorized travel facilitator connecting pilgrims with licensed Saudi Umrah
+                {info.agencyName} acts as an authorized travel facilitator connecting pilgrims with licensed Saudi Umrah
                 companies, hotel operators in Makkah and Madinah, transport sector providers, and airlines.
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 <li>
                   <strong>Visa Approvals:</strong> Kingdom of Saudi Arabia (KSA) Umrah, Tourist, or Transit visas are
                   issued at the sole discretion of the Ministry of Foreign Affairs (MOFA) and the Ministry of Hajj and
-                  Umrah. Al Ramlah Travels does not guarantee visa issuance or specific processing timelines.
+                  Umrah. {info.agencyName} does not guarantee visa issuance or specific processing timelines.
                 </li>
                 <li>
                   <strong>Visa Duration Tiers:</strong> Visa validity tiers (short-term &le;30 days vs. long-term &gt;30
@@ -130,7 +140,7 @@ export default function TermsPage() {
               <p className="mt-2">
                 Pilgrims must adhere strictly to the laws and customs of the Kingdom of Saudi Arabia, the regulations of
                 the Ministry of Hajj and Umrah, and the rules of the Two Holy Mosques (Masjid al-Haram and Masjid
-                an-Nabawi). Al Ramlah Travels accepts no responsibility for delays, deportations, or penalties resulting
+                an-Nabawi). {info.agencyName} accepts no responsibility for delays, deportations, or penalties resulting
                 from non-compliance with local laws or overstaying visa validity.
               </p>
             </section>
@@ -143,19 +153,18 @@ export default function TermsPage() {
                 For official correspondence, booking amendments, or compliance inquiries:
               </p>
               <div className="mt-3 rounded-lg border border-[#C8A24A]/20 bg-[#FAF7F0] p-4 text-xs sm:text-sm">
-                <p className="font-semibold text-[#062E22]">Al Ramlah Travels (Pvt) Ltd.</p>
+                <p className="font-semibold text-[#062E22]">{info.agencyName} (Pvt) Ltd.</p>
                 <p className="mt-1">
-                  <strong>Office Address:</strong> Office # 16, Street # 2, Main Commercial Market, Sector E, Askari-X,
-                  Lahore, Pakistan
+                  <strong>Office Address:</strong> {info.officeAddress}
                 </p>
                 <p className="mt-1">
                   <strong>Email:</strong>{" "}
-                  <a href="mailto:alramlahtravels@gmail.com" className="text-[#062E22] underline hover:text-[#C8A24A]">
-                    alramlahtravels@gmail.com
+                  <a href={`mailto:${info.supportEmail}`} className="text-[#062E22] underline hover:text-[#C8A24A]">
+                    {info.supportEmail}
                   </a>
                 </p>
                 <p className="mt-1">
-                  <strong>WhatsApp &amp; Phone:</strong> +92 327 4029701 / +92 319 0462638
+                  <strong>WhatsApp &amp; Phone:</strong> {info.hotlineDisplay}
                 </p>
               </div>
             </section>

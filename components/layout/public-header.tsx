@@ -25,6 +25,7 @@ import {
   SheetDescription,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
 
 const NAV_LINKS = [
   { title: "Custom Umrah", href: "#journey-builder", icon: Compass },
@@ -43,10 +44,10 @@ interface PublicHeaderProps {
 }
 
 export function PublicHeader({
-  agencyPhone = "03274029701",
-  secondaryPhone = "03190462638",
-  whatsappNumber = "03274029701",
-  officeAddress = "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
+  agencyPhone = DEFAULT_COMPANY_INFO.primaryWhatsapp,
+  secondaryPhone = DEFAULT_COMPANY_INFO.secondaryPhone,
+  whatsappNumber = DEFAULT_COMPANY_INFO.primaryWhatsapp,
+  officeAddress = DEFAULT_COMPANY_INFO.officeAddress,
 }: PublicHeaderProps = {}) {
   const [mobileOpen, setMobileOpen] = React.useState(false)
 
@@ -55,7 +56,7 @@ export function PublicHeader({
     .replace(/^03/, "923")
   const telHref = `tel:${agencyPhone.replace(/\s+/g, "")}`
   const secTelHref = `tel:${secondaryPhone.replace(/\s+/g, "")}`
-  const waHref = `https://wa.me/${normalizedWhatsapp || "923274029701"}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
+  const waHref = `https://wa.me/${normalizedWhatsapp || DEFAULT_COMPANY_INFO.normalizedWhatsapp}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
 
   return (
     <div className="w-full">

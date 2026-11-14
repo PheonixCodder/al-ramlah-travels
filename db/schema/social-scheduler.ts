@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core"
 import { user } from "./auth"
 import { postAssets } from "./suppliers-and-marketing"
+import type { EngagementPlugConfig, PlatformCaptionsMap } from "@/lib/social/types"
 
 // ==========================================
 // 1. SOCIAL SCHEDULER ENUMS
@@ -25,6 +26,18 @@ export const socialProviderEnum = pgEnum("social_provider", [
   "tiktok",
   "youtube",
   "gmb",
+])
+
+export const socialIntegrationStatusEnum = pgEnum("social_integration_status", [
+  "ACTIVE",
+  "EXPIRED",
+  "PENDING_SELECTION",
+])
+
+export const socialPostFormatEnum = pgEnum("social_post_format", [
+  "FEED",
+  "REEL",
+  "STORY",
 ])
 
 export const scheduledPostTypeEnum = pgEnum("scheduled_post_type", [
@@ -55,6 +68,18 @@ export const scheduledPostTargetStatusEnum = pgEnum(
   ["pending", "publishing", "published", "failed", "skipped"]
 )
 
+export interface SocialPostAnalyticsData {
+  impressions: number
+  likes: number
+  comments: number
+  shares: number
+  clicks: number
+  lastSyncedAt: string
+  firstCommentId?: string
+  firstCommentPostedAt?: string
+  firstCommentError?: string
+}
+
 // ==========================================
 // 2. CONNECTED SOCIAL INTEGRATIONS
 // ==========================================
@@ -76,6 +101,9 @@ export const socialIntegrations = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+    status: socialIntegrationStatusEnum("status")
+      .notNull()
+      .default("ACTIVE"),
     isActive: boolean("is_active").notNull().default(true),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     createdByUserId: text("created_by_user_id").references(() => user.id, {
@@ -113,6 +141,17 @@ export const scheduledPosts = pgTable(
     postType: scheduledPostTypeEnum("post_type")
       .notNull()
       .default("single_image"),
+    postFormat: socialPostFormatEnum("post_format")
+      .notNull()
+      .default("FEED"),
+    firstComment: text("first_comment"),
+    platformCaptions: jsonb("platform_captions")
+      .$type<PlatformCaptionsMap>()
+      .notNull()
+      .default({}),
+    engagementPlugConfig: jsonb("engagement_plug_config")
+      .$type<EngagementPlugConfig | null>()
+      .default(null),
     mediaUrls: jsonb("media_urls").$type<string[]>().notNull().default([]),
     socialJpegUrls: jsonb("social_jpeg_urls")
       .$type<string[]>()
@@ -165,6 +204,13 @@ export const scheduledPostTargets = pgTable(
       .default("pending"),
     publishedUrl: text("published_url"),
     externalPostId: text("external_post_id"),
+    firstCommentExternalId: text("first_comment_external_id"),
+    firstCommentPostedAt: timestamp("first_comment_posted_at", {
+      withTimezone: true,
+    }),
+    analyticsData: jsonb("analytics_data")
+      .$type<SocialPostAnalyticsData | null>()
+      .default(null),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     errorMessage: text("error_message"),
     publishedAt: timestamp("published_at", { withTimezone: true }),

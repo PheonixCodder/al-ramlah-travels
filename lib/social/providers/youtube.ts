@@ -2,10 +2,14 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { env } from "@/lib/env"
 import type {
+  FirstCommentPublishResult,
+  SocialAccountCandidate,
   SocialOAuthAuthUrlResult,
   SocialOAuthTokenResult,
+  SocialPostAnalyticsSnapshot,
   SocialPostPayload,
   SocialProviderAdapter,
+  SocialPublishCommentParams,
   SocialPublishResult,
   SocialValidationResult,
 } from "../types"
@@ -13,6 +17,7 @@ import type {
 const YOUTUBE_SCOPES = [
   "https://www.googleapis.com/auth/youtube.upload",
   "https://www.googleapis.com/auth/youtube.readonly",
+  "https://www.googleapis.com/auth/youtube.force-ssl",
   "https://www.googleapis.com/auth/userinfo.profile",
   "https://www.googleapis.com/auth/userinfo.email",
 ]
@@ -48,6 +53,14 @@ interface YouTubeVideoUploadResponse {
   id?: string
   error?: {
     message: string
+  }
+}
+
+interface YouTubeCommentThreadResponse {
+  id?: string
+  error?: {
+    code?: number
+    message?: string
   }
 }
 
@@ -126,9 +139,9 @@ export const youtubeProvider: SocialProviderAdapter = {
       )
     }
 
-    // Get YouTube channel info
+    // Get all YouTube channels managed by this Google account
     const channelRes = await fetch(
-      "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
+      "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true&maxResults=50",
       {
         headers: {
           Authorization: `Bearer ${tokenData.access_token}`,
@@ -144,27 +157,43 @@ export const youtubeProvider: SocialProviderAdapter = {
       )
     }
 
-    const channel = channelData.items?.[0]
-
-    if (!channel) {
+    const items = channelData.items || []
+    if (items.length === 0) {
       throw new Error(
         "No YouTube channel found for this Google account. Please create a YouTube channel first."
       )
     }
 
-    return {
-      internalAccountId: channel.id,
-      name: channel.snippet?.title || "YouTube Channel",
-      handle: channel.snippet?.customUrl,
-      avatarUrl: channel.snippet?.thumbnails?.default?.url,
-      accessToken: tokenData.access_token,
+    const expiresIn = tokenData.expires_in ?? 3600
+
+    const candidates: SocialAccountCandidate[] = items.map((ch) => ({
+      internalAccountId: ch.id,
+      name: ch.snippet?.title || "YouTube Channel",
+      handle: ch.snippet?.customUrl,
+      avatarUrl: ch.snippet?.thumbnails?.default?.url,
+      accessToken: tokenData.access_token!,
       refreshToken: tokenData.refresh_token,
-      expiresIn: tokenData.expires_in ?? 3600,
+      expiresIn,
       scopes: YOUTUBE_SCOPES,
       metadata: {
-        channelId: channel.id,
-        channelTitle: channel.snippet?.title,
+        channelId: ch.id,
+        channelTitle: ch.snippet?.title,
       },
+    }))
+
+    const primary = candidates[0]
+
+    return {
+      internalAccountId: primary.internalAccountId,
+      name: primary.name,
+      handle: primary.handle,
+      avatarUrl: primary.avatarUrl,
+      accessToken: primary.accessToken,
+      refreshToken: primary.refreshToken,
+      expiresIn: primary.expiresIn,
+      scopes: YOUTUBE_SCOPES,
+      metadata: primary.metadata,
+      candidates,
     }
   },
 
@@ -189,10 +218,9 @@ export const youtubeProvider: SocialProviderAdapter = {
     const tokenData = (await tokenRes.json()) as GoogleTokenResponse
 
     if (!tokenRes.ok || tokenData.error || !tokenData.access_token) {
+      const codePart = tokenData.error ? ` (${tokenData.error})` : ""
       throw new Error(
-        tokenData.error_description ||
-          tokenData.error ||
-          "Failed to refresh YouTube access token"
+        `${tokenData.error_description || tokenData.error || "Failed to refresh YouTube access token"}${codePart}`
       )
     }
 
@@ -255,7 +283,11 @@ export const youtubeProvider: SocialProviderAdapter = {
     }
 
     const videoBuffer = await fetchVideoBuffer(post.media[0].url)
-    const title = (post.title || post.caption).slice(0, 100)
+    const rawTitle = post.title || post.caption || "Al Ramlah Travels Umrah"
+    const isShort = post.postFormat === "REEL"
+    const title = isShort && !rawTitle.toLowerCase().includes("#shorts")
+      ? `${rawTitle.slice(0, 90)} #Shorts`
+      : rawTitle.slice(0, 100)
     const description = post.caption.slice(0, 5000)
 
     // 1. Initiate Resumable Upload Session
@@ -287,7 +319,9 @@ export const youtubeProvider: SocialProviderAdapter = {
 
     if (!initRes.ok) {
       const errText = await initRes.text()
-      throw new Error(`YouTube resumable upload initialization failed: ${errText}`)
+      throw new Error(
+        `YouTube resumable upload initialization failed: ${errText}`
+      )
     }
 
     const uploadUrl = initRes.headers.get("Location")
@@ -315,7 +349,9 @@ export const youtubeProvider: SocialProviderAdapter = {
     }
 
     const videoId = uploadData.id
-    const publishedUrl = `https://www.youtube.com/watch?v=${videoId}`
+    const publishedUrl = isShort
+      ? `https://www.youtube.com/shorts/${videoId}`
+      : `https://www.youtube.com/watch?v=${videoId}`
 
     return {
       externalPostId: videoId,
@@ -323,4 +359,93 @@ export const youtubeProvider: SocialProviderAdapter = {
       rawResponse: uploadData,
     }
   },
+
+  async publishComment(
+    params: SocialPublishCommentParams
+  ): Promise<FirstCommentPublishResult> {
+    const { accessToken, externalPostId, commentText } = params
+
+    const res = await fetch(
+      "https://www.googleapis.com/youtube/v3/commentThreads?part=snippet",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          snippet: {
+            videoId: externalPostId,
+            topLevelComment: {
+              snippet: {
+                textOriginal: commentText,
+              },
+            },
+          },
+        }),
+      }
+    )
+
+    const data = (await res.json()) as YouTubeCommentThreadResponse
+
+    if (!res.ok || !data.id) {
+      throw new Error(
+        data.error?.message ||
+          "Failed to publish top-level comment on YouTube video"
+      )
+    }
+
+    return {
+      commentId: data.id,
+      externalCommentId: data.id,
+      publishedAt: new Date().toISOString(),
+      rawResponse: data,
+    }
+  },
+
+  async fetchPostAnalytics(params: {
+    accessToken: string
+    externalPostId: string
+    accountId?: string
+    metadata?: Record<string, unknown>
+  }): Promise<SocialPostAnalyticsSnapshot> {
+    const { accessToken, externalPostId } = params
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(
+        externalPostId
+      )}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    )
+
+    if (!res.ok) {
+      throw new Error(`YouTube video statistics request failed (${res.status})`)
+    }
+
+    const data = (await res.json()) as {
+      items?: Array<{
+        statistics?: {
+          viewCount?: string
+          likeCount?: string
+          commentCount?: string
+          favoriteCount?: string
+        }
+      }>
+    }
+
+    const stats = data.items?.[0]?.statistics
+
+    return {
+      impressions: Number(stats?.viewCount ?? 0),
+      likes: Number(stats?.likeCount ?? 0),
+      comments: Number(stats?.commentCount ?? 0),
+      shares: 0,
+      clicks: Number(stats?.favoriteCount ?? 0),
+      lastSyncedAt: new Date().toISOString(),
+    }
+  },
 }
+

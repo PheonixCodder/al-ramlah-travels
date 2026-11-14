@@ -23,6 +23,7 @@ import {
   ContactSection,
   type AgencyContactInfo,
 } from "@/components/public/contact-section"
+import { getCompanyInfo } from "@/lib/company-info"
 
 export const dynamic = "force-dynamic"
 
@@ -261,19 +262,18 @@ export default async function HomePage() {
     answer: f.answer,
   }))
 
-  // Transform Agency Contact Settings
-  const contactInfo: AgencyContactInfo | undefined = rawAgencySettings
-    ? {
-        agencyName: rawAgencySettings.agencyName,
-        tagline: rawAgencySettings.tagline,
-        primaryWhatsapp: rawAgencySettings.primaryWhatsapp,
-        secondaryPhone: rawAgencySettings.secondaryPhone,
-        supportEmail: rawAgencySettings.supportEmail,
-        officeAddress: rawAgencySettings.officeAddress,
-        workingHours: rawAgencySettings.workingHours,
-        mapsEmbedUrl: rawAgencySettings.mapsEmbedUrl,
-      }
-    : undefined
+  // Standardized Agency Contact Settings
+  const companyInfo = getCompanyInfo(rawAgencySettings)
+  const contactInfo: AgencyContactInfo = {
+    agencyName: companyInfo.agencyName,
+    tagline: companyInfo.tagline,
+    primaryWhatsapp: companyInfo.primaryWhatsapp,
+    secondaryPhone: companyInfo.secondaryPhone,
+    supportEmail: companyInfo.supportEmail,
+    officeAddress: companyInfo.officeAddress,
+    workingHours: companyInfo.workingHours,
+    mapsEmbedUrl: companyInfo.mapsEmbedUrl,
+  }
 
   const departureCitiesList = rawDepartureCities.map((c) => ({
     cityName: c.cityName,
@@ -295,7 +295,7 @@ export default async function HomePage() {
           ziyaratPlaces={rawZiyaratPlaces}
           airlines={rawAirlines}
           departureCities={rawDepartureCities}
-          agencyWhatsapp={rawAgencySettings?.primaryWhatsapp}
+          agencyWhatsapp={companyInfo.primaryWhatsapp}
         />
       </div>
 
@@ -305,11 +305,12 @@ export default async function HomePage() {
       {/* 4. Hajj 2027 Package Guide & Seat Reservation */}
       <HajjInquirySection
         departureCities={departureCitiesList}
-        agencyWhatsapp={rawAgencySettings?.primaryWhatsapp || "03274029701"}
+        agencyWhatsapp={companyInfo.primaryWhatsapp}
+        secondaryPhone={companyInfo.secondaryPhone}
       />
 
       {/* 5. Application & Quotation Tracker */}
-      <StatusTracker agencyWhatsapp={rawAgencySettings?.primaryWhatsapp} />
+      <StatusTracker agencyWhatsapp={companyInfo.primaryWhatsapp} />
 
       {/* 6. Sacred Ziyarat, Why Pilgrims Choose Al Ramlah, Testimonials & FAQs */}
       <MarketingSections

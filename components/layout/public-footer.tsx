@@ -22,6 +22,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
+import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
 
 interface PublicFooterProps {
   agencyPhone?: string
@@ -33,12 +34,12 @@ interface PublicFooterProps {
 }
 
 export function PublicFooter({
-  agencyPhone = "03274029701",
-  secondaryPhone = "03190462638",
-  whatsappNumber = "03274029701",
-  agencyName = "Al Ramlah Travels",
-  supportEmail = "alramlahtravels@gmail.com",
-  officeAddress = "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
+  agencyPhone = DEFAULT_COMPANY_INFO.primaryWhatsapp,
+  secondaryPhone = DEFAULT_COMPANY_INFO.secondaryPhone,
+  whatsappNumber = DEFAULT_COMPANY_INFO.primaryWhatsapp,
+  agencyName = DEFAULT_COMPANY_INFO.agencyName,
+  supportEmail = DEFAULT_COMPANY_INFO.supportEmail,
+  officeAddress = DEFAULT_COMPANY_INFO.officeAddress,
 }: PublicFooterProps = {}) {
   const currentYear = new Date().getFullYear()
   const [modalType, setModalType] = useState<
@@ -50,7 +51,7 @@ export function PublicFooter({
     .replace(/^03/, "923")
   const telHref = `tel:${agencyPhone.replace(/\s+/g, "")}`
   const secTelHref = `tel:${secondaryPhone.replace(/\s+/g, "")}`
-  const waHref = `https://wa.me/${normalizedWhatsapp || "923274029701"}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
+  const waHref = `https://wa.me/${normalizedWhatsapp || DEFAULT_COMPANY_INFO.normalizedWhatsapp}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
 
   return (
     <footer className="relative overflow-hidden border-t border-primary-foreground/10 bg-primary text-primary-foreground">
@@ -275,7 +276,7 @@ export function PublicFooter({
             </div>
           </div>
           <div className="text-xs text-primary-foreground/75">
-            Askari 10, Airport Road, Lahore Cantt
+            {officeAddress}
           </div>
         </div>
 

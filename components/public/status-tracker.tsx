@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 import { cn } from "cn"
 import { formatCitySequence } from "@/lib/domain"
+import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
 
 export interface StatusTrackerProps {
   agencyWhatsapp?: string
@@ -66,7 +67,10 @@ export function StatusTracker({ agencyWhatsapp: propWhatsapp }: StatusTrackerPro
 
   const app = lookupData?.application
   const quote = lookupData?.quote
-  const agencyWhatsapp = lookupData?.agencyWhatsapp ?? propWhatsapp ?? "03274029701"
+  const agencyWhatsapp =
+    lookupData?.agencyWhatsapp ??
+    propWhatsapp ??
+    DEFAULT_COMPANY_INFO.primaryWhatsapp
 
   return (
     <section id="track-status" className="w-full py-12 sm:py-16 bg-[#FAF7F0]/60">

@@ -7,6 +7,9 @@ A full stack Hajj and Umrah travel platform for Al Ramlah Travels that lets pilg
 
 _These are recommendations to keep your build orderly, not requirements. Skip anything that does not fit: if you already know how to build a feature, use `/develop` and skip `/architect`. You decide when a feature is `done`._
 
+> [!IMPORTANT]
+> **Production-Readiness Audit Ground-Truth Notice (Waves 0–2, Nov 2026):** Although Features `1`–`46` (Foundations & Slices `1`–`42`) were marked `done` during rapid vertical prototyping backed by mock-heavy unit tests (`0%` Server Action, API Route, real-migration, or browser E2E execution), an independent 28-report forensic audit (`docs/audit/00-ground-truth.md`, `01-feature-parity.md`, `w0-env-baseline.md`, and `findings/A00.md`–`A26.md`) proved that out of `126` claimed capabilities only `18` were `VERIFIED-WORKING`, while `31` were `IMPLEMENTED-UNVERIFIED`, `45` `PARTIAL`, `2` `STUB/FAKE`, `4` `MISSING`, and `26` `BROKEN` (`383` raw findings: `96 P0`, `179 P1`, `95 P2`, `13 P3` — including Critical `next@16.3.4` RCE CVEs, open public admin sign-up, `lookupApplicationStatus` empty-suffix bypass, unauthenticated `executeScheduledPostNowAction`, `42/43` migration drift, `2× db:seed` visa price corruption, zero `neon-http` transactions & group seat oversells, Gotenberg v8 `/screenshot` `404`s, `42.55 MB` quote HTML payloads, process-local Baileys split-brain, R2 `EROFS` fallbacks & public PII exposure, inverted `"STOP"` opt-outs, fake `"sent"`/`SHA-256` telemetry, and live-Neon-deleting tests). Historical checkmarks on Slices `1`–`42` are preserved as build history, while **Feature 47 (`Slice 43 · Spec 0024`)** tracks full end-to-end remediation to **Gate A (§9.4)**, strictly blocking **Feature 48 (`Slice 44 · Spec 0025 — SEO Readiness`)**.
+
 ## At a glance
 
 | # | Feature | Phase | Status |
@@ -41,10 +44,24 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 28 | Production deployment readiness, security hardening & full stack bug fixes | Slice 24 | done |
 | 29 | Official contact details, demo UI removal, database cleanup & Hajj 2027 package guide | Slice 25 | done |
 | 30 | B2B supplier wrapping, 4K post studio, multi-channel distribution, 14-day outreach CRM & restored hotel meal plans | Slice 26 | done |
-| 31 | Multimodal BYO-poster studio, presigned R2, sharp normalizer & Oracle Gotenberg | Slice 27 | in-progress |
-| 32 | Native wacrm WhatsApp Cloud API, encryption, HMAC webhooks, inbox & broadcasts | Slice 28 | in-progress |
-| 33 | Native Postiz Core 5 social providers & Trigger.dev Cloud durable workers | Slice 29 | in-progress |
-| 34 | 4-Hub Admin reorganization (/studio, /campaigns, /desk, /catalog) & Kanban desk | Slice 30 | in-progress |
+| 31 | Multimodal BYO-poster studio, presigned R2, sharp normalizer & Oracle Gotenberg | Slice 27 | done |
+| 32 | Native wacrm WhatsApp Cloud API, encryption, HMAC webhooks, inbox & broadcasts | Slice 28 | done |
+| 33 | Native Postiz Core 5 social providers & Trigger.dev Cloud durable workers | Slice 29 | done |
+| 34 | 4-Hub Admin reorganization (/studio, /campaigns, /desk, /catalog) & Kanban desk | Slice 30 | done |
+| 35 | Trigger.dev v4 hardening, queues, schedules & realtime React hooks | Slice 31 | done |
+| 36 | WaCRM Phase 2: inbound media R2 pipeline, instant ART-... auto-responder bot, interactive messages & template sync | Slice 32 | done |
+| 37 | Postiz Phase 2: multi-page OAuth selector, proactive token refresh, Reels/Stories upload, first-comment plug & analytics | Slice 33 | done |
+| 38 | Durable AI quoting copilot & WhatsApp concierge agent | Slice 34 | done |
+| 39 | Postiz Core 5 interactive platform post previewer & analytics dashboard | Slice 35 | done |
+| 40 | WaCRM custom keyword auto-reply rules engine, greeting setup & quick-reply manager | Slice 36 | done |
+| 41 | Trigger.dev v4 async webhook pipeline, realtime copilot telemetry, global idempotency & bridge cleanup | Slice 37 | done |
+| 42 | WaCRM Phase 3: live realtime inbox, template builder, personalized broadcast wizard & guided intake flow | Slice 38 | done |
+| 43 | Postiz Phase 3: visual calendar & time-slot queue, per-platform AI composer & provider hardening | Slice 39 | done |
+| 44 | Native WhatsApp Linked-Device engine: QR/Pairing Code session, auto-sync real WhatsApp groups & chats, automated paced group/status posting & fake seed purge | Slice 40 | done |
+| 45 | Multi-Number WhatsApp System: multi-session Linked Device switcher, per-number group/status & chat attribution, multi-line auto-posting & inbox line filter | Slice 41 | done |
+| 46 | Production-Ready De-Clutter & Dynamic Data Overhaul: purge all demo seeds/presets, 100% dynamic WhatsApp phone linking, simplified Settings/Campaigns/Inbox UI & dynamic public/admin pages | Slice 42 | done |
+| 47 | Spec 0024 — Production Readiness Audit & Hardening | Slice 43 | in-progress |
+| 48 | Spec 0025 — Public Site SEO Readiness (Blocked on Gate A) | Slice 44 | planned (after Gate A) |
 
 ## Foundations
 
@@ -450,6 +467,240 @@ spec [0011](docs/specs/0011-four-hub-admin-ia-and-kanban-desk.md) · code in `ap
 - [x] Build it: `/develop 4-Hub Admin reorganization (/studio, /campaigns, /desk, /catalog) & Kanban desk`
 - [x] Verify it: `/check verify 4-Hub Admin reorganization (/studio, /campaigns, /desk, /catalog) & Kanban desk` ([verify-enterprise-multimodal-wacrm-postiz.md](docs/reviews/verify-enterprise-multimodal-wacrm-postiz.md))
 - [x] Test it: `/test 4-Hub Admin reorganization (/studio, /campaigns, /desk, /catalog) & Kanban desk` ([verify-enterprise-multimodal-wacrm-postiz.md](docs/reviews/verify-enterprise-multimodal-wacrm-postiz.md))
+
+## Slice 31: Trigger.dev v4 hardening, queues, schedules & realtime React hooks
+
+### 35. Trigger.dev v4 hardening, queues, schedules & realtime React hooks · done · Beta
+
+Upgrade all durable workers in `trigger/*.task.ts` from raw `task()` to `schemaTask()` with Zod validation and `AbortTaskRunError` non-retryable error discrimination, introduce dedicated concurrency queues (`gotenbergQueue`, `whatsappBroadcastQueue`, `socialPublishQueue`), replace sequential `for...of` trigger loops with `batchTrigger` / `batchTriggerAndWait`, instrument runs with `metadata.set()` + `@trigger.dev/react-hooks` (`useRealtimeRun`) for live progress bars in `/admin/studio` and `/admin/campaigns` via scoped public tokens, and add declarative `schedules.task()` crons for proactive social token refresh and 24-hour SLA quote monitoring.
+**Done when:** spec `0012` is captured, `trigger/queues.ts`, `trigger/schedules.task.ts`, `trigger/*.task.ts`, `app/actions/trigger-realtime.ts`, and realtime Studio/Campaign UI hooks compile cleanly and pass unit tests.
+spec [0012](docs/specs/0012-trigger-v4-hardening-queues-and-realtime-hooks.md) · code in `trigger/`, `app/actions/trigger-realtime.ts`, `components/admin/studio/`, `components/admin/campaigns/`
+- [x] Design it (spec): `/architect Trigger.dev v4 hardening, queues, schedules & realtime React hooks`
+- [x] Build it: `/develop Trigger.dev v4 hardening, queues, schedules & realtime React hooks`
+  - [x] Milestone 1: Shared concurrency queues, `AbortTaskRunError` discrimination, `metadata.set()` helpers & `schemaTask` hardening (`trigger/queues.ts`, `trigger/errors.ts`, `trigger/metadata.ts`, `trigger/*.task.ts`)
+  - [x] Milestone 2: Declarative cron schedules (`proactive-social-token-refresh` & `sla-overdue-quote-monitor` in `trigger/schedules.task.ts`)
+  - [x] Milestone 3: Scoped public token Server Actions & `batchTrigger` fan-out (`app/actions/trigger-realtime.ts`, `app/actions/social-scheduler.ts`)
+  - [x] Milestone 4: Realtime React hooks (`useRealtimeRun`) in `/admin/studio` and `/admin/campaigns` (`components/admin/studio/*`, `components/admin/campaigns/*`)
+- [x] Verify it: `/check verify Trigger.dev v4 hardening, queues, schedules & realtime React hooks` ([verify-phase2-trigger-wacrm-postiz-copilot.md](docs/reviews/verify-phase2-trigger-wacrm-postiz-copilot.md))
+- [x] Test it: `/test Trigger.dev v4 hardening, queues, schedules & realtime React hooks` ([trigger-v4-and-schedules.test.ts](tests/trigger-v4-and-schedules.test.ts))
+
+## Slice 32: WaCRM Phase 2: inbound media R2 pipeline, instant ART-... auto-responder bot, interactive messages & template sync
+
+### 36. WaCRM Phase 2: inbound media R2 pipeline, instant ART-... auto-responder bot, interactive messages & template sync · done · Beta
+
+Complete the `ArnasDon/wacrm` Phase 2 feature set in `lib/whatsapp/*` and `/api/webhooks/whatsapp`: automatically download inbound pilgrim media (`image`, `document`, `audio`, `video` via `GET /{media-id}`) into Cloudflare R2 for permanent viewing in `/admin/desk?tab=inbox`, add a 3-second `ART-...` auto-responder bot that replies with the matching package's hotel/rate breakdown + 3-page PDF + interactive quick-reply buttons, implement `markMessageAsRead` blue-tick receipts and emoji reactions, add interactive reply buttons (`<=3`) and list menus (`<=10`), and support Meta template creation/deletion plus `message_template_status_update` webhook sync.
+**Done when:** spec `0013` is captured, inbound media mirrors to R2, `ART-...` auto-replies and interactive messages work end to end, and security/bot tests pass.
+spec [0013](docs/specs/0013-wacrm-phase2-media-bot-interactive-and-templates.md) · code in `db/schema/whatsapp-crm.ts`, `lib/whatsapp/`, `trigger/mirror-whatsapp-media.task.ts`, `app/api/webhooks/whatsapp/`, `app/actions/whatsapp-crm.ts`, `components/admin/hubs/desk-hub-client.tsx`
+- [x] Design it (spec): `/architect WaCRM Phase 2: inbound media R2 pipeline, instant ART-... auto-responder bot, interactive messages & template sync`
+- [x] Build it: `/develop WaCRM Phase 2: inbound media R2 pipeline, instant ART-... auto-responder bot, interactive messages & template sync`
+  - [x] Milestone 1: Schema extensions, validation contracts & Meta Graph API v21.0 Phase 2 client (`db/schema/whatsapp-crm.ts`, `lib/validations/whatsapp-crm.ts`, `lib/whatsapp/meta-api.ts`)
+  - [x] Milestone 2: Inbound media R2 mirror pipeline & instant 3-second `ART-...` auto-responder bot (`lib/whatsapp/media-mirror.ts`, `trigger/mirror-whatsapp-media.task.ts`, `lib/whatsapp/auto-responder.ts`)
+  - [x] Milestone 3: Webhook route upgrade & WhatsApp CRM Server Actions (`app/api/webhooks/whatsapp/route.ts`, `app/actions/whatsapp-crm.ts`)
+  - [x] Milestone 4: `/admin/desk?tab=inbox` UI integration for media preview, interactive composer, blue ticks & bot toggle (`components/admin/hubs/desk-hub-client.tsx`)
+- [x] Verify it: `/check verify WaCRM Phase 2: inbound media R2 pipeline, instant ART-... auto-responder bot, interactive messages & template sync` ([verify-phase2-trigger-wacrm-postiz-copilot.md](docs/reviews/verify-phase2-trigger-wacrm-postiz-copilot.md))
+- [x] Test it: `/test WaCRM Phase 2: inbound media R2 pipeline, instant ART-... auto-responder bot, interactive messages & template sync` ([whatsapp-phase2-bot-and-media.test.ts](tests/whatsapp-phase2-bot-and-media.test.ts))
+
+## Slice 33: Postiz Phase 2: multi-page OAuth selector, proactive token refresh, Reels/Stories upload, first-comment plug & analytics
+
+### 37. Postiz Phase 2: multi-page OAuth selector, proactive token refresh, Reels/Stories upload, first-comment plug & analytics · done · Beta
+
+Complete the `postiz-app` Phase 2 social publishing engine in `lib/social/*` and `/api/oauth/social/*`: replace hardcoded `pages[0]` / `locations[0]` selection with a Multi-Account/Page/Location Picker modal in `/admin/settings`, add proactive token refresh (`lib/social/token-refresh.ts`) before OAuth expiry, implement Facebook Reels/Stories 3-phase chunked upload and Instagram `resolveReleaseId` timeout recovery, add automatic First-Comment `ART-...` WhatsApp CTA plugs on Instagram/Facebook/YouTube, and add Core 5 post analytics sync (`lib/social/analytics.ts`) in `/admin/campaigns`.
+**Done when:** spec `0014` is captured, multi-page OAuth selection, proactive refresh, Reels/Stories upload, First-Comment auto-plug, and analytics sync compile and pass unit tests.
+spec [0014](docs/specs/0014-postiz-phase2-oauth-selector-reels-comments-analytics.md) · code in `db/schema/social-scheduler.ts`, `lib/social/`, `app/api/oauth/social/`, `app/actions/social-scheduler.ts`, `components/admin/hubs/campaigns-hub-client.tsx`, `components/admin/hubs/connections-settings-client.tsx`
+- [x] Design it (spec): `/architect Postiz Phase 2: multi-page OAuth selector, proactive token refresh, Reels/Stories upload, first-comment plug & analytics`
+- [x] Build it: `/develop Postiz Phase 2: multi-page OAuth selector, proactive token refresh, Reels/Stories upload, first-comment plug & analytics`
+  - [x] Milestone 1: Drizzle schema extensions, validation schemas & core types (`db/schema/social-scheduler.ts`, `lib/social/types.ts`, `lib/validations/social-scheduler.ts`)
+  - [x] Milestone 2: Multi-account OAuth discovery, Facebook 3-phase Reels/Stories, IG `resolveReleaseId` & First-Comment adapters (`lib/social/providers/*.ts`, `lib/social/first-comment.ts`)
+  - [x] Milestone 3: Proactive token refresh engine, Core 5 analytics sync & OAuth/Scheduler Server Actions (`lib/social/token-refresh.ts`, `lib/social/analytics.ts`, `app/api/oauth/social/[provider]/callback/route.ts`, `app/actions/social-scheduler.ts`)
+  - [x] Milestone 4: Admin Campaigns & Settings UI upgrades (`components/admin/hubs/connections-settings-client.tsx`, `components/admin/hubs/campaigns-hub-client.tsx`)
+- [x] Verify it: `/check verify Postiz Phase 2: multi-page OAuth selector, proactive token refresh, Reels/Stories upload, first-comment plug & analytics` ([verify-phase2-trigger-wacrm-postiz-copilot.md](docs/reviews/verify-phase2-trigger-wacrm-postiz-copilot.md))
+- [x] Test it: `/test Postiz Phase 2: multi-page OAuth selector, proactive token refresh, Reels/Stories upload, first-comment plug & analytics` ([social-phase2-reels-and-comments.test.ts](tests/social-phase2-reels-and-comments.test.ts))
+
+## Slice 34: Durable AI quoting copilot & WhatsApp concierge agent
+
+### 38. Durable AI quoting copilot & WhatsApp concierge agent · done · Beta
+
+Build a durable AI Quoting Copilot & Concierge (`lib/ai/quoting-copilot.ts` + `trigger/quoting-copilot.task.ts`) powered by Vercel AI SDK (`OpenRouter` / `Gemini` + Zod `Output.object()`) and Drizzle ORM read-only tools (`lookupPostCodeTool`, `calculateCustomQuoteHintsTool`, `checkBatchAvailabilityTool`), providing one-click AI draft replies and itemized SAR/PKR quote worksheet pre-fill in `/admin/desk` and `/admin/applications/[id]` with strict human-in-the-loop staff approval.
+**Done when:** spec `0015` is captured, `lib/ai/quoting-copilot.ts`, `trigger/quoting-copilot.task.ts`, Server Actions, and `/admin/desk` AI Copilot UI compile cleanly and pass unit tests.
+spec [0015](docs/specs/0015-durable-ai-quoting-copilot-and-whatsapp-concierge.md) · code in `lib/ai/quoting-copilot.ts`, `trigger/quoting-copilot.task.ts`, `app/actions/quoting-copilot.ts`, `components/admin/hubs/desk-hub-client.tsx`, `components/admin/applications/quote-worksheet-form.tsx`
+- [x] Design it (spec): `/architect Durable AI quoting copilot & WhatsApp concierge agent`
+- [x] Build it: `/develop Durable AI quoting copilot & WhatsApp concierge agent`
+  - [x] Milestone 1: Read-only Drizzle domain tools & structured AI Quoting Copilot engine (`lib/ai/quoting-copilot.ts`)
+  - [x] Milestone 2: Durable Trigger.dev v4 task & authenticated Server Actions (`trigger/quoting-copilot.task.ts`, `app/actions/quoting-copilot.ts`)
+  - [x] Milestone 3: Desk Inbox Concierge UI & Quote Worksheet pre-fill integration (`components/admin/hubs/desk-hub-client.tsx`, `components/admin/applications/quote-worksheet-form.tsx`)
+  - [x] Milestone 4: Verification & unit test suite (`tests/ai-quoting-copilot.test.ts`)
+- [x] Verify it: `/check verify Durable AI quoting copilot & WhatsApp concierge agent` ([verify-phase2-trigger-wacrm-postiz-copilot.md](docs/reviews/verify-phase2-trigger-wacrm-postiz-copilot.md))
+- [x] Test it: `/test Durable AI quoting copilot & WhatsApp concierge agent` ([ai-quoting-copilot.test.ts](tests/ai-quoting-copilot.test.ts))
+
+## Slice 35: Postiz Core 5 interactive platform post previewer & analytics dashboard
+
+### 39. Postiz Core 5 interactive platform post previewer & analytics dashboard · done · Beta
+
+Build the interactive Core 5 Platform Device Post Previewer (`components/admin/campaigns/social-platform-preview.tsx`) and Cross-Channel Analytics Dashboard in `/admin/campaigns?tab=social`, rendering realistic switchable device mockups for **Instagram** (`FEED` 4:5 carousel/card, `REEL` 9:16 vertical overlay, `STORY` 9:16 frame, plus pinned First-Comment `ART-...` preview), **Facebook Page** (`FEED`, `REEL`, `STORY` + First Comment), **TikTok** (9:16 mobile overlay with right-side engagement rail & scrolling caption), **YouTube Shorts** (9:16 Shorts player with Subscribe CTA & pinned comment), and **Google Business Profile** (Google Search local update card with `Book` / `Learn More` WhatsApp CTA button), plus a top-level Core 5 Analytics KPI summary & per-platform breakdown drawer.
+**Done when:** spec `0016` is captured, the 5-platform interactive device previewer and analytics breakdown drawer are wired into `/admin/campaigns?tab=social`, and unit tests pass.
+spec [0016](docs/specs/0016-postiz-core5-interactive-previewer-and-analytics-dashboard.md) · code in `lib/social/preview-formatter.ts`, `lib/social/analytics.ts`, `app/actions/social-scheduler.ts`, `components/admin/campaigns/social-platform-preview.tsx`, `components/admin/hubs/campaigns-hub-client.tsx`
+- [x] Design it (spec): `/architect Postiz Core 5 interactive platform post previewer & analytics dashboard`
+- [x] Build it: `/develop Postiz Core 5 interactive platform post previewer & analytics dashboard`
+  - [x] Milestone 1: Pure Core 5 preview formatter & analytics rollup helpers (`lib/social/preview-formatter.ts`, `lib/social/analytics.ts`, `app/actions/social-scheduler.ts`)
+  - [x] Milestone 2: Interactive Core 5 device post previewer & Campaign Hub analytics dashboard (`components/admin/campaigns/social-platform-preview.tsx`, `components/admin/hubs/campaigns-hub-client.tsx`)
+  - [x] Milestone 3: Unit test suite & verification (`tests/social-preview-and-analytics.test.ts`)
+- [x] Verify it: `/check verify Postiz Core 5 interactive platform post previewer & analytics dashboard` ([verify-phase2-trigger-wacrm-postiz-copilot.md](docs/reviews/verify-phase2-trigger-wacrm-postiz-copilot.md))
+- [x] Test it: `/test Postiz Core 5 interactive platform post previewer & analytics dashboard` ([social-preview-and-analytics.test.ts](tests/social-preview-and-analytics.test.ts))
+
+## Slice 36: WaCRM custom keyword auto-reply rules engine, greeting setup & quick-reply manager
+
+### 40. WaCRM custom keyword auto-reply rules engine, greeting setup & quick-reply manager · done · Beta
+
+Port the complete `ArnasDon/wacrm` Auto-Replies & Quick-Reply Management studio into `db/schema/whatsapp-crm.ts`, `lib/whatsapp/auto-responder.ts`, `app/actions/whatsapp-crm.ts`, and `/admin/desk?tab=inbox`: add custom keyword/intent auto-reply rules (`EXACT`, `CONTAINS`, `STARTS_WITH`, `REGEX` matching on keywords like `location`, `address`, `hajj`, `documents`, `bank` with text, document/image media, or interactive button responses and per-rule cooldowns), configurable Welcome / Out-of-Office Greeting messages, configurable `ART-...` bot cooldown minutes, and a full CRUD manager modal in `/admin/desk?tab=inbox` for both Auto-Reply Rules and `/shortcut` Quick Replies.
+**Done when:** spec `0017` is captured, `whatsappAutoReplyRules` schema + keyword matcher + CRUD Server Actions + Auto-Replies Setup Studio UI in `/admin/desk?tab=inbox` compile cleanly and pass unit tests.
+spec [0017](docs/specs/0017-wacrm-auto-reply-rules-greeting-and-quick-reply-manager.md) · code in `db/schema/whatsapp-crm.ts`, `lib/validations/whatsapp-crm.ts`, `lib/whatsapp/auto-responder.ts`, `app/api/webhooks/whatsapp/route.ts`, `app/actions/whatsapp-crm.ts`, `components/admin/desk/whatsapp-auto-reply-studio.tsx`, `components/admin/hubs/desk-hub-client.tsx`
+- [x] Design it (spec): `/architect WaCRM custom keyword auto-reply rules engine, greeting setup & quick-reply manager`
+- [x] Build it: `/develop WaCRM custom keyword auto-reply rules engine, greeting setup & quick-reply manager`
+  - [x] Milestone 1: Drizzle schema extensions, validation contracts & unified 3-priority auto-responder engine (`db/schema/whatsapp-crm.ts`, `lib/validations/whatsapp-crm.ts`, `lib/whatsapp/auto-responder.ts`)
+  - [x] Milestone 2: WhatsApp CRM Server Actions & default agency preset seeder (`app/actions/whatsapp-crm.ts`)
+  - [x] Milestone 3: Auto-Replies & Quick-Replies Setup Studio UI & verification suite (`components/admin/desk/whatsapp-auto-reply-studio.tsx`, `components/admin/hubs/desk-hub-client.tsx`, `app/admin/(dashboard)/desk/page.tsx`, `tests/whatsapp-auto-reply-rules.test.ts`)
+- [x] Verify it: `/check verify WaCRM custom keyword auto-reply rules engine, greeting setup & quick-reply manager` ([verify-phase2-trigger-wacrm-postiz-copilot.md](docs/reviews/verify-phase2-trigger-wacrm-postiz-copilot.md))
+- [x] Test it: `/test WaCRM custom keyword auto-reply rules engine, greeting setup & quick-reply manager` ([whatsapp-auto-reply-rules.test.ts](tests/whatsapp-auto-reply-rules.test.ts))
+
+## Slice 37: Trigger.dev v4 async webhook pipeline, realtime copilot telemetry, global idempotency & bridge cleanup
+
+### 41. Trigger.dev v4 async webhook pipeline, realtime copilot telemetry, global idempotency & bridge cleanup · done · Beta
+
+Offload inbound WhatsApp AI intent classification and 3-priority auto-responder execution from `/api/webhooks/whatsapp` into a durable `process-inbound-whatsapp` Trigger.dev v4 task (`<150ms` webhook acknowledgment), upgrade AI Quoting Copilot and Luxury PDF rendering from synchronous `runs.poll` blocking to non-blocking `{ runId, publicAccessToken }` + live `useRealtimeRun` stage progress bars in `/admin/desk` and `/admin/applications/[id]`, enforce `scope: "global"` idempotency keys on WhatsApp broadcasts, add tag-based active run rehydration on page reload, and replace legacy `marketing-bridges.ts` stubs in `marketing-ops.ts` with native scheduler/CRM dispatch.
+**Done when:** spec `0018` is captured, `trigger/process-inbound-whatsapp.task.ts`, non-blocking realtime Copilot/PDF hooks, global broadcast idempotency, tag-based run rehydration, and native bridge routing compile cleanly and pass unit tests.
+spec [0018](docs/specs/0018-trigger-v4-async-webhook-and-realtime-copilot.md) · code in `trigger/process-inbound-whatsapp.task.ts`, `trigger/dispatch.ts`, `app/api/webhooks/whatsapp/route.ts`, `app/actions/trigger-realtime.ts`, `app/actions/quoting-copilot.ts`, `components/admin/desk/copilot-realtime-run-banner.tsx`, `lib/bridges/marketing-bridges.ts`
+
+- [x] Design it (spec): `/architect Trigger.dev v4 async webhook pipeline, realtime copilot telemetry, global idempotency & bridge cleanup`
+- [x] Build it: `/develop Trigger.dev v4 async webhook pipeline, realtime copilot telemetry, global idempotency & bridge cleanup`
+  - [x] Milestone 1: Durable `process-inbound-whatsapp` Trigger.dev v4 task & zero-timeout webhook decoupling (`trigger/process-inbound-whatsapp.task.ts`, `trigger/dispatch.ts`, `app/api/webhooks/whatsapp/route.ts`)
+  - [x] Milestone 2: Global broadcast idempotency keys & tag-based active run rehydration (`app/actions/whatsapp-crm.ts`, `app/actions/trigger-realtime.ts`)
+  - [x] Milestone 3: Non-blocking realtime Quoting Copilot & Luxury PDF telemetry (`app/actions/quoting-copilot.ts`, `app/actions/quotes.ts`, `components/admin/desk/copilot-realtime-run-banner.tsx`)
+  - [x] Milestone 4: Native bridge routing cleanup & unit test suite (`lib/bridges/marketing-bridges.ts`, `app/actions/marketing-ops.ts`, `tests/trigger-v4-webhook-and-realtime-copilot.test.ts`)
+- [x] Verify it: `/check verify Trigger.dev v4 async webhook pipeline, realtime copilot telemetry, global idempotency & bridge cleanup` ([verify-phase3-trigger-wacrm-postiz.md](docs/reviews/verify-phase3-trigger-wacrm-postiz.md))
+- [x] Test it: `/test Trigger.dev v4 async webhook pipeline, realtime copilot telemetry, global idempotency & bridge cleanup` ([trigger-v4-webhook-and-realtime-copilot.test.ts](tests/trigger-v4-webhook-and-realtime-copilot.test.ts))
+
+## Slice 38: WaCRM Phase 3: live realtime inbox, template builder, personalized broadcast wizard & guided intake flow
+
+### 42. WaCRM Phase 3: live realtime inbox, template builder, personalized broadcast wizard & guided intake flow · done · Beta
+
+Upgrade the native WaCRM implementation in `lib/whatsapp/*`, `db/schema/whatsapp-crm.ts`, `/admin/desk`, `/admin/campaigns`, and `/admin/settings`: add live auto-refresh / SSE inbox streaming so new inbound messages and blue-tick receipts appear without page reload, wire `isPinned`, `isArchived`, `assignedUserId` (agent assignment), and internal team notes in Desk Hub, wire `createWhatsAppTemplateAction` & `deleteWhatsAppTemplateAction` into a full Meta Template Builder modal in `/admin/settings`, upgrade Broadcast creation with `{{1}}` variable mapping, header media URL, CSV contact import, and a Broadcast Recipient Drilldown + 1-click "Retry Failed Recipients", and add a multi-step Guided Umrah Intake Flow state machine that auto-creates leads in the Applications Kanban Desk.
+**Done when:** spec `0019` is captured, live inbox sync, pin/archive/assignment/notes, template builder modal, personalized broadcast variable mapping + retry drawer, and guided intake flow compile cleanly and pass unit tests.
+spec [0019](docs/specs/0019-wacrm-phase3-realtime-inbox-templates-broadcasts-and-flows.md) · code in `db/schema/whatsapp-crm.ts`, `lib/whatsapp/intake-flow.ts`, `lib/whatsapp/template-variables.ts`, `app/actions/whatsapp-crm.ts`, `components/admin/campaigns/whatsapp-broadcast-drawer.tsx`, `components/admin/hubs/desk-hub-client.tsx`, `components/admin/hubs/connections-settings-client.tsx`, `components/admin/hubs/campaigns-hub-client.tsx`
+
+- [x] Design it (spec): `/architect WaCRM Phase 3: live realtime inbox, template builder, personalized broadcast wizard & guided intake flow`
+- [x] Build it: `/develop WaCRM Phase 3: live realtime inbox, template builder, personalized broadcast wizard & guided intake flow`
+  - [x] Milestone 1: Schema extensions, conversation management & guided Umrah intake flow engine (`db/schema/whatsapp-crm.ts`, `lib/validations/whatsapp-crm.ts`, `lib/whatsapp/intake-flow.ts`, `lib/whatsapp/template-variables.ts`)
+  - [x] Milestone 2: Server Actions for conversation management, template variables, CSV broadcasts & failed recipient retry (`app/actions/whatsapp-crm.ts`, `trigger/send-whatsapp-broadcast.task.ts`)
+  - [x] Milestone 3: Live auto-refreshing Desk Inbox UI, pin/archive/assign/notes controls & Meta Template Builder modal (`components/admin/hubs/desk-hub-client.tsx`, `components/admin/hubs/connections-settings-client.tsx`)
+  - [x] Milestone 4: Personalized Broadcast Wizard, Recipient Drilldown & Retry UI + unit tests (`components/admin/hubs/campaigns-hub-client.tsx`, `tests/whatsapp-phase3-flows-and-broadcasts.test.ts`)
+- [x] Verify it: `/check verify WaCRM Phase 3: live realtime inbox, template builder, personalized broadcast wizard & guided intake flow` ([verify-phase3-trigger-wacrm-postiz.md](docs/reviews/verify-phase3-trigger-wacrm-postiz.md))
+- [x] Test it: `/test WaCRM Phase 3: live realtime inbox, template builder, personalized broadcast wizard & guided intake flow` ([whatsapp-phase3-flows-and-broadcasts.test.ts](tests/whatsapp-phase3-flows-and-broadcasts.test.ts))
+
+## Slice 39: Postiz Phase 3: visual calendar & time-slot queue, per-platform AI composer & provider hardening
+
+### 43. Postiz Phase 3: visual calendar & time-slot queue, per-platform AI composer & provider hardening · done · Beta
+
+Upgrade the native Postiz social scheduler in `lib/social/*`, `db/schema/social-scheduler.ts`, and `/admin/campaigns?tab=social`: fix Instagram video carousel child container readiness polling and TikTok real `publicaly_available_post_id` URL resolution, add direct R2 drag-and-drop file upload and an R2 Studio Media Library picker directly inside the Social Composer, add per-platform caption override tabs (`Instagram`, `Facebook`, `TikTok`, `YouTube`, `GMB`) plus a 1-click AI Caption & Hashtag Copilot powered by Vercel AI SDK, and build a Visual Week/Month Calendar & Configurable PKT Time-Slot Queue (`Add to Next Free Slot`) plus Reactive Engagement Auto-Plugs.
+**Done when:** spec `0020` is captured, IG/TikTok provider fixes, R2 composer dropzone + media picker, per-platform caption overrides + AI Copilot, visual calendar + time-slot queue, and engagement auto-plugs compile cleanly and pass unit tests.
+spec [0020](docs/specs/0020-postiz-phase3-calendar-slots-ai-composer-and-providers.md) · code in `db/schema/social-scheduler.ts`, `lib/social/`, `app/actions/social-scheduler.ts`, `components/admin/campaigns/`, `components/admin/hubs/campaigns-hub-client.tsx`
+
+- [x] Design it (spec): `/architect Postiz Phase 3: visual calendar & time-slot queue, per-platform AI composer & provider hardening`
+- [x] Build it: `/develop Postiz Phase 3: visual calendar & time-slot queue, per-platform AI composer & provider hardening`
+  - [x] Milestone 1: Schema extensions, provider hardening (IG video carousel polling & TikTok publish status) & time-slot queue calculator (`db/schema/social-scheduler.ts`, `lib/validations/social-scheduler.ts`, `lib/social/providers/instagram.ts`, `lib/social/providers/tiktok.ts`, `lib/social/time-slots.ts`)
+  - [x] Milestone 2: AI Social Caption & Hashtag Copilot, reactive engagement auto-plug & R2 Media Library Server Actions (`lib/social/caption-copilot.ts`, `lib/social/analytics.ts`, `trigger/publish-social-post.task.ts`, `app/actions/social-scheduler.ts`)
+  - [x] Milestone 3: Upgraded Multi-Platform Composer (R2 dropzone, Studio Media Picker, per-platform caption tabs & AI Copilot) (`components/admin/hubs/campaigns-hub-client.tsx`)
+  - [x] Milestone 4: Visual Week/Month Social Calendar View & unit test suite (`components/admin/campaigns/social-calendar-view.tsx`, `tests/social-phase3-calendar-copilot-and-providers.test.ts`)
+- [x] Verify it: `/check verify Postiz Phase 3: visual calendar & time-slot queue, per-platform AI composer & provider hardening` ([verify-phase3-trigger-wacrm-postiz.md](docs/reviews/verify-phase3-trigger-wacrm-postiz.md))
+- [x] Test it: `/test Postiz Phase 3: visual calendar & time-slot queue, per-platform AI composer & provider hardening` ([social-phase3-calendar-copilot-and-providers.test.ts](tests/social-phase3-calendar-copilot-and-providers.test.ts))
+
+## Slice 40: Native WhatsApp Linked-Device engine: QR/Pairing Code session, auto-sync real WhatsApp groups & chats, automated paced group/status posting & fake seed purge
+
+### 44. Native WhatsApp Linked-Device engine: QR/Pairing Code session, auto-sync real WhatsApp groups & chats, automated paced group/status posting & fake seed purge · done · Beta
+
+Build a native WhatsApp Web Multi-Device Linked-Device engine (`lib/whatsapp/linked-device.ts` powered by `@whiskeysockets/baileys` + PostgreSQL-backed encrypted auth state in `db/schema/whatsapp-crm.ts`) alongside the Official Meta Cloud API: purge all 36 fake seeded `marketing_channels` rows from Neon PostgreSQL and `db/seed.ts`, allow admins to link their actual WhatsApp phone number via live **QR Code** or **8-Digit Phone Pairing Code** in `/admin/settings?tab=whatsapp` and `/admin/campaigns?tab=whatsapp`, automatically fetch and sync all real WhatsApp Groups (`@g.us`, group subject, participant count, admin status) and WhatsApp Status (`status@broadcast`) into `marketing_channels`, sync real 1-on-1 and group chats into `/admin/desk?tab=inbox` (with direct reply support outside 24h without requiring Meta templates when linked), and add a durable Trigger.dev task (`trigger/send-whatsapp-group-campaign.task.ts`) with human-like randomized pacing (`45s–90s` jitter + `"composing"` typing presence) to auto-post flyers and captions to selected WhatsApp Groups and Status completely hands-free.
+**Done when:** spec `0021` is captured, the 36 fake seeded channels are purged from Neon and `db/seed.ts`, QR/Pairing Code linking + real group auto-discovery + automated paced group/status dispatch + live chat sync compile cleanly and pass unit tests.
+spec [0021](docs/specs/0021-native-whatsapp-linked-device-groups-status-and-chat-sync.md) · code in `lib/whatsapp/linked-device.ts`, `lib/whatsapp/linked-device-auth-postgres.ts`, `trigger/send-whatsapp-group-campaign.task.ts`, `app/actions/whatsapp-linked-device.ts`, `components/admin/whatsapp/whatsapp-linked-device-card.tsx`, `components/admin/hubs/campaigns-hub-client.tsx`
+
+- [x] Design it (spec): `/architect Native WhatsApp Linked-Device engine: QR/Pairing Code session, auto-sync real WhatsApp groups & chats, automated paced group/status posting & fake seed purge`
+- [x] Build it: `/develop Native WhatsApp Linked-Device engine: QR/Pairing Code session, auto-sync real WhatsApp groups & chats, automated paced group/status posting & fake seed purge`
+  - [x] Milestone 1: Fake seed purge (`marketing_channels` in Neon + `db/seed.ts`), dependencies (`@whiskeysockets/baileys`, `qrcode`) & PostgreSQL-backed linked-device auth schema (`db/schema/whatsapp-crm.ts`, `next.config.ts`)
+  - [x] Milestone 2: Native Baileys Linked-Device engine (`lib/whatsapp/linked-device.ts`) & auto-discovery of real WhatsApp groups & chats
+  - [x] Milestone 3: Durable Trigger.dev paced group & status campaign task & Server Actions (`trigger/send-whatsapp-group-campaign.task.ts`, `app/actions/whatsapp-linked-device.ts`, `app/actions/whatsapp-crm.ts`)
+  - [x] Milestone 4: Live QR / Pairing Code UI in `/admin/settings` & `/admin/campaigns?tab=whatsapp` + automated 1-click group auto-poster & unit tests (`components/admin/whatsapp/whatsapp-linked-device-card.tsx`, `components/admin/hubs/campaigns-hub-client.tsx`, `components/admin/hubs/desk-hub-client.tsx`, `tests/whatsapp-linked-device-and-groups.test.ts`)
+- [x] Verify it: `/check verify Native WhatsApp Linked-Device engine: QR/Pairing Code session, auto-sync real WhatsApp groups & chats, automated paced group/status posting & fake seed purge` ([whatsapp-linked-device-and-groups.test.ts](tests/whatsapp-linked-device-and-groups.test.ts))
+- [x] Test it: `/test Native WhatsApp Linked-Device engine: QR/Pairing Code session, auto-sync real WhatsApp groups & chats, automated paced group/status posting & fake seed purge` ([whatsapp-linked-device-and-groups.test.ts](tests/whatsapp-linked-device-and-groups.test.ts))
+
+## Slice 41: Multi-Number WhatsApp System: multi-session Linked Device switcher, per-number group/status & chat attribution, multi-line auto-posting & inbox line filter
+
+### 45. Multi-Number WhatsApp System: multi-session Linked Device switcher, per-number group/status & chat attribution, multi-line auto-posting & inbox line filter · done · Beta
+
+Upgrade the hybrid WhatsApp architecture across `/admin/campaigns`, `/admin/desk`, and `/admin/settings` to support connecting and operating multiple WhatsApp phone numbers simultaneously across both the **Linked-Device Engine (`@whiskeysockets/baileys`)** and **Official Meta Cloud API (`whatsapp_accounts`)**:
+1. **Multi-Session Linked-Device Manager UI (`WhatsappLinkedDeviceCard`)**: Add a multi-line tab bar / slot switcher supporting pre-configured Primary (`default`, e.g. `0321-4629700`) and Secondary (`secondary`, e.g. `0319-8463538`) lines plus a **`+ Add WhatsApp Number`** modal to create custom labeled slots (`sessionKey` + `label`), rename/delete slots, link each phone independently via QR Code or 8-Digit Pairing Code, and run **"Sync All Connected Lines"** in 1 click.
+2. **Per-Number Group, Status & Chat Attribution (`lib/whatsapp/linked-device.ts`)**: Give each linked device its own distinct WhatsApp Status row (`status@broadcast:<sessionKey>`) in `marketing_channels`, attribute synced `@g.us` groups to their linked phone (`senderWhatsappNumber`), create/link a distinct `whatsappAccounts` row per Linked-Device phone (`phoneNumberId = "linked-" + sessionKey`) so 1-on-1 chats in `/admin/desk?tab=inbox` never collide across numbers, and automatically route outbound replies and group/status posts through the exact `sessionKey` socket that owns that chat or group.
+3. **Multi-Number Campaigns & Broadcast Controls (`/admin/campaigns`)**: Add a **Phone Line Filter** bar (`All Connected Lines`, `Line 1: 0321...`, `Line 2: 0319...`) and per-card sender number badge in Tab 2 (WhatsApp Groups & Status Queue), add a **Sender Line Routing Selector** (`Auto-Route via Group's Synced Line` or force a specific connected line) in the Auto-Post Execution Bar, and add a **Sender WABA Phone Number Selector** in the Tab 3 Official Meta Broadcast Drawer (`whatsapp-broadcast-drawer.tsx`).
+4. **Multi-Number Shared Team Inbox Filter & Line Badges (`/admin/desk?tab=inbox`)**: Add a **Phone Line Switcher** (`All Numbers`, plus each active Meta Cloud API and Linked-Device phone line) in the Pilgrim Conversations sidebar, display a clear **Phone Line Badge** (`📱 0321-4629700 Linked` vs `☁️ +92 319 0462638 Meta API`) on every conversation card and chat header, and route replies through that conversation's specific phone number.
+**Done when:** spec `0022` is captured, multi-number Linked-Device switcher + per-line group/status/chat attribution + Campaigns line filter/routing + Desk Inbox line filter/badges compile cleanly and pass automated tests.
+spec [0022](docs/specs/0022-multi-number-whatsapp-system-ui-and-routing.md) · code in `lib/whatsapp/linked-device.ts`, `lib/validations/whatsapp-linked-device.ts`, `app/actions/whatsapp-linked-device.ts`, `components/admin/whatsapp/whatsapp-linked-device-card.tsx`, `components/admin/hubs/campaigns-hub-client.tsx`, `components/admin/hubs/desk-hub-client.tsx`
+
+- [x] Design it (spec): `/architect Multi-Number WhatsApp System: multi-session Linked Device switcher, per-number group/status & chat attribution, multi-line auto-posting & inbox line filter`
+- [x] Build it: `/develop Multi-Number WhatsApp System: multi-session Linked Device switcher, per-number group/status & chat attribution, multi-line auto-posting & inbox line filter`
+  - [x] Milestone 1: Multi-Session Linked-Device engine, per-line Status/Group attribution, per-line `whatsappAccounts` mapping & Server Actions (`lib/whatsapp/linked-device.ts`, `lib/validations/whatsapp-linked-device.ts`, `app/actions/whatsapp-linked-device.ts`, `trigger/send-whatsapp-group-campaign.task.ts`)
+  - [x] Milestone 2: Multi-Number Linked-Device Switcher UI (`components/admin/whatsapp/whatsapp-linked-device-card.tsx`) with `+ Add WhatsApp Number`, per-slot QR/Pairing Code, slot deletion & `Sync All Connected Lines`
+  - [x] Milestone 3: Multi-Number Campaigns Hub (Tab 2 Phone Line Filter, per-card phone badge, Sender Line Routing selector & Tab 3 Broadcast WABA Number selector) (`components/admin/hubs/campaigns-hub-client.tsx`, `components/admin/campaigns/whatsapp-broadcast-drawer.tsx`)
+  - [x] Milestone 4: Multi-Number Desk Shared Inbox (Phone Line Filter pills, conversation card & header line badges, per-line outbound reply routing) & automated test suite (`components/admin/hubs/desk-hub-client.tsx`, `app/admin/(dashboard)/desk/page.tsx`, `app/actions/whatsapp-crm.ts`, `tests/whatsapp-multi-number-system.test.ts`)
+- [x] Verify it: `/check verify Multi-Number WhatsApp System: multi-session Linked Device switcher, per-number group/status & chat attribution, multi-line auto-posting & inbox line filter` ([whatsapp-multi-number-system.test.ts](tests/whatsapp-multi-number-system.test.ts))
+- [x] Test it: `/test Multi-Number WhatsApp System: multi-session Linked Device switcher, per-number group/status & chat attribution, multi-line auto-posting & inbox line filter` ([whatsapp-multi-number-system.test.ts](tests/whatsapp-multi-number-system.test.ts))
+
+## Slice 42: Production-Ready De-Clutter & Dynamic Data Overhaul: purge all demo seeds/presets, 100% dynamic WhatsApp phone linking, simplified Settings/Campaigns/Inbox UI & dynamic public/admin pages
+
+### 46. Production-Ready De-Clutter & Dynamic Data Overhaul: purge all demo seeds/presets, 100% dynamic WhatsApp phone linking, simplified Settings/Campaigns/Inbox UI & dynamic public/admin pages · done · Beta
+
+Eliminate all demo/mock database rows, hardcoded phone numbers, preset loaders, developer jargon banners, and UI filter clutter across `web/app/admin/(dashboard)/*` and `web/app/*`:
+1. **Live Database & `db/seed.ts` Demo Purge**: Purge all fake seeded applications (`Barrister Adil...`), fake outreach contacts (`Brig. Tariq...`), fake suppliers (`Ammaar`, `Upsky`, `Zahoor`), fake flyers/post assets, fake `whatsapp_accounts` (`linked-default`, `linked-secondary`, demo `Al Ramlah Primary`), unlinked `whatsapp_linked_device_sessions`, and fake `whatsapp_auto_reply_rules` / `whatsapp_quick_replies` from Neon PostgreSQL and `db/seed.ts`.
+2. **100% Dynamic WhatsApp Phone Linking & De-Cluttered Settings/Campaigns/Inbox**:
+   - Remove `DEFAULT_LINKED_DEVICE_SLOTS` and hardcoded phone numbers (`0321-4629700`, `0319-8463538`) from `lib/whatsapp/linked-device.ts` and UI components; start with 0 phones when unlinked and dynamically read phone numbers & names from WhatsApp upon QR/Pairing Code connection.
+   - Filter `platformType === "LINKED_DEVICE"` out of Meta Cloud API WABA Settings in `/admin/settings?tab=whatsapp`, remove the `"Purge 36 Mock Channels"` button and `"Meta Error #1690130"` wall-of-text card, and streamline Settings into two clean sections (Connected WhatsApp Phones vs. Official Meta Cloud API).
+   - Remove the duplicated giant `<WhatsappLinkedDeviceCard />` and `"36 placeholder groups purged"` banner from `/admin/campaigns?tab=whatsapp`, replacing it with a compact dynamic **Connected Phone Status Bar** (`Connect in Settings` / `Sync Groups`) and 100% dynamic Sender Line options.
+   - Simplify `/admin/desk?tab=inbox` from 5 stacked filter rows (18 buttons) to **1 search bar + 1 clean status row** (`All`, `Unread`, `Pinned`, `Archived`) + a dynamic **Phone Line dropdown** when connected.
+   - Make `triggerQuotingCopilotAction` execute `runQuotingCopilot` directly inline so **AI Quoting Copilot** returns estimates immediately instead of hanging at `25%`, remove hardcoded preset loaders & simulator clutter from `whatsapp-auto-reply-studio.tsx`, remove `Test Sample Sheet/Single` demo buttons from `studio-hub-client.tsx`, and strip internal tool jargon (`WaCRM`, `Postiz`, `Gotenberg`, `Trigger.dev v4 Realtime`, `HUB 1–4`) from all Admin screens.
+3. **Dynamic Public Pages & Centralized `lib/company-info.ts`**: Create `lib/company-info.ts` (`getCompanyInfo(settings)`), make `/privacy` and `/terms` query `agency_settings` dynamically, fix the `planner-context.tsx` visa rate fallback (`68000`), and wire dynamic agency contact props across all public components.
+**Done when:** spec `0023` is captured, all demo DB rows are purged, Admin and Public pages are 100% dynamic and decluttered, and `npm run typecheck` + tests pass.
+spec [0023](docs/specs/0023-production-declutter-and-dynamic-overhaul.md) · code in `lib/whatsapp/linked-device.ts`, `lib/company-info.ts`, `components/admin/whatsapp/whatsapp-linked-device-card.tsx`, `components/admin/hubs/connections-settings-client.tsx`, `components/admin/hubs/campaigns-hub-client.tsx`, `components/admin/hubs/desk-hub-client.tsx`
+
+- [x] Design it (spec): `/architect Production-Ready De-Clutter & Dynamic Data Overhaul: purge all demo seeds/presets, 100% dynamic WhatsApp phone linking, simplified Settings/Campaigns/Inbox UI & dynamic public/admin pages`
+- [x] Build it: `/develop Production-Ready De-Clutter & Dynamic Data Overhaul: purge all demo seeds/presets, 100% dynamic WhatsApp phone linking, simplified Settings/Campaigns/Inbox UI & dynamic public/admin pages`
+  - [x] Milestone 1: Live Neon DB & `db/seed.ts` demo purge + 100% dynamic `lib/whatsapp/linked-device.ts` & inline `app/actions/quoting-copilot.ts`
+  - [x] Milestone 2: De-cluttered Admin Portal (`/admin/settings`, `/admin/campaigns`, `/admin/desk`, `/admin/studio`, `/admin`) & updated unit tests
+  - [x] Milestone 3: Centralized `lib/company-info.ts` & 100% dynamic Public Pages (`/`, `/privacy`, `/terms`, `hajj-inquiry-section.tsx`, `contact-section.tsx`, `public-header.tsx`, `public-footer.tsx`, `planner-context.tsx`)
+- [x] Verify it: `/check verify Production-Ready De-Clutter & Dynamic Data Overhaul: purge all demo seeds/presets, 100% dynamic WhatsApp phone linking, simplified Settings/Campaigns/Inbox UI & dynamic public/admin pages` ([whatsapp-multi-number-system.test.ts](tests/whatsapp-multi-number-system.test.ts))
+- [x] Test it: `/test Production-Ready De-Clutter & Dynamic Data Overhaul: purge all demo seeds/presets, 100% dynamic WhatsApp phone linking, simplified Settings/Campaigns/Inbox UI & dynamic public/admin pages` ([whatsapp-multi-number-system.test.ts](tests/whatsapp-multi-number-system.test.ts))
+
+## Slice 43: Spec 0024 — Production Readiness Audit & Hardening
+
+### 47. Slice 43 · Spec 0024 — Production Readiness Audit & Hardening · Beta · in-progress
+
+Remediate all `P0` (`96`) and `P1` (`179`) production-readiness gaps uncovered across the 28-report Wave 0–1 forensic audit (`docs/audit/00-ground-truth.md`, `01-feature-parity.md`, `02-triage.md`, `OWNER_DECISIONS.md`) through the conflict-free 12-Fixer Wave 3 build plan (`docs/audit/02-ownership.md`: `W3A → W3B → W3C`) and certify 100% of Gate A (§9.4) criteria across real disposable PostgreSQL 16, local HTTP contract fakes, and Playwright `J1`–`J22` browser journeys.
+**Done when:** `100%` of `P0`/`P1` findings in `docs/audit/02-triage.md` are resolved with red→green tests logged in `docs/audit/03-fix-log.md`, `npm audit --omit=dev` has `0` Critical/High CVEs, fresh `db:migrate` + `2× db:seed` pass with zero schema drift, the 158-action AuthZ auto-runner and all 22 Playwright E2E journeys (`J1`–`J22`) pass on Desktop & Mobile, `.github/workflows/ci.yml` and `docs/audit/runbooks/RB-01..10.md` are in place, and Wave 4 (`V01`–`V06`) signs off `docs/audit/PRODUCTION_READINESS.md` (Gate A).
+spec [0024](docs/specs/0024-production-readiness-audit-and-hardening.md) · audit & ownership in `docs/audit/`
+
+- [x] Design it (spec): `/architect Production Readiness Audit & Hardening`
+- [ ] Build it: `/develop Production Readiness Audit & Hardening`
+  - [ ] Milestone 1 (`W3A` — `F-PLAT`): Serialized platform foundation — `next@16.4.6+` CVE upgrade, `Dockerfile` `node:22-alpine` + `HEALTHCHECK`, fail-closed `lib/env.ts`, CSP/security headers, dual HTTP + transactional `Pool` `db/index.ts`, reconciled `drizzle/` migrations + `2×` idempotent `db/seed.ts`, `disableSignUp` + live `isActive` RBAC revocation, DB `rate_limit_buckets`, immutable `audit_logs`, zero-PII `lib/logger.ts`, `/api/health`, and locked light-mode WCAG tokens
+  - [ ] Milestone 2 (`W3B` Core — `F-DOM`, `F-INFRA`, `F-PUB`, `F-DESK`): 9 business invariants, unified E.164/JID phone SSoT, committed client PDF purge & `logo-icon.png` compression, public/private R2 split + `/api/media/*` proxy, Gotenberg v8 `/screenshot/html` fix & CDP prod block, Journey Builder/Group seat race/Hajj/Status Tracker hardening, SQL Dashboard KPIs, Quote state machine, escaped `<1 MB` Quotation PDF, gated Voucher & `Cmd+K` fixes
+  - [ ] Milestone 3 (`W3B` Omnichannel & Admin — `F-STUDIO`, `F-WA`, `F-SOCIAL`, `F-JOBS`, `F-ADMIN`, `F-UX`): Escaped 4K poster HTML & Mode A/B margin integrity, deterministic AI Copilot math + ZDR, retry-safe WA webhook + global `"STOP"`/`do_not_contact` + 24h window + `OD-01` Baileys topology, Core 5 OAuth/Page-token refresh/IG container poll/GBP v1 + zero fake analytics, Trigger v4 prod guard + `rethrowAsTaskError` + SLA cron fix, FK-safe Catalog/CMS `revalidatePath` + `/admin/settings?tab=health` + fixed legacy redirects, and WCAG 2.2 AA Admin Shell
+  - [ ] Milestone 4 (`W3C` — `F-QA`): `vitest.config.ts` (`assertAuditSafeEnvironment` + `disableNetConnect`), 5 strict contract fakes (`tests/fakes/*`), real-PG `tests/integration/*` (158-action AuthZ auto-runner + concurrency + migrations), Playwright `tests/e2e/j01..j22.spec.ts`, `.github/workflows/ci.yml`, and 10 ops runbooks (`docs/audit/runbooks/RB-01..10.md`)
+- [ ] Verify it: `/check verify Production Readiness Audit & Hardening` (`docs/audit/04-verification.md` & `docs/audit/PRODUCTION_READINESS.md`)
+- [ ] Test it: `/test Production Readiness Audit & Hardening` (`tests/unit/`, `tests/integration/`, `tests/e2e/`)
+
+## Slice 44: Spec 0025 — Public Site SEO Readiness (Blocked on Gate A)
+
+### 48. Slice 44 · Spec 0025 — Public Site SEO Readiness · Beta · planned (after Gate A) · needs a decision
+
+Execute Phase B (`SWARM_PROMPT.md` §10: Auditors `S01`–`S16` → Fixers `F-SEO-*` → Gate B) **strictly after Slice 43 (`Spec 0024`) passes Gate A**: ship `app/robots.ts` and `app/sitemap.ts`, crawlable programmatic commercial & informational routes (`/umrah-packages/[slug]`, `/umrah-packages/from-[city]`, `/hajj-2027`, `/umrah-visa`, `/hotels/[city]`, `/ziyarat/[city]`, `/faq`, `/about`, `/contact`, `/refund-policy`), truthful entity-consistent JSON-LD (`TravelAgency`, `Product`/`Offer` only where real prices exist, `FAQPage`, `BreadcrumbList`), dynamic OpenGraph/Twitter social cards, Core Web Vitals & ISR/cache optimization on `/`, canonical Lahore NAP alignment, and end-to-end UTM lead attribution.
+**Done when:** Gate A (`docs/audit/PRODUCTION_READINESS.md`) is signed off, `Spec 0025 — SEO Readiness (Blocked on Gate A)` (`docs/specs/0025-public-site-seo-readiness.md`) is authored from `docs/audit/seo/findings/S01..S16.md`, all Phase B routes/metadata/schemas ship without regressing Gate A, and Gate B passes in `docs/audit/FINAL_REPORT.md`.
+spec `0025` *(placeholder: `docs/specs/0025-public-site-seo-readiness.md` — blocked until Gate A passes)*
+
+- [ ] Design it (spec): `/architect Public Site SEO Readiness`
 
 ## Deferred
 

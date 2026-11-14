@@ -53,6 +53,8 @@ import {
 } from "@/components/admin/catalog/groups-client"
 import {
   ingestFinishedPosterOrFlyerAction,
+  generateMultiPackageSheetForFlyer,
+  generateSingleSpotlightForCard,
   updateExtractedFlyerCardAction,
   deleteSupplierFlyerAction,
   publishFlyerCardToPublicGroupPackages,
@@ -60,6 +62,9 @@ import {
   updatePackageSpotlightImageAction,
   upsertSupplier,
 } from "@/app/actions/marketing-ops"
+import { mintRealtimeRunPublicTokenAction } from "@/app/actions/trigger-realtime"
+import { StudioRealtimeRunBanner } from "@/components/admin/studio/studio-realtime-run-banner"
+import type { TaskProgressMetadata } from "@/trigger/metadata"
 import { calculateWrappedPackagePricing } from "@/lib/domain/marketing-ops"
 import { cn } from "@/lib/utils"
 
@@ -319,6 +324,41 @@ export function StudioHubClient({
   const [busyKey, setBusyKey] = React.useState<string | null>(null)
 
   // ----------------------------------------------------------------------
+  // REALTIME RUN TELEMETRY STATE (TRIGGER.DEV V4 + LOCAL FALLBACK)
+  // ----------------------------------------------------------------------
+  const [activeRealtimeRun, setActiveRealtimeRun] = React.useState<{
+    runId: string
+    publicAccessToken?: string | null
+    tokenMode: "cloud" | "local"
+    taskKind: "extract_packages" | "render_gotenberg" | "studio_pipeline"
+    title: string
+    isActive: boolean
+    localProgress: Partial<TaskProgressMetadata>
+  } | null>(null)
+
+  const syncRunTokenIfAvailable = React.useCallback(async (runId: string) => {
+    try {
+      const tokenRes = await mintRealtimeRunPublicTokenAction(runId)
+      if (tokenRes.success) {
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                runId,
+                publicAccessToken:
+                  tokenRes.publicAccessToken ?? tokenRes.token ?? null,
+                tokenMode: tokenRes.mode === "cloud" ? "cloud" : "local",
+                localProgress: tokenRes.snapshot ?? prev.localProgress,
+              }
+            : null
+        )
+      }
+    } catch {
+      // Safe fallback to local polling
+    }
+  }, [])
+
+  // ----------------------------------------------------------------------
   // MODAL: ADD NEW SUPPLIER
   // ----------------------------------------------------------------------
   const [isSupplierModalOpen, setIsSupplierModalOpen] = React.useState(false)
@@ -411,7 +451,7 @@ export function StudioHubClient({
   }, [selectedSupplierId, suppliersList])
 
   // ----------------------------------------------------------------------
-  // HANDLERS: FINISHED 4K POSTER INGESTION
+  // HANDLERS: FINISHED 4K POSTER INGESTION & 4K GOTENBERG RENDERS
   // ----------------------------------------------------------------------
   const handleIngestPoster = async () => {
     if (!selectedSupplierId) {
@@ -419,10 +459,25 @@ export function StudioHubClient({
       return
     }
 
+    const syntheticRunId = `local_extract_${Date.now()}`
     setBusyKey("ingest_poster")
     setNotice(null)
     setUploadProgress(5)
     setUploadStatus("Preparing finished poster ingestion...")
+
+    setActiveRealtimeRun({
+      runId: syntheticRunId,
+      tokenMode: "local",
+      taskKind: "extract_packages",
+      title: "Multimodal AI Extraction & 1080p Social JPEG Pipeline",
+      isActive: true,
+      localProgress: {
+        stage: "initializing",
+        progress: 10,
+        detail: "Preparing finished 4K poster ingestion pipeline...",
+        updatedAt: new Date().toISOString(),
+      },
+    })
 
     try {
       let finalMediaUrl = posterDirectUrl.trim()
@@ -434,6 +489,19 @@ export function StudioHubClient({
           (pct, text) => {
             setUploadProgress(pct)
             setUploadStatus(text)
+            setActiveRealtimeRun((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    localProgress: {
+                      stage: pct < 45 ? "initializing" : "uploading_r2",
+                      progress: Math.min(35, Math.max(12, Math.round(pct * 0.35))),
+                      detail: text,
+                      updatedAt: new Date().toISOString(),
+                    },
+                  }
+                : null
+            )
           }
         )
         finalMediaUrl = uploadResult.publicUrl
@@ -444,10 +512,25 @@ export function StudioHubClient({
           type: "error",
           text: "Please provide a 4K poster image/PDF file or direct URL.",
         })
+        setActiveRealtimeRun(null)
         return
       }
 
       setUploadStatus("Invoking Gemini Ultra Multimodal AI extraction & 1080p social optimizer...")
+      setActiveRealtimeRun((prev) =>
+        prev
+          ? {
+              ...prev,
+              localProgress: {
+                stage: "extracting_ai",
+                progress: 45,
+                detail:
+                  "Running Gemini Ultra multimodal AI package extraction & 1080×1520 social JPEG normalization...",
+                updatedAt: new Date().toISOString(),
+              },
+            }
+          : null
+      )
 
       const res = await ingestFinishedPosterOrFlyerAction({
         supplierId: selectedSupplierId,
@@ -458,7 +541,31 @@ export function StudioHubClient({
         departureCityCode,
       })
 
+      const returnedRunId =
+        (res as { runId?: string }).runId || syntheticRunId
+      void syncRunTokenIfAvailable(returnedRunId)
+
       if (res.success) {
+        const createdFlyer = res.flyer as SupplierFlyerRecord | undefined
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                runId: returnedRunId,
+                isActive: false,
+                localProgress: {
+                  stage: "completed",
+                  progress: 100,
+                  detail: `Extracted ${res.packagesCount} package cards and normalized 1080p social JPEG`,
+                  extractedCount: res.packagesCount,
+                  pngUrl: createdFlyer?.multiSheetImageUrl ?? finalMediaUrl,
+                  socialJpegUrl:
+                    createdFlyer?.socialReadySheetJpegUrl ?? undefined,
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : null
+        )
         setNotice({
           type: "success",
           text: `✨ Successfully ingested 4K poster! Preserved 4K asset, generated 1080p social JPEG, and extracted ${res.packagesCount} package cards.`,
@@ -470,15 +577,273 @@ export function StudioHubClient({
         router.refresh()
         switchTab("vault")
       } else {
+        const errMsg = res.error || "Failed to ingest finished poster."
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                isActive: false,
+                localProgress: {
+                  stage: "failed",
+                  progress: 100,
+                  detail: errMsg,
+                  error: errMsg,
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : null
+        )
         setNotice({
           type: "error",
-          text: res.error || "Failed to ingest finished poster.",
+          text: errMsg,
         })
       }
     } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "Ingestion failed."
+      setActiveRealtimeRun((prev) =>
+        prev
+          ? {
+              ...prev,
+              isActive: false,
+              localProgress: {
+                stage: "failed",
+                progress: 100,
+                detail: errMsg,
+                error: errMsg,
+                updatedAt: new Date().toISOString(),
+              },
+            }
+          : null
+      )
       setNotice({
         type: "error",
-        text: err instanceof Error ? err.message : "Ingestion failed.",
+        text: errMsg,
+      })
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const handleGenerateMultiSheet = async (
+    flyerId: string,
+    flyerTitle: string
+  ) => {
+    const syntheticRunId = `local_render_sheet_${flyerId}_${Date.now()}`
+    setBusyKey(`render-sheet-${flyerId}`)
+    setNotice(null)
+
+    setActiveRealtimeRun({
+      runId: syntheticRunId,
+      tokenMode: "local",
+      taskKind: "render_gotenberg",
+      title: `4K Multi-Package Sheet Render · ${flyerTitle}`,
+      isActive: true,
+      localProgress: {
+        stage: "rendering_gotenberg",
+        progress: 55,
+        detail: `Rendering 4K Multi-Package Sheet & Vector PDF via Gotenberg queue for "${flyerTitle}"...`,
+        updatedAt: new Date().toISOString(),
+      },
+    })
+
+    try {
+      const res = await generateMultiPackageSheetForFlyer(flyerId)
+      const returnedRunId =
+        (res as { runId?: string }).runId || syntheticRunId
+      void syncRunTokenIfAvailable(returnedRunId)
+
+      if (res.success && res.pngUrl) {
+        setFlyersList((prev) =>
+          prev.map((f) =>
+            f.id === flyerId
+              ? {
+                  ...f,
+                  multiSheetImageUrl: res.pngUrl,
+                  multiSheetPdfUrl: res.pdfUrl ?? f.multiSheetPdfUrl,
+                }
+              : f
+          )
+        )
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                runId: returnedRunId,
+                isActive: false,
+                localProgress: {
+                  stage: "completed",
+                  progress: 100,
+                  detail: `Rendered 4K Multi-Package Sheet [${res.postCode}] and uploaded to Cloudflare R2`,
+                  pngUrl: res.pngUrl,
+                  pdfUrl: res.pdfUrl ?? undefined,
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : null
+        )
+        setNotice({
+          type: "success",
+          text: `4K Multi-Package Sheet [${res.postCode}] rendered and uploaded to Cloudflare R2!`,
+        })
+        router.refresh()
+      } else {
+        const errMsg = res.error || "Failed to generate 4K Multi-Package Sheet."
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                isActive: false,
+                localProgress: {
+                  stage: "failed",
+                  progress: 100,
+                  detail: errMsg,
+                  error: errMsg,
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : null
+        )
+        setNotice({
+          type: "error",
+          text: errMsg,
+        })
+      }
+    } catch (err: unknown) {
+      const errMsg =
+        err instanceof Error
+          ? err.message
+          : "Failed to generate 4K Multi-Package Sheet."
+      setActiveRealtimeRun((prev) =>
+        prev
+          ? {
+              ...prev,
+              isActive: false,
+              localProgress: {
+                stage: "failed",
+                progress: 100,
+                detail: errMsg,
+                error: errMsg,
+                updatedAt: new Date().toISOString(),
+              },
+            }
+          : null
+      )
+      setNotice({
+        type: "error",
+        text: errMsg,
+      })
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const handleGenerateSpotlight = async (pkgId: string, postCode: string) => {
+    const syntheticRunId = `local_render_spot_${pkgId}_${Date.now()}`
+    setBusyKey(`render-spot-${pkgId}`)
+    setNotice(null)
+
+    setActiveRealtimeRun({
+      runId: syntheticRunId,
+      tokenMode: "local",
+      taskKind: "render_gotenberg",
+      title: `4K Spotlight Poster Render · ${postCode}`,
+      isActive: true,
+      localProgress: {
+        stage: "rendering_gotenberg",
+        progress: 55,
+        detail: `Rendering 4K Single-Package Spotlight Poster [${postCode}] via Gotenberg queue...`,
+        updatedAt: new Date().toISOString(),
+      },
+    })
+
+    try {
+      const res = await generateSingleSpotlightForCard(pkgId)
+      const returnedRunId =
+        (res as { runId?: string }).runId || syntheticRunId
+      void syncRunTokenIfAvailable(returnedRunId)
+
+      if (res.success && res.pngUrl) {
+        setFlyersList((prev) =>
+          prev.map((flyer) => ({
+            ...flyer,
+            packages: flyer.packages.map((card) =>
+              card.id === pkgId
+                ? {
+                    ...card,
+                    spotlightPosterUrl: res.pngUrl,
+                    spotlightPdfUrl: res.pdfUrl ?? card.spotlightPdfUrl,
+                  }
+                : card
+            ),
+          }))
+        )
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                runId: returnedRunId,
+                isActive: false,
+                localProgress: {
+                  stage: "completed",
+                  progress: 100,
+                  detail: `Rendered 4K Spotlight Poster [${res.postCode}] and uploaded to Cloudflare R2`,
+                  pngUrl: res.pngUrl,
+                  pdfUrl: res.pdfUrl ?? undefined,
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : null
+        )
+        setNotice({
+          type: "success",
+          text: `4K Spotlight Poster [${res.postCode}] rendered and synced across Vault & Campaigns!`,
+        })
+        router.refresh()
+      } else {
+        const errMsg = res.error || "Failed to render 4K Spotlight Poster."
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                isActive: false,
+                localProgress: {
+                  stage: "failed",
+                  progress: 100,
+                  detail: errMsg,
+                  error: errMsg,
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : null
+        )
+        setNotice({
+          type: "error",
+          text: errMsg,
+        })
+      }
+    } catch (err: unknown) {
+      const errMsg =
+        err instanceof Error
+          ? err.message
+          : "Failed to render 4K Spotlight Poster."
+      setActiveRealtimeRun((prev) =>
+        prev
+          ? {
+              ...prev,
+              isActive: false,
+              localProgress: {
+                stage: "failed",
+                progress: 100,
+                detail: errMsg,
+                error: errMsg,
+                updatedAt: new Date().toISOString(),
+              },
+            }
+          : null
+      )
+      setNotice({
+        type: "error",
+        text: errMsg,
       })
     } finally {
       setBusyKey(null)
@@ -942,7 +1307,7 @@ export function StudioHubClient({
             <div className="flex items-center gap-2 mb-1.5">
               <span className="inline-flex items-center gap-1 rounded-full border border-gold/50 bg-gold/15 px-3 py-0.5 text-[11px] font-bold uppercase tracking-wider text-gold">
                 <Sparkles className="size-3 text-gold" />
-                Hub 1 · Multimodal AI &amp; 4K Chromium Studio
+                Multimodal AI &amp; 4K Poster Studio
               </span>
               <span className="text-xs text-white/70">
                 /admin/studio
@@ -1076,6 +1441,23 @@ export function StudioHubClient({
             Dismiss
           </button>
         </div>
+      )}
+
+      {/* Trigger.dev v4 Realtime Task Progress Banner */}
+      {activeRealtimeRun && (
+        <StudioRealtimeRunBanner
+          runId={activeRealtimeRun.runId}
+          publicAccessToken={activeRealtimeRun.publicAccessToken}
+          tokenMode={activeRealtimeRun.tokenMode}
+          taskKind={activeRealtimeRun.taskKind}
+          title={activeRealtimeRun.title}
+          isActive={activeRealtimeRun.isActive}
+          localProgress={activeRealtimeRun.localProgress}
+          onComplete={() => {
+            router.refresh()
+          }}
+          onDismiss={() => setActiveRealtimeRun(null)}
+        />
       )}
 
       {/* ==================================================================== */}
@@ -1519,6 +1901,25 @@ export function StudioHubClient({
                               type="button"
                               size="sm"
                               variant="outline"
+                              disabled={busyKey === `render-sheet-${flyer.id}`}
+                              onClick={() =>
+                                handleGenerateMultiSheet(flyer.id, flyer.title)
+                              }
+                              className="border-gold/50 bg-[#FBF9F4] text-[#064E3B] hover:bg-gold/15 text-xs font-semibold gap-1.5 cursor-pointer"
+                              title="Render 4K Multi-Package Sheet & Vector PDF via Gotenberg queue"
+                            >
+                              {busyKey === `render-sheet-${flyer.id}` ? (
+                                <Loader2 className="size-3.5 animate-spin text-gold" />
+                              ) : (
+                                <Sparkles className="size-3.5 text-gold" />
+                              )}
+                              <span>Render 4K Sheet</span>
+                            </Button>
+
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
                               onClick={() => setDeletingFlyer(flyer)}
                               className="border-red-300 text-red-700 hover:bg-red-50 hover:border-red-400 text-xs font-semibold gap-1.5 cursor-pointer ml-auto"
                             >
@@ -1674,6 +2075,26 @@ export function StudioHubClient({
                                         >
                                           <Pencil className="size-3 text-gold" />
                                           <span>Edit Card</span>
+                                        </Button>
+
+                                        {/* Render 4K Spotlight Poster */}
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={busyKey === `render-spot-${pkg.id}`}
+                                          onClick={() =>
+                                            handleGenerateSpotlight(pkg.id, pkg.postCode)
+                                          }
+                                          className="h-7 px-2 text-[11px] font-semibold border-gold/50 bg-[#FBF9F4] text-[#064E3B] hover:bg-gold/15 cursor-pointer gap-1"
+                                          title="Render 4K Single-Package Spotlight Poster via Gotenberg queue"
+                                        >
+                                          {busyKey === `render-spot-${pkg.id}` ? (
+                                            <Loader2 className="size-3 animate-spin text-gold" />
+                                          ) : (
+                                            <Sparkles className="size-3 text-gold" />
+                                          )}
+                                          <span>Render 4K</span>
                                         </Button>
 
                                         {/* Preview Poster */}

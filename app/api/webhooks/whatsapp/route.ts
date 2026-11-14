@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { and, eq, sql } from "drizzle-orm"
+import { and, desc, eq, or, sql } from "drizzle-orm"
 import { db } from "@/db"
 import {
   whatsappAccounts,
@@ -7,6 +7,7 @@ import {
   whatsappMessages,
   whatsappBroadcastRecipients,
   whatsappBroadcasts,
+  whatsappTemplates,
 } from "@/db/schema/whatsapp-crm"
 import { readCappedBody } from "@/lib/whatsapp/webhook-body"
 import {
@@ -18,6 +19,8 @@ import {
   resolvePostRefCode,
   unlockOutreachCooldownForPhone,
 } from "@/lib/whatsapp/post-ref-detector"
+import { parseFounderForwardedLead } from "@/lib/whatsapp/intent-classifier"
+import { dispatchInboundWhatsAppProcessing } from "@/trigger/dispatch"
 import { env } from "@/lib/env"
 
 /**
@@ -72,14 +75,32 @@ interface InboundStatus {
   errors?: Array<{ code: number; message?: string; title?: string }>
 }
 
+interface InboundMediaAttachment {
+  id?: string
+  mime_type?: string
+  sha256?: string
+  caption?: string
+  filename?: string
+  voice?: boolean
+  animated?: boolean
+}
+
 interface InboundMessage {
   from: string
+  to?: string
   id: string
   timestamp: string
   type: string
   text?: { body: string }
-  image?: { id?: string; mime_type?: string; caption?: string }
-  document?: { id?: string; filename?: string; mime_type?: string; caption?: string }
+  image?: InboundMediaAttachment
+  document?: InboundMediaAttachment
+  audio?: InboundMediaAttachment
+  video?: InboundMediaAttachment
+  sticker?: InboundMediaAttachment
+  reaction?: {
+    message_id: string
+    emoji?: string
+  }
   interactive?: {
     type: string
     button_reply?: { id: string; title: string }
@@ -90,11 +111,19 @@ interface InboundMessage {
 }
 
 interface WebhookChangeValue {
-  messaging_product: string
+  messaging_product?: string
   metadata?: { display_phone_number?: string; phone_number_id: string }
   contacts?: Array<{ profile?: { name?: string }; wa_id: string }>
   messages?: InboundMessage[]
+  message_echoes?: InboundMessage[]
   statuses?: InboundStatus[]
+  // Template status webhook fields (message_template_status_update)
+  event?: string
+  message_template_id?: string | number
+  message_template_name?: string
+  message_template_language?: string
+  reason?: string | null
+  other_info?: { description?: string }
 }
 
 interface WebhookEntry {
@@ -108,6 +137,21 @@ interface WebhookEntry {
 interface WebhookEnvelope {
   object: string
   entry?: WebhookEntry[]
+}
+
+function mapMetaTemplateEventToStatus(
+  rawEvent: string | undefined
+): "APPROVED" | "PENDING" | "REJECTED" | "PAUSED" | "DISABLED" | null {
+  if (!rawEvent) return null
+  const upper = rawEvent.trim().toUpperCase()
+  if (upper === "APPROVED") return "APPROVED"
+  if (upper === "REJECTED") return "REJECTED"
+  if (upper === "PAUSED") return "PAUSED"
+  if (upper === "DISABLED" || upper === "FLAGGED") return "DISABLED"
+  if (upper === "PENDING" || upper === "IN_APPEAL" || upper === "REINSTATED") {
+    return "PENDING"
+  }
+  return null
 }
 
 /**
@@ -139,8 +183,91 @@ export async function POST(request: Request): Promise<Response> {
 
   for (const entry of payload.entry) {
     for (const change of entry.changes) {
-      if (change.field !== "messages") continue
       const val = change.value
+
+      // ==========================================
+      // 0. Process Template Lifecycle Status Updates
+      // ==========================================
+      if (change.field === "message_template_status_update") {
+        const mappedStatus = mapMetaTemplateEventToStatus(val.event)
+        if (!mappedStatus) continue
+
+        const metaTemplateId =
+          val.message_template_id !== undefined && val.message_template_id !== null
+            ? String(val.message_template_id)
+            : null
+        const templateName = val.message_template_name?.trim() || null
+        const templateLang = val.message_template_language?.trim() || null
+        const rejectionReason =
+          val.reason && val.reason !== "NONE"
+            ? String(val.reason)
+            : val.other_info?.description || null
+        const now = new Date()
+
+        // Resolve account by WABA ID (entry.id) or fallback to default account
+        let [wabaAccount] = await db
+          .select()
+          .from(whatsappAccounts)
+          .where(eq(whatsappAccounts.wabaId, entry.id))
+          .limit(1)
+
+        if (!wabaAccount) {
+          const [defaultAcc] = await db
+            .select()
+            .from(whatsappAccounts)
+            .where(eq(whatsappAccounts.isDefault, true))
+            .limit(1)
+          wabaAccount = defaultAcc
+        }
+
+        const matchConditions = []
+        if (metaTemplateId) {
+          matchConditions.push(eq(whatsappTemplates.metaTemplateId, metaTemplateId))
+        }
+        if (templateName && wabaAccount) {
+          if (templateLang) {
+            matchConditions.push(
+              and(
+                eq(whatsappTemplates.accountId, wabaAccount.id),
+                eq(whatsappTemplates.name, templateName),
+                eq(whatsappTemplates.language, templateLang)
+              )
+            )
+          } else {
+            matchConditions.push(
+              and(
+                eq(whatsappTemplates.accountId, wabaAccount.id),
+                eq(whatsappTemplates.name, templateName)
+              )
+            )
+          }
+        } else if (templateName) {
+          matchConditions.push(eq(whatsappTemplates.name, templateName))
+        }
+
+        if (matchConditions.length > 0) {
+          await db
+            .update(whatsappTemplates)
+            .set({
+              status: mappedStatus,
+              rejectionReason:
+                mappedStatus === "REJECTED" || mappedStatus === "DISABLED"
+                  ? rejectionReason
+                  : null,
+              ...(metaTemplateId ? { metaTemplateId } : {}),
+              syncedAt: now,
+              updatedAt: now,
+            })
+            .where(
+              matchConditions.length === 1
+                ? matchConditions[0]
+                : or(...matchConditions)
+            )
+        }
+        continue
+      }
+
+      if (change.field !== "messages" && change.field !== "smb_message_echoes") continue
       const phoneNumberId = val.metadata?.phone_number_id
 
       // Resolve matching WhatsApp account
@@ -168,6 +295,75 @@ export async function POST(request: Request): Promise<Response> {
           `[whatsapp-webhook] No active account matched phone_number_id ${phoneNumberId}. Skipping processing.`
         )
         continue
+      }
+
+      // ==========================================
+      // A0. Process Coexistence Outbound Echoes (smb_message_echoes from Mobile App)
+      // ==========================================
+      if (val.message_echoes && Array.isArray(val.message_echoes)) {
+        for (const echo of val.message_echoes) {
+          const wamid = echo.id
+          const recipientPhone = echo.to
+          if (!wamid || !recipientPhone) continue
+
+          const [existingEcho] = await db
+            .select({ id: whatsappMessages.id })
+            .from(whatsappMessages)
+            .where(eq(whatsappMessages.wamid, wamid))
+            .limit(1)
+          if (existingEcho) continue
+
+          const echoTimestamp = new Date(Number(echo.timestamp || Math.floor(Date.now() / 1000)) * 1000)
+          const now = new Date()
+          const echoBody =
+            echo.type === "text" && echo.text?.body
+              ? echo.text.body
+              : echo.image?.caption || echo.document?.caption || `[Mobile App ${echo.type || "Message"}]`
+
+          let [conv] = await db
+            .select()
+            .from(whatsappConversations)
+            .where(
+              and(
+                eq(whatsappConversations.accountId, account.id),
+                eq(whatsappConversations.contactPhone, recipientPhone)
+              )
+            )
+            .limit(1)
+
+          if (!conv) {
+            const [created] = await db
+              .insert(whatsappConversations)
+              .values({
+                accountId: account.id,
+                contactPhone: recipientPhone,
+                contactName: recipientPhone,
+                lastMessageAt: now,
+                unreadCount: 0,
+                intentCategory: "PERSONAL_OR_OTHER",
+                intentConfidence: 70,
+                intentReason: "Synced from WhatsApp Business mobile app (Coexistence echo)",
+              })
+              .returning()
+            conv = created
+          } else {
+            await db
+              .update(whatsappConversations)
+              .set({ lastMessageAt: now, updatedAt: now })
+              .where(eq(whatsappConversations.id, conv.id))
+          }
+
+          await db.insert(whatsappMessages).values({
+            conversationId: conv.id,
+            wamid,
+            direction: "outbound",
+            status: "sent",
+            messageType: "text",
+            body: echoBody,
+            rawPayload: echo as unknown as Record<string, unknown>,
+            sentAt: echoTimestamp,
+          })
+        }
       }
 
       // ==========================================
@@ -210,19 +406,59 @@ export async function POST(request: Request): Promise<Response> {
             .select({
               id: whatsappBroadcastRecipients.id,
               broadcastId: whatsappBroadcastRecipients.broadcastId,
+              status: whatsappBroadcastRecipients.status,
+              deliveredAt: whatsappBroadcastRecipients.deliveredAt,
+              readAt: whatsappBroadcastRecipients.readAt,
             })
             .from(whatsappBroadcastRecipients)
             .where(eq(whatsappBroadcastRecipients.wamid, wamid))
             .limit(1)
 
           if (recipient) {
-            await db
-              .update(whatsappBroadcastRecipients)
-              .set(updateFields)
-              .where(eq(whatsappBroadcastRecipients.id, recipient.id))
+            const recipientUpdate: {
+              status?: "sent" | "delivered" | "read" | "failed"
+              deliveredAt?: Date
+              readAt?: Date
+              errorCode?: string | null
+              errorMessage?: string | null
+            } = {}
 
-            // Update aggregated broadcast counters
-            if (st.status === "delivered") {
+            // Prevent status regression (e.g. delayed "delivered" arriving after "read")
+            if (
+              !(recipient.status === "read" && st.status === "delivered") &&
+              !(recipient.status === "read" && st.status === "sent") &&
+              !(recipient.status === "delivered" && st.status === "sent")
+            ) {
+              recipientUpdate.status = st.status
+            }
+
+            const isFirstDelivered =
+              st.status === "delivered" && !recipient.deliveredAt
+            const isFirstRead = st.status === "read" && !recipient.readAt
+            const isFirstFailed =
+              st.status === "failed" && recipient.status !== "failed"
+
+            if (isFirstDelivered) {
+              recipientUpdate.deliveredAt = statusTime
+            } else if (isFirstRead) {
+              recipientUpdate.readAt = statusTime
+              if (!recipient.deliveredAt) {
+                recipientUpdate.deliveredAt = statusTime
+              }
+            } else if (st.status === "failed") {
+              recipientUpdate.errorCode = errCode
+              recipientUpdate.errorMessage = errMsg
+            }
+
+            if (Object.keys(recipientUpdate).length > 0) {
+              await db
+                .update(whatsappBroadcastRecipients)
+                .set(recipientUpdate)
+                .where(eq(whatsappBroadcastRecipients.id, recipient.id))
+            }
+
+            // Update aggregated broadcast counters idempotently
+            if (isFirstDelivered) {
               await db
                 .update(whatsappBroadcasts)
                 .set({
@@ -230,15 +466,20 @@ export async function POST(request: Request): Promise<Response> {
                   updatedAt: new Date(),
                 })
                 .where(eq(whatsappBroadcasts.id, recipient.broadcastId))
-            } else if (st.status === "read") {
+            } else if (isFirstRead) {
               await db
                 .update(whatsappBroadcasts)
                 .set({
                   readCount: sql`${whatsappBroadcasts.readCount} + 1`,
+                  ...(!recipient.deliveredAt
+                    ? {
+                        deliveredCount: sql`${whatsappBroadcasts.deliveredCount} + 1`,
+                      }
+                    : {}),
                   updatedAt: new Date(),
                 })
                 .where(eq(whatsappBroadcasts.id, recipient.broadcastId))
-            } else if (st.status === "failed") {
+            } else if (isFirstFailed) {
               await db
                 .update(whatsappBroadcasts)
                 .set({
@@ -273,17 +514,26 @@ export async function POST(request: Request): Promise<Response> {
           const contactDisplayName =
             contactProfile?.profile?.name || senderPhone
 
-          // 2. Extract message body & type
-          let bodyText: string = ""
+          // 2. Extract message body, media metadata, interactive payload, and reaction metadata
+          let bodyText = ""
           let msgType:
             | "text"
             | "image"
             | "document"
             | "audio"
             | "video"
+            | "sticker"
+            | "reaction"
             | "template"
             | "interactive" = "text"
           let mediaFilename: string | null = null
+          let rawMediaId: string | null = null
+          let mediaMimeType: string | null = null
+          let mediaSha256: string | null = null
+          let interactivePayload: Record<string, unknown> | null = null
+          let interactiveReplyId: string | null = null
+          let reactionEmoji: string | null = null
+          let reactedToWabaMessageId: string | null = null
 
           if (msg.type === "text" && msg.text) {
             bodyText = msg.text.body
@@ -292,25 +542,77 @@ export async function POST(request: Request): Promise<Response> {
             msgType = "interactive"
             if (msg.interactive.button_reply) {
               bodyText = msg.interactive.button_reply.title
+              interactiveReplyId = msg.interactive.button_reply.id
+              interactivePayload = {
+                type: "button_reply",
+                id: msg.interactive.button_reply.id,
+                title: msg.interactive.button_reply.title,
+              }
             } else if (msg.interactive.list_reply) {
               bodyText = msg.interactive.list_reply.title
+              interactiveReplyId = msg.interactive.list_reply.id
+              interactivePayload = {
+                type: "list_reply",
+                id: msg.interactive.list_reply.id,
+                title: msg.interactive.list_reply.title,
+                ...(msg.interactive.list_reply.description
+                  ? { description: msg.interactive.list_reply.description }
+                  : {}),
+              }
             }
           } else if (msg.type === "button" && msg.button) {
             msgType = "interactive"
             bodyText = msg.button.text
+            interactiveReplyId = msg.button.payload ?? msg.button.text
+            interactivePayload = {
+              type: "button_reply",
+              id: interactiveReplyId,
+              title: msg.button.text,
+            }
           } else if (msg.type === "image" && msg.image) {
             msgType = "image"
             bodyText = msg.image.caption || "[Image]"
+            rawMediaId = msg.image.id ?? null
+            mediaMimeType = msg.image.mime_type ?? "image/jpeg"
+            mediaSha256 = msg.image.sha256 ?? null
           } else if (msg.type === "document" && msg.document) {
             msgType = "document"
             bodyText = msg.document.caption || "[Document]"
             mediaFilename = msg.document.filename ?? null
+            rawMediaId = msg.document.id ?? null
+            mediaMimeType = msg.document.mime_type ?? "application/pdf"
+            mediaSha256 = msg.document.sha256 ?? null
+          } else if (msg.type === "audio" && msg.audio) {
+            msgType = "audio"
+            bodyText = "[Voice Note]"
+            rawMediaId = msg.audio.id ?? null
+            mediaMimeType = msg.audio.mime_type ?? "audio/ogg"
+            mediaSha256 = msg.audio.sha256 ?? null
           } else if (msg.type === "audio") {
             msgType = "audio"
             bodyText = "[Voice Note]"
+          } else if (msg.type === "video" && msg.video) {
+            msgType = "video"
+            bodyText = msg.video.caption || "[Video]"
+            rawMediaId = msg.video.id ?? null
+            mediaMimeType = msg.video.mime_type ?? "video/mp4"
+            mediaSha256 = msg.video.sha256 ?? null
           } else if (msg.type === "video") {
             msgType = "video"
             bodyText = "[Video]"
+          } else if (msg.type === "sticker" && msg.sticker) {
+            msgType = "sticker"
+            bodyText = "[Sticker]"
+            rawMediaId = msg.sticker.id ?? null
+            mediaMimeType = msg.sticker.mime_type ?? "image/webp"
+            mediaSha256 = msg.sticker.sha256 ?? null
+          } else if (msg.type === "reaction" && msg.reaction) {
+            msgType = "reaction"
+            reactionEmoji = msg.reaction.emoji ?? ""
+            reactedToWabaMessageId = msg.reaction.message_id
+            bodyText = reactionEmoji
+              ? `Reacted ${reactionEmoji}`
+              : "Removed reaction"
           } else {
             bodyText = `[${msg.type}]`
           }
@@ -318,16 +620,25 @@ export async function POST(request: Request): Promise<Response> {
           // 3. Auto-unlock 14-day outreach cooldown for prospect
           const cooldownResult = await unlockOutreachCooldownForPhone(senderPhone)
 
-          // 4. Extract and resolve ART-... package or quote reference codes
-          const detectedCodes = extractPostRefCodes(bodyText)
-          let detectedPostCode: string | null = null
+          // 4. Extract and resolve all ART-... package or quote reference codes
+          const combinedCodeSource = [bodyText, interactiveReplyId || ""]
+            .filter(Boolean)
+            .join(" ")
+          const detectedCodes = extractPostRefCodes(combinedCodeSource)
+          let detectedPostCode: string | null = detectedCodes[0] ?? null
           let linkedApplicationId: string | null = null
 
-          if (detectedCodes.length > 0) {
-            detectedPostCode = detectedCodes[0]
-            const resolved = await resolvePostRefCode(detectedPostCode)
-            if (resolved?.applicationId) {
+          for (const code of detectedCodes) {
+            const resolved = await resolvePostRefCode(code)
+            if (resolved?.applicationId && !linkedApplicationId) {
               linkedApplicationId = resolved.applicationId
+            }
+            if (
+              resolved &&
+              (resolved.type === "supplier_package" ||
+                resolved.type === "post_asset")
+            ) {
+              detectedPostCode = code
             }
           }
 
@@ -381,25 +692,112 @@ export async function POST(request: Request): Promise<Response> {
                 detectedPostCode,
                 applicationId: linkedApplicationId,
                 outreachContactId: cooldownResult.contactId,
+                intentCategory: "TRAVEL_LEAD",
+                intentConfidence: 100,
+                intentReason:
+                  "New inbound lead (pending asynchronous classification)",
               })
               .returning()
             conversation = created
           }
 
-          // 6. Log inbound message
-          await db.insert(whatsappMessages).values({
-            conversationId: conversation.id,
-            wamid,
-            direction: "inbound",
-            status: "delivered",
-            messageType: msgType,
-            body: bodyText,
-            mediaFilename,
-            contextMessageId: msg.context?.id ?? null,
-            rawPayload: msg as unknown as Record<string, unknown>,
-            sentAt: messageTimestamp,
-            deliveredAt: now,
-          })
+          // 5B. Founder-to-Dedicated-Agent Handoff:
+          // If the Founder's Coexistence number (+92 319 0462638) forwards a lead phone number
+          // to a Dedicated Agent line, automatically create the lead conversation on the Dedicated Agent line!
+          if (
+            account.accountRole === "DEDICATED_AGENT" &&
+            senderPhone.replace(/\D/g, "").endsWith("3190462638")
+          ) {
+            const forwardedLead = parseFounderForwardedLead(bodyText)
+            if (forwardedLead && forwardedLead.leadPhone !== senderPhone) {
+              const [existingForwardedConv] = await db
+                .select()
+                .from(whatsappConversations)
+                .where(
+                  and(
+                    eq(whatsappConversations.accountId, account.id),
+                    eq(whatsappConversations.contactPhone, forwardedLead.leadPhone)
+                  )
+                )
+                .limit(1)
+
+              if (!existingForwardedConv) {
+                await db.insert(whatsappConversations).values({
+                  accountId: account.id,
+                  contactPhone: forwardedLead.leadPhone,
+                  contactName: forwardedLead.leadName || forwardedLead.leadPhone,
+                  lastMessageAt: now,
+                  unreadCount: 1,
+                  intentCategory: "FOUNDER_HANDOFF",
+                  intentConfidence: 100,
+                  intentReason: `VIP Lead handed off by Founder: ${forwardedLead.inquirySummary}`,
+                })
+              }
+            }
+          }
+
+          // 6. If reaction targets an existing message, also stamp reactionEmoji on the target message
+          if (msgType === "reaction" && reactedToWabaMessageId) {
+            await db
+              .update(whatsappMessages)
+              .set({
+                reactionEmoji: reactionEmoji || null,
+              })
+              .where(eq(whatsappMessages.wamid, reactedToWabaMessageId))
+          }
+
+          // 7. Log inbound message
+          const [insertedMsg] = await db
+            .insert(whatsappMessages)
+            .values({
+              conversationId: conversation.id,
+              wamid,
+              direction: "inbound",
+              status: "delivered",
+              messageType: msgType,
+              body: bodyText,
+              rawMediaId,
+              mediaType: mediaMimeType,
+              mediaMimeType,
+              mediaSha256,
+              mediaFilename,
+              contextMessageId:
+                msg.context?.id ?? reactedToWabaMessageId ?? null,
+              interactivePayload,
+              reactionEmoji,
+              reactedToWabaMessageId,
+              rawPayload: msg as unknown as Record<string, unknown>,
+              sentAt: messageTimestamp,
+              deliveredAt: now,
+            })
+            .returning()
+
+          // 8. Decoupled Durable Trigger.dev v4 Processing:
+          // Delegate media mirroring, AI intent classification, read receipt blue-ticks,
+          // and 3-priority auto-responder matching to durable task (<150ms webhook response)
+          try {
+            await dispatchInboundWhatsAppProcessing({
+              messageId: insertedMsg.id,
+              accountId: account.id,
+              conversationId: conversation.id,
+              senderPhone,
+              contactDisplayName,
+              wamid,
+              bodyText,
+              msgType,
+              rawMediaId,
+              mediaMimeType,
+              interactiveReplyId,
+              detectedPostCode,
+              linkedApplicationId,
+              outreachContactId: cooldownResult.contactId,
+            })
+          } catch (dispatchErr) {
+            console.warn(
+              "[whatsapp-webhook] Async inbound processing dispatch warning:",
+              dispatchErr
+            )
+          }
         }
       }
     }
@@ -407,3 +805,4 @@ export async function POST(request: Request): Promise<Response> {
 
   return Response.json({ status: "ok" }, { status: 200 })
 }
+

@@ -32,6 +32,30 @@ const serverActionOrigins = [
 const configuredRemotePatterns = [
   {
     protocol: "https" as const,
+    hostname: "**",
+  },
+  {
+    protocol: "https" as const,
+    hostname: "r2.alramlahtravels.com",
+  },
+  {
+    protocol: "https" as const,
+    hostname: "**.r2.dev",
+  },
+  {
+    protocol: "https" as const,
+    hostname: "pub-7f2c533d31cc45bb9eb2669af5a3b5ef.r2.dev",
+  },
+  {
+    protocol: "https" as const,
+    hostname: "**.cloudflarestorage.com",
+  },
+  {
+    protocol: "https" as const,
+    hostname: "**.r2.cloudflarestorage.com",
+  },
+  {
+    protocol: "https" as const,
     hostname: "images.unsplash.com",
   },
   {
@@ -49,18 +73,6 @@ const configuredRemotePatterns = [
   {
     protocol: "https" as const,
     hostname: "avatars.githubusercontent.com",
-  },
-  {
-    protocol: "https" as const,
-    hostname: "**.r2.dev",
-  },
-  {
-    protocol: "https" as const,
-    hostname: "pub-7f2c533d31cc45bb9eb2669af5a3b5ef.r2.dev",
-  },
-  {
-    protocol: "https" as const,
-    hostname: "**.r2.cloudflarestorage.com",
   },
   ...(r2PublicHost
     ? [
@@ -84,6 +96,7 @@ const remotePatterns = Array.from(
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  serverExternalPackages: ["@whiskeysockets/baileys", "pino", "sharp"],
   allowedDevOrigins: [
     "*.ngrok-free.app",
     "*.ngrok-free.dev",

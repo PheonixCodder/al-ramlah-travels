@@ -12,6 +12,9 @@ import {
   Lock,
   Sparkles,
   ArrowDownToLine,
+  Bot,
+  FileText,
+  X,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -21,7 +24,19 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { saveApplicationQuote, updateApplicationStatus } from "@/app/actions/quotes"
+import {
+  saveApplicationQuote,
+  updateApplicationStatus,
+  startApplicationLuxuryPdfRunAction,
+} from "@/app/actions/quotes"
+import {
+  generateApplicationQuoteCopilotDraftAction,
+  startApplicationCopilotRunAction,
+  type GenerateApplicationQuoteCopilotActionResult,
+} from "@/app/actions/quoting-copilot"
+import { listActiveRunsByTagsAction } from "@/app/actions/trigger-realtime"
+import { CopilotRealtimeRunBanner } from "@/components/admin/desk/copilot-realtime-run-banner"
+import type { ApplicationQuoteCopilotResult } from "@/lib/ai/quoting-copilot"
 import { QuoteDispatchBar } from "./quote-dispatch-bar"
 import type { ApplicationRateHintsResult } from "@/lib/domain/quote-hints"
 
@@ -147,6 +162,154 @@ export function QuoteWorksheetForm({
     type: "success" | "error"
     message: string
   } | null>(null)
+
+  // AI Copilot state (Human-in-the-Loop) & Trigger.dev Realtime
+  const [isGeneratingCopilot, setIsGeneratingCopilot] = React.useState(false)
+  const [copilotDraft, setCopilotDraft] =
+    React.useState<ApplicationQuoteCopilotResult | null>(null)
+  const [copilotMeta, setCopilotMeta] = React.useState<{
+    modelUsed: string
+    executionMode: "ai_provider" | "deterministic_fallback"
+  } | null>(null)
+  const [copilotRun, setCopilotRun] = React.useState<{
+    runId: string
+    publicAccessToken?: string
+    mode: "cloud" | "inline"
+  } | null>(null)
+
+  // 3-Page Luxury PDF State
+  const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false)
+  const [pdfRun, setPdfRun] = React.useState<{
+    runId: string
+    publicAccessToken?: string
+    mode: "cloud" | "inline"
+  } | null>(null)
+
+  // Active run rehydration on mount / reload
+  React.useEffect(() => {
+    listActiveRunsByTagsAction([
+      `copilot:app:${application.id}`,
+      `quotation-pdf:${application.referenceNumber}`,
+    ])
+      .then((res) => {
+        if (res.success && res.activeRuns.length > 0) {
+          for (const run of res.activeRuns) {
+            if (run.tags.some((t) => t.startsWith("copilot:app:"))) {
+              setCopilotRun({
+                runId: run.runId,
+                publicAccessToken: res.publicAccessToken,
+                mode: res.mode === "cloud" ? "cloud" : "inline",
+              })
+              setIsGeneratingCopilot(true)
+            } else if (run.tags.some((t) => t.startsWith("quotation-pdf:"))) {
+              setPdfRun({
+                runId: run.runId,
+                publicAccessToken: res.publicAccessToken,
+                mode: res.mode === "cloud" ? "cloud" : "inline",
+              })
+              setIsGeneratingPdf(true)
+            }
+          }
+        }
+      })
+      .catch(() => null)
+  }, [application.id, application.referenceNumber])
+
+  const handleRunAiCopilot = async () => {
+    setIsGeneratingCopilot(true)
+    setFeedback(null)
+    try {
+      const res = await startApplicationCopilotRunAction({
+        applicationId: application.id,
+      })
+
+      if (!res.success) {
+        setFeedback({
+          type: "error",
+          message: res.error || "Failed to generate AI Copilot quote draft.",
+        })
+        setIsGeneratingCopilot(false)
+      } else if (res.mode === "cloud" && res.runId) {
+        setCopilotRun({
+          runId: res.runId,
+          publicAccessToken: res.publicAccessToken,
+          mode: "cloud",
+        })
+      } else if (res.inlineOutput && res.inlineOutput.success) {
+        setCopilotDraft(res.inlineOutput.draft)
+        setCopilotMeta({
+          modelUsed: res.inlineOutput.modelUsed,
+          executionMode: res.inlineOutput.executionMode,
+        })
+        setIsGeneratingCopilot(false)
+      } else {
+        setIsGeneratingCopilot(false)
+      }
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : "Failed to run AI Quoting Copilot"
+      setFeedback({ type: "error", message: msg })
+      setIsGeneratingCopilot(false)
+    }
+  }
+
+  const handleGenerateLuxuryPdf = async () => {
+    setIsGeneratingPdf(true)
+    setFeedback(null)
+    try {
+      const res = await startApplicationLuxuryPdfRunAction(application.id)
+      if (!res.success) {
+        setFeedback({
+          type: "error",
+          message: res.error || "Failed to initiate luxury PDF render.",
+        })
+        setIsGeneratingPdf(false)
+      } else if (res.mode === "cloud" && res.runId) {
+        setPdfRun({
+          runId: res.runId,
+          publicAccessToken: res.publicAccessToken,
+          mode: "cloud",
+        })
+      } else {
+        setFeedback({
+          type: "success",
+          message: "3-Page Luxury Quotation PDF generated successfully!",
+        })
+        setIsGeneratingPdf(false)
+      }
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to render 3-Page Luxury PDF",
+      })
+      setIsGeneratingPdf(false)
+    }
+  }
+
+  const handleApplyCopilotToWorksheet = () => {
+    if (!copilotDraft) return
+    const ws = copilotDraft.suggestedQuoteWorksheet
+
+    setVisaTotal(ws.visaTotalPkr)
+    setFlightsTotal(ws.flightsTotalPkr)
+    setMakkahHotelTotal(ws.makkahHotelTotalPkr)
+    setMadinahHotelTotal(ws.madinahHotelTotalPkr)
+    setTransportTotal(ws.transportTotalPkr)
+    setZiyaratTotal(ws.ziyaratTotalPkr)
+    setDiscount(ws.discountPkr)
+    setCommissionPkr(ws.commissionPkr)
+    setSupplierNetCostPkr(ws.supplierNetCostPkr)
+    setCustomerNotes(ws.quoteNotesCustomer)
+    setInternalNotes(ws.internalNotesAdmin)
+
+    setFeedback({
+      type: "success",
+      message: `AI Copilot breakdown (PKR ${ws.grandTotalPkr.toLocaleString()}) & executive notes applied to worksheet fields. Review and click "Save Draft Quote" or "Save & Mark Quoted" to commit.`,
+    })
+  }
 
   // Real-time grand total arithmetic
   const subtotalPkr =
@@ -318,23 +481,222 @@ export function QuoteWorksheetForm({
 
       <Card className="border-border bg-card shadow-md">
         <CardHeader className="bg-secondary/40 pb-3 border-b border-border">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Calculator className="size-4 text-primary" />
               <CardTitle className="font-display text-base font-bold text-foreground">
                 Live Quoting Worksheet
               </CardTitle>
             </div>
-            <Badge
-              variant="outline"
-              className="border-primary/20 bg-primary/10 text-[11px] font-mono text-primary font-bold"
-            >
-              PKR Single-Currency
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={handleGenerateLuxuryPdf}
+                disabled={isGeneratingPdf || isSubmitting}
+                className="border-[#C5A059]/70 text-[#0A3622] hover:bg-[#C5A059]/10 text-[11px] font-semibold gap-1.5 shadow-2xs"
+              >
+                {isGeneratingPdf ? (
+                  <Loader2 className="size-3 animate-spin text-[#C5A059]" />
+                ) : (
+                  <FileText className="size-3 text-[#C5A059]" />
+                )}
+                <span>Generate 3-Page Luxury PDF</span>
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                onClick={handleRunAiCopilot}
+                disabled={isGeneratingCopilot || isSubmitting}
+                className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 border border-[#C5A059]/60 text-[11px] font-semibold gap-1.5 shadow-2xs"
+              >
+                {isGeneratingCopilot ? (
+                  <Loader2 className="size-3 animate-spin text-[#C5A059]" />
+                ) : (
+                  <Sparkles className="size-3 text-[#C5A059]" />
+                )}
+                <span>AI Copilot Pre-Fill &amp; Summary</span>
+              </Button>
+              <Badge
+                variant="outline"
+                className="border-primary/20 bg-primary/10 text-[11px] font-mono text-primary font-bold"
+              >
+                PKR Single-Currency
+              </Badge>
+            </div>
           </div>
           <CardDescription className="text-xs text-muted-foreground">
-            Configure itemized tariffs for volatile services & calculate verified totals.
+            Configure itemized tariffs for volatile services &amp; calculate verified totals.
           </CardDescription>
+
+          {copilotRun && (
+            <div className="mt-3">
+              <CopilotRealtimeRunBanner
+                runId={copilotRun.runId}
+                publicAccessToken={copilotRun.publicAccessToken}
+                mode={copilotRun.mode}
+                title="AI Quoting Copilot Telemetry"
+                onComplete={async (output) => {
+                  setIsGeneratingCopilot(false)
+                  if (output?.draft) {
+                    setCopilotDraft(output.draft)
+                    setCopilotMeta({
+                      modelUsed: output.modelUsed || "Trigger.dev Worker",
+                      executionMode: output.executionMode || "ai_provider",
+                    })
+                  } else {
+                    const res =
+                      await generateApplicationQuoteCopilotDraftAction({
+                        applicationId: application.id,
+                      })
+                    if (res.success) {
+                      setCopilotDraft(res.draft)
+                      setCopilotMeta({
+                        modelUsed: res.modelUsed,
+                        executionMode: res.executionMode,
+                      })
+                    }
+                  }
+                }}
+                onDismiss={() => {
+                  setCopilotRun(null)
+                  setIsGeneratingCopilot(false)
+                }}
+              />
+            </div>
+          )}
+
+          {pdfRun && (
+            <div className="mt-3">
+              <CopilotRealtimeRunBanner
+                runId={pdfRun.runId}
+                publicAccessToken={pdfRun.publicAccessToken}
+                mode={pdfRun.mode}
+                title="Gotenberg 3-Page Luxury Quotation PDF"
+                onComplete={() => {
+                  setIsGeneratingPdf(false)
+                  setFeedback({
+                    type: "success",
+                    message:
+                      "3-Page Luxury Quotation PDF generated successfully!",
+                  })
+                }}
+                onDismiss={() => {
+                  setPdfRun(null)
+                  setIsGeneratingPdf(false)
+                }}
+              />
+            </div>
+          )}
+
+          {/* AI Quoting Copilot Review Banner (Human-in-the-Loop) */}
+          {copilotDraft && (
+            <div className="mt-3 rounded-xl border border-[#C5A059]/60 bg-[#0A3622]/5 p-3 text-xs space-y-2.5 animate-in fade-in-50 duration-150">
+              <div className="flex items-center justify-between border-b border-[#C5A059]/30 pb-2">
+                <div className="flex items-center gap-1.5">
+                  <Bot className="size-4 text-primary" />
+                  <span className="font-display font-bold text-foreground">
+                    AI Quoting Copilot Recommendation
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="border-amber-400 bg-amber-100 text-amber-950 text-[10px] font-mono"
+                  >
+                    HITL Review Required
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {copilotMeta && (
+                    <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                      {copilotMeta.modelUsed}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setCopilotDraft(null)}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Dismiss AI Copilot suggestion"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-xs text-foreground/90 leading-relaxed">
+                {copilotDraft.executiveSummary}
+              </p>
+
+              {/* Itemized PKR Breakdown Preview */}
+              <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-border bg-card p-2 font-mono text-[11px] sm:grid-cols-3">
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Visa</span>
+                  <span className="font-bold">
+                    PKR {copilotDraft.suggestedQuoteWorksheet.visaTotalPkr.toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Flights</span>
+                  <span className="font-bold">
+                    PKR {copilotDraft.suggestedQuoteWorksheet.flightsTotalPkr.toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Makkah Hotel</span>
+                  <span className="font-bold">
+                    PKR {copilotDraft.suggestedQuoteWorksheet.makkahHotelTotalPkr.toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Madinah Hotel</span>
+                  <span className="font-bold">
+                    PKR {copilotDraft.suggestedQuoteWorksheet.madinahHotelTotalPkr.toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Transport &amp; Ziyarat</span>
+                  <span className="font-bold">
+                    PKR{" "}
+                    {(
+                      copilotDraft.suggestedQuoteWorksheet.transportTotalPkr +
+                      copilotDraft.suggestedQuoteWorksheet.ziyaratTotalPkr
+                    ).toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Suggested Total</span>
+                  <span className="font-bold text-primary">
+                    PKR {copilotDraft.suggestedQuoteWorksheet.grandTotalPkr.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              {/* Recommended Pricing Bullets */}
+              {copilotDraft.recommendedPricingBullets.length > 0 && (
+                <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-muted-foreground">
+                  {copilotDraft.recommendedPricingBullets.map((b, idx) => (
+                    <li key={idx}>{b}</li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <span className="text-[10px] text-muted-foreground">
+                  Exchange Rate: 1 SAR = {copilotDraft.suggestedQuoteWorksheet.sarToPkrRate} PKR · Margin: PKR{" "}
+                  {copilotDraft.suggestedQuoteWorksheet.commissionPkr.toLocaleString()}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleApplyCopilotToWorksheet}
+                  className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 text-xs font-bold gap-1.5"
+                >
+                  <ArrowDownToLine className="size-3.5 text-[#C5A059]" />
+                  <span>Apply to Worksheet Fields</span>
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Prominent Auto-Fill Catalog Suggested Rates Button */}
           {rateHints && rateHints.estimatedGrandTotalPkr > 0 && (

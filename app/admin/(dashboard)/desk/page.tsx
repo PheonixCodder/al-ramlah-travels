@@ -12,6 +12,7 @@ import {
   type WhatsAppQuickReplyRecord,
   type FlyerPackageRecord,
 } from "@/components/admin/hubs/desk-hub-client"
+import type { AutoReplyRuleItem } from "@/components/admin/desk/whatsapp-auto-reply-studio"
 import type { ContactMessageData } from "@/components/admin/catalog/messages-client"
 
 export const metadata = {
@@ -107,11 +108,12 @@ export default async function AdminDeskPage({
     console.warn("[desk-page] Applications query fallback:", err)
   }
 
-  // 2. Fetch WhatsApp Accounts, Conversations, Messages, Templates, and Quick Replies
+  // 2. Fetch WhatsApp Accounts, Conversations, Messages, Templates, Quick Replies, and Auto-Reply Rules
   let whatsappAccounts: WhatsAppAccountRecord[] = []
   let whatsappConversations: WhatsAppConversationRecord[] = []
   let whatsappTemplates: WhatsAppTemplateRecord[] = []
   let whatsappQuickReplies: WhatsAppQuickReplyRecord[] = []
+  let whatsappAutoReplyRules: AutoReplyRuleItem[] = []
 
   try {
     const [rawAccounts, rawConversations, rawTemplates, rawQuickReplies] =
@@ -126,11 +128,46 @@ export default async function AdminDeskPage({
             verifiedName: schema.whatsappAccounts.verifiedName,
             qualityRating: schema.whatsappAccounts.qualityRating,
             messagingLimit: schema.whatsappAccounts.messagingLimit,
+            accountRole: schema.whatsappAccounts.accountRole,
+            isOnBizApp: schema.whatsappAccounts.isOnBizApp,
+            platformType: schema.whatsappAccounts.platformType,
+            intentFilterEnabled: schema.whatsappAccounts.intentFilterEnabled,
             isActive: schema.whatsappAccounts.isActive,
             isDefault: schema.whatsappAccounts.isDefault,
+            autoReplyEnabled: schema.whatsappAccounts.autoReplyEnabled,
+            autoReplyCooldownMinutes:
+              schema.whatsappAccounts.autoReplyCooldownMinutes,
+            welcomeGreetingEnabled:
+              schema.whatsappAccounts.welcomeGreetingEnabled,
+            welcomeGreetingText: schema.whatsappAccounts.welcomeGreetingText,
+            awayGreetingEnabled: schema.whatsappAccounts.awayGreetingEnabled,
+            awayGreetingText: schema.whatsappAccounts.awayGreetingText,
+            businessHoursStart: schema.whatsappAccounts.businessHoursStart,
+            businessHoursEnd: schema.whatsappAccounts.businessHoursEnd,
           })
           .from(schema.whatsappAccounts)
-          .where(eq(schema.whatsappAccounts.isActive, true)),
+          .where(eq(schema.whatsappAccounts.isActive, true))
+          .catch(() =>
+            db
+              .select({
+                id: schema.whatsappAccounts.id,
+                name: schema.whatsappAccounts.name,
+                phoneNumberId: schema.whatsappAccounts.phoneNumberId,
+                wabaId: schema.whatsappAccounts.wabaId,
+                displayPhoneNumber:
+                  schema.whatsappAccounts.displayPhoneNumber,
+                verifiedName: schema.whatsappAccounts.verifiedName,
+                qualityRating: schema.whatsappAccounts.qualityRating,
+                messagingLimit: schema.whatsappAccounts.messagingLimit,
+                isActive: schema.whatsappAccounts.isActive,
+                isDefault: schema.whatsappAccounts.isDefault,
+                autoReplyEnabled: schema.whatsappAccounts.autoReplyEnabled,
+                autoReplyCooldownMinutes:
+                  schema.whatsappAccounts.autoReplyCooldownMinutes,
+              })
+              .from(schema.whatsappAccounts)
+              .where(eq(schema.whatsappAccounts.isActive, true))
+          ),
 
         db.query.whatsappConversations.findMany({
           orderBy: [
@@ -143,6 +180,13 @@ export default async function AdminDeskPage({
                 id: true,
                 name: true,
                 displayPhoneNumber: true,
+                phoneNumberId: true,
+                platformType: true,
+                accountRole: true,
+                isOnBizApp: true,
+                intentFilterEnabled: true,
+                autoReplyEnabled: true,
+                autoReplyCooldownMinutes: true,
               },
             },
             application: {
@@ -204,6 +248,20 @@ export default async function AdminDeskPage({
     whatsappQuickReplies = rawQuickReplies
   } catch (err) {
     console.warn("[desk-page] WhatsApp CRM tables query fallback:", err)
+  }
+
+  // 2B. Fetch Keyword Auto-Reply Rules (Slice 36) with graceful fallback
+  try {
+    const rawRules = await db
+      .select()
+      .from(schema.whatsappAutoReplyRules)
+      .orderBy(
+        desc(schema.whatsappAutoReplyRules.priority),
+        desc(schema.whatsappAutoReplyRules.createdAt)
+      )
+    whatsappAutoReplyRules = rawRules as unknown as AutoReplyRuleItem[]
+  } catch (err) {
+    console.warn("[desk-page] WhatsApp auto-reply rules query fallback:", err)
   }
 
   // 3. Fetch Supplier Flyer Packages for Detected Post Code Preview
@@ -281,6 +339,7 @@ export default async function AdminDeskPage({
       whatsappConversations={whatsappConversations}
       whatsappTemplates={whatsappTemplates}
       whatsappQuickReplies={whatsappQuickReplies}
+      whatsappAutoReplyRules={whatsappAutoReplyRules}
       flyerPackages={flyerPackages}
       contactMessages={contactMessagesList}
     />

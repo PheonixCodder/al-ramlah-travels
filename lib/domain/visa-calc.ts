@@ -1,6 +1,12 @@
 export interface VisaRateTiers {
   shortTermPricePkr: number
   longTermPricePkr: number
+  longTermPriceSar?: number
+  withoutMasarPriceSar?: number
+  withMasar10DaysSar?: number
+  withMasar15DaysSar?: number
+  withMasar21DaysSar?: number
+  withMasar28DaysSar?: number
 }
 
 export interface VisaCalculationOptions {
@@ -49,22 +55,24 @@ export function calculateVisaTierAndCost(
   let pricePerPassportPkr: number
 
   if (tier === "long_term") {
-    pricePerPassportSar = 750
+    pricePerPassportSar = rates.longTermPriceSar ?? 750
     bracketLabel = "Extended >30 Days"
-    pricePerPassportPkr = rates.longTermPricePkr
+    pricePerPassportPkr = options?.sarToPkrRate
+      ? pricePerPassportSar * options.sarToPkrRate
+      : rates.longTermPricePkr
   } else if (options?.withMasar) {
     if (diffDays <= 10) {
-      pricePerPassportSar = 500
-      bracketLabel = "With Masar ≤10 Days (500 SAR)"
+      pricePerPassportSar = rates.withMasar10DaysSar ?? 500
+      bracketLabel = `With Masar ≤10 Days (${pricePerPassportSar} SAR)`
     } else if (diffDays <= 15) {
-      pricePerPassportSar = 515
-      bracketLabel = "With Masar ≤15 Days (515 SAR)"
+      pricePerPassportSar = rates.withMasar15DaysSar ?? 515
+      bracketLabel = `With Masar ≤15 Days (${pricePerPassportSar} SAR)`
     } else if (diffDays <= 21) {
-      pricePerPassportSar = 530
-      bracketLabel = "With Masar ≤21 Days (530 SAR)"
+      pricePerPassportSar = rates.withMasar21DaysSar ?? 530
+      bracketLabel = `With Masar ≤21 Days (${pricePerPassportSar} SAR)`
     } else {
-      pricePerPassportSar = 545
-      bracketLabel = "With Masar ≤30 Days (545 SAR)"
+      pricePerPassportSar = rates.withMasar28DaysSar ?? 545
+      bracketLabel = `With Masar ≤30 Days (${pricePerPassportSar} SAR)`
     }
 
     if (options.sarToPkrRate) {
@@ -73,8 +81,8 @@ export function calculateVisaTierAndCost(
       pricePerPassportPkr = rates.shortTermPricePkr
     }
   } else {
-    pricePerPassportSar = 470
-    bracketLabel = "Without Masar (470 SAR)"
+    pricePerPassportSar = rates.withoutMasarPriceSar ?? 470
+    bracketLabel = `Without Masar (${pricePerPassportSar} SAR)`
     pricePerPassportPkr = rates.shortTermPricePkr
   }
 

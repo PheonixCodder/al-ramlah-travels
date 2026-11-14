@@ -18,7 +18,7 @@ export async function GET(
   try {
     session = await requireAdmin()
   } catch {
-    const loginUrl = new URL("/login?error=admin_required", request.url)
+    const loginUrl = new URL("/admin/login?error=admin_required", request.url)
     return NextResponse.redirect(loginUrl)
   }
 

@@ -1,7 +1,9 @@
 import { env } from "@/lib/env"
 import type {
+  SocialAccountCandidate,
   SocialOAuthAuthUrlResult,
   SocialOAuthTokenResult,
+  SocialPostAnalyticsSnapshot,
   SocialPostPayload,
   SocialProviderAdapter,
   SocialPublishResult,
@@ -38,6 +40,10 @@ interface GmbLocationsResponse {
   locations?: Array<{
     name: string // locations/{locationId}
     title?: string
+    storefrontAddress?: {
+      locality?: string
+      addressLines?: string[]
+    }
   }>
   error?: {
     code?: number
@@ -114,6 +120,7 @@ export const gmbProvider: SocialProviderAdapter = {
     }
 
     const accessToken = tokenData.access_token
+    const expiresIn = tokenData.expires_in ?? 3600
 
     // 1. Fetch Google Business accounts
     const accountsRes = await fetch(
@@ -133,14 +140,72 @@ export const gmbProvider: SocialProviderAdapter = {
         errMsg.toLowerCase().includes("not enabled") ||
         errMsg.toLowerCase().includes("has not used")
 
-      const hint = isQuotaOrDisabled
-        ? " Ensure Google Business Profile API (My Business Account Management API) is enabled and quota is available in Google Cloud Console."
-        : ""
+      if (isQuotaOrDisabled) {
+        // Google sets newly enabled GBP APIs to 0 QPM until GBP quota form approval.
+        // Fall back to Google userinfo so the user's OAuth tokens & refresh token are saved!
+        let userEmail = "Google Business Manager"
+        let userName = "Al Ramlah Travels — Google Business Profile"
+        let userPicture: string | undefined
+        let userSub = "gmb_pending_quota"
+
+        try {
+          const profileRes = await fetch(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            }
+          )
+          if (profileRes.ok) {
+            const profile = (await profileRes.json()) as {
+              id?: string
+              email?: string
+              name?: string
+              picture?: string
+            }
+            if (profile.id) userSub = `accounts/${profile.id}/locations/primary`
+            if (profile.email) userEmail = profile.email
+            if (profile.name)
+              userName = `${profile.name} (Google Business Profile)`
+            if (profile.picture) userPicture = profile.picture
+          }
+        } catch {
+          // ignore userinfo error
+        }
+
+        const fallbackCandidate: SocialAccountCandidate = {
+          internalAccountId: userSub,
+          name: userName,
+          handle: `${userEmail} · GBP Quota Pending`,
+          avatarUrl: userPicture,
+          accessToken,
+          refreshToken: tokenData.refresh_token,
+          expiresIn,
+          scopes: GMB_SCOPES,
+          metadata: {
+            quotaPending: true,
+            quotaNotice:
+              "Google Business Profile OAuth connected! Note: Google Cloud defaults new GBP API projects to 0 QPM until approved via https://support.google.com/business/contact/api_default",
+            rawGoogleMessage: errMsg,
+          },
+        }
+
+        return {
+          internalAccountId: fallbackCandidate.internalAccountId,
+          name: fallbackCandidate.name,
+          handle: fallbackCandidate.handle,
+          avatarUrl: fallbackCandidate.avatarUrl,
+          accessToken,
+          refreshToken: tokenData.refresh_token,
+          expiresIn,
+          scopes: GMB_SCOPES,
+          metadata: fallbackCandidate.metadata,
+          candidates: [fallbackCandidate],
+        }
+      }
 
       throw new Error(
-        errMsg
-          ? `${errMsg}${hint}`
-          : `Google Business Profile API request failed (HTTP ${accountsRes.status}).${hint}`
+        errMsg ||
+          `Google Business Profile API request failed (HTTP ${accountsRes.status}).`
       )
     }
 
@@ -150,51 +215,75 @@ export const gmbProvider: SocialProviderAdapter = {
       )
     }
 
-    const firstAccount = accountsData.accounts[0]
-    const accountName = firstAccount.name // "accounts/{accountId}"
+    // 2. Fetch business locations across all accounts
+    const candidates: SocialAccountCandidate[] = []
+    let lastLocationError: string | undefined
 
-    // 2. Fetch business locations for this account
-    const locRes = await fetch(
-      `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title,storefrontAddress`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    )
-    const locData = (await locRes.json()) as GmbLocationsResponse
+    for (const acc of accountsData.accounts) {
+      const accountName = acc.name // "accounts/{accountId}"
+      const locRes = await fetch(
+        `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title,storefrontAddress`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      )
+      const locData = (await locRes.json()) as GmbLocationsResponse
 
-    if (!locRes.ok || locData.error) {
-      throw new Error(
-        locData.error?.message ||
+      if (!locRes.ok || locData.error) {
+        lastLocationError =
+          locData.error?.message ||
           `Google Business Profile location request failed (HTTP ${locRes.status}). Ensure My Business Business Information API is enabled in Google Cloud Console.`
-      )
+        continue
+      }
+
+      for (const loc of locData.locations || []) {
+        const locationId = loc.name.replace("locations/", "")
+        const fullResourceName = `${accountName}/locations/${locationId}`
+        const locationTitle =
+          loc.title || acc.accountName || "Al Ramlah Travels Google Profile"
+        const locality = loc.storefrontAddress?.locality
+
+        candidates.push({
+          internalAccountId: fullResourceName,
+          name: locationTitle,
+          handle: locality || acc.accountName || fullResourceName,
+          accessToken,
+          refreshToken: tokenData.refresh_token,
+          expiresIn,
+          scopes: GMB_SCOPES,
+          metadata: {
+            accountName,
+            accountDisplayName: acc.accountName,
+            locationName: loc.name,
+            locationTitle,
+            locality,
+            fullResourceName,
+          },
+        })
+      }
     }
 
-    const location = locData.locations?.[0]
-
-    if (!location) {
+    if (candidates.length === 0) {
+      if (lastLocationError) {
+        throw new Error(lastLocationError)
+      }
       throw new Error(
-        `No verified business locations found under account ${accountName}. Please verify a location in Google Business Profile first.`
+        `No verified business locations found under your Google Business Profile accounts. Please verify a location in Google Business Profile first.`
       )
     }
 
-    // Full v4 resource name: accounts/{accountId}/locations/{locationId}
-    const locationId = location.name.replace("locations/", "")
-    const fullResourceName = `${accountName}/locations/${locationId}`
-    const locationTitle = location.title || "Al Ramlah Travels Google Profile"
+    const primary = candidates[0]
 
     return {
-      internalAccountId: fullResourceName,
-      name: locationTitle,
-      accessToken,
-      refreshToken: tokenData.refresh_token,
-      expiresIn: tokenData.expires_in ?? 3600,
+      internalAccountId: primary.internalAccountId,
+      name: primary.name,
+      handle: primary.handle,
+      accessToken: primary.accessToken,
+      refreshToken: primary.refreshToken,
+      expiresIn: primary.expiresIn,
       scopes: GMB_SCOPES,
-      metadata: {
-        accountName,
-        locationName: location.name,
-        locationTitle,
-        fullResourceName,
-      },
+      metadata: primary.metadata,
+      candidates,
     }
   },
 
@@ -219,10 +308,9 @@ export const gmbProvider: SocialProviderAdapter = {
     const tokenData = (await tokenRes.json()) as GoogleTokenResponse
 
     if (!tokenRes.ok || tokenData.error || !tokenData.access_token) {
+      const codePart = tokenData.error ? ` (${tokenData.error})` : ""
       throw new Error(
-        tokenData.error_description ||
-          tokenData.error ||
-          "Failed to refresh Google Business Profile access token"
+        `${tokenData.error_description || tokenData.error || "Failed to refresh Google Business Profile access token"}${codePart}`
       )
     }
 
@@ -341,6 +429,73 @@ export const gmbProvider: SocialProviderAdapter = {
       externalPostId: postId,
       publishedUrl,
       rawResponse: data,
+    }
+  },
+
+  async fetchPostAnalytics(params: {
+    accessToken: string
+    externalPostId: string
+    accountId?: string
+    metadata?: Record<string, unknown>
+  }): Promise<SocialPostAnalyticsSnapshot> {
+    const { accessToken, externalPostId, accountId } = params
+    const locationPath =
+      accountId || externalPostId.replace(/\/localPosts\/[^/]+$/, "")
+
+    const res = await fetch(
+      `https://mybusiness.googleapis.com/v4/${locationPath}/localPosts:reportInsights`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          localPostNames: [externalPostId],
+          basicRequest: {
+            metricRequests: [
+              { metric: "LOCAL_POST_VIEWS_SEARCH" },
+              { metric: "LOCAL_POST_ACTIONS_CALL_TO_ACTION" },
+            ],
+          },
+        }),
+      }
+    )
+
+    if (!res.ok) {
+      throw new Error(
+        `Google Business localPost insights failed (${res.status})`
+      )
+    }
+
+    const data = (await res.json()) as {
+      localPostMetrics?: Array<{
+        metricValues?: Array<{
+          metric?: string
+          totalValue?: { value?: string }
+        }>
+      }>
+    }
+
+    let impressions = 0
+    let clicks = 0
+
+    for (const mv of data.localPostMetrics?.[0]?.metricValues || []) {
+      const val = Number(mv.totalValue?.value ?? 0)
+      if (mv.metric === "LOCAL_POST_VIEWS_SEARCH") {
+        impressions = val
+      } else if (mv.metric === "LOCAL_POST_ACTIONS_CALL_TO_ACTION") {
+        clicks = val
+      }
+    }
+
+    return {
+      impressions,
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      clicks,
+      lastSyncedAt: new Date().toISOString(),
     }
   },
 }

@@ -228,7 +228,8 @@ export default async function ApplicationVoucherPage({
                     {groupPkg?.airline?.name || application.preferredAirline?.name || "Group Charter Carrier"}
                   </td>
                   <td className="py-2 px-3">
-                    {groupDep?.departureCity?.cityName || application.departureCity?.cityName || "Origin"} → Jeddah (JED)
+                    {groupDep?.departureCity?.cityName || application.departureCity?.cityName || "Origin"} →{" "}
+                    {application.entryAirport === "MED" ? "Madinah (MED)" : "Jeddah (JED)"}
                   </td>
                   <td className="py-2 px-3 font-mono">
                     {groupDep?.baggageAllowance || "23-KG Checked"}
@@ -243,7 +244,12 @@ export default async function ApplicationVoucherPage({
                     {groupPkg?.airline?.name || application.preferredAirline?.name || "Group Charter Carrier"}
                   </td>
                   <td className="py-2 px-3">
-                    Madinah (MED) / Jeddah (JED) → {groupDep?.departureCity?.cityName || application.departureCity?.cityName || "Origin"}
+                    {application.exitAirport === "JED"
+                      ? "Jeddah (JED)"
+                      : application.exitAirport === "MED"
+                        ? "Madinah (MED)"
+                        : "Madinah (MED) / Jeddah (JED)"}{" "}
+                    → {groupDep?.departureCity?.cityName || application.departureCity?.cityName || "Origin"}
                   </td>
                   <td className="py-2 px-3 font-mono">
                     {groupDep?.baggageAllowance || "46-KG Checked"}

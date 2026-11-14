@@ -344,6 +344,7 @@ export const marketingChannels = pgTable(
     index("idx_channel_platform").on(table.platform),
     index("idx_channel_area").on(table.areaTag),
     index("idx_channel_active").on(table.isActive),
+    uniqueIndex("idx_channel_external_id").on(table.externalGroupIdOrHandle),
   ]
 )
 

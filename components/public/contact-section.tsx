@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   ShieldCheck,
 } from "lucide-react"
+import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
 
 export interface AgencyContactInfo {
   agencyName: string
@@ -31,22 +32,12 @@ export interface AgencyContactInfo {
   mapsEmbedUrl?: string | null
 }
 
-const DEFAULT_AGENCY: AgencyContactInfo = {
-  agencyName: "Al Ramlah Travels",
-  tagline: "Where Purpose Meets Excellence",
-  primaryWhatsapp: "03274029701",
-  secondaryPhone: "03190462638",
-  supportEmail: "alramlahtravels@gmail.com",
-  officeAddress: "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
-  workingHours: "Monday to Saturday: 9:00 AM to 8:00 PM PKT",
-}
-
 interface ContactSectionProps {
   settings?: AgencyContactInfo | null
 }
 
 export function ContactSection({ settings }: ContactSectionProps) {
-  const info = settings || DEFAULT_AGENCY
+  const info = settings || DEFAULT_COMPANY_INFO
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)

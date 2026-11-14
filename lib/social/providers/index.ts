@@ -1,8 +1,15 @@
 import type { SocialProviderAdapter, SocialProviderId } from "../types"
 import { facebookProvider } from "./facebook"
 import { gmbProvider } from "./gmb"
-import { instagramProvider } from "./instagram"
-import { tiktokProvider, queryTikTokCreatorPrivacyLevel } from "./tiktok"
+import {
+  instagramProvider,
+  pollInstagramContainerFinished,
+} from "./instagram"
+import {
+  tiktokProvider,
+  queryTikTokCreatorPrivacyLevel,
+  resolveTikTokPublishedPostId,
+} from "./tiktok"
 import { youtubeProvider } from "./youtube"
 
 export {
@@ -12,6 +19,8 @@ export {
   tiktokProvider,
   youtubeProvider,
   queryTikTokCreatorPrivacyLevel,
+  pollInstagramContainerFinished,
+  resolveTikTokPublishedPostId,
 }
 
 export const SOCIAL_PROVIDERS: Record<SocialProviderId, SocialProviderAdapter> =

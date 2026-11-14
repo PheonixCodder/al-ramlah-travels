@@ -31,6 +31,9 @@ interface AdminSettingsPageProps {
     tab?: string
     connected?: string
     error?: string
+    oauth_select?: string
+    selectAccount?: string
+    integrationId?: string
   }>
 }
 
@@ -67,6 +70,7 @@ export default async function AdminSettingsPage({
       handle: socialIntegrations.handle,
       avatarUrl: socialIntegrations.avatarUrl,
       internalAccountId: socialIntegrations.internalAccountId,
+      status: socialIntegrations.status,
       isActive: socialIntegrations.isActive,
       tokenExpiresAt: socialIntegrations.tokenExpiresAt,
       scopes: socialIntegrations.scopes,
@@ -77,7 +81,7 @@ export default async function AdminSettingsPage({
     .from(socialIntegrations)
     .orderBy(desc(socialIntegrations.createdAt))
 
-  // 5. Fetch WhatsApp WABA Accounts (exclude secret encrypted tokens)
+  // 5. Fetch WhatsApp WABA Accounts (exclude secret encrypted tokens & internal linked-device rows)
   const waAccountRows = await db
     .select({
       id: whatsappAccounts.id,
@@ -88,6 +92,11 @@ export default async function AdminSettingsPage({
       verifiedName: whatsappAccounts.verifiedName,
       qualityRating: whatsappAccounts.qualityRating,
       messagingLimit: whatsappAccounts.messagingLimit,
+      accountRole: whatsappAccounts.accountRole,
+      isOnBizApp: whatsappAccounts.isOnBizApp,
+      platformType: whatsappAccounts.platformType,
+      intentFilterEnabled: whatsappAccounts.intentFilterEnabled,
+      embeddedSignupConfigId: whatsappAccounts.embeddedSignupConfigId,
       webhookVerifyToken: whatsappAccounts.webhookVerifyToken,
       isActive: whatsappAccounts.isActive,
       isDefault: whatsappAccounts.isDefault,
@@ -96,6 +105,12 @@ export default async function AdminSettingsPage({
     })
     .from(whatsappAccounts)
     .orderBy(desc(whatsappAccounts.isDefault), desc(whatsappAccounts.createdAt))
+
+  const officialWabaAccounts = waAccountRows.filter(
+    (acc) =>
+      acc.platformType !== "LINKED_DEVICE" &&
+      !acc.phoneNumberId.startsWith("linked-")
+  )
 
   // 6. Fetch Synced WhatsApp Message Templates
   const waTemplateRows = await db
@@ -156,9 +171,13 @@ export default async function AdminSettingsPage({
       initialTab={resolvedSearchParams.tab}
       connectedProvider={resolvedSearchParams.connected}
       urlError={resolvedSearchParams.error}
+      oauthSelectProvider={
+        resolvedSearchParams.oauth_select || resolvedSearchParams.selectAccount
+      }
+      pendingIntegrationId={resolvedSearchParams.integrationId}
       agencySettings={settings as unknown as AgencySettingsData | null}
       socialIntegrations={socialRows as SafeSocialIntegration[]}
-      whatsappAccounts={waAccountRows as SafeWhatsappAccount[]}
+      whatsappAccounts={officialWabaAccounts as SafeWhatsappAccount[]}
       whatsappTemplates={waTemplateRows as SafeWhatsappTemplate[]}
       infrastructureStatus={infrastructureStatus}
       staffUsers={staffUsers}

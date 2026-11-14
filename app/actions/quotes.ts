@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { eq, desc, and, sql } from "drizzle-orm"
 import { z } from "zod"
 
+import { auth as triggerAuth, tasks } from "@trigger.dev/sdk"
 import { db } from "@/db"
 import * as schema from "@/db/schema"
 import { requireAdmin } from "@/lib/auth-guard"
@@ -12,7 +13,10 @@ import {
   applicationStatusUpdateSchema,
 } from "@/lib/validations/quote"
 import { renderAndUploadLuxuryQuotationPdf } from "@/lib/posters/render-quotation-pdf"
-import { triggerByIdAndAwaitOrInline } from "@/trigger/dispatch"
+import {
+  isTriggerCloudConfigured,
+  triggerByIdAndAwaitOrInline,
+} from "@/trigger/dispatch"
 import type {
   RenderGotenbergAssetPayload,
   RenderGotenbergAssetTaskResult,
@@ -524,6 +528,213 @@ export async function updateApplicationStatus(rawInput: unknown) {
 }
 
 /**
+ * Helper to build the 3-page luxury quotation PDF inputs from an application record.
+ */
+async function buildLuxuryQuotationPdfInput(applicationId: string) {
+  const app = await db.query.applications.findFirst({
+    where: eq(schema.applications.id, applicationId),
+    with: {
+      quotes: {
+        orderBy: [desc(schema.applicationQuotes.version)],
+        limit: 1,
+      },
+      hotelStays: {
+        with: { hotel: true },
+        orderBy: (stays, { asc }) => [asc(stays.stayOrder)],
+      },
+      transportSegments: {
+        with: { sector: true, vehicle: true },
+        orderBy: (segs, { asc }) => [asc(segs.segmentOrder)],
+      },
+      groupPackage: {
+        with: {
+          airline: true,
+          makkahHotel: true,
+          madinahHotel: true,
+        },
+      },
+      groupDeparture: {
+        with: {
+          departureCity: true,
+        },
+      },
+      departureCity: true,
+      preferredAirline: true,
+      supplier: true,
+    },
+  })
+
+  if (!app) {
+    return { error: "Application not found" as const }
+  }
+
+  const latestQuote = app.quotes?.[0]
+  const grandTotalPkr =
+    latestQuote?.grandTotalPkr && latestQuote.grandTotalPkr > 0
+      ? latestQuote.grandTotalPkr
+      : app.calculatedVisaTotalPkr ?? 0
+
+  const makkahStays = app.hotelStays.filter((s) => s.city === "makkah")
+  const madinahStays = app.hotelStays.filter((s) => s.city === "madinah")
+  const makkahStay = makkahStays[0]
+  const madinahStay = madinahStays[0]
+
+  const totalMakkahNights =
+    makkahStays.length > 0
+      ? makkahStays.reduce((sum, s) => sum + s.nights, 0)
+      : app.groupPackage?.makkahNights ?? (app.includeHotels ? 6 : 0)
+
+  const totalMadinahNights =
+    madinahStays.length > 0
+      ? madinahStays.reduce((sum, s) => sum + s.nights, 0)
+      : app.groupPackage?.madinahNights ?? (app.includeHotels ? 6 : 0)
+
+  const uniqueMakkahHotelNames = Array.from(
+    new Set(makkahStays.map((s) => s.hotel.name).filter(Boolean))
+  )
+  const uniqueMadinahHotelNames = Array.from(
+    new Set(madinahStays.map((s) => s.hotel.name).filter(Boolean))
+  )
+
+  const resolvedMakkahHotelName =
+    uniqueMakkahHotelNames.length > 0
+      ? uniqueMakkahHotelNames.join(" / ")
+      : app.groupPackage?.makkahHotel?.name ||
+        (app.includeHotels
+          ? "Makkah Haramain Hotel"
+          : "Not Included in Package")
+
+  const resolvedMadinahHotelName =
+    uniqueMadinahHotelNames.length > 0
+      ? uniqueMadinahHotelNames.join(" / ")
+      : app.groupPackage?.madinahHotel?.name ||
+        (app.includeHotels
+          ? "Madinah Nabawi Hotel"
+          : "Not Included in Package")
+
+  const depCityCode =
+    app.departureCity?.airportCode ||
+    app.groupDeparture?.departureCity?.airportCode ||
+    "LHE"
+  const arrCode = app.entryAirport || "JED"
+  const retCode = app.exitAirport || "JED"
+
+  const leadTransport = app.transportSegments[0]
+  const routeSummary =
+    app.transportSegments.length > 0
+      ? app.transportSegments.map((s) => s.sector.label).join(" • ")
+      : app.includeTransport
+        ? `${arrCode === "MED" ? "Madinah Airport" : "Jeddah Airport"} → Makkah / Madinah → ${retCode === "MED" ? "Madinah Airport" : "Jeddah Airport"}`
+        : "Not Included"
+
+  const formatRoomSummary = (stay?: (typeof app.hotelStays)[number]) => {
+    if (!stay) {
+      if (app.selectedRoomType) {
+        return `${app.selectedRoomType.toUpperCase()} Sharing`
+      }
+      return app.includeHotels ? "Private Family Room" : "Not Included"
+    }
+    if (stay.roomCategory === "private" && stay.privateRoomAllocation) {
+      const parts: string[] = []
+      if (stay.privateRoomAllocation.quad > 0)
+        parts.push(`${stay.privateRoomAllocation.quad} Quad`)
+      if (stay.privateRoomAllocation.triple > 0)
+        parts.push(`${stay.privateRoomAllocation.triple} Triple`)
+      if (stay.privateRoomAllocation.double > 0)
+        parts.push(`${stay.privateRoomAllocation.double} Double`)
+      return parts.length > 0 ? parts.join(", ") : "Private Rooms"
+    }
+    return stay.sharedRoomType
+      ? `${stay.sharedRoomType.toUpperCase()} Sharing`
+      : "Shared Bed"
+  }
+
+  const formatMealPlanLabel = (plan?: string | null) => {
+    if (!app.includeHotels) return "Not Included"
+    if (!plan || plan === "room_only") return "Room Only"
+    if (plan === "breakfast" || plan === "bed_and_breakfast")
+      return "Bed & Breakfast"
+    if (plan === "half_board") return "Half Board (Breakfast + Dinner)"
+    if (plan === "full_board") return "Full Board (All Meals)"
+    return plan
+  }
+
+  const resolvedAirline =
+    app.preferredAirline || app.groupPackage?.airline || null
+
+  const pdfInput = {
+    referenceNumber: app.referenceNumber,
+    customerName: app.customerName,
+    customerPhone: app.customerPhone,
+    customerCity: app.customerCity ?? undefined,
+    adults: app.adults,
+    children: app.children,
+    infants: app.infants,
+    totalNights:
+      totalMakkahNights + totalMadinahNights > 0
+        ? totalMakkahNights + totalMadinahNights
+        : Math.max(1, (app.totalKsaDays || 14) - 1),
+    totalDays:
+      app.totalKsaDays ||
+      app.groupPackage?.durationDays ||
+      totalMakkahNights + totalMadinahNights + 1 ||
+      14,
+    airlineName:
+      resolvedAirline?.name ||
+      (app.includeFlights
+        ? "Pakistan International Airlines (PIA)"
+        : "Self-Arranged / Visa Only"),
+    airlineCode: resolvedAirline?.iataCode || "PK",
+    outboundRoute: `${depCityCode} → ${arrCode}`,
+    outboundDate:
+      app.ksaArrivalDate ||
+      app.groupDeparture?.departureDate ||
+      "Scheduled Departure",
+    returnRoute: `${retCode} → ${depCityCode}`,
+    returnDate:
+      app.ksaDepartureDate ||
+      app.groupDeparture?.returnDate ||
+      "Scheduled Return",
+    baggageLabel:
+      app.groupDeparture?.baggageAllowance ||
+      "30 Kg + 7 Kg Hand Carry + 5L Zamzam",
+    makkahHotelName: resolvedMakkahHotelName,
+    makkahNights: totalMakkahNights,
+    makkahStars:
+      makkahStay?.hotel.starRating ||
+      app.groupPackage?.makkahHotel?.starRating ||
+      5,
+    makkahDistance:
+      makkahStay?.hotel.distanceLabel ||
+      app.groupPackage?.makkahHotel?.distanceLabel ||
+      (app.includeHotels ? "Haramain Vicinity" : "N/A"),
+    makkahRoomSummary: formatRoomSummary(makkahStay),
+    makkahMealPlan: formatMealPlanLabel(makkahStay?.mealPlan),
+    madinahHotelName: resolvedMadinahHotelName,
+    madinahNights: totalMadinahNights,
+    madinahStars:
+      madinahStay?.hotel.starRating ||
+      app.groupPackage?.madinahHotel?.starRating ||
+      5,
+    madinahDistance:
+      madinahStay?.hotel.distanceLabel ||
+      app.groupPackage?.madinahHotel?.distanceLabel ||
+      (app.includeHotels ? "Markazia Vicinity" : "N/A"),
+    madinahRoomSummary: formatRoomSummary(madinahStay),
+    madinahMealPlan: formatMealPlanLabel(madinahStay?.mealPlan),
+    transportVehicleName:
+      leadTransport?.vehicle.name ||
+      (app.includeTransport ? "Air-Conditioned Haramain Transport" : "Not Included"),
+    transportRouteSummary: routeSummary,
+    supplierName: app.supplier?.name || "Al Ramlah Travels",
+    grandTotalPkr,
+    notesCustomer: latestQuote?.quoteNotesCustomer,
+  }
+
+  return { app, latestQuote, pdfInput }
+}
+
+/**
  * Server Action: Renders a 3-Page Luxury Quotation PDF (Skill 1: `umrah-quotation-pdf`)
  * via Headless Chromium, uploads it to Cloudflare R2 (or local fallback), and links it
  * to the application's latest quote.
@@ -532,111 +743,12 @@ export async function generateApplicationLuxuryPdf(applicationId: string) {
   await requireAdmin()
 
   try {
-    const app = await db.query.applications.findFirst({
-      where: eq(schema.applications.id, applicationId),
-      with: {
-        quotes: {
-          orderBy: [desc(schema.applicationQuotes.version)],
-          limit: 1,
-        },
-        hotelStays: {
-          with: { hotel: true },
-          orderBy: (stays, { asc }) => [asc(stays.stayOrder)],
-        },
-        transportSegments: {
-          with: { sector: true, vehicle: true },
-          orderBy: (segs, { asc }) => [asc(segs.segmentOrder)],
-        },
-        departureCity: true,
-        preferredAirline: true,
-        supplier: true,
-      },
-    })
-
-    if (!app) {
-      return { success: false, error: "Application not found" }
+    const prep = await buildLuxuryQuotationPdfInput(applicationId)
+    if ("error" in prep) {
+      return { success: false, error: prep.error }
     }
 
-    const latestQuote = app.quotes?.[0]
-    const grandTotalPkr =
-      latestQuote?.grandTotalPkr && latestQuote.grandTotalPkr > 0
-        ? latestQuote.grandTotalPkr
-        : app.calculatedVisaTotalPkr || 1750000
-
-    const makkahStay = app.hotelStays.find((s) => s.city === "makkah")
-    const madinahStay = app.hotelStays.find((s) => s.city === "madinah")
-
-    const depCityCode = app.departureCity?.airportCode || "LHE"
-    const arrCode = app.entryAirport || "JED"
-    const retCode = app.exitAirport || "JED"
-
-    const leadTransport = app.transportSegments[0]
-    const routeSummary =
-      app.transportSegments.length > 0
-        ? app.transportSegments.map((s) => s.sector.label).join(" • ")
-        : "Jeddah Airport → Makkah → Madinah → Jeddah Airport"
-
-    const formatRoomSummary = (stay?: (typeof app.hotelStays)[number]) => {
-      if (!stay) return "1 Quad + 1 Double Room"
-      if (stay.roomCategory === "private" && stay.privateRoomAllocation) {
-        const parts: string[] = []
-        if (stay.privateRoomAllocation.quad > 0)
-          parts.push(`${stay.privateRoomAllocation.quad} Quad`)
-        if (stay.privateRoomAllocation.triple > 0)
-          parts.push(`${stay.privateRoomAllocation.triple} Triple`)
-        if (stay.privateRoomAllocation.double > 0)
-          parts.push(`${stay.privateRoomAllocation.double} Double`)
-        return parts.length > 0 ? parts.join(" + ") : "Private Room"
-      }
-      return stay.sharedRoomType
-        ? `${stay.sharedRoomType.toUpperCase()} Sharing`
-        : "Shared Bed"
-    }
-
-    const formatMealPlanLabel = (mp?: string | null) => {
-      if (!mp || mp === "room_only") return "Room Only"
-      if (mp === "breakfast") return "Daily Buffet Breakfast Included"
-      if (mp === "half_board") return "Half Board (Breakfast + Dinner)"
-      if (mp === "full_board") return "Full Board (Breakfast + Lunch + Dinner)"
-      return mp
-    }
-
-    const pdfInput = {
-      referenceNumber: app.referenceNumber,
-      customerName: app.customerName,
-      customerCity: app.customerCity,
-      adults: app.adults,
-      children: app.children,
-      infants: app.infants,
-      totalDays: app.totalKsaDays || 13,
-      airlineName: app.preferredAirline?.name || "Pakistan International Airlines (PIA)",
-      airlineCode: app.preferredAirline?.iataCode || "PK",
-      outboundRoute: `${depCityCode} → ${arrCode}`,
-      outboundDate: app.ksaArrivalDate || "12 NOV 2026",
-      returnRoute: `${retCode} → ${depCityCode}`,
-      returnDate: app.ksaDepartureDate || "24 NOV 2026",
-      baggageLabel: "30 Kg + 7 Kg Hand Carry + 5L Zamzam",
-      makkahHotelName:
-        makkahStay?.hotel.name || "Hajar Tower Mövenpick Hotel Makkah",
-      makkahNights: makkahStay?.nights || 6,
-      makkahStars: makkahStay?.hotel.starRating || 5,
-      makkahDistance: makkahStay?.hotel.distanceLabel || "0m Clock Tower Courtyard",
-      makkahRoomSummary: formatRoomSummary(makkahStay),
-      makkahMealPlan: formatMealPlanLabel(makkahStay?.mealPlan),
-      madinahHotelName:
-        madinahStay?.hotel.name || "Anwar Al Madinah Mövenpick Hotel",
-      madinahNights: madinahStay?.nights || 6,
-      madinahStars: madinahStay?.hotel.starRating || 5,
-      madinahDistance: madinahStay?.hotel.distanceLabel || "0m Haram Courtyard",
-      madinahRoomSummary: formatRoomSummary(madinahStay),
-      madinahMealPlan: formatMealPlanLabel(madinahStay?.mealPlan),
-      transportVehicleName:
-        leadTransport?.vehicle.name || "Hyundai Staria VIP 7-Seater",
-      transportRouteSummary: routeSummary,
-      supplierName: app.supplier?.name || "Zahoor Travels",
-      grandTotalPkr,
-      notesCustomer: latestQuote?.quoteNotesCustomer,
-    }
+    const { app, latestQuote, pdfInput } = prep
 
     const renderRes = await triggerByIdAndAwaitOrInline<
       RenderGotenbergAssetPayload,
@@ -695,6 +807,101 @@ export async function generateApplicationLuxuryPdf(applicationId: string) {
   } catch (err: unknown) {
     return {
       success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to render 3-page luxury PDF",
+    }
+  }
+}
+
+/**
+ * Server Action: Non-blocking initiation of 3-Page Luxury Quotation PDF rendering.
+ * When Trigger.dev Cloud is configured, immediately triggers the background task on gotenbergQueue,
+ * mints a scoped public access token, and returns `{ success: true, mode: "cloud", runId, publicAccessToken }`
+ * without blocking on runs.poll().
+ */
+export async function startApplicationLuxuryPdfRunAction(
+  applicationId: string
+): Promise<{
+  success: boolean
+  mode: "cloud" | "inline"
+  runId: string
+  publicAccessToken?: string
+  pdfUrl?: string
+  error?: string
+}> {
+  await requireAdmin()
+
+  try {
+    const prep = await buildLuxuryQuotationPdfInput(applicationId)
+    if ("error" in prep) {
+      return { success: false, mode: "inline", runId: "", error: prep.error }
+    }
+
+    const { app, latestQuote, pdfInput } = prep
+
+    if (isTriggerCloudConfigured()) {
+      try {
+        const handle = await tasks.trigger(
+          "render-gotenberg-asset",
+          {
+            kind: "quotation_pdf",
+            applicationQuoteId: latestQuote?.id,
+            data: pdfInput,
+          },
+          {
+            tags: [`quotation-pdf:${app.referenceNumber}`],
+          }
+        )
+
+        const publicAccessToken = await triggerAuth.createPublicToken({
+          scopes: { read: { runs: [handle.id] } },
+          expirationTime: "1h",
+        })
+
+        return {
+          success: true,
+          mode: "cloud",
+          runId: handle.id,
+          publicAccessToken,
+        }
+      } catch (err) {
+        console.warn(
+          "[Gotenberg Cloud Dispatch Warning] Falling back to inline:",
+          err
+        )
+      }
+    }
+
+    // Inline fallback
+    const inlineOut = await renderAndUploadLuxuryQuotationPdf(pdfInput)
+    const now = new Date()
+    if (latestQuote && inlineOut.pdfUrl) {
+      await db
+        .update(schema.applicationQuotes)
+        .set({
+          quotationPdfUrl: inlineOut.pdfUrl,
+          quotationPdfGeneratedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.applicationQuotes.id, latestQuote.id))
+    }
+
+    revalidatePath(`/admin/applications/${applicationId}`)
+    revalidatePath("/")
+
+    return {
+      success: true,
+      mode: "inline",
+      runId: `inline_pdf_${Date.now()}`,
+      pdfUrl: inlineOut.pdfUrl,
+    }
+  } catch (err: unknown) {
+    return {
+      success: false,
+      mode: "inline",
+      runId: "",
       error:
         err instanceof Error
           ? err.message

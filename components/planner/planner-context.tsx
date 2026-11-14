@@ -1558,7 +1558,7 @@ export function PlannerProvider({
     const st =
       catalog.visaRates.find((r) => r.tier === "short_term")?.pricePkr ?? 42500
     const lt =
-      catalog.visaRates.find((r) => r.tier === "long_term")?.pricePkr ?? 65000
+      catalog.visaRates.find((r) => r.tier === "long_term")?.pricePkr ?? 68000
     return { shortTermPricePkr: st, longTermPricePkr: lt }
   }, [catalog.visaRates])
 

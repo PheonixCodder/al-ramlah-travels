@@ -5,6 +5,13 @@ export type SocialProviderId =
   | "youtube"
   | "gmb"
 
+export type SocialIntegrationStatus =
+  | "ACTIVE"
+  | "EXPIRED"
+  | "PENDING_SELECTION"
+
+export type SocialPostFormat = "FEED" | "REEL" | "STORY"
+
 export type SocialPostType =
   | "single_image"
   | "carousel"
@@ -40,17 +47,40 @@ export interface SocialOfferDetails {
   terms?: string
 }
 
+export interface PlatformCaptionOverride {
+  caption?: string
+  firstComment?: string
+}
+
+export type PlatformCaptionsMap = Partial<
+  Record<SocialProviderId, PlatformCaptionOverride>
+>
+
+export interface EngagementPlugConfig {
+  enabled: boolean
+  minLikes: number
+  minViews: number
+  plugText: string
+  triggeredAt?: string
+}
+
 export interface SocialPostPayload {
   id: string
   caption: string
   media: SocialMediaItem[]
   postType?: SocialPostType
+  postFormat?: SocialPostFormat
+  firstComment?: string | null
+  platformCaptions?: PlatformCaptionsMap
+  engagementPlugConfig?: EngagementPlugConfig | null
   title?: string
   callToActionUrl?: string
   callToActionType?: CallToActionActionType
   offerDetails?: SocialOfferDetails
   settings?: Record<string, unknown>
 }
+
+export type SocialPublishInput = SocialPostPayload
 
 export interface SocialValidationResult {
   valid: boolean
@@ -61,6 +91,73 @@ export interface SocialPublishResult {
   externalPostId: string
   publishedUrl: string
   rawResponse?: unknown
+}
+
+export interface SocialPublishCommentParams {
+  accessToken: string
+  externalPostId: string
+  commentText: string
+  accountId?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface FirstCommentPublishResult {
+  commentId: string
+  externalCommentId?: string
+  publishedAt?: string
+  rawResponse?: unknown
+}
+
+export type SocialPublishCommentResult = FirstCommentPublishResult
+
+export interface SocialPostAnalyticsSnapshot {
+  impressions: number
+  likes: number
+  comments: number
+  shares: number
+  clicks: number
+  lastSyncedAt: string
+  firstCommentId?: string
+  firstCommentPostedAt?: string
+  firstCommentError?: string
+}
+
+export type SocialPostAnalyticsData = SocialPostAnalyticsSnapshot
+
+export interface SocialAccountCandidate {
+  internalAccountId: string
+  name: string
+  handle?: string
+  avatarUrl?: string
+  accessToken: string
+  refreshToken?: string
+  expiresIn?: number
+  scopes: string[]
+  metadata?: Record<string, unknown>
+}
+
+export type SocialOAuthAccountCandidate = SocialAccountCandidate
+
+export interface EncryptedSocialAccountCandidate {
+  internalAccountId: string
+  name: string
+  handle?: string
+  avatarUrl?: string
+  encryptedAccessToken: string
+  encryptedRefreshToken?: string | null
+  expiresIn?: number
+  scopes: string[]
+  metadata?: Record<string, unknown>
+}
+
+export interface SafeSocialAccountCandidate {
+  internalAccountId: string
+  name: string
+  handle?: string
+  avatarUrl?: string
+  provider: SocialProviderId
+  integrationId?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface SocialOAuthAuthUrlResult {
@@ -79,6 +176,7 @@ export interface SocialOAuthTokenResult {
   expiresIn?: number // in seconds
   scopes: string[]
   metadata?: Record<string, unknown>
+  candidates?: SocialAccountCandidate[]
 }
 
 export interface SocialAccountContext {
@@ -110,4 +208,16 @@ export interface SocialProviderAdapter {
     post: SocialPostPayload
     idempotencyKey: string
   }): Promise<SocialPublishResult>
+  publishComment?(
+    params: SocialPublishCommentParams
+  ): Promise<FirstCommentPublishResult>
+  fetchPostAnalytics?(params: {
+    accessToken: string
+    externalPostId: string
+    accountId?: string
+    metadata?: Record<string, unknown>
+  }): Promise<SocialPostAnalyticsSnapshot>
 }
+
+export type SocialProvider = SocialProviderAdapter
+

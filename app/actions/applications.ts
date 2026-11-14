@@ -103,14 +103,20 @@ export async function submitCustomApplication(
 
     if (data.includeVisa && data.ksaArrivalDate && data.ksaDepartureDate) {
       const dbVisaRates = await db.query.visaRates.findMany()
-      const shortTerm =
-        dbVisaRates.find((r) => r.tier === "short_term")?.pricePkr ?? 42500
-      const longTerm =
-        dbVisaRates.find((r) => r.tier === "long_term")?.pricePkr ?? 65000
+      const shortTermRow = dbVisaRates.find((r) => r.tier === "short_term")
+      const longTermRow = dbVisaRates.find((r) => r.tier === "long_term")
+      const shortTerm = shortTermRow?.pricePkr ?? 42500
+      const longTerm = longTermRow?.pricePkr ?? 65000
 
       const rates: VisaRateTiers = {
         shortTermPricePkr: shortTerm,
         longTermPricePkr: longTerm,
+        longTermPriceSar: longTermRow?.priceSar,
+        withoutMasarPriceSar: shortTermRow?.withoutMasarPriceSar ?? shortTermRow?.priceSar,
+        withMasar10DaysSar: shortTermRow?.withMasar10DaysSar,
+        withMasar15DaysSar: shortTermRow?.withMasar15DaysSar,
+        withMasar21DaysSar: shortTermRow?.withMasar21DaysSar,
+        withMasar28DaysSar: shortTermRow?.withMasar28DaysSar,
       }
 
       const visaCalc = calculateVisaTierAndCost(
@@ -373,6 +379,7 @@ export interface GroupBookingResult {
   referenceNumber?: string
   applicationId?: string
   grandTotalPkr?: number
+  remainingSeats?: number
   whatsappUrl?: string
   error?: string
 }
@@ -452,6 +459,15 @@ export async function submitGroupBookingApplication(
     const packageTotalPkr = ratePerPersonPkr * bedAndSeatCount + infantTotalPkr
     const referenceNumber = await generateApplicationReference()
 
+    const arrival = new Date(departure.departureDate)
+    const dep = new Date(departure.returnDate)
+    const diffDays = Math.max(
+      1,
+      Math.round((dep.getTime() - arrival.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    )
+    const visaTier: "short_term" | "long_term" =
+      diffDays <= 30 ? "short_term" : "long_term"
+
     const [groupApp] = await db
       .insert(schema.applications)
       .values({
@@ -462,6 +478,8 @@ export async function submitGroupBookingApplication(
         groupPackageId: pkg.id,
         groupDepartureId: departure.id,
         selectedRoomType: data.selectedRoomType,
+        departureCityId: departure.departureCityId,
+        preferredAirlineId: pkg.airlineId,
         customerName: data.contact.customerName,
         customerPhone: data.contact.customerPhone,
         customerWhatsapp: data.contact.customerWhatsapp,
@@ -473,13 +491,15 @@ export async function submitGroupBookingApplication(
         infants,
         totalPassportCount,
         bedAndSeatCount,
-        includeVisa: true,
+        includeVisa: pkg.includesVisa,
         includeFlights: true,
         includeHotels: true,
-        includeTransport: true,
-        includeZiyarat: true,
+        includeTransport: pkg.includesTransport,
+        includeZiyarat: pkg.includesZiyarat,
         ksaArrivalDate: departure.departureDate,
         ksaDepartureDate: departure.returnDate,
+        totalKsaDays: diffDays,
+        calculatedVisaTier: visaTier,
       })
       .returning()
 
@@ -516,6 +536,8 @@ export async function submitGroupBookingApplication(
     }
 
     revalidatePath("/admin")
+    revalidatePath("/admin/desk")
+    revalidatePath("/admin/groups")
     revalidatePath("/admin/applications")
 
     const settings = await db.query.agencySettings.findFirst({
@@ -532,6 +554,7 @@ export async function submitGroupBookingApplication(
       referenceNumber,
       applicationId: groupApp.id,
       grandTotalPkr: packageTotalPkr,
+      remainingSeats: availableSeats,
       whatsappUrl,
     }
   } catch (err: unknown) {

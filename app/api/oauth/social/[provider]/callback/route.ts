@@ -7,7 +7,10 @@ import { requireAdmin } from "@/lib/auth-guard"
 import { env } from "@/lib/env"
 import { encryptToken } from "@/lib/social/crypto"
 import { getSocialProvider } from "@/lib/social/providers"
-import type { SocialProviderId } from "@/lib/social/types"
+import type {
+  EncryptedSocialAccountCandidate,
+  SocialProviderId,
+} from "@/lib/social/types"
 import { socialProviderIdSchema } from "@/lib/validations/social-scheduler"
 
 export async function GET(
@@ -50,7 +53,7 @@ export async function GET(
   try {
     session = await requireAdmin()
   } catch {
-    const loginUrl = new URL("/login?error=admin_required", appOrigin)
+    const loginUrl = new URL("/admin/login?error=admin_required", appOrigin)
     return NextResponse.redirect(loginUrl)
   }
 
@@ -58,7 +61,10 @@ export async function GET(
 
   if (!parsedProvider.success) {
     return NextResponse.redirect(
-      new URL("/admin/settings?tab=connections&error=invalid_social_provider", appOrigin)
+      new URL(
+        "/admin/settings?tab=connections&error=invalid_social_provider",
+        appOrigin
+      )
     )
   }
 
@@ -82,7 +88,10 @@ export async function GET(
 
   if (!code || !state) {
     return NextResponse.redirect(
-      new URL("/admin/settings?tab=connections&error=missing_oauth_code_or_state", appOrigin)
+      new URL(
+        "/admin/settings?tab=connections&error=missing_oauth_code_or_state",
+        appOrigin
+      )
     )
   }
 
@@ -101,7 +110,10 @@ export async function GET(
       `[OAuth CSRF Mismatch] Provider ${provider}: expected ${savedState}, received ${state}`
     )
     return NextResponse.redirect(
-      new URL("/admin/settings?tab=connections&error=csrf_state_mismatch", appOrigin)
+      new URL(
+        "/admin/settings?tab=connections&error=csrf_state_mismatch",
+        appOrigin
+      )
     )
   }
 
@@ -111,7 +123,9 @@ export async function GET(
       env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || request.nextUrl.origin
     const tiktokTunnelBase = (
       process.env.TIKTOK_REDIRECT_BASE_URL || env.TIKTOK_REDIRECT_BASE_URL
-    )?.trim().replace(/\/$/, "")
+    )
+      ?.trim()
+      .replace(/\/$/, "")
     const redirectBaseUrl =
       provider === "tiktok" && tiktokTunnelBase ? tiktokTunnelBase : baseUrl
     const redirectUri = `${redirectBaseUrl}/api/oauth/social/${provider}/callback`
@@ -135,6 +149,34 @@ export async function GET(
 
     const now = new Date()
 
+    const candidates = tokenResult.candidates ?? []
+    const hasMultipleCandidates = candidates.length > 1
+
+    const encryptedCandidates: EncryptedSocialAccountCandidate[] =
+      candidates.map((cand) => ({
+        internalAccountId: cand.internalAccountId,
+        name: cand.name,
+        handle: cand.handle,
+        avatarUrl: cand.avatarUrl,
+        encryptedAccessToken: encryptToken(cand.accessToken),
+        encryptedRefreshToken: cand.refreshToken
+          ? encryptToken(cand.refreshToken)
+          : encryptedRefreshToken,
+        expiresIn: cand.expiresIn ?? tokenResult.expiresIn,
+        scopes: cand.scopes?.length ? cand.scopes : tokenResult.scopes,
+        metadata: cand.metadata || {},
+      }))
+
+    const mergedMetadata: Record<string, unknown> = {
+      ...(tokenResult.metadata || {}),
+      ...(hasMultipleCandidates
+        ? {
+            pendingCandidates: encryptedCandidates,
+            pendingCreatedAt: now.toISOString(),
+          }
+        : {}),
+    }
+
     // 4. Upsert into socialIntegrations table
     const [existing] = await db
       .select({ id: socialIntegrations.id })
@@ -142,10 +184,15 @@ export async function GET(
       .where(
         and(
           eq(socialIntegrations.provider, provider),
-          eq(socialIntegrations.internalAccountId, tokenResult.internalAccountId)
+          eq(
+            socialIntegrations.internalAccountId,
+            tokenResult.internalAccountId
+          )
         )
       )
       .limit(1)
+
+    let rowId: string
 
     if (existing) {
       await db
@@ -158,32 +205,59 @@ export async function GET(
           encryptedRefreshToken,
           tokenExpiresAt,
           scopes: tokenResult.scopes,
-          metadata: tokenResult.metadata || {},
+          metadata: mergedMetadata,
+          status: hasMultipleCandidates ? "PENDING_SELECTION" : "ACTIVE",
           isActive: true,
           lastSyncedAt: now,
           updatedAt: now,
         })
         .where(eq(socialIntegrations.id, existing.id))
+      rowId = existing.id
     } else {
-      await db.insert(socialIntegrations).values({
-        provider,
-        name: tokenResult.name,
-        handle: tokenResult.handle,
-        avatarUrl: tokenResult.avatarUrl,
-        internalAccountId: tokenResult.internalAccountId,
-        encryptedAccessToken,
-        encryptedRefreshToken,
-        tokenExpiresAt,
-        scopes: tokenResult.scopes,
-        metadata: tokenResult.metadata || {},
-        isActive: true,
-        lastSyncedAt: now,
-        createdByUserId: session.user.id,
+      const [inserted] = await db
+        .insert(socialIntegrations)
+        .values({
+          provider,
+          name: tokenResult.name,
+          handle: tokenResult.handle,
+          avatarUrl: tokenResult.avatarUrl,
+          internalAccountId: tokenResult.internalAccountId,
+          encryptedAccessToken,
+          encryptedRefreshToken,
+          tokenExpiresAt,
+          scopes: tokenResult.scopes,
+          metadata: mergedMetadata,
+          status: hasMultipleCandidates ? "PENDING_SELECTION" : "ACTIVE",
+          isActive: true,
+          lastSyncedAt: now,
+          createdByUserId: session.user.id,
+        })
+        .returning({ id: socialIntegrations.id })
+      rowId = inserted.id
+    }
+
+    if (hasMultipleCandidates) {
+      // Also store lightweight reference cookie for 15 minutes
+      cookieStore.set(`social_oauth_candidates_${provider}`, rowId, {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 900,
       })
+
+      return NextResponse.redirect(
+        new URL(
+          `/admin/settings?tab=connections&selectAccount=${provider}&oauth_select=${provider}&integrationId=${rowId}`,
+          appOrigin
+        )
+      )
     }
 
     return NextResponse.redirect(
-      new URL(`/admin/settings?tab=connections&connected=${provider}`, appOrigin)
+      new URL(
+        `/admin/settings?tab=connections&connected=${provider}`,
+        appOrigin
+      )
     )
   } catch (err: unknown) {
     const message =
@@ -199,3 +273,4 @@ export async function GET(
     )
   }
 }
+

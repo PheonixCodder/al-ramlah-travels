@@ -146,10 +146,10 @@ export function calculateApplicationRateHints(
     const totalDays = days ?? 14
     const withMasar = Boolean(application.includeHotels)
 
-    const shortTermRatePkr =
-      catalog.visaRates?.find((v) => v.tier === "short_term")?.pricePkr ?? 42500
-    const longTermRatePkr =
-      catalog.visaRates?.find((v) => v.tier === "long_term")?.pricePkr ?? 68000
+    const shortTermRow = catalog.visaRates?.find((v) => v.tier === "short_term")
+    const longTermRow = catalog.visaRates?.find((v) => v.tier === "long_term")
+    const shortTermRatePkr = shortTermRow?.pricePkr ?? 42500
+    const longTermRatePkr = longTermRow?.pricePkr ?? 68000
 
     const arrivalStr =
       application.ksaArrivalDate || new Date().toISOString().split("T")[0]!
@@ -162,6 +162,12 @@ export function calculateApplicationRateHints(
       {
         shortTermPricePkr: shortTermRatePkr,
         longTermPricePkr: longTermRatePkr,
+        longTermPriceSar: longTermRow?.priceSar,
+        withoutMasarPriceSar: shortTermRow?.withoutMasarPriceSar ?? shortTermRow?.priceSar,
+        withMasar10DaysSar: shortTermRow?.withMasar10DaysSar,
+        withMasar15DaysSar: shortTermRow?.withMasar15DaysSar,
+        withMasar21DaysSar: shortTermRow?.withMasar21DaysSar,
+        withMasar28DaysSar: shortTermRow?.withMasar28DaysSar,
       },
       { withMasar, sarToPkrRate: conversionRate }
     )

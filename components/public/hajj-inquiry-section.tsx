@@ -25,10 +25,12 @@ import {
   ArrowRight,
   ExternalLink,
 } from "lucide-react"
+import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
 
 export interface HajjInquirySectionProps {
   departureCities?: { cityName: string; airportCode: string }[]
   agencyWhatsapp?: string
+  secondaryPhone?: string
 }
 
 export interface HajjHotelStay {
@@ -369,7 +371,8 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
 
 export function HajjInquirySection({
   departureCities,
-  agencyWhatsapp = "03274029701",
+  agencyWhatsapp = DEFAULT_COMPANY_INFO.primaryWhatsapp,
+  secondaryPhone = DEFAULT_COMPANY_INFO.secondaryPhone,
 }: HajjInquirySectionProps = {}) {
   const [selectedMaktab, setSelectedMaktab] = useState<"all" | "A" | "B" | "C">("all")
   const [selectedPackageId, setSelectedPackageId] = useState<string>("hajj-a-03")
@@ -959,7 +962,7 @@ export function HajjInquirySection({
 
             <div className="rounded-xl border border-gold/30 bg-black/40 p-3 text-center">
               <span className="text-[11px] font-semibold text-gold block">
-                Direct Hotline: 03274029701 · 03190462638
+                Direct Hotline: {[agencyWhatsapp, secondaryPhone].filter(Boolean).join(" · ")}
               </span>
               <span className="text-[10px] text-white/60">
                 Monday to Saturday: 9:00 AM to 8:00 PM PKT
@@ -1377,7 +1380,9 @@ export function HajjInquirySection({
                 </div>
                 <div className="flex items-center gap-2">
                   <Phone className="size-3.5 text-gold shrink-0" />
-                  <span className="font-mono text-gold font-bold">03274029701 · 03190462638</span>
+                  <span className="font-mono text-gold font-bold">
+                    {[agencyWhatsapp, secondaryPhone].filter(Boolean).join(" · ")}
+                  </span>
                 </div>
               </div>
             </form>

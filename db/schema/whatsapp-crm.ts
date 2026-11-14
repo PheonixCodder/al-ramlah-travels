@@ -41,6 +41,17 @@ export const whatsappMessageTypeEnum = pgEnum("whatsapp_message_type", [
   "video",
   "template",
   "interactive",
+  "sticker",
+  "reaction",
+  "TEXT",
+  "IMAGE",
+  "DOCUMENT",
+  "AUDIO",
+  "VIDEO",
+  "TEMPLATE",
+  "INTERACTIVE",
+  "STICKER",
+  "REACTION",
 ])
 
 export const whatsappTemplateCategoryEnum = pgEnum("whatsapp_template_category", [
@@ -54,6 +65,7 @@ export const whatsappTemplateStatusEnum = pgEnum("whatsapp_template_status", [
   "PENDING",
   "REJECTED",
   "PAUSED",
+  "DISABLED",
 ])
 
 export const whatsappBroadcastStatusEnum = pgEnum("whatsapp_broadcast_status", [
@@ -64,6 +76,22 @@ export const whatsappBroadcastStatusEnum = pgEnum("whatsapp_broadcast_status", [
   "failed",
   "cancelled",
 ])
+
+export const whatsappAutoReplyMatchTypeEnum = pgEnum(
+  "whatsapp_auto_reply_match_type",
+  ["CONTAINS", "EXACT", "STARTS_WITH", "REGEX"]
+)
+
+export type WhatsappAutoReplyMatchType =
+  (typeof whatsappAutoReplyMatchTypeEnum.enumValues)[number]
+
+export const whatsappLinkedDeviceStatusEnum = pgEnum(
+  "whatsapp_linked_device_status",
+  ["disconnected", "connecting", "qr_ready", "pairing_code_ready", "connected"]
+)
+
+export type WhatsappLinkedDeviceStatus =
+  (typeof whatsappLinkedDeviceStatusEnum.enumValues)[number]
 
 // ==========================================
 // 2. WHATSAPP ACCOUNTS (Config & Credentials)
@@ -84,6 +112,19 @@ export const whatsappAccounts = pgTable(
     webhookVerifyToken: text("webhook_verify_token").notNull(),
     isActive: boolean("is_active").notNull().default(true),
     isDefault: boolean("is_default").notNull().default(true),
+    autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(true),
+    autoReplyCooldownMinutes: integer("auto_reply_cooldown_minutes").notNull().default(60),
+    welcomeGreetingEnabled: boolean("welcome_greeting_enabled").notNull().default(true),
+    welcomeGreetingText: text("welcome_greeting_text"),
+    awayGreetingEnabled: boolean("away_greeting_enabled").notNull().default(true),
+    awayGreetingText: text("away_greeting_text"),
+    businessHoursStart: text("business_hours_start").notNull().default("09:00"),
+    businessHoursEnd: text("business_hours_end").notNull().default("21:00"),
+    accountRole: varchar("account_role", { length: 32 }).notNull().default("COEXISTENCE_FOUNDER"),
+    isOnBizApp: boolean("is_on_biz_app").notNull().default(true),
+    platformType: varchar("platform_type", { length: 32 }).default("CLOUD_API"),
+    intentFilterEnabled: boolean("intent_filter_enabled").notNull().default(true),
+    embeddedSignupConfigId: varchar("embedded_signup_config_id", { length: 128 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -96,6 +137,33 @@ export const whatsappAccounts = pgTable(
 // ==========================================
 // 3. WHATSAPP CONVERSATIONS
 // ==========================================
+
+export interface WhatsappInternalNote {
+  id: string
+  userId: string
+  userName: string
+  note: string
+  createdAt: string
+}
+
+export type WhatsappConversationInternalNote = WhatsappInternalNote
+
+export type WhatsappIntakeStep =
+  | "IDLE"
+  | "AWAITING_MONTH"
+  | "AWAITING_PILGRIMS"
+  | "AWAITING_HOTEL_TIER"
+  | "COMPLETED"
+
+export interface WhatsappIntakeFlowState {
+  step: WhatsappIntakeStep
+  month?: string
+  pilgrimCount?: string
+  hotelTier?: string
+  applicationId?: string
+  startedAt?: string
+  updatedAt?: string
+}
 
 export const whatsappConversations = pgTable(
   "whatsapp_conversations",
@@ -114,6 +182,8 @@ export const whatsappConversations = pgTable(
       onDelete: "set null",
     }),
     detectedPostCode: varchar("detected_post_code", { length: 64 }),
+    lastAutoRepliedPostCode: varchar("last_auto_replied_post_code", { length: 64 }),
+    lastAutoRepliedAt: timestamp("last_auto_replied_at", { withTimezone: true }),
     lastCustomerMessageAt: timestamp("last_customer_message_at", { withTimezone: true }),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
     unreadCount: integer("unread_count").notNull().default(0),
@@ -122,6 +192,18 @@ export const whatsappConversations = pgTable(
     assignedUserId: text("assigned_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
+    internalNotes: jsonb("internal_notes")
+      .$type<WhatsappInternalNote[]>()
+      .notNull()
+      .default([]),
+    intakeFlowState: jsonb("intake_flow_state")
+      .$type<WhatsappIntakeFlowState>()
+      .notNull()
+      .default({ step: "IDLE" }),
+    intentCategory: varchar("intent_category", { length: 32 }).notNull().default("TRAVEL_LEAD"),
+    intentConfidence: integer("intent_confidence").notNull().default(100),
+    intentReason: text("intent_reason"),
+    forwardedToAgentConversationId: uuid("forwarded_to_agent_conversation_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -150,11 +232,19 @@ export const whatsappMessages = pgTable(
     status: whatsappMessageStatusEnum("status").notNull().default("sent"),
     messageType: whatsappMessageTypeEnum("message_type").notNull(),
     body: text("body"),
+    rawMediaId: varchar("raw_media_id", { length: 128 }),
     mediaUrl: text("media_url"),
     mediaType: varchar("media_type", { length: 64 }),
+    mediaMimeType: text("media_mime_type"),
+    mediaSha256: text("media_sha256"),
+    mediaFileSize: integer("media_file_size"),
     mediaFilename: text("media_filename"),
     templateName: varchar("template_name", { length: 128 }),
     contextMessageId: varchar("context_message_id", { length: 128 }),
+    interactivePayload: jsonb("interactive_payload").$type<Record<string, unknown>>(),
+    reactionEmoji: text("reaction_emoji"),
+    reactedToWabaMessageId: text("reacted_to_waba_message_id"),
+    isAutoReply: boolean("is_auto_reply").notNull().default(false),
     rawPayload: jsonb("raw_payload"),
     errorCode: varchar("error_code", { length: 32 }),
     errorMessage: text("error_message"),
@@ -186,6 +276,7 @@ export const whatsappTemplates = pgTable(
     language: varchar("language", { length: 16 }).notNull().default("en_US"),
     category: whatsappTemplateCategoryEnum("category").notNull(),
     status: whatsappTemplateStatusEnum("status").notNull(),
+    rejectionReason: text("rejection_reason"),
     headerType: varchar("header_type", { length: 24 }),
     headerContent: text("header_content"),
     bodyText: text("body_text").notNull(),
@@ -231,6 +322,10 @@ export const whatsappBroadcasts = pgTable(
     createdByUserId: text("created_by_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
+    headerMediaUrl: text("header_media_url"),
+    defaultTemplateParams: jsonb("default_template_params")
+      .$type<Record<string, unknown> | string[]>()
+      .default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -295,7 +390,45 @@ export const whatsappQuickReplies = pgTable(
 )
 
 // ==========================================
-// 8. RELATIONS
+// 8. WHATSAPP AUTO-REPLY RULES (Spec 0017)
+// ==========================================
+
+export const whatsappAutoReplyRules = pgTable(
+  "whatsapp_auto_reply_rules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id").references(() => whatsappAccounts.id, {
+      onDelete: "cascade",
+    }),
+    name: text("name").notNull(),
+    matchType: whatsappAutoReplyMatchTypeEnum("match_type")
+      .notNull()
+      .default("CONTAINS"),
+    keywords: jsonb("keywords").$type<string[]>().notNull().default([]),
+    responseText: text("response_text").notNull(),
+    mediaUrl: text("media_url"),
+    mediaFilename: text("media_filename"),
+    interactiveButtons: jsonb("interactive_buttons")
+      .$type<Array<{ id: string; title: string }>>()
+      .default([]),
+    priority: integer("priority").notNull().default(100),
+    cooldownMinutes: integer("cooldown_minutes").notNull().default(60),
+    isActive: boolean("is_active").notNull().default(true),
+    triggerCount: integer("trigger_count").notNull().default(0),
+    lastTriggeredAt: timestamp("last_triggered_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_wa_arr_active_prio").on(table.isActive, table.priority),
+  ]
+)
+
+export type WhatsappAutoReplyRule = typeof whatsappAutoReplyRules.$inferSelect
+export type NewWhatsappAutoReplyRule = typeof whatsappAutoReplyRules.$inferInsert
+
+// ==========================================
+// 9. RELATIONS
 // ==========================================
 
 export const whatsappAccountsRelations = relations(whatsappAccounts, ({ many }) => ({
@@ -303,6 +436,7 @@ export const whatsappAccountsRelations = relations(whatsappAccounts, ({ many }) 
   templates: many(whatsappTemplates),
   broadcasts: many(whatsappBroadcasts),
   quickReplies: many(whatsappQuickReplies),
+  autoReplyRules: many(whatsappAutoReplyRules),
 }))
 
 export const whatsappConversationsRelations = relations(
@@ -384,3 +518,73 @@ export const whatsappQuickRepliesRelations = relations(
     }),
   })
 )
+
+export const whatsappAutoReplyRulesRelations = relations(
+  whatsappAutoReplyRules,
+  ({ one }) => ({
+    account: one(whatsappAccounts, {
+      fields: [whatsappAutoReplyRules.accountId],
+      references: [whatsappAccounts.id],
+    }),
+  })
+)
+
+export type WhatsappAccount = typeof whatsappAccounts.$inferSelect
+export type NewWhatsappAccount = typeof whatsappAccounts.$inferInsert
+export type WhatsappConversation = typeof whatsappConversations.$inferSelect
+export type NewWhatsappConversation = typeof whatsappConversations.$inferInsert
+export type WhatsappMessage = typeof whatsappMessages.$inferSelect
+export type NewWhatsappMessage = typeof whatsappMessages.$inferInsert
+export type WhatsappTemplate = typeof whatsappTemplates.$inferSelect
+export type NewWhatsappTemplate = typeof whatsappTemplates.$inferInsert
+export type WhatsappBroadcast = typeof whatsappBroadcasts.$inferSelect
+export type NewWhatsappBroadcast = typeof whatsappBroadcasts.$inferInsert
+export type WhatsappBroadcastRecipient = typeof whatsappBroadcastRecipients.$inferSelect
+export type NewWhatsappBroadcastRecipient = typeof whatsappBroadcastRecipients.$inferInsert
+export type WhatsappQuickReply = typeof whatsappQuickReplies.$inferSelect
+export type NewWhatsappQuickReply = typeof whatsappQuickReplies.$inferInsert
+
+// ==========================================
+// 12. WHATSAPP LINKED DEVICE SESSIONS (Baileys Multi-Device)
+// ==========================================
+
+export const whatsappLinkedDeviceSessions = pgTable(
+  "whatsapp_linked_device_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionKey: varchar("session_key", { length: 64 })
+      .notNull()
+      .default("default")
+      .unique(),
+    label: text("label").notNull().default("Primary Business WhatsApp"),
+    phoneNumber: varchar("phone_number", { length: 32 }),
+    pushName: text("push_name"),
+    status: whatsappLinkedDeviceStatusEnum("status")
+      .notNull()
+      .default("disconnected"),
+    qrDataUrl: text("qr_data_url"),
+    pairingCode: varchar("pairing_code", { length: 16 }),
+    encryptedAuthCreds: text("encrypted_auth_creds"),
+    encryptedAuthKeys: text("encrypted_auth_keys"),
+    groupsSyncedCount: integer("groups_synced_count").notNull().default(0),
+    lastError: text("last_error"),
+    lastConnectedAt: timestamp("last_connected_at", { withTimezone: true }),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("idx_wa_linked_session_key").on(table.sessionKey),
+    index("idx_wa_linked_status").on(table.status),
+  ]
+)
+
+export type WhatsappLinkedDeviceSession =
+  typeof whatsappLinkedDeviceSessions.$inferSelect
+export type NewWhatsappLinkedDeviceSession =
+  typeof whatsappLinkedDeviceSessions.$inferInsert
+

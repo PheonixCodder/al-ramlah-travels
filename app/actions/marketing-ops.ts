@@ -3,7 +3,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { revalidatePath } from "next/cache"
-import { eq, asc, or } from "drizzle-orm"
+import { eq, asc, or, inArray } from "drizzle-orm"
 import { db } from "@/db"
 import * as schema from "@/db/schema"
 import { requireAdmin } from "@/lib/auth-guard"
@@ -219,6 +219,8 @@ export async function upsertSupplierFlyerWithPackages(rawInput: unknown) {
 
     let flyerId = input.id
 
+    let existingPackages: Array<typeof schema.supplierFlyerPackages.$inferSelect> = []
+
     if (flyerId) {
       await db
         .update(schema.supplierFlyers)
@@ -248,9 +250,9 @@ export async function upsertSupplierFlyerWithPackages(rawInput: unknown) {
         })
         .where(eq(schema.supplierFlyers.id, flyerId))
 
-      await db
-        .delete(schema.supplierFlyerPackages)
-        .where(eq(schema.supplierFlyerPackages.flyerId, flyerId))
+      existingPackages = await db.query.supplierFlyerPackages.findMany({
+        where: eq(schema.supplierFlyerPackages.flyerId, flyerId),
+      })
     } else {
       const [created] = await db
         .insert(schema.supplierFlyers)
@@ -282,8 +284,13 @@ export async function upsertSupplierFlyerWithPackages(rawInput: unknown) {
     }
 
     const batchSalt = flyerId.replace(/-/g, "").slice(0, 2).toUpperCase()
+    const retainedIds = new Set<string>()
+    const cardsToInsert: Array<typeof schema.supplierFlyerPackages.$inferInsert> = []
 
-    const cardsToInsert = input.cards.map((card, index) => {
+    for (let index = 0; index < input.cards.length; index++) {
+      const card = input.cards[index]!
+      const normalizedCardNumber = (card.cardNumber || String(index + 1)).padStart(2, "0")
+
       const pricing = calculateWrappedPackagePricing({
         rawSharingPkr: card.rawSharingPkr,
         rawQuadPkr: card.rawQuadPkr,
@@ -293,53 +300,115 @@ export async function upsertSupplierFlyerWithPackages(rawInput: unknown) {
         commissionPkr: input.commissionPkr,
       })
 
-      const postCode = generatePostReferenceCode({
-        supplierPrefix: supplier.codePrefix,
-        durationDays: input.durationDays,
-        cardNumber: card.cardNumber || String(index + 1),
-        batchSalt,
-      })
+      const matchedExisting =
+        (card.id ? existingPackages.find((ep) => ep.id === card.id) : undefined) ??
+        existingPackages.find(
+          (ep) => ep.cardNumber === normalizedCardNumber && !retainedIds.has(ep.id)
+        )
 
-      return {
-        flyerId: flyerId!,
-        supplierId: supplier.id,
-        cardNumber: card.cardNumber.padStart(2, "0"),
-        postCode,
-        outboundFlightNo: card.outboundFlightNo,
-        outboundDateLabel: card.outboundDateLabel,
-        outboundRoute: card.outboundRoute,
-        outboundDepTime: card.outboundDepTime,
-        outboundArrTime: card.outboundArrTime,
-        returnFlightNo: card.returnFlightNo,
-        returnDateLabel: card.returnDateLabel,
-        returnRoute: card.returnRoute,
-        returnDepTime: card.returnDepTime,
-        returnArrTime: card.returnArrTime,
-        makkahNights: card.makkahNights,
-        makkahHotelName: card.makkahHotelName,
-        makkahDistanceLabel: card.makkahDistanceLabel,
-        madinahNights: card.madinahNights,
-        madinahHotelName: card.madinahHotelName,
-        madinahDistanceLabel: card.madinahDistanceLabel,
-        mealPlanLabel: card.mealPlanLabel || "Room Only",
-        rawSharingPkr: card.rawSharingPkr,
-        rawQuadPkr: card.rawQuadPkr,
-        rawTriplePkr: card.rawTriplePkr,
-        rawDoublePkr: card.rawDoublePkr,
-        netSharingPkr: pricing.netSharingPkr,
-        netQuadPkr: pricing.netQuadPkr,
-        netTriplePkr: pricing.netTriplePkr,
-        netDoublePkr: pricing.netDoublePkr,
-        retailSharingPkr: pricing.retailSharingPkr,
-        retailQuadPkr: pricing.retailQuadPkr,
-        retailTriplePkr: pricing.retailTriplePkr,
-        retailDoublePkr: pricing.retailDoublePkr,
-        commissionPkr: pricing.commissionPkr,
+      if (matchedExisting) {
+        retainedIds.add(matchedExisting.id)
+        await db
+          .update(schema.supplierFlyerPackages)
+          .set({
+            supplierId: supplier.id,
+            cardNumber: normalizedCardNumber,
+            outboundFlightNo: card.outboundFlightNo,
+            outboundDateLabel: card.outboundDateLabel,
+            outboundRoute: card.outboundRoute,
+            outboundDepTime: card.outboundDepTime,
+            outboundArrTime: card.outboundArrTime,
+            returnFlightNo: card.returnFlightNo,
+            returnDateLabel: card.returnDateLabel,
+            returnRoute: card.returnRoute,
+            returnDepTime: card.returnDepTime,
+            returnArrTime: card.returnArrTime,
+            makkahNights: card.makkahNights,
+            makkahHotelName: card.makkahHotelName,
+            makkahDistanceLabel: card.makkahDistanceLabel,
+            madinahNights: card.madinahNights,
+            madinahHotelName: card.madinahHotelName,
+            madinahDistanceLabel: card.madinahDistanceLabel,
+            mealPlanLabel: card.mealPlanLabel || "Room Only",
+            rawSharingPkr: card.rawSharingPkr,
+            rawQuadPkr: card.rawQuadPkr,
+            rawTriplePkr: card.rawTriplePkr,
+            rawDoublePkr: card.rawDoublePkr,
+            netSharingPkr: pricing.netSharingPkr,
+            netQuadPkr: pricing.netQuadPkr,
+            netTriplePkr: pricing.netTriplePkr,
+            netDoublePkr: pricing.netDoublePkr,
+            retailSharingPkr: pricing.retailSharingPkr,
+            retailQuadPkr: pricing.retailQuadPkr,
+            retailTriplePkr: pricing.retailTriplePkr,
+            retailDoublePkr: pricing.retailDoublePkr,
+            commissionPkr: pricing.commissionPkr,
+            updatedAt: now,
+          })
+          .where(eq(schema.supplierFlyerPackages.id, matchedExisting.id))
+      } else {
+        const postCode = generatePostReferenceCode({
+          supplierPrefix: supplier.codePrefix,
+          durationDays: input.durationDays,
+          cardNumber: card.cardNumber || String(index + 1),
+          batchSalt,
+        })
+
+        cardsToInsert.push({
+          flyerId: flyerId!,
+          supplierId: supplier.id,
+          cardNumber: normalizedCardNumber,
+          postCode,
+          outboundFlightNo: card.outboundFlightNo,
+          outboundDateLabel: card.outboundDateLabel,
+          outboundRoute: card.outboundRoute,
+          outboundDepTime: card.outboundDepTime,
+          outboundArrTime: card.outboundArrTime,
+          returnFlightNo: card.returnFlightNo,
+          returnDateLabel: card.returnDateLabel,
+          returnRoute: card.returnRoute,
+          returnDepTime: card.returnDepTime,
+          returnArrTime: card.returnArrTime,
+          makkahNights: card.makkahNights,
+          makkahHotelName: card.makkahHotelName,
+          makkahDistanceLabel: card.makkahDistanceLabel,
+          madinahNights: card.madinahNights,
+          madinahHotelName: card.madinahHotelName,
+          madinahDistanceLabel: card.madinahDistanceLabel,
+          mealPlanLabel: card.mealPlanLabel || "Room Only",
+          rawSharingPkr: card.rawSharingPkr,
+          rawQuadPkr: card.rawQuadPkr,
+          rawTriplePkr: card.rawTriplePkr,
+          rawDoublePkr: card.rawDoublePkr,
+          netSharingPkr: pricing.netSharingPkr,
+          netQuadPkr: pricing.netQuadPkr,
+          netTriplePkr: pricing.netTriplePkr,
+          netDoublePkr: pricing.netDoublePkr,
+          retailSharingPkr: pricing.retailSharingPkr,
+          retailQuadPkr: pricing.retailQuadPkr,
+          retailTriplePkr: pricing.retailTriplePkr,
+          retailDoublePkr: pricing.retailDoublePkr,
+          commissionPkr: pricing.commissionPkr,
+        })
       }
-    })
+    }
 
-    await db.insert(schema.supplierFlyerPackages).values(cardsToInsert)
+    const idsToDelete = existingPackages
+      .filter((ep) => !retainedIds.has(ep.id))
+      .map((ep) => ep.id)
 
+    if (idsToDelete.length > 0) {
+      await db
+        .delete(schema.supplierFlyerPackages)
+        .where(inArray(schema.supplierFlyerPackages.id, idsToDelete))
+    }
+
+    if (cardsToInsert.length > 0) {
+      await db.insert(schema.supplierFlyerPackages).values(cardsToInsert)
+    }
+
+    revalidatePath("/admin/studio")
+    revalidatePath("/admin/campaigns")
     revalidatePath("/admin/supplier-flyers")
     revalidatePath("/admin/post-lookup")
     revalidatePath("/admin/distribution")
@@ -850,7 +919,7 @@ async function syncFlyerCardToGroupPackagesInternal(
       flightScheduleSummary: `${pkg.outboundRoute} (${pkg.outboundDepTime}-${pkg.outboundArrTime}) | ${pkg.returnRoute} (${pkg.returnDepTime}-${pkg.returnArrTime})`,
       baggageAllowance: `${pkg.flyer.outboundBaggage || "20Kg"} Out / ${pkg.flyer.inboundBaggage || "30Kg + Zamzam"} In`,
       totalSeats: 35,
-      bookedSeats: 8,
+      bookedSeats: 0,
       status: "open",
       sharingPriceOverridePkr: pkg.retailSharingPkr,
       quadPriceOverridePkr: pkg.retailQuadPkr,
@@ -2126,4 +2195,13 @@ export async function deleteSupplierFlyerAction(rawInput: unknown) {
           : "Failed to delete supplier flyer batch",
     }
   }
+}
+
+// Canonical Aliases for Trigger.dev v4 & Distribution Matrix Actions
+export async function dispatchDistributionMatrixPostsAction(rawInput: unknown) {
+  return dispatchOrLogDistribution(rawInput)
+}
+
+export async function sendDirect1on1OutreachMessageAction(rawInput: unknown) {
+  return sendPersonalOutreachAction(rawInput)
 }

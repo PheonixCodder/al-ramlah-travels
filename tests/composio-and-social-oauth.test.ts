@@ -893,18 +893,25 @@ describe("Composio Managed OAuth & Native OAuth Bridge", () => {
             { status: 429, headers: { "Content-Type": "application/json" } }
           )
         }
+        if (urlStr.includes("oauth2/v2/userinfo")) {
+          return new Response(
+            JSON.stringify({
+              id: "123456789",
+              email: "admin@alramlahtravels.com",
+              name: "Al Ramlah Travels GMB",
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        }
         return new Response("Not found", { status: 404 })
       }
 
-      await assert.rejects(
-        async () => {
-          await gmbProvider.exchangeCodeForTokens(
-            "code_gmb_quota",
-            "https://alramlahtravels.com/callback"
-          )
-        },
-        /Quota exceeded.*Ensure Google Business Profile API/
+      const res = await gmbProvider.exchangeCodeForTokens(
+        "code_gmb_quota",
+        "https://alramlahtravels.com/callback"
       )
+      assert.equal(res.metadata?.quotaPending, true)
+      assert.ok(res.handle?.includes("GBP Quota Pending"))
     })
 
     it("surfaces GMB location fetch error when location fetch fails", async () => {

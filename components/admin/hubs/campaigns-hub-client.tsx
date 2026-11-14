@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
+  AlertCircle,
   XCircle,
   Loader2,
   ExternalLink,
@@ -34,7 +35,16 @@ import {
   Building2,
   FileText,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  TrendingUp,
   X,
+  BarChart3,
+  Heart,
+  MousePointerClick,
+  Film,
+  Image as ImageIcon,
+  UploadCloud,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -64,20 +74,61 @@ import {
   createScheduledSocialPostAction,
   cancelScheduledPostAction,
   retryFailedPostTargetAction,
+  generateArtFirstCommentAction,
+  syncSocialPostAnalyticsAction,
+  syncAllPublishedPostsAnalyticsAction,
+  generateSocialCaptionsCopilotAction,
+  getNextFreeSocialSlotAction,
   type SafeSocialIntegration,
   type ScheduledPostWithTargets,
 } from "@/app/actions/social-scheduler"
-import { createAndQueueWhatsappBroadcastAction } from "@/app/actions/whatsapp-crm"
+import type { SocialPostAnalyticsData } from "@/db/schema/social-scheduler"
+import {
+  aggregateCampaignAnalytics,
+  computeEngagementRate,
+  type PostTargetAnalyticsSnapshot,
+} from "@/lib/social/analytics-aggregate"
+import type {
+  EngagementPlugConfig,
+  PlatformCaptionsMap,
+  SocialPostFormat,
+  SocialProviderId,
+} from "@/lib/social/types"
+import { buildArtFirstCommentPlug } from "@/lib/social/first-comment"
+import { SocialPlatformPreview } from "@/components/admin/campaigns/social-platform-preview"
+import { StudioMediaPickerModal } from "@/components/admin/campaigns/studio-media-picker-modal"
+import { SocialCalendarView } from "@/components/admin/campaigns/social-calendar-view"
+import { parsePktSlotToUtc } from "@/lib/social/time-slots"
+import {
+  createAndQueueWhatsappBroadcastAction,
+  getWhatsappBroadcastDetailsAction,
+  retryFailedWhatsappBroadcastRecipientsAction,
+} from "@/app/actions/whatsapp-crm"
+import {
+  WhatsappBroadcastDetailsDialog,
+  WhatsappBroadcastPersonalizerFields,
+  type BroadcastRecipientDetail,
+  type BroadcastSummaryDetail,
+} from "@/components/admin/campaigns/whatsapp-broadcast-drawer"
+import { parseWhatsappBroadcastCsv } from "@/lib/whatsapp/template-variables"
 import {
   dispatchOrLogDistribution,
   upsertMarketingChannel,
 } from "@/app/actions/marketing-ops"
+import {
+  dispatchAutomatedWhatsappGroupsCampaignAction,
+  listLinkedDeviceSessionsAction,
+  syncAllConnectedLinkedDevicesAction,
+  syncRealWhatsappGroupsAction,
+  type SafeLinkedDeviceSession,
+} from "@/app/actions/whatsapp-linked-device"
 import {
   OutreachClient,
   type OutreachContactRow,
   type OutreachAssetRow,
   type OutreachLogRow,
 } from "@/components/admin/marketing/outreach-client"
+import { CampaignRealtimeStatus } from "@/components/admin/campaigns/campaign-realtime-status"
 import { computeOutreachCooldownState } from "@/lib/domain/marketing-ops"
 import { cn } from "@/lib/utils"
 
@@ -94,6 +145,9 @@ export interface ScheduledPostTargetItem {
   status: "pending" | "publishing" | "published" | "failed" | "skipped"
   publishedUrl: string | null
   externalPostId: string | null
+  firstCommentExternalId?: string | null
+  firstCommentPostedAt?: Date | string | null
+  analyticsData?: SocialPostAnalyticsData | null
   idempotencyKey: string
   errorMessage: string | null
   publishedAt: Date | null
@@ -112,6 +166,10 @@ export interface ScheduledPostItem {
   postAssetId: string | null
   caption: string
   postType: "single_image" | "carousel" | "video" | "story" | "offer"
+  postFormat?: SocialPostFormat
+  firstComment?: string | null
+  platformCaptions?: PlatformCaptionsMap
+  engagementPlugConfig?: EngagementPlugConfig | null
   mediaUrls: string[]
   socialJpegUrls: string[]
   campaignStage: "step_1_spotlight_hook" | "step_2_all_packages" | "standalone"
@@ -416,7 +474,7 @@ export function CampaignsHubClient({
       <div className="flex flex-col gap-2 border-b border-border/80 pb-5">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-bold uppercase tracking-wider text-[#C5A059]">
-            Hub 2 • Campaigns &amp; Multi-Channel Outreach
+            Campaigns &amp; Multi-Channel Marketing
           </span>
           <Badge
             variant="outline"
@@ -646,6 +704,14 @@ function SocialCalendarTab({
     )
   }
 
+  // Post Format (FEED, REEL, STORY)
+  const [postFormat, setPostFormat] = React.useState<SocialPostFormat>("FEED")
+
+  // First-Comment Auto-Plug (IG & FB)
+  const [firstComment, setFirstComment] = React.useState<string>("")
+  const [isGeneratingFirstComment, setIsGeneratingFirstComment] =
+    React.useState(false)
+
   // Publication Scheduling
   const [publishNow, setPublishNow] = React.useState(true)
   const [scheduledDateTime, setScheduledDateTime] = React.useState<string>(() => {
@@ -693,10 +759,361 @@ function SocialCalendarTab({
     type: "success" | "error"
     message: string
   } | null>(null)
+  const [activeSocialRunId, setActiveSocialRunId] = React.useState<string | null>(
+    null
+  )
 
   // Queue actions state
   const [busyActionId, setBusyActionId] = React.useState<string | null>(null)
+  const [syncingAnalyticsPostId, setSyncingAnalyticsPostId] =
+    React.useState<string | null>(null)
+  const [isSyncingAllAnalytics, setIsSyncingAllAnalytics] = React.useState(false)
   const [queueFilter, setQueueFilter] = React.useState<string>("all")
+  const [previewModalPost, setPreviewModalPost] =
+    React.useState<ScheduledPostItem | null>(null)
+  const [isComposerModalOpen, setIsComposerModalOpen] = React.useState(false)
+  const [expandedBreakdownPostIds, setExpandedBreakdownPostIds] =
+    React.useState<string[]>([])
+
+  const toggleBreakdownExpand = (postId: string) => {
+    setExpandedBreakdownPostIds((prev) =>
+      prev.includes(postId)
+        ? prev.filter((id) => id !== postId)
+        : [...prev, postId]
+    )
+  }
+
+  // Phase 3 States: Sub-view, Studio Picker, R2 Upload, AI Copilot, PKT Slots & Auto-Plug
+  const [activeSocialSubView, setActiveSocialSubView] = React.useState<
+    "calendar" | "queue"
+  >("calendar")
+  const [isStudioPickerOpen, setIsStudioPickerOpen] = React.useState(false)
+  const [isUploadingR2, setIsUploadingR2] = React.useState(false)
+
+  // Per-Platform Caption Override Tabs
+  const [platformCaptions, setPlatformCaptions] = React.useState<
+    Partial<
+      Record<SocialProviderId, { caption?: string; firstComment?: string }>
+    >
+  >({})
+  const [activeCaptionTab, setActiveCaptionTab] = React.useState<
+    "global" | SocialProviderId
+  >("global")
+
+  // AI Caption Copilot & PKT Slot Queueing
+  const [isGeneratingAiCaptions, setIsGeneratingAiCaptions] =
+    React.useState(false)
+  const [isQueueingNextSlot, setIsQueueingNextSlot] = React.useState(false)
+
+  // Reactive Engagement Auto-Plug configuration
+  const [isEngagementPlugEnabled, setIsEngagementPlugEnabled] =
+    React.useState(false)
+  const [engagementMinLikes, setEngagementMinLikes] = React.useState(25)
+  const [engagementMinViews, setEngagementMinViews] = React.useState(500)
+  const [engagementPlugText, setEngagementPlugText] = React.useState<string>(
+    "🕋 Urgent Update: Limited seats remaining for this package! WhatsApp our Lahore pilgrims desk directly for immediate confirmation: https://wa.me/923274029701?text=Salam%20Al%20Ramlah%20Travels!%20Inquiring%20about%20booking."
+  )
+
+  // Matched package for ART-... code & pricing in live previewer
+  const matchedComposerPackage = React.useMemo(
+    () =>
+      matchingFlyer?.packages.find(
+        (p) => p.id === selectedAsset?.flyerPackageId
+      ) || matchingFlyer?.packages[0],
+    [matchingFlyer, selectedAsset?.flyerPackageId]
+  )
+
+  const selectedProvidersForPreview = React.useMemo<SocialProviderId[]>(() => {
+    const chosen = activeIntegrations
+      .filter((i) => selectedTargetIds.includes(i.id))
+      .map((i) => i.provider)
+    return chosen.length > 0
+      ? chosen
+      : ["instagram", "facebook", "tiktok", "youtube", "gmb"]
+  }, [activeIntegrations, selectedTargetIds])
+
+  // Cross-Channel Campaign Analytics Overview Rollup across all scheduled/published posts
+  const campaignAnalyticsOverview = React.useMemo(() => {
+    const snapshots: PostTargetAnalyticsSnapshot[] = []
+    for (const post of scheduledPosts) {
+      for (const target of post.targets) {
+        if (target.status === "published" || target.analyticsData) {
+          const data = target.analyticsData
+          snapshots.push({
+            targetId: target.id,
+            postId: post.id,
+            postCode: post.postAsset?.postCode || null,
+            caption: post.caption,
+            provider: target.integration.provider,
+            accountName: target.integration.name,
+            views: data?.impressions ?? 0,
+            impressions: data?.impressions ?? 0,
+            likes: data?.likes ?? 0,
+            comments: data?.comments ?? 0,
+            shares: data?.shares ?? 0,
+            clicks: data?.clicks ?? 0,
+            publishedUrl: target.publishedUrl,
+            lastSyncedAt: data?.lastSyncedAt ?? null,
+          })
+        }
+      }
+    }
+    return aggregateCampaignAnalytics(snapshots)
+  }, [scheduledPosts])
+
+  // 1-Click Sync All Published Analytics
+  const handleSyncAllAnalytics = async () => {
+    setIsSyncingAllAnalytics(true)
+    try {
+      const res = await syncAllPublishedPostsAnalyticsAction({ limit: 25 })
+      if (res.success) {
+        setComposerNotice({
+          type: "success",
+          message: `Synced analytics across ${res.syncedPostsCount ?? 0} published post(s) and ${res.syncedTargetsCount ?? 0} channel target(s)!`,
+        })
+        router.refresh()
+      } else {
+        setComposerNotice({
+          type: "error",
+          message: res.error || "Failed to sync all published post analytics.",
+        })
+      }
+    } finally {
+      setIsSyncingAllAnalytics(false)
+    }
+  }
+
+  // 1-Click Generate ART-... First-Comment WhatsApp CTA
+  const handleGenerateFirstComment = async () => {
+    setIsGeneratingFirstComment(true)
+    try {
+      const matchedPackage = matchedComposerPackage
+
+      if (selectedAsset?.id) {
+        const res = await generateArtFirstCommentAction({
+          postAssetId: selectedAsset.id,
+          postCode: matchedPackage?.postCode || selectedAsset.postCode,
+          title: selectedAsset.title,
+          sharingPricePkr: matchedPackage?.retailSharingPkr,
+          quadPricePkr: matchedPackage?.retailQuadPkr,
+          triplePricePkr: matchedPackage?.retailTriplePkr,
+          doublePricePkr: matchedPackage?.retailDoublePkr,
+          makkahHotelName: matchedPackage?.makkahHotelName,
+          madinahHotelName: matchedPackage?.madinahHotelName,
+        })
+        if (res.success && res.firstComment) {
+          setFirstComment(res.firstComment)
+          return
+        }
+      }
+
+      // Client-side fallback using shared helper
+      const fallbackComment = buildArtFirstCommentPlug({
+        postCode:
+          matchedPackage?.postCode ||
+          selectedAsset?.postCode ||
+          "ART-UMRAH-01",
+        title: selectedAsset?.title,
+        sharingPricePkr: matchedPackage?.retailSharingPkr,
+        quadPricePkr: matchedPackage?.retailQuadPkr,
+        triplePricePkr: matchedPackage?.retailTriplePkr,
+        doublePricePkr: matchedPackage?.retailDoublePkr,
+        makkahHotelName: matchedPackage?.makkahHotelName,
+        madinahHotelName: matchedPackage?.madinahHotelName,
+      })
+      setFirstComment(fallbackComment)
+    } finally {
+      setIsGeneratingFirstComment(false)
+    }
+  }
+
+  // Handle Sync Post Analytics
+  const handleSyncPostAnalytics = async (postId: string) => {
+    setSyncingAnalyticsPostId(postId)
+    try {
+      const res = await syncSocialPostAnalyticsAction({
+        scheduledPostId: postId,
+      })
+      if (res.success) {
+        router.refresh()
+      } else {
+        setComposerNotice({
+          type: "error",
+          message: res.error || "Failed to sync social post metrics.",
+        })
+      }
+    } finally {
+      setSyncingAnalyticsPostId(null)
+    }
+  }
+
+  // Active platform caption & first-comment for device preview synchronization
+  const currentTabCaption = React.useMemo(() => {
+    if (activeCaptionTab === "global") return caption
+    return platformCaptions[activeCaptionTab]?.caption || caption
+  }, [activeCaptionTab, caption, platformCaptions])
+
+  const currentTabFirstComment = React.useMemo(() => {
+    if (activeCaptionTab === "global") return firstComment
+    return platformCaptions[activeCaptionTab]?.firstComment !== undefined
+      ? platformCaptions[activeCaptionTab]?.firstComment || ""
+      : firstComment
+  }, [activeCaptionTab, firstComment, platformCaptions])
+
+  // AI Social Caption Copilot generator
+  const handleGenerateAiCaptions = async () => {
+    setIsGeneratingAiCaptions(true)
+    setComposerNotice(null)
+    try {
+      const res = await generateSocialCaptionsCopilotAction({
+        postCode: matchedComposerPackage?.postCode || selectedAsset?.postCode,
+        title: selectedAsset?.title,
+        campaignStage: isTwoStepEnabled ? "step_1_spotlight_hook" : "standalone",
+        postFormat,
+        sharingPricePkr: matchedComposerPackage?.retailSharingPkr,
+        quadPricePkr: matchedComposerPackage?.retailQuadPkr,
+        triplePricePkr: matchedComposerPackage?.retailTriplePkr,
+        doublePricePkr: matchedComposerPackage?.retailDoublePkr,
+        makkahHotelName: matchedComposerPackage?.makkahHotelName,
+        madinahHotelName: matchedComposerPackage?.madinahHotelName,
+        airlineName: matchingFlyer?.airlineName,
+      })
+
+      if (res.success && res.result) {
+        setCaption(res.result.globalDefault)
+        setFirstComment(res.result.suggestedFirstComment)
+        setPlatformCaptions({
+          instagram: {
+            caption: res.result.captions.instagram.caption,
+            firstComment: res.result.captions.instagram.firstComment,
+          },
+          facebook: {
+            caption: res.result.captions.facebook.caption,
+            firstComment: res.result.captions.facebook.firstComment,
+          },
+          tiktok: {
+            caption: res.result.captions.tiktok.caption,
+            firstComment: res.result.captions.tiktok.firstComment,
+          },
+          youtube: {
+            caption: res.result.captions.youtube.caption,
+            firstComment: res.result.captions.youtube.firstComment,
+          },
+          gmb: {
+            caption: res.result.captions.gmb.caption,
+          },
+        })
+        setComposerNotice({
+          type: "success",
+          message: `✨ AI generated 5 platform-optimized captions & hooks using ${res.result.modelUsed}!`,
+        })
+      } else {
+        setComposerNotice({
+          type: "error",
+          message: res.error || "Failed to generate AI captions.",
+        })
+      }
+    } catch (err: unknown) {
+      setComposerNotice({
+        type: "error",
+        message:
+          err instanceof Error ? err.message : "AI caption generation failed.",
+      })
+    } finally {
+      setIsGeneratingAiCaptions(false)
+    }
+  }
+
+  // Queue in next open PKT slot
+  const handleQueueNextFreeSlot = async () => {
+    setIsQueueingNextSlot(true)
+    try {
+      const res = await getNextFreeSocialSlotAction()
+      if (res.success && res.nextSlotUtc) {
+        setPublishNow(false)
+        const d = new Date(res.nextSlotUtc)
+        const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+          .toISOString()
+          .slice(0, 16)
+        setScheduledDateTime(localIso)
+        setComposerNotice({
+          type: "success",
+          message: `⚡ Queued in next open peak window: ${res.pktLabel}`,
+        })
+      } else {
+        setComposerNotice({
+          type: "error",
+          message: res.error || "Failed to calculate next free slot.",
+        })
+      }
+    } catch (err: unknown) {
+      setComposerNotice({
+        type: "error",
+        message: err instanceof Error ? err.message : "Failed to calculate slot.",
+      })
+    } finally {
+      setIsQueueingNextSlot(false)
+    }
+  }
+
+  // Direct R2 / local media upload
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setIsUploadingR2(true)
+    try {
+      const presignRes = await fetch("/api/uploads/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type || "image/jpeg",
+          folder: "social-media",
+          sizeBytes: file.size,
+        }),
+      })
+
+      if (presignRes.ok) {
+        const presignData = await presignRes.json()
+        if (presignData.uploadUrl && presignData.publicUrl) {
+          const uploadRes = await fetch(presignData.uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": file.type || "image/jpeg" },
+            body: file,
+          })
+          if (uploadRes.ok) {
+            setMediaUrls((prev) => [...prev, presignData.publicUrl])
+            return
+          }
+        }
+      }
+
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("folder", "social-media")
+      const localRes = await fetch("/api/uploads/local", {
+        method: "POST",
+        body: formData,
+      })
+      if (localRes.ok) {
+        const localData = await localRes.json()
+        if (localData.url) {
+          setMediaUrls((prev) => [...prev, localData.url])
+          return
+        }
+      }
+
+      const objUrl = URL.createObjectURL(file)
+      setMediaUrls((prev) => [...prev, objUrl])
+    } catch (uploadErr) {
+      console.warn("[Media Upload Fallback]:", uploadErr)
+      const objUrl = URL.createObjectURL(file)
+      setMediaUrls((prev) => [...prev, objUrl])
+    } finally {
+      setIsUploadingR2(false)
+      if (e.target) e.target.value = ""
+    }
+  }
 
   // Handle Create Scheduled Post
   const handleCreatePost = async (e: React.FormEvent) => {
@@ -715,6 +1132,13 @@ function SocialCalendarTab({
       })
       return
     }
+    if (postFormat === "REEL" && !isVideoMedia) {
+      setComposerNotice({
+        type: "error",
+        message: "REEL format requires an MP4/MOV video URL in Attached Media URLs.",
+      })
+      return
+    }
 
     setIsSubmitting(true)
     setComposerNotice(null)
@@ -726,10 +1150,35 @@ function SocialCalendarTab({
 
       const finalMediaUrls = mediaUrls.filter((u) => u.trim().length > 0)
 
+      const derivedPostType =
+        postFormat === "REEL"
+          ? ("video" as const)
+          : postFormat === "STORY"
+          ? ("story" as const)
+          : isVideoMedia
+          ? ("video" as const)
+          : finalMediaUrls.length > 1
+          ? ("carousel" as const)
+          : ("single_image" as const)
+
       const payload = {
         postAssetId: selectedAssetId || undefined,
         caption: caption.trim(),
-        postType: "single_image" as const,
+        postType: derivedPostType,
+        postFormat,
+        firstComment: firstComment.trim() ? firstComment.trim() : null,
+        platformCaptions:
+          Object.keys(platformCaptions).length > 0
+            ? platformCaptions
+            : undefined,
+        engagementPlugConfig: isEngagementPlugEnabled
+          ? {
+              enabled: true,
+              minLikes: engagementMinLikes,
+              minViews: engagementMinViews,
+              plugText: engagementPlugText.trim(),
+            }
+          : null,
         mediaUrls: finalMediaUrls,
         campaignStage: isTwoStepEnabled
           ? ("step_1_spotlight_hook" as const)
@@ -746,6 +1195,8 @@ function SocialCalendarTab({
                 postAssetId: followUpAssetId,
                 mediaUrls: followUpAsset?.imageUrl ? [followUpAsset.imageUrl] : [],
                 postType: "carousel" as const,
+                postFormat: "FEED" as const,
+                firstComment: firstComment.trim() ? firstComment.trim() : null,
                 title: followUpAsset?.title,
               }
             : undefined,
@@ -754,11 +1205,14 @@ function SocialCalendarTab({
       const res = await createScheduledSocialPostAction(payload)
 
       if (res.success) {
+        if (res.postId && publishNow) {
+          setActiveSocialRunId(`inline_social_${res.postId}`)
+        }
         setComposerNotice({
           type: "success",
           message: publishNow
-            ? `Post successfully published across ${selectedTargetIds.length} connected channel(s)!`
-            : `Post successfully scheduled for ${formatDateSafe(scheduledDate)} across ${selectedTargetIds.length} channel(s)!`,
+            ? `Post (${postFormat}) successfully published across ${selectedTargetIds.length} connected channel(s)!`
+            : `Post (${postFormat}) successfully scheduled for ${formatDateSafe(scheduledDate)} across ${selectedTargetIds.length} channel(s)!`,
         })
         router.refresh()
       } else {
@@ -816,8 +1270,175 @@ function SocialCalendarTab({
     return scheduledPosts.filter((p) => p.status === queueFilter)
   }, [scheduledPosts, queueFilter])
 
+  // Active publishing run from queue or immediate trigger
+  const livePublishingPost = React.useMemo(() => {
+    return scheduledPosts.find(
+      (p) => p.status === "publishing" && Boolean(p.triggerRunId)
+    )
+  }, [scheduledPosts])
+
+  const effectiveSocialRunId =
+    livePublishingPost?.triggerRunId || activeSocialRunId
+
   return (
     <div className="flex flex-col gap-8">
+      {/* Live Trigger.dev v4 Realtime Stream for Active Publishing */}
+      {effectiveSocialRunId && (
+        <CampaignRealtimeStatus
+          runId={effectiveSocialRunId}
+          mode="social_post"
+          title="Live Multi-Channel Social Publishing Stream"
+          onComplete={() => router.refresh()}
+        />
+      )}
+
+      {/* 0. Core 5 Analytics Overview Bar */}
+      <Card className="border-[#C5A059]/50 bg-gradient-to-r from-[#0A3622]/[0.04] via-card to-[#C5A059]/[0.06] shadow-xs">
+        <CardHeader className="pb-3 border-b border-border/80">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <CardTitle className="font-display text-base font-bold flex items-center gap-2">
+                <BarChart3 className="size-4 text-[#C5A059]" />
+                <span>Core 5 Cross-Channel Analytics Overview</span>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] font-mono border-[#C5A059]/60 text-[#0A3622]"
+                >
+                  {campaignAnalyticsOverview.totalPosts} Published Targets
+                </Badge>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Aggregated performance across Instagram, Facebook Pages, TikTok, YouTube Shorts &amp; Google Business Profile.
+              </CardDescription>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsComposerModalOpen(true)}
+                className="h-8 text-xs font-bold border-[#C5A059]/60 text-[#0A3622] hover:bg-[#C5A059]/10 gap-1.5 cursor-pointer"
+              >
+                <Smartphone className="size-3.5 text-[#C5A059]" />
+                <span>Open Studio Split Preview</span>
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                disabled={isSyncingAllAnalytics}
+                onClick={handleSyncAllAnalytics}
+                className="h-8 text-xs font-bold bg-[#0A3622] text-white hover:bg-[#0A3622]/90 gap-1.5 cursor-pointer"
+              >
+                {isSyncingAllAnalytics ? (
+                  <Loader2 className="size-3.5 animate-spin text-[#C5A059]" />
+                ) : (
+                  <RefreshCw className="size-3.5 text-[#C5A059]" />
+                )}
+                <span>Sync All Analytics</span>
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-4 space-y-4">
+          {/* 5 KPI Summary Cards */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <div className="rounded-xl border border-border bg-white p-3 space-y-1">
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+                <span>Total Views</span>
+                <Eye className="size-3.5 text-primary" />
+              </div>
+              <p className="font-mono text-lg font-bold text-foreground">
+                {campaignAnalyticsOverview.totalViews.toLocaleString()}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border bg-white p-3 space-y-1">
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+                <span>Total Likes</span>
+                <Heart className="size-3.5 text-rose-600" />
+              </div>
+              <p className="font-mono text-lg font-bold text-foreground">
+                {campaignAnalyticsOverview.totalLikes.toLocaleString()}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border bg-white p-3 space-y-1">
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+                <span>Total Comments</span>
+                <MessageSquare className="size-3.5 text-blue-600" />
+              </div>
+              <p className="font-mono text-lg font-bold text-foreground">
+                {campaignAnalyticsOverview.totalComments.toLocaleString()}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border bg-white p-3 space-y-1">
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+                <span>Shares &amp; Clicks</span>
+                <MousePointerClick className="size-3.5 text-[#C5A059]" />
+              </div>
+              <p className="font-mono text-lg font-bold text-foreground">
+                {(
+                  campaignAnalyticsOverview.totalShares +
+                  campaignAnalyticsOverview.totalClicks
+                ).toLocaleString()}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-[#C5A059]/50 bg-[#0A3622]/5 p-3 space-y-1 col-span-2 sm:col-span-1">
+              <div className="flex items-center justify-between text-[11px] text-[#0A3622] font-bold">
+                <span>Avg Engagement</span>
+                <TrendingUp className="size-3.5 text-[#C5A059]" />
+              </div>
+              <p className="font-mono text-lg font-bold text-[#0A3622]">
+                {campaignAnalyticsOverview.engagementRatePct.toFixed(2)}%
+              </p>
+            </div>
+          </div>
+
+          {/* Per-Platform Mini Breakdown Pills for IG, FB, TikTok, YouTube, GMB */}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+            {CORE_5_PLATFORMS.map((plat) => {
+              const summary = campaignAnalyticsOverview.byPlatform[plat.id]
+              return (
+                <div
+                  key={plat.id}
+                  className="rounded-lg border border-border bg-white/90 px-3 py-2 flex items-center justify-between gap-2 text-xs"
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className={cn(
+                        "rounded px-1.5 py-0.5 font-mono text-[9px] font-bold border shrink-0",
+                        plat.color
+                      )}
+                    >
+                      {plat.badge}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[11px] truncate">
+                        {summary.views.toLocaleString()} views
+                      </p>
+                      <p className="text-[10px] text-muted-foreground font-mono">
+                        {summary.likes}♥ · {summary.comments}💬 · {summary.clicks}⚡
+                      </p>
+                    </div>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="font-mono text-[10px] border-[#C5A059]/40 text-[#0A3622] shrink-0"
+                  >
+                    {summary.engagementRatePct.toFixed(1)}%
+                  </Badge>
+                </div>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* 1. Post Composer Card */}
       <Card className="border-[#C5A059]/40 bg-card shadow-sm">
         <CardHeader className="bg-secondary/20 border-b border-border pb-4">
@@ -828,7 +1449,7 @@ function SocialCalendarTab({
                 <span>Core 5 Social Post Composer</span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Broadcast official Al Ramlah 4K posters &amp; spotlights directly to Instagram, Facebook Pages, TikTok, YouTube &amp; Google Business Profile.
+                Broadcast official Al Ramlah 4K posters, vertical Reels &amp; Stories directly to Instagram, Facebook Pages, TikTok, YouTube &amp; Google Business Profile.
               </CardDescription>
             </div>
             <div className="flex items-center gap-1.5">
@@ -865,7 +1486,7 @@ function SocialCalendarTab({
 
           <form onSubmit={handleCreatePost} className="space-y-6">
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-              {/* Left Column: Asset & Media Selection (5 cols) */}
+              {/* Left Column: Asset, Format & Media Selection (5 cols) */}
               <div className="lg:col-span-5 space-y-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-primary flex items-center justify-between">
@@ -885,6 +1506,89 @@ function SocialCalendarTab({
                       </option>
                     ))}
                   </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsStudioPickerOpen(true)}
+                    className="w-full text-xs font-semibold border-[#C5A059]/60 text-[#0A3622] hover:bg-[#C5A059]/10 gap-1.5 cursor-pointer mt-1"
+                  >
+                    <Sparkles className="size-3.5 text-[#C5A059]" />
+                    <span>Pick from Studio Library (4K Posters &amp; Flyers)</span>
+                  </Button>
+                </div>
+
+                {/* Post Format Selector (FEED, REEL, STORY) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-foreground">
+                      Post Format (Feed / Reel / Story)
+                    </Label>
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] font-mono border-[#C5A059]/50 text-[#0A3622]"
+                    >
+                      {postFormat}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        {
+                          id: "FEED" as const,
+                          label: "Feed Post",
+                          desc: "4K Image / Carousel",
+                          icon: ImageIcon,
+                        },
+                        {
+                          id: "REEL" as const,
+                          label: "Reel / Short",
+                          desc: "9:16 Vertical Video",
+                          icon: Film,
+                        },
+                        {
+                          id: "STORY" as const,
+                          label: "24h Story",
+                          desc: "IG & FB Stories",
+                          icon: Smartphone,
+                        },
+                      ]
+                    ).map((fmt) => {
+                      const FmtIcon = fmt.icon
+                      const active = postFormat === fmt.id
+                      return (
+                        <button
+                          key={fmt.id}
+                          type="button"
+                          onClick={() => setPostFormat(fmt.id)}
+                          className={cn(
+                            "flex flex-col items-start rounded-lg border p-2.5 text-left transition-all cursor-pointer",
+                            active
+                              ? "border-[#0A3622] bg-[#0A3622]/5 ring-1 ring-[#0A3622]"
+                              : "border-border bg-white hover:border-[#C5A059]"
+                          )}
+                        >
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                            <FmtIcon
+                              className={cn(
+                                "size-3.5",
+                                active ? "text-[#C5A059]" : "text-muted-foreground"
+                              )}
+                            />
+                            <span>{fmt.label}</span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground mt-0.5">
+                            {fmt.desc}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {postFormat === "REEL" && !isVideoMedia && (
+                    <p className="text-[10px] font-medium text-amber-800 bg-amber-50 border border-amber-300 rounded-md px-2.5 py-1.5">
+                      Reel / Short format requires an `.mp4` or `.mov` video URL in Attached Media URLs below.
+                    </p>
+                  )}
                 </div>
 
                 {/* Poster Preview Card */}
@@ -1001,56 +1705,274 @@ function SocialCalendarTab({
                       ))}
                     </div>
                   )}
+
+                  {/* Direct R2 Upload Dropzone */}
+                  <div className="relative rounded-xl border border-dashed border-[#C5A059]/50 bg-[#C5A059]/5 p-3 text-center transition-all hover:bg-[#C5A059]/10 mt-2">
+                    <input
+                      type="file"
+                      accept="image/*,video/mp4,video/quicktime"
+                      onChange={handleFileUpload}
+                      disabled={isUploadingR2}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <div className="flex flex-col items-center justify-center gap-1 pointer-events-none">
+                      {isUploadingR2 ? (
+                        <Loader2 className="size-5 animate-spin text-[#C5A059]" />
+                      ) : (
+                        <UploadCloud className="size-5 text-[#C5A059]" />
+                      )}
+                      <span className="text-xs font-semibold text-foreground">
+                        {isUploadingR2
+                          ? "Uploading to Cloudflare R2..."
+                          : "Drag & Drop or Click to Upload Media"}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        Direct R2 upload (Images or MP4 Videos)
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Right Column: Caption & Target Channels (7 cols) */}
+              {/* Right Column: Caption, First-Comment Auto-Plug & Target Channels (7 cols) */}
               <div className="lg:col-span-7 space-y-4">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-foreground">
-                      2. Social Media Caption &amp; Hashtags
+                {/* 2. Multi-Platform Social Media Caption & AI Copilot */}
+                <div className="space-y-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <Label className="text-xs font-bold text-foreground flex items-center gap-2">
+                      <span>2. Social Captions &amp; Platform Overrides</span>
+                      {activeCaptionTab !== "global" && (
+                        <Badge
+                          variant="outline"
+                          className="text-[9px] font-mono border-[#C5A059]/60 text-[#0A3622] uppercase"
+                        >
+                          Customizing {activeCaptionTab}
+                        </Badge>
+                      )}
                     </Label>
-                    <span className="text-[10px] font-mono text-muted-foreground">
-                      {caption.length} Characters
-                    </span>
-                  </div>
-                  <Textarea
-                    rows={6}
-                    value={caption}
-                    onChange={(e) => setCaption(e.target.value)}
-                    placeholder="Write caption with #AlRamlahTravels, contact lines and package overview..."
-                    className="text-xs font-mono leading-relaxed"
-                  />
-                  <div className="flex items-center gap-2 pt-1 flex-wrap">
-                    <button
+
+                    <Button
                       type="button"
-                      onClick={() =>
-                        setCaption(
-                          (prev) =>
-                            prev +
-                            "\n\n📞 *Book Now with Al Ramlah Travels:*\n• 03274029701\n• 03190462638\n🌐 Askari 10 & DHA Lahore"
-                        )
-                      }
-                      className="text-[11px] font-semibold text-primary hover:underline"
+                      variant="outline"
+                      size="xs"
+                      disabled={isGeneratingAiCaptions}
+                      onClick={handleGenerateAiCaptions}
+                      className="h-7 text-[11px] font-bold border-[#C5A059]/60 bg-gradient-to-r from-[#0A3622]/5 to-[#C5A059]/10 hover:bg-[#C5A059]/20 text-[#0A3622] shrink-0 cursor-pointer gap-1.5 shadow-xs"
                     >
-                      + Add Booking Helpline
-                    </button>
-                    <span className="text-border">•</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setCaption(
-                          (prev) =>
-                            prev +
-                            "\n\n#Umrah2026 #AlRamlahTravels #Askari10 #DHALahore #Makkah #Madinah #UmrahPackages"
-                        )
-                      }
-                      className="text-[11px] font-semibold text-primary hover:underline"
-                    >
-                      + Add Viral Hashtags
-                    </button>
+                      {isGeneratingAiCaptions ? (
+                        <Loader2 className="size-3 animate-spin text-[#C5A059]" />
+                      ) : (
+                        <Sparkles className="size-3 text-[#C5A059]" />
+                      )}
+                      <span>✨ AI Generate All 5 Platform Captions</span>
+                    </Button>
                   </div>
+
+                  {/* Platform Tabs Bar */}
+                  <div className="flex items-center gap-1 overflow-x-auto pb-1 border-b border-border">
+                    {[
+                      {
+                        id: "global" as const,
+                        label: "Global Default",
+                        limit: 63206,
+                        icon: "🌐",
+                      },
+                      {
+                        id: "instagram" as const,
+                        label: "Instagram",
+                        limit: 2200,
+                        icon: "📸",
+                      },
+                      {
+                        id: "facebook" as const,
+                        label: "Facebook",
+                        limit: 63206,
+                        icon: "📘",
+                      },
+                      {
+                        id: "tiktok" as const,
+                        label: "TikTok",
+                        limit: 2000,
+                        icon: "🎵",
+                      },
+                      {
+                        id: "youtube" as const,
+                        label: "YouTube",
+                        limit: 5000,
+                        icon: "▶️",
+                      },
+                      {
+                        id: "gmb" as const,
+                        label: "Google Biz",
+                        limit: 1500,
+                        icon: "📍",
+                      },
+                    ].map((tab) => {
+                      const isActive = activeCaptionTab === tab.id
+                      const hasOverride =
+                        tab.id !== "global" &&
+                        Boolean(platformCaptions[tab.id]?.caption?.trim())
+
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setActiveCaptionTab(tab.id)}
+                          className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition-all cursor-pointer",
+                            isActive
+                              ? "bg-[#0A3622] text-white shadow-xs"
+                              : "bg-secondary text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          <span className="text-[11px]">{tab.icon}</span>
+                          <span>{tab.label}</span>
+                          {hasOverride && (
+                            <span className="size-1.5 rounded-full bg-[#C5A059]" />
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Tab Content: Global Default */}
+                  {activeCaptionTab === "global" && (
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                          <span>Primary default copy applied to all channels without custom overrides</span>
+                          <span className="font-mono">{caption.length} / 63,206</span>
+                        </div>
+                        <Textarea
+                          rows={5}
+                          value={caption}
+                          onChange={(e) => setCaption(e.target.value)}
+                          placeholder="Write global caption with #AlRamlahTravels, contact lines and package overview..."
+                          className="text-xs font-mono leading-relaxed bg-white"
+                        />
+                      </div>
+
+                      {postFormat !== "STORY" && (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                            <span className="font-semibold text-foreground flex items-center gap-1">
+                              <MessageSquare className="size-3 text-[#C5A059]" />
+                              <span>Global First Comment (IG &amp; FB)</span>
+                            </span>
+                            <span className="font-mono">{firstComment.length} chars</span>
+                          </div>
+                          <Textarea
+                            rows={2}
+                            value={firstComment}
+                            onChange={(e) => setFirstComment(e.target.value)}
+                            placeholder="Optional pinned first comment with ART-... booking link..."
+                            className="text-xs font-mono leading-relaxed bg-white"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab Content: Specific Platform Overrides */}
+                  {activeCaptionTab !== "global" && (
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                          <span>
+                            Custom {activeCaptionTab.toUpperCase()} override{" "}
+                            {!platformCaptions[activeCaptionTab]?.caption &&
+                              "(inheriting Global Default)"}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {platformCaptions[activeCaptionTab]?.caption && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPlatformCaptions((prev) => {
+                                    const next = { ...prev }
+                                    delete next[activeCaptionTab]
+                                    return next
+                                  })
+                                }
+                                className="text-[10px] text-rose-600 hover:underline"
+                              >
+                                Reset to Global
+                              </button>
+                            )}
+                            <span className="font-mono">
+                              {(
+                                platformCaptions[activeCaptionTab]?.caption ||
+                                caption
+                              ).length}{" "}
+                              Chars
+                            </span>
+                          </div>
+                        </div>
+                        <Textarea
+                          rows={5}
+                          value={
+                            platformCaptions[activeCaptionTab]?.caption !== undefined
+                              ? platformCaptions[activeCaptionTab]?.caption
+                              : caption
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setPlatformCaptions((prev) => ({
+                              ...prev,
+                              [activeCaptionTab]: {
+                                ...prev[activeCaptionTab],
+                                caption: val,
+                              },
+                            }))
+                          }}
+                          placeholder={`Custom ${activeCaptionTab} caption...`}
+                          className="text-xs font-mono leading-relaxed bg-white"
+                        />
+                      </div>
+
+                      {/* Platform-specific first comment if supported */}
+                      {["instagram", "facebook", "youtube"].includes(
+                        activeCaptionTab
+                      ) && (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                            <span className="font-semibold text-foreground flex items-center gap-1">
+                              <MessageSquare className="size-3 text-[#C5A059]" />
+                              <span>{activeCaptionTab.toUpperCase()} Pinned First Comment</span>
+                            </span>
+                            <span className="font-mono">
+                              {(
+                                platformCaptions[activeCaptionTab]?.firstComment ??
+                                firstComment
+                              ).length}{" "}
+                              chars
+                            </span>
+                          </div>
+                          <Textarea
+                            rows={2}
+                            value={
+                              platformCaptions[activeCaptionTab]?.firstComment !==
+                              undefined
+                                ? platformCaptions[activeCaptionTab]?.firstComment
+                                : firstComment
+                            }
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setPlatformCaptions((prev) => ({
+                                ...prev,
+                                [activeCaptionTab]: {
+                                  ...prev[activeCaptionTab],
+                                  firstComment: val,
+                                },
+                              }))
+                            }}
+                            placeholder={`Custom ${activeCaptionTab} first comment...`}
+                            className="text-xs font-mono leading-relaxed bg-white"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Target Connected Social Channels */}
@@ -1266,6 +2188,125 @@ function SocialCalendarTab({
               )}
             </div>
 
+            {/* Reactive Engagement Auto-Plug Card */}
+            <div className="rounded-xl border border-border bg-card p-3.5 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-4 text-[#C5A059]" />
+                  <div>
+                    <h4 className="text-xs font-bold text-foreground flex items-center gap-2">
+                      <span>Reactive Engagement Auto-Plug</span>
+                      <Badge className="text-[9px] bg-[#0A3622] text-white">
+                        Lead Conversion
+                      </Badge>
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground">
+                      Auto-injects a high-urgency WhatsApp booking CTA comment on Instagram, Facebook, and YouTube when post reaches engagement thresholds.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-primary">
+                  <input
+                    type="checkbox"
+                    checked={isEngagementPlugEnabled}
+                    onChange={(e) => setIsEngagementPlugEnabled(e.target.checked)}
+                    className="size-4 rounded text-primary accent-[#0A3622]"
+                  />
+                  <span>Enable Auto-Plug</span>
+                </label>
+              </div>
+
+              {isEngagementPlugEnabled && (
+                <div className="pt-2 border-t border-border space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-semibold text-muted-foreground">
+                        Min Likes Threshold
+                      </Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={engagementMinLikes}
+                        onChange={(e) =>
+                          setEngagementMinLikes(Number(e.target.value) || 25)
+                        }
+                        className="h-7 text-xs font-mono bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-semibold text-muted-foreground">
+                        Min Views / Impressions Threshold
+                      </Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={engagementMinViews}
+                        onChange={(e) =>
+                          setEngagementMinViews(Number(e.target.value) || 500)
+                        }
+                        className="h-7 text-xs font-mono bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold text-muted-foreground">
+                      Urgency Auto-Comment Copy
+                    </Label>
+                    <Textarea
+                      rows={2}
+                      value={engagementPlugText}
+                      onChange={(e) => setEngagementPlugText(e.target.value)}
+                      className="text-xs font-mono leading-relaxed bg-white"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Embedded Live Core 5 Interactive Device Previewer */}
+            <div className="pt-2 border-t border-border">
+              <SocialPlatformPreview
+                caption={currentTabCaption}
+                title={selectedAsset?.title}
+                postType={postFormat}
+                postFormat={postFormat}
+                onPostTypeChange={(fmt) => setPostFormat(fmt)}
+                publishMode={
+                  isTwoStepEnabled ? "SPOTLIGHT_THEN_SHEET" : "SINGLE"
+                }
+                mediaUrls={mediaUrls}
+                spotlightMediaUrl={
+                  preferredAssetMediaUrl || selectedAsset?.imageUrl || null
+                }
+                sheetMediaUrl={followUpAsset?.imageUrl || null}
+                postCode={
+                  matchedComposerPackage?.postCode ||
+                  selectedAsset?.postCode ||
+                  "ART-UMRAH-01"
+                }
+                packageTitle={selectedAsset?.title}
+                sharingPricePkr={matchedComposerPackage?.retailSharingPkr}
+                quadPricePkr={matchedComposerPackage?.retailQuadPkr}
+                triplePricePkr={matchedComposerPackage?.retailTriplePkr}
+                doublePricePkr={matchedComposerPackage?.retailDoublePkr}
+                makkahHotelName={matchedComposerPackage?.makkahHotelName}
+                madinahHotelName={matchedComposerPackage?.madinahHotelName}
+                autoFirstComment={Boolean(
+                  currentTabFirstComment.trim() || selectedAsset
+                )}
+                firstComment={currentTabFirstComment}
+                selectedProviders={selectedProvidersForPreview}
+                connectedAccounts={activeIntegrations.map((i) => ({
+                  provider: i.provider,
+                  name: i.name,
+                  handle: i.handle,
+                  avatarUrl: i.avatarUrl,
+                }))}
+              />
+            </div>
+
             {/* Publication Timing & Submit Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-border">
               <div className="flex flex-wrap items-center gap-4">
@@ -1303,6 +2344,22 @@ function SocialCalendarTab({
                     />
                   </div>
                 )}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isQueueingNextSlot}
+                  onClick={handleQueueNextFreeSlot}
+                  className="h-8 text-xs font-bold border-[#C5A059]/60 text-[#0A3622] hover:bg-[#C5A059]/10 gap-1.5 cursor-pointer"
+                >
+                  {isQueueingNextSlot ? (
+                    <Loader2 className="size-3 animate-spin text-[#C5A059]" />
+                  ) : (
+                    <Clock className="size-3 text-[#C5A059]" />
+                  )}
+                  <span>Queue in Next Free PKT Slot</span>
+                </Button>
               </div>
 
               <Button
@@ -1317,8 +2374,8 @@ function SocialCalendarTab({
                 )}
                 <span>
                   {publishNow
-                    ? `Publish Immediately (${selectedTargetIds.length} Channels)`
-                    : `Schedule Post (${selectedTargetIds.length} Channels)`}
+                    ? `Publish ${postFormat} Immediately (${selectedTargetIds.length} Channels)`
+                    : `Schedule ${postFormat} (${selectedTargetIds.length} Channels)`}
                 </span>
               </Button>
             </div>
@@ -1326,57 +2383,165 @@ function SocialCalendarTab({
         </CardContent>
       </Card>
 
-      {/* 2. Live Scheduled & Published Queue */}
+      {/* 2. Live Scheduled & Published Queue / Visual PKT Calendar */}
       <Card className="border-border bg-card shadow-xs">
         <CardHeader className="pb-3 border-b border-border">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="font-display text-base font-bold flex items-center gap-2">
                 <Calendar className="size-4 text-primary" />
-                <span>Live Scheduled &amp; Published Queue ({scheduledPosts.length})</span>
+                <span>
+                  {activeSocialSubView === "calendar"
+                    ? "PKT Social Publishing Calendar"
+                    : `Live Scheduled & Published Queue (${scheduledPosts.length})`}
+                </span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Monitor live post state across channels, inspect per-platform errors, or retry failed targets.
+                {activeSocialSubView === "calendar"
+                  ? "Interactive visual calendar in Asia/Karachi (UTC+5) with peak Umrah slots (11 AM, 4 PM, 9 PM) and 1-click rescheduling."
+                  : "Monitor live post state across channels, preview across Core 5 devices, or inspect per-platform engagement analytics."}
               </CardDescription>
             </div>
 
-            {/* Filter buttons */}
-            <div className="flex items-center gap-1 overflow-x-auto">
-              {[
-                { id: "all", label: "All" },
-                { id: "scheduled", label: "Scheduled" },
-                { id: "publishing", label: "Publishing" },
-                { id: "completed", label: "Published" },
-                { id: "failed", label: "Failed" },
-                { id: "cancelled", label: "Cancelled" },
-              ].map((f) => (
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Sub-view toggle (Calendar vs List) */}
+              <div className="flex items-center bg-secondary p-0.5 rounded-lg border border-border">
                 <button
-                  key={f.id}
                   type="button"
-                  onClick={() => setQueueFilter(f.id)}
+                  onClick={() => setActiveSocialSubView("calendar")}
                   className={cn(
-                    "rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all",
-                    queueFilter === f.id
-                      ? "bg-[#0A3622] text-white font-bold"
-                      : "bg-secondary text-muted-foreground hover:text-foreground"
+                    "px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer",
+                    activeSocialSubView === "calendar"
+                      ? "bg-[#0A3622] text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  {f.label}
+                  Visual Calendar (PKT)
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setActiveSocialSubView("queue")}
+                  className={cn(
+                    "px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer",
+                    activeSocialSubView === "queue"
+                      ? "bg-[#0A3622] text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  List Queue
+                </button>
+              </div>
+
+              {/* Filter buttons when in queue mode */}
+              {activeSocialSubView === "queue" && (
+                <div className="flex items-center gap-1 overflow-x-auto">
+                  {[
+                    { id: "all", label: "All" },
+                    { id: "scheduled", label: "Scheduled" },
+                    { id: "publishing", label: "Publishing" },
+                    { id: "completed", label: "Published" },
+                    { id: "failed", label: "Failed" },
+                    { id: "cancelled", label: "Cancelled" },
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setQueueFilter(f.id)}
+                      className={cn(
+                        "rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all",
+                        queueFilter === f.id
+                          ? "bg-[#0A3622] text-white font-bold"
+                          : "bg-secondary text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </CardHeader>
 
         <CardContent className="p-4 space-y-3">
-          {filteredPosts.length === 0 ? (
+          {activeSocialSubView === "calendar" ? (
+            <SocialCalendarView
+              scheduledPosts={scheduledPosts}
+              onSelectSlot={(dateKey, slot) => {
+                const newUtc = parsePktSlotToUtc(dateKey, slot)
+                const localIso = new Date(
+                  newUtc.getTime() - newUtc.getTimezoneOffset() * 60000
+                )
+                  .toISOString()
+                  .slice(0, 16)
+                setScheduledDateTime(localIso)
+                setPublishNow(false)
+                setComposerNotice({
+                  type: "success",
+                  message: `Pre-filled composer for ${dateKey} at ${slot} PKT. Customize your post and click Schedule!`,
+                })
+                window.scrollTo({ top: 300, behavior: "smooth" })
+              }}
+              onSelectPost={(post) => setPreviewModalPost(post)}
+              onRefresh={() => router.refresh()}
+            />
+          ) : filteredPosts.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
               No posts found matching the filter &quot;{queueFilter}&quot;.
             </div>
           ) : (
             filteredPosts.map((post) => {
               const isBusy = busyActionId === post.id
-              const hasFailedTargets = post.targets.some((t) => t.status === "failed")
+              const isSyncingAnalytics = syncingAnalyticsPostId === post.id
+              const hasPublishedTargets = post.targets.some(
+                (t) => t.status === "published"
+              )
+              const isBreakdownExpanded = expandedBreakdownPostIds.includes(
+                post.id
+              )
+
+              // Aggregate analytics across published targets
+              const aggregatedMetrics = post.targets.reduce(
+                (acc, t) => {
+                  const data = t.analyticsData
+                  if (data) {
+                    acc.hasMetrics = true
+                    acc.impressions += data.impressions || 0
+                    acc.likes += data.likes || 0
+                    acc.comments += data.comments || 0
+                    acc.shares += data.shares || 0
+                    acc.clicks += data.clicks || 0
+                    if (
+                      data.lastSyncedAt &&
+                      (!acc.lastSyncedAt || data.lastSyncedAt > acc.lastSyncedAt)
+                    ) {
+                      acc.lastSyncedAt = data.lastSyncedAt
+                    }
+                  }
+                  if (t.firstCommentExternalId || data?.firstCommentId) {
+                    acc.firstCommentCount += 1
+                  }
+                  return acc
+                },
+                {
+                  hasMetrics: false,
+                  impressions: 0,
+                  likes: 0,
+                  comments: 0,
+                  shares: 0,
+                  clicks: 0,
+                  firstCommentCount: 0,
+                  lastSyncedAt: null as string | null,
+                }
+              )
+
+              const postEngagementRatePct = computeEngagementRate({
+                views: aggregatedMetrics.impressions,
+                likes: aggregatedMetrics.likes,
+                comments: aggregatedMetrics.comments,
+                shares: aggregatedMetrics.shares,
+                clicks: aggregatedMetrics.clicks,
+              })
 
               return (
                 <div
@@ -1409,6 +2574,12 @@ function SocialCalendarTab({
                           )}
                           <Badge
                             variant="outline"
+                            className="text-[10px] font-mono border-[#C5A059]/50 text-[#0A3622] uppercase"
+                          >
+                            {post.postFormat || "FEED"}
+                          </Badge>
+                          <Badge
+                            variant="outline"
                             className="text-[10px] font-mono capitalize"
                           >
                             {post.campaignStage.replace(/_/g, " ")}
@@ -1426,23 +2597,68 @@ function SocialCalendarTab({
                           >
                             {post.status.replace(/_/g, " ")}
                           </Badge>
+                          {post.firstComment && (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] font-mono border-emerald-500/40 text-emerald-800 bg-emerald-50"
+                            >
+                              + First-Comment CTA
+                              {aggregatedMetrics.firstCommentCount > 0
+                                ? ` (${aggregatedMetrics.firstCommentCount} Posted)`
+                                : ""}
+                            </Badge>
+                          )}
                         </div>
 
                         <p className="text-xs text-foreground line-clamp-2 font-mono">
                           {post.caption}
                         </p>
 
-                        <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5">
+                        <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5 flex-wrap">
                           <span>Scheduled For: {formatDateSafe(post.scheduledFor)}</span>
                           {post.twoStepDelayMinutes && (
                             <span>• Delay: {post.twoStepDelayMinutes}m</span>
+                          )}
+                          {aggregatedMetrics.lastSyncedAt && (
+                            <span>
+                              • Metrics Synced: {formatDateSafe(aggregatedMetrics.lastSyncedAt)}
+                            </span>
                           )}
                         </div>
                       </div>
                     </div>
 
                     {/* Post Level Actions */}
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPreviewModalPost(post)}
+                        className="h-7 text-[11px] font-semibold border-border text-foreground hover:border-[#C5A059] cursor-pointer gap-1"
+                      >
+                        <Smartphone className="size-3 text-[#C5A059]" />
+                        <span>Preview</span>
+                      </Button>
+
+                      {(hasPublishedTargets || post.status === "completed") && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isSyncingAnalytics}
+                          onClick={() => handleSyncPostAnalytics(post.id)}
+                          className="h-7 text-[11px] font-semibold border-[#C5A059]/60 text-[#0A3622] hover:bg-[#C5A059]/10 cursor-pointer gap-1"
+                        >
+                          {isSyncingAnalytics ? (
+                            <Loader2 className="size-3 animate-spin text-[#C5A059]" />
+                          ) : (
+                            <BarChart3 className="size-3 text-[#C5A059]" />
+                          )}
+                          <span>Sync Metrics</span>
+                        </Button>
+                      )}
+
                       {(post.status === "scheduled" || post.status === "draft") && (
                         <Button
                           type="button"
@@ -1463,6 +2679,171 @@ function SocialCalendarTab({
                     </div>
                   </div>
 
+                  {/* Core 5 Analytics Badges Strip + Expandable Per-Platform Breakdown Toggle */}
+                  {(aggregatedMetrics.hasMetrics || hasPublishedTargets) && (
+                    <div className="space-y-2">
+                      <div className="rounded-lg border border-border/70 bg-secondary/20 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                        <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                          <BarChart3 className="size-3.5 text-[#C5A059]" />
+                          <span>Core 5 Engagement Metrics:</span>
+                          <Badge
+                            variant="outline"
+                            className="text-[9px] font-mono border-[#C5A059]/50 text-[#0A3622]"
+                          >
+                            {postEngagementRatePct.toFixed(2)}% Eng. Rate
+                          </Badge>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+                          <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
+                            <Eye className="size-3 text-primary" />
+                            <span>Views:</span>
+                            <strong>{aggregatedMetrics.impressions.toLocaleString()}</strong>
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
+                            <Heart className="size-3 text-rose-600" />
+                            <span>Likes:</span>
+                            <strong>{aggregatedMetrics.likes.toLocaleString()}</strong>
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
+                            <MessageSquare className="size-3 text-blue-600" />
+                            <span>Comments:</span>
+                            <strong>{aggregatedMetrics.comments.toLocaleString()}</strong>
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
+                            <Share2 className="size-3 text-emerald-600" />
+                            <span>Shares:</span>
+                            <strong>{aggregatedMetrics.shares.toLocaleString()}</strong>
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
+                            <MousePointerClick className="size-3 text-[#C5A059]" />
+                            <span>Clicks:</span>
+                            <strong>{aggregatedMetrics.clicks.toLocaleString()}</strong>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => toggleBreakdownExpand(post.id)}
+                            className="inline-flex items-center gap-1 rounded bg-[#0A3622] text-white px-2 py-0.5 text-[10px] font-sans font-bold cursor-pointer hover:bg-[#0A3622]/90"
+                          >
+                            <span>
+                              {isBreakdownExpanded ? "Hide Breakdown" : "Per-Platform Breakdown"}
+                            </span>
+                            {isBreakdownExpanded ? (
+                              <ChevronUp className="size-3 text-[#C5A059]" />
+                            ) : (
+                              <ChevronDown className="size-3 text-[#C5A059]" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expandable Per-Platform Analytics Breakdown Section */}
+                      {isBreakdownExpanded && (
+                        <div className="rounded-xl border border-[#C5A059]/40 bg-[#C5A059]/5 p-3 space-y-2">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-[#0A3622]">
+                            <span>Per-Platform Analytics Breakdown ({post.targets.length} Channels)</span>
+                            {aggregatedMetrics.lastSyncedAt && (
+                              <span className="font-mono text-[10px] text-muted-foreground font-normal">
+                                Last Synced: {formatDateSafe(aggregatedMetrics.lastSyncedAt)}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {post.targets.map((target) => {
+                              const data = target.analyticsData
+                              const views = data?.impressions ?? 0
+                              const likes = data?.likes ?? 0
+                              const comments = data?.comments ?? 0
+                              const shares = data?.shares ?? 0
+                              const clicks = data?.clicks ?? 0
+                              const ratePct = computeEngagementRate({
+                                views,
+                                likes,
+                                comments,
+                                shares,
+                                clicks,
+                              })
+
+                              return (
+                                <div
+                                  key={target.id}
+                                  className="rounded-lg border border-border bg-white p-2.5 space-y-2 text-[11px]"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[9px] font-mono uppercase border-primary/30 text-primary"
+                                      >
+                                        {target.integration.provider}
+                                      </Badge>
+                                      <span className="font-semibold truncate text-foreground">
+                                        {target.integration.name}
+                                      </span>
+                                    </div>
+                                    <span className="font-mono text-[10px] font-bold text-[#0A3622]">
+                                      {ratePct.toFixed(2)}%
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-5 gap-1 text-center font-mono text-[10px] bg-secondary/30 rounded p-1.5">
+                                    <div>
+                                      <p className="text-[9px] text-muted-foreground">Views</p>
+                                      <p className="font-bold">{views.toLocaleString()}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[9px] text-muted-foreground">Likes</p>
+                                      <p className="font-bold">{likes.toLocaleString()}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[9px] text-muted-foreground">Cmts</p>
+                                      <p className="font-bold">{comments.toLocaleString()}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[9px] text-muted-foreground">Shares</p>
+                                      <p className="font-bold">{shares.toLocaleString()}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[9px] text-muted-foreground">Clicks</p>
+                                      <p className="font-bold">{clicks.toLocaleString()}</p>
+                                    </div>
+                                  </div>
+
+                                  {/* Engagement Rate Progress Bar */}
+                                  <div className="space-y-1">
+                                    <Progress
+                                      value={Math.min(100, Math.round(ratePct * 5))}
+                                      className="h-1.5 bg-secondary"
+                                    />
+                                    <div className="flex items-center justify-between text-[9px] text-muted-foreground">
+                                      <span>
+                                        {data?.lastSyncedAt
+                                          ? `Synced ${formatDateSafe(data.lastSyncedAt)}`
+                                          : "Not synced yet"}
+                                      </span>
+                                      {target.publishedUrl && (
+                                        <a
+                                          href={target.publishedUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-primary hover:underline inline-flex items-center gap-0.5 font-semibold"
+                                        >
+                                          <span>Open Post</span>
+                                          <ExternalLink className="size-2.5" />
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Targets Status Strip */}
                   <div className="pt-2 border-t border-border/70 flex flex-wrap items-center gap-2">
                     <span className="text-[10px] font-bold text-muted-foreground">
@@ -1470,6 +2851,7 @@ function SocialCalendarTab({
                     </span>
                     {post.targets.map((target) => {
                       const isTargetBusy = busyActionId === target.id
+                      const targetAnalytics = target.analyticsData
                       return (
                         <div
                           key={target.id}
@@ -1494,6 +2876,22 @@ function SocialCalendarTab({
                           <span className="capitalize text-[10px]">
                             {target.status}
                           </span>
+
+                          {targetAnalytics && (
+                            <span className="font-mono text-[10px] text-emerald-800 bg-white/80 rounded px-1">
+                              {targetAnalytics.impressions}v · {targetAnalytics.likes}♥
+                            </span>
+                          )}
+
+                          {(target.firstCommentExternalId ||
+                            targetAnalytics?.firstCommentId) && (
+                            <span
+                              className="text-[9px] font-mono text-[#0A3622] bg-[#C5A059]/20 rounded px-1"
+                              title="First-Comment Auto-Plug Posted"
+                            >
+                              1st-Cmt ✓
+                            </span>
+                          )}
 
                           {target.publishedUrl && (
                             <a
@@ -1531,12 +2929,234 @@ function SocialCalendarTab({
           )}
         </CardContent>
       </Card>
+
+      {/* 3. Queue Post Device Preview Modal */}
+      <Dialog
+        open={Boolean(previewModalPost)}
+        onOpenChange={(open) => {
+          if (!open) setPreviewModalPost(null)
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display text-base font-bold flex items-center gap-2">
+              <Smartphone className="size-4 text-[#C5A059]" />
+              <span>
+                Core 5 Platform Preview{" "}
+                {previewModalPost?.postAsset
+                  ? `• [${previewModalPost.postAsset.postCode}]`
+                  : ""}
+              </span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Inspect how this scheduled/published post renders across Instagram, Facebook, TikTok, YouTube Shorts, and Google Business Profile.
+            </DialogDescription>
+          </DialogHeader>
+
+          {previewModalPost && (
+            <SocialPlatformPreview
+              caption={previewModalPost.caption}
+              title={previewModalPost.postAsset?.title}
+              postType={previewModalPost.postFormat || "FEED"}
+              postFormat={previewModalPost.postFormat || "FEED"}
+              publishMode={
+                previewModalPost.campaignStage === "step_1_spotlight_hook"
+                  ? "SPOTLIGHT_THEN_SHEET"
+                  : "SINGLE"
+              }
+              mediaUrls={
+                previewModalPost.socialJpegUrls?.length > 0
+                  ? previewModalPost.socialJpegUrls
+                  : previewModalPost.mediaUrls
+              }
+              spotlightMediaUrl={
+                previewModalPost.postAsset?.imageUrl ||
+                previewModalPost.mediaUrls[0] ||
+                null
+              }
+              postCode={previewModalPost.postAsset?.postCode || "ART-UMRAH-01"}
+              autoFirstComment={Boolean(previewModalPost.firstComment)}
+              firstComment={previewModalPost.firstComment}
+              selectedProviders={previewModalPost.targets.map(
+                (t) => t.integration.provider
+              )}
+              connectedAccounts={activeIntegrations.map((i) => ({
+                provider: i.provider,
+                name: i.name,
+                handle: i.handle,
+                avatarUrl: i.avatarUrl,
+              }))}
+            />
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setPreviewModalPost(null)}
+            >
+              Close Preview
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 4. Responsive 2-Column Split Social Composer Modal (max-w-5xl) */}
+      <Dialog open={isComposerModalOpen} onOpenChange={setIsComposerModalOpen}>
+        <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display text-base font-bold flex items-center gap-2">
+              <Sparkles className="size-4 text-[#C5A059]" />
+              <span>Core 5 Split Studio Composer &amp; Live Device Previewer</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Edit your caption, toggle Feed / Reel / Story format, or switch 2-step Spotlight mode on the left and watch all 5 platform mockups update live on the right.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
+            {/* Left Column: Live Composer Controls */}
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">
+                  Linked 4K Poster Asset (`ART-...`)
+                </Label>
+                <select
+                  value={selectedAssetId}
+                  onChange={(e) => setSelectedAssetId(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs font-mono"
+                >
+                  {postAssets.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      [{a.postCode}] {a.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">
+                  Post Caption &amp; Hashtags
+                </Label>
+                <Textarea
+                  rows={6}
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  className="text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-[#C5A059]/40 bg-[#C5A059]/5 p-3">
+                <span className="text-xs font-bold text-foreground">
+                  2-Step Mode (`SPOTLIGHT_THEN_SHEET`)
+                </span>
+                <input
+                  type="checkbox"
+                  checked={isTwoStepEnabled}
+                  onChange={(e) => setIsTwoStepEnabled(e.target.checked)}
+                  className="size-4 accent-[#0A3622]"
+                />
+              </div>
+
+              {postFormat !== "STORY" && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold">
+                      Pinned First Comment (`ART-...`)
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      onClick={handleGenerateFirstComment}
+                      className="h-6 text-[10px]"
+                    >
+                      Auto-Generate CTA
+                    </Button>
+                  </div>
+                  <Textarea
+                    rows={3}
+                    value={firstComment}
+                    onChange={(e) => setFirstComment(e.target.value)}
+                    className="text-xs font-mono"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Right Column: Live 5-Platform Interactive Device Mockup */}
+            <SocialPlatformPreview
+              caption={caption}
+              title={selectedAsset?.title}
+              postType={postFormat}
+              postFormat={postFormat}
+              onPostTypeChange={(fmt) => setPostFormat(fmt)}
+              publishMode={
+                isTwoStepEnabled ? "SPOTLIGHT_THEN_SHEET" : "SINGLE"
+              }
+              mediaUrls={mediaUrls}
+              spotlightMediaUrl={
+                preferredAssetMediaUrl || selectedAsset?.imageUrl || null
+              }
+              sheetMediaUrl={followUpAsset?.imageUrl || null}
+              postCode={
+                matchedComposerPackage?.postCode ||
+                selectedAsset?.postCode ||
+                "ART-UMRAH-01"
+              }
+              packageTitle={selectedAsset?.title}
+              sharingPricePkr={matchedComposerPackage?.retailSharingPkr}
+              quadPricePkr={matchedComposerPackage?.retailQuadPkr}
+              triplePricePkr={matchedComposerPackage?.retailTriplePkr}
+              doublePricePkr={matchedComposerPackage?.retailDoublePkr}
+              makkahHotelName={matchedComposerPackage?.makkahHotelName}
+              madinahHotelName={matchedComposerPackage?.madinahHotelName}
+              autoFirstComment={Boolean(firstComment.trim() || selectedAsset)}
+              firstComment={firstComment}
+              selectedProviders={selectedProvidersForPreview}
+              connectedAccounts={activeIntegrations.map((i) => ({
+                provider: i.provider,
+                name: i.name,
+                handle: i.handle,
+                avatarUrl: i.avatarUrl,
+              }))}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsComposerModalOpen(false)}
+            >
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 5. Studio Media Library Picker Modal */}
+      <StudioMediaPickerModal
+        isOpen={isStudioPickerOpen}
+        onClose={() => setIsStudioPickerOpen(false)}
+        onSelectAsset={(asset) => {
+          setSelectedAssetId(asset.id)
+          setMediaUrls([asset.imageUrl])
+        }}
+        currentAssetId={selectedAssetId}
+      />
     </div>
   )
 }
 
 // ==========================================
 // 4. TAB 2: 100% BAN-SAFE WHATSAPP QUEUE
+// ==========================================
+
+// ==========================================
+// 4. TAB 2: 100% BAN-SAFE WHATSAPP QUEUE & AUTO-POSTER
 // ==========================================
 
 function WhatsAppQueueTab({
@@ -1582,24 +3202,74 @@ function WhatsAppQueueTab({
     }
   }, [selectedAsset])
 
-  // Filters
+  // Filters & Search
   const [areaFilter, setAreaFilter] = React.useState("all")
+  const [selectedLineFilter, setSelectedLineFilter] = React.useState("all")
   const [searchQuery, setSearchQuery] = React.useState("")
+
+  // Multi-Selection State for Auto-Post Campaign
+  const [selectedChannelIds, setSelectedChannelIds] = React.useState<string[]>([])
+  const [pacingTier, setPacingTier] = React.useState<"fast" | "safe" | "ultra_safe">("safe")
+  const [senderRoutingLine, setSenderRoutingLine] = React.useState("auto")
+  const [isDispatchingCampaign, setIsDispatchingCampaign] = React.useState(false)
+
+  // Linked WhatsApp Device Sessions (Live Status Bar)
+  const [linkedSessions, setLinkedSessions] = React.useState<SafeLinkedDeviceSession[]>([])
+  const [isLoadingSessions, setIsLoadingSessions] = React.useState(false)
+  const [isSyncingGroups, setIsSyncingGroups] = React.useState(false)
+
+  const loadSessions = React.useCallback(async () => {
+    setIsLoadingSessions(true)
+    try {
+      const res = await listLinkedDeviceSessionsAction()
+      if (res.success && res.sessions) {
+        setLinkedSessions(res.sessions)
+      }
+    } catch (err) {
+      console.error("Failed to load linked sessions:", err)
+    } finally {
+      setIsLoadingSessions(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    loadSessions()
+  }, [loadSessions])
+
+  const handleSyncGroups = async () => {
+    setIsSyncingGroups(true)
+    try {
+      const res = await syncAllConnectedLinkedDevicesAction()
+      if (res.success) {
+        setActionNotice({
+          type: "success",
+          message: `Successfully synchronized ${res.totalSyncedGroups ?? 0} WhatsApp groups from connected devices.`,
+        })
+        router.refresh()
+        await loadSessions()
+      } else {
+        setActionNotice({
+          type: "error",
+          message: res.error || "Failed to sync WhatsApp groups.",
+        })
+      }
+    } catch (err: unknown) {
+      setActionNotice({
+        type: "error",
+        message: err instanceof Error ? err.message : "Error syncing groups.",
+      })
+    } finally {
+      setIsSyncingGroups(false)
+    }
+  }
 
   // Interactive Action States
   const [copiedCaption, setCopiedCaption] = React.useState(false)
   const [busyChannelId, setBusyChannelId] = React.useState<string | null>(null)
-  const [actionNotice, setActionNotice] = React.useState<string | null>(null)
-
-  // Add Channel Modal State
-  const [isAddChannelOpen, setIsAddChannelOpen] = React.useState(false)
-  const [newChannelName, setNewChannelName] = React.useState("")
-  const [newChannelPlatform, setNewChannelPlatform] =
-    React.useState<MarketingChannelRecord["platform"]>("whatsapp_group")
-  const [newChannelArea, setNewChannelArea] = React.useState("Askari 10")
-  const [newChannelSender, setNewChannelSender] = React.useState("03274029701")
-  const [newChannelMembers, setNewChannelMembers] = React.useState(450)
-  const [isSavingChannel, setIsSavingChannel] = React.useState(false)
+  const [actionNotice, setActionNotice] = React.useState<{
+    type: "success" | "error"
+    message: string
+  } | null>(null)
 
   // High-Res Poster Preview Dialog
   const [previewPosterUrl, setPreviewPosterUrl] = React.useState<string | null>(null)
@@ -1613,9 +3283,22 @@ function WhatsAppQueueTab({
     return new Set(distributionsToday.map((d) => d.channelId))
   }, [distributionsToday])
 
+  const distinctPhoneLines = React.useMemo(() => {
+    const lines = new Set<string>()
+    for (const c of marketingChannels) {
+      if (c.senderWhatsappNumber) {
+        lines.add(c.senderWhatsappNumber)
+      }
+    }
+    return Array.from(lines)
+  }, [marketingChannels])
+
   // Filtered Channels
   const filteredChannels = React.useMemo(() => {
     return marketingChannels.filter((c) => {
+      if (selectedLineFilter !== "all") {
+        if (c.senderWhatsappNumber !== selectedLineFilter) return false
+      }
       if (areaFilter !== "all") {
         if (areaFilter === "Status") {
           if (c.platform !== "whatsapp_status") return false
@@ -1628,12 +3311,13 @@ function WhatsAppQueueTab({
         return (
           c.name.toLowerCase().includes(q) ||
           c.areaTag.toLowerCase().includes(q) ||
-          (c.senderWhatsappNumber && c.senderWhatsappNumber.includes(q))
+          (c.senderWhatsappNumber && c.senderWhatsappNumber.includes(q)) ||
+          (c.externalGroupIdOrHandle && c.externalGroupIdOrHandle.toLowerCase().includes(q))
         )
       }
       return true
     })
-  }, [marketingChannels, areaFilter, searchQuery])
+  }, [marketingChannels, selectedLineFilter, areaFilter, searchQuery])
 
   // Progress metrics
   const totalActiveChannels = marketingChannels.filter((c) => c.isActive).length
@@ -1653,7 +3337,7 @@ function WhatsAppQueueTab({
       setCopiedCaption(true)
       setTimeout(() => setCopiedCaption(false), 2500)
     } catch {
-      setActionNotice("Failed to copy caption to clipboard.")
+      setActionNotice({ type: "error", message: "Failed to copy caption to clipboard." })
     }
   }
 
@@ -1672,7 +3356,91 @@ function WhatsAppQueueTab({
     document.body.removeChild(link)
   }
 
-  // 1-Tap Mark Shared Today
+  // Multi-Selection helpers
+  const handleToggleChannel = (channelId: string) => {
+    setSelectedChannelIds((prev) =>
+      prev.includes(channelId)
+        ? prev.filter((id) => id !== channelId)
+        : [...prev, channelId]
+    )
+  }
+
+  const handleSelectAllGroups = () => {
+    const groupIds = marketingChannels
+      .filter((c) => c.platform === "whatsapp_group" && c.isActive)
+      .map((c) => c.id)
+    setSelectedChannelIds(groupIds)
+  }
+
+  const handleIncludeStatus = () => {
+    const statusChannel = marketingChannels.find(
+      (c) => c.platform === "whatsapp_status" && c.isActive
+    )
+    if (!statusChannel) return
+    setSelectedChannelIds((prev) =>
+      prev.includes(statusChannel.id)
+        ? prev.filter((id) => id !== statusChannel.id)
+        : [...prev, statusChannel.id]
+    )
+  }
+
+  const handleClearSelection = () => {
+    setSelectedChannelIds([])
+  }
+
+  // Automated Ban-Safe Group Broadcast Trigger
+  const handleDispatchAutomatedCampaign = async () => {
+    if (!selectedAsset) {
+      setActionNotice({ type: "error", message: "Please select an active poster asset." })
+      return
+    }
+    if (selectedChannelIds.length === 0) {
+      setActionNotice({
+        type: "error",
+        message: "Please select at least 1 synced WhatsApp group or Status.",
+      })
+      return
+    }
+    if (!whatsappCaption.trim()) {
+      setActionNotice({ type: "error", message: "Caption cannot be empty." })
+      return
+    }
+
+    setIsDispatchingCampaign(true)
+    setActionNotice(null)
+
+    try {
+      const res = await dispatchAutomatedWhatsappGroupsCampaignAction({
+        postAssetId: selectedAsset.id,
+        caption: whatsappCaption,
+        channelIds: selectedChannelIds,
+        pacingTier,
+        sessionKey: senderRoutingLine,
+      })
+
+      if (res.success) {
+        setActionNotice({
+          type: "success",
+          message: `Campaign initiated for ${res.totalTargets ?? selectedChannelIds.length} channels with ${pacingTier.replace(/_/g, " ")} pacing! Tasks are running with human-like typing simulation.`,
+        })
+        router.refresh()
+      } else {
+        setActionNotice({
+          type: "error",
+          message: res.error || "Failed to dispatch automated campaign.",
+        })
+      }
+    } catch (err: unknown) {
+      setActionNotice({
+        type: "error",
+        message: err instanceof Error ? err.message : "Error dispatching campaign.",
+      })
+    } finally {
+      setIsDispatchingCampaign(false)
+    }
+  }
+
+  // 1-Tap Mark Shared Today (Manual audit backup)
   const handleMarkSharedToday = async (channelId: string) => {
     if (!selectedAsset) return
     setBusyChannelId(channelId)
@@ -1689,98 +3457,140 @@ function WhatsAppQueueTab({
       })
 
       if (res.success) {
-        setActionNotice("Marked shared successfully!")
+        setActionNotice({ type: "success", message: "Marked shared successfully!" })
         router.refresh()
       } else {
-        setActionNotice(res.error || "Failed to mark distribution.")
+        setActionNotice({ type: "error", message: res.error || "Failed to mark distribution." })
       }
     } catch (err: unknown) {
-      setActionNotice(
-        err instanceof Error ? err.message : "Error logging distribution."
-      )
+      setActionNotice({
+        type: "error",
+        message: err instanceof Error ? err.message : "Error logging distribution.",
+      })
     } finally {
       setBusyChannelId(null)
     }
   }
 
-  // Add New Channel Submit
-  const handleAddChannel = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newChannelName.trim()) return
-    setIsSavingChannel(true)
-    try {
-      const res = await upsertMarketingChannel({
-        name: newChannelName.trim(),
-        platform: newChannelPlatform,
-        areaTag: newChannelArea.trim(),
-        senderWhatsappNumber: newChannelSender,
-        memberCount: newChannelMembers,
-        dailyTargetPosts: 1,
-        isActive: true,
-      })
-      if (res.success) {
-        setIsAddChannelOpen(false)
-        setNewChannelName("")
-        router.refresh()
-      }
-    } finally {
-      setIsSavingChannel(false)
-    }
-  }
+  const connectedSessions = React.useMemo(() => {
+    return linkedSessions.filter((s) => s.status === "connected")
+  }, [linkedSessions])
+
+  const isStatusIncluded = Boolean(
+    marketingChannels.some(
+      (c) => c.platform === "whatsapp_status" && selectedChannelIds.includes(c.id)
+    )
+  )
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Ban-Safe Warning Banner */}
-      <div className="rounded-xl border border-emerald-300 bg-emerald-50/80 p-4 text-xs text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+      {/* 1. Sleek Connected WhatsApp Phone Status Bar */}
+      <div className="rounded-xl border border-emerald-300 bg-emerald-50/70 p-4 text-xs text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
         <div className="flex items-start gap-3">
-          <ShieldCheck className="size-5 text-emerald-700 shrink-0 mt-0.5" />
-          <div className="space-y-0.5">
-            <h4 className="font-bold text-sm text-emerald-900">
-              100% Meta-Compliant &amp; Ban-Safe Assisted Distribution
-            </h4>
+          <Smartphone className="size-5 text-emerald-700 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="font-bold text-sm text-emerald-950">
+                Connected WhatsApp Phones ({connectedSessions.length})
+              </h4>
+              {connectedSessions.length === 0 ? (
+                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-800 border-amber-300">
+                  No phones connected
+                </Badge>
+              ) : (
+                connectedSessions.map((s) => (
+                  <Badge
+                    key={s.sessionKey}
+                    variant="outline"
+                    className="text-[10px] font-mono bg-white border-emerald-400 text-emerald-900 font-semibold flex items-center gap-1.5"
+                  >
+                    <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>{s.label}</span>
+                    {s.phoneNumber && <span className="text-emerald-700 font-bold">(+{s.phoneNumber})</span>}
+                    <span className="text-muted-foreground text-[9px]">({s.groupsSyncedCount} groups)</span>
+                  </Badge>
+                ))
+              )}
+            </div>
             <p className="text-emerald-800 text-[11px] max-w-3xl">
-              Al Ramlah Travels operates 30+ verified WhatsApp community groups and 2 broadcast Status lines.
-              Automated third-party bulk bots trigger immediate SIM bans; our 1-tap manual logging system is 100% compliant, auditable, and preserves our official phone lines permanently.
+              Real WhatsApp groups and status channels are auto-synchronized from your connected WhatsApp lines. Dispatches simulate human typing with pacing delays to protect your accounts.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           <Button
             type="button"
             size="sm"
+            onClick={handleSyncGroups}
+            disabled={isSyncingGroups || connectedSessions.length === 0}
+            className="bg-[#0A3622] text-white hover:bg-[#124B30] text-xs font-bold gap-1.5 cursor-pointer h-8"
+          >
+            <RefreshCw className={cn("size-3.5 text-[#C5A059]", isSyncingGroups && "animate-spin")} />
+            <span>{isSyncingGroups ? "Syncing Groups..." : "Sync Groups"}</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => router.push("/admin/settings?tab=whatsapp")}
+            className="border-emerald-300 bg-white hover:bg-emerald-100 text-emerald-950 text-xs font-semibold gap-1 h-8 cursor-pointer"
+          >
+            <span>Manage Phones in Settings</span>
+            <ChevronRight className="size-3.5" />
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
             onClick={() => window.open("https://web.whatsapp.com", "_blank")}
-            className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 text-xs font-bold gap-1.5 cursor-pointer"
+            className="border-emerald-300 bg-white hover:bg-emerald-100 text-emerald-950 text-xs font-semibold gap-1.5 h-8 cursor-pointer"
           >
             <Smartphone className="size-3.5 text-[#C5A059]" />
-            <span>Open WhatsApp Web</span>
+            <span>Open Web</span>
           </Button>
         </div>
       </div>
 
       {actionNotice && (
-        <div className="rounded-xl border border-emerald-400 bg-emerald-50 p-3 text-xs font-semibold text-emerald-950 flex items-center justify-between">
-          <span>{actionNotice}</span>
+        <div
+          className={`rounded-xl border p-3.5 text-xs font-semibold flex items-center justify-between gap-2 shadow-xs ${
+            actionNotice.type === "success"
+              ? "border-emerald-400 bg-emerald-50 text-emerald-950"
+              : "border-red-400 bg-red-50 text-red-950"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {actionNotice.type === "success" ? (
+              <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="size-4 text-red-600 shrink-0" />
+            )}
+            <span>{actionNotice.message}</span>
+          </div>
           <button
             type="button"
             onClick={() => setActionNotice(null)}
-            className="underline cursor-pointer"
+            className="underline cursor-pointer text-[11px] shrink-0"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* 1. Active 4K Poster Showcase & 1-Tap Action Card */}
+      {/* 2. Active 4K Poster Showcase & 1-Tap Action Card */}
       <Card className="border-[#C5A059]/40 bg-card shadow-sm">
         <CardHeader className="bg-secondary/20 border-b border-border pb-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="font-display text-base font-bold flex items-center gap-2">
                 <Sparkles className="size-4 text-[#C5A059]" />
-                <span>Today&apos;s Active Poster &amp; 1-Tap Share Bar</span>
+                <span>Today&apos;s Active Poster &amp; Automated Group Broadcast Bar</span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Select the 4K spotlight poster to share, copy the formatted caption with 1 tap, and download the asset.
+                Select today&apos;s 4K spotlight poster, configure human pacing, and dispatch hands-free to your synchronized WhatsApp groups.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -1818,7 +3628,8 @@ function WhatsAppQueueTab({
 
               {selectedAsset && (
                 <div className="rounded-xl border border-border bg-secondary/20 p-3 space-y-3">
-                  <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg border border-border bg-muted group cursor-pointer"
+                  <div
+                    className="relative aspect-[3/4] w-full overflow-hidden rounded-lg border border-border bg-muted group cursor-pointer"
                     onClick={() => setPreviewPosterUrl(selectedAsset.imageUrl)}
                   >
                     {selectedAsset.imageUrl ? (
@@ -1851,7 +3662,7 @@ function WhatsAppQueueTab({
               )}
             </div>
 
-            {/* Right: Formatted WhatsApp Caption & 1-Tap Actions (8 cols) */}
+            {/* Right: Formatted WhatsApp Caption & Automated Broadcast Controls (8 cols) */}
             <div className="lg:col-span-8 space-y-4">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -1866,29 +3677,141 @@ function WhatsAppQueueTab({
                   </span>
                 </div>
                 <Textarea
-                  rows={8}
+                  rows={7}
                   value={whatsappCaption}
                   onChange={(e) => setWhatsappCaption(e.target.value)}
                   className="text-xs font-mono leading-relaxed bg-white"
                 />
               </div>
 
-              {/* 1-Tap Action Pill Bar */}
-              <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-border">
+              {/* Automated Paced Broadcast Control Bar */}
+              <div className="rounded-xl border border-emerald-300/80 bg-emerald-50/50 p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/80 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Radio className="size-4 text-emerald-700 animate-pulse" />
+                    <span className="text-xs font-bold text-emerald-950">
+                      Automated Group Dispatcher ({selectedChannelIds.length} Selected)
+                    </span>
+                  </div>
+
+                  {/* Sender Line Routing & Anti-Ban Pacing Tier Selectors */}
+                  <div className="flex items-center gap-3 text-xs flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-emerald-800 font-semibold">Sender Line:</span>
+                      <select
+                        value={senderRoutingLine}
+                        onChange={(e) => setSenderRoutingLine(e.target.value)}
+                        className="h-7 rounded-md border border-emerald-300 bg-white px-2 text-[11px] font-medium text-emerald-950 focus:outline-none"
+                      >
+                        <option value="auto">Auto-Match Group&apos;s Phone Line (Recommended)</option>
+                        {connectedSessions.map((s) => (
+                          <option key={s.sessionKey} value={s.sessionKey}>
+                            Force via {s.label} {s.phoneNumber ? `(+${s.phoneNumber})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-emerald-800 font-semibold">Pacing:</span>
+                      <select
+                        value={pacingTier}
+                        onChange={(e) =>
+                          setPacingTier(e.target.value as "fast" | "safe" | "ultra_safe")
+                        }
+                        className="h-7 rounded-md border border-emerald-300 bg-white px-2 text-[11px] font-medium text-emerald-950 focus:outline-none"
+                      >
+                        <option value="safe">Safe (25–45s) — Recommended</option>
+                        <option value="fast">Fast (10–20s) — VIP Groups Only</option>
+                        <option value="ultra_safe">Ultra-Safe (45–90s) — For 30+ Groups</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleDispatchAutomatedCampaign}
+                    disabled={
+                      isDispatchingCampaign ||
+                      selectedChannelIds.length === 0 ||
+                      !selectedAsset
+                    }
+                    className="h-9 px-4 text-xs font-bold bg-[#0A3622] hover:bg-[#124B30] text-white shadow-xs cursor-pointer gap-2"
+                  >
+                    {isDispatchingCampaign ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin text-[#C5A059]" />
+                        <span>Dispatching with Human Presence...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="size-4 text-[#C5A059]" />
+                        <span>
+                          Auto-Post Flyer &amp; Caption to Selected ({selectedChannelIds.length})
+                        </span>
+                      </>
+                    )}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSelectAllGroups}
+                    className="h-9 text-xs font-semibold bg-white border-emerald-300 text-emerald-950 hover:bg-emerald-100 cursor-pointer"
+                  >
+                    <CheckCircle2 className="size-3.5 mr-1 text-emerald-700" />
+                    <span>Select All Groups</span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleIncludeStatus}
+                    className={`h-9 text-xs font-semibold border-emerald-300 cursor-pointer ${
+                      isStatusIncluded
+                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                        : "bg-white text-emerald-950 hover:bg-emerald-100"
+                    }`}
+                  >
+                    <Radio className="size-3.5 mr-1" />
+                    <span>{isStatusIncluded ? "Status Included ✓" : "+ Include My Status"}</span>
+                  </Button>
+
+                  {selectedChannelIds.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearSelection}
+                      className="h-9 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                    >
+                      <span>Clear</span>
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* 1-Tap Manual Fallback Bar */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
                 <Button
                   type="button"
                   onClick={handleCopyCaption}
                   className={cn(
-                    "h-9 text-xs font-bold gap-2 cursor-pointer transition-all",
+                    "h-8 text-xs font-bold gap-1.5 cursor-pointer transition-all",
                     copiedCaption
                       ? "bg-emerald-600 text-white"
-                      : "bg-[#0A3622] text-white hover:bg-[#0A3622]/90"
+                      : "bg-secondary text-foreground hover:bg-secondary/80"
                   )}
                 >
                   {copiedCaption ? (
-                    <Check className="size-4" />
+                    <Check className="size-3.5" />
                   ) : (
-                    <Copy className="size-4 text-[#C5A059]" />
+                    <Copy className="size-3.5 text-[#C5A059]" />
                   )}
                   <span>{copiedCaption ? "Caption Copied!" : "1-Tap Copy Caption"}</span>
                 </Button>
@@ -1897,20 +3820,10 @@ function WhatsAppQueueTab({
                   type="button"
                   variant="outline"
                   onClick={() => handleDownloadPoster()}
-                  className="h-9 text-xs font-semibold gap-1.5 border-[#C5A059]/50 hover:bg-white cursor-pointer"
+                  className="h-8 text-xs font-semibold gap-1.5 border-border hover:bg-white cursor-pointer"
                 >
-                  <Download className="size-4 text-[#C5A059]" />
+                  <Download className="size-3.5 text-[#C5A059]" />
                   <span>1-Tap Download 4K Poster</span>
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => window.open("https://web.whatsapp.com", "_blank")}
-                  className="h-9 text-xs font-semibold gap-1.5 cursor-pointer ml-auto"
-                >
-                  <Smartphone className="size-4 text-emerald-600" />
-                  <span>Open WhatsApp Web</span>
                 </Button>
               </div>
 
@@ -1926,26 +3839,25 @@ function WhatsAppQueueTab({
                   </span>
                 </div>
                 <Progress value={progressPercent} className="h-2 bg-secondary" />
-                <p className="text-[10px] text-muted-foreground">
-                  Tick each group below after pasting the caption and image to maintain 100% staff audit compliance.
-                </p>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* 2. WhatsApp Channels Grid & 1-Tap Audit List */}
+      {/* 3. Real WhatsApp Groups & Status Channel Matrix */}
       <Card className="border-border bg-card shadow-xs">
         <CardHeader className="pb-3 border-b border-border">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="font-display text-base font-bold flex items-center gap-2">
                 <Users className="size-4 text-primary" />
-                <span>30+ Community Groups &amp; 2 Status Lines</span>
+                <span>
+                  Synchronized Real WhatsApp Groups &amp; Status ({marketingChannels.length})
+                </span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Filter by neighborhood (Askari 10, DHA, Lahore, Status) and click &quot;Mark Shared Today&quot; with 1 tap.
+                Real WhatsApp groups auto-discovered from your connected phone lines. Dispatches simulate human typing with pacing delays to protect your accounts.
               </CardDescription>
             </div>
 
@@ -1954,10 +3866,10 @@ function WhatsAppQueueTab({
               <div className="relative">
                 <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search groups..."
+                  placeholder="Search synced groups..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-8 pl-8 text-xs w-40 bg-white"
+                  className="h-8 pl-8 text-xs w-44 bg-white"
                 />
               </div>
 
@@ -1967,237 +3879,202 @@ function WhatsAppQueueTab({
                 onChange={(e) => setAreaFilter(e.target.value)}
                 className="flex h-8 rounded-md border border-input bg-background px-2.5 text-xs"
               >
-                <option value="all">All Areas ({marketingChannels.length})</option>
-                <option value="Askari 10">Askari 10 Sectors</option>
-                <option value="DHA">DHA Phases 1–8</option>
-                <option value="Lahore">Lahore Cantt / Johar</option>
-                <option value="Other Cities">Other Cities</option>
-                <option value="Status">2 WhatsApp Status Lines</option>
+                <option value="all">All Channels ({marketingChannels.length})</option>
+                <option value="Status">WhatsApp Status Lines</option>
+                <option value="Synced WhatsApp Group">Synced WhatsApp Groups</option>
               </select>
-
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setIsAddChannelOpen(true)}
-                className="h-8 text-xs gap-1 cursor-pointer"
-              >
-                <Plus className="size-3.5" />
-                <span>Add Channel</span>
-              </Button>
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredChannels.map((ch) => {
-              const isPosted = postedChannelIds.has(ch.id)
-              const distributionLog = distributionsToday.find(
-                (d) => d.channelId === ch.id
-              )
-              const isBusy = busyChannelId === ch.id
+        {/* Connected Phone Line Filter Pill Bar */}
+        <div className="bg-secondary/25 border-b border-border px-4 py-2.5 flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mr-1">
+            Filter by Phone Line:
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedLineFilter("all")}
+            className={cn(
+              "px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer",
+              selectedLineFilter === "all"
+                ? "bg-[#0A3622] text-white border-[#C5A059]"
+                : "bg-white text-muted-foreground hover:text-foreground border-border"
+            )}
+          >
+            All Lines ({marketingChannels.length})
+          </button>
+          {distinctPhoneLines.map((line) => {
+            const count = marketingChannels.filter((c) => c.senderWhatsappNumber === line).length
+            return (
+              <button
+                key={line}
+                type="button"
+                onClick={() => setSelectedLineFilter(line)}
+                className={cn(
+                  "px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5",
+                  selectedLineFilter === line
+                    ? "bg-[#0A3622] text-white border-[#C5A059]"
+                    : "bg-white text-muted-foreground hover:text-foreground border-border"
+                )}
+              >
+                <span>📱</span>
+                <span>{line}</span>
+                <span className="text-[10px] opacity-80 font-mono">({count})</span>
+              </button>
+            )
+          })}
+        </div>
 
-              return (
-                <div
-                  key={ch.id}
-                  className={cn(
-                    "rounded-xl border p-3.5 space-y-2.5 transition-all bg-white",
-                    isPosted
-                      ? "border-emerald-300 bg-emerald-50/20"
-                      : "border-border hover:border-[#C5A059]"
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <Badge
-                          variant="outline"
-                          className="text-[9px] px-1.5 py-0 border-[#C5A059]/50 text-[#C5A059] uppercase font-bold"
-                        >
-                          {ch.areaTag}
-                        </Badge>
-                        {ch.senderWhatsappNumber && (
-                          <span className="font-mono text-[10px] text-muted-foreground">
-                            SIM: {ch.senderWhatsappNumber}
-                          </span>
-                        )}
+        <CardContent className="p-4">
+          {marketingChannels.length === 0 ? (
+            /* Clear Empty State when 0 groups are synced yet */
+            <div className="rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/40 p-8 sm:p-12 text-center space-y-4">
+              <div className="size-14 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center mx-auto text-emerald-800">
+                <Users className="size-7" />
+              </div>
+              <div className="max-w-md mx-auto space-y-2">
+                <h4 className="font-bold text-base text-emerald-950">
+                  No WhatsApp Groups or Status Synced Yet
+                </h4>
+                <p className="text-xs text-emerald-800 leading-relaxed">
+                  Connect your WhatsApp phone in Settings and click <strong>&quot;Sync Groups&quot;</strong> to automatically discover and list all your community groups here!
+                </p>
+                <div className="pt-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => router.push("/admin/settings?tab=whatsapp")}
+                    className="bg-[#0A3622] hover:bg-[#124B30] text-white text-xs font-bold gap-1.5 cursor-pointer"
+                  >
+                    <span>Connect Phone in Settings</span>
+                    <ChevronRight className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredChannels.map((ch) => {
+                const isPosted = postedChannelIds.has(ch.id)
+                const distributionLog = distributionsToday.find(
+                  (d) => d.channelId === ch.id
+                )
+                const isBusy = busyChannelId === ch.id
+                const isSelected = selectedChannelIds.includes(ch.id)
+
+                return (
+                  <div
+                    key={ch.id}
+                    onClick={() => handleToggleChannel(ch.id)}
+                    className={cn(
+                      "rounded-xl border p-3.5 space-y-2.5 transition-all bg-white cursor-pointer select-none",
+                      isSelected
+                        ? "border-[#0A3622] ring-2 ring-[#0A3622]/20 bg-emerald-50/20"
+                        : isPosted
+                        ? "border-emerald-300 bg-emerald-50/10"
+                        : "border-border hover:border-[#C5A059]"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            e.stopPropagation()
+                            handleToggleChannel(ch.id)
+                          }}
+                          className="size-4 mt-0.5 rounded border-border text-[#0A3622] focus:ring-[#0A3622] cursor-pointer"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] px-1.5 py-0 border-[#C5A059]/50 text-[#C5A059] uppercase font-bold"
+                            >
+                              {ch.areaTag}
+                            </Badge>
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] font-mono px-2 py-0 border-emerald-500/50 bg-emerald-50 text-emerald-900 font-bold flex items-center gap-1"
+                            >
+                              <span>📱</span>
+                              <span>{ch.senderWhatsappNumber || "Connected Line"}</span>
+                            </Badge>
+                          </div>
+
+                          <h4 className="text-xs font-bold text-foreground mt-1 truncate">
+                            {ch.name}
+                          </h4>
+
+                          <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                            <MessageSquare className="size-3 text-emerald-600" />
+                            <span className="capitalize">
+                              {ch.platform.replace(/_/g, " ")}
+                            </span>
+                            {ch.memberCount ? ` · ~${ch.memberCount} members` : ""}
+                          </p>
+
+                          {ch.externalGroupIdOrHandle && (
+                            <p className="text-[9px] font-mono text-muted-foreground/80 truncate">
+                              ID: {ch.externalGroupIdOrHandle}
+                            </p>
+                          )}
+                        </div>
                       </div>
 
-                      <h4 className="text-xs font-bold text-foreground mt-1 truncate">
-                        {ch.name}
-                      </h4>
-
-                      <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <MessageSquare className="size-3 text-emerald-600" />
-                        <span className="capitalize">
-                          {ch.platform.replace(/_/g, " ")}
+                      {isPosted ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-800 shrink-0">
+                          <CheckCircle2 className="size-3 text-emerald-600" />
+                          <span>Shared</span>
                         </span>
-                        {ch.memberCount ? ` · ~${ch.memberCount} members` : ""}
-                      </p>
-                    </div>
-
-                    {isPosted ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-800 shrink-0">
-                        <CheckCircle2 className="size-3 text-emerald-600" />
-                        <span>Shared</span>
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground shrink-0">
-                        Pending
-                      </span>
-                    )}
-                  </div>
-
-                  {distributionLog?.postAsset && (
-                    <div className="text-[10px] text-muted-foreground font-mono bg-secondary/40 p-1.5 rounded">
-                      Ref: {distributionLog.postAsset.postCode}
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/70">
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={isBusy}
-                      onClick={() => handleMarkSharedToday(ch.id)}
-                      className={cn(
-                        "h-7 text-[11px] font-bold gap-1 cursor-pointer flex-1",
-                        isPosted
-                          ? "border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
-                          : "bg-[#0A3622] text-white hover:bg-[#0A3622]/90"
-                      )}
-                    >
-                      {isBusy ? (
-                        <Loader2 className="size-3 animate-spin" />
-                      ) : isPosted ? (
-                        <Check className="size-3 text-emerald-600" />
                       ) : (
-                        <CheckCircle2 className="size-3 text-[#C5A059]" />
+                        <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground shrink-0">
+                          Pending
+                        </span>
                       )}
-                      <span>{isPosted ? "Logged (Re-mark)" : "1-Tap Mark Shared"}</span>
-                    </Button>
+                    </div>
 
-                    {ch.inviteLinkOrUrl && (
-                      <a
-                        href={ch.inviteLinkOrUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground hover:border-[#C5A059]"
-                        title="Open Group Link"
-                      >
-                        <ExternalLink className="size-3.5" />
-                      </a>
+                    {distributionLog?.postAsset && (
+                      <div className="text-[10px] text-muted-foreground font-mono bg-secondary/40 p-1.5 rounded">
+                        Ref: {distributionLog.postAsset.postCode}
+                      </div>
                     )}
+
+                    <div
+                      className="flex items-center justify-between gap-2 pt-2 border-t border-border/70"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={isBusy}
+                        onClick={() => handleMarkSharedToday(ch.id)}
+                        className={cn(
+                          "h-7 text-[11px] font-bold gap-1 cursor-pointer flex-1",
+                          isPosted
+                            ? "border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
+                            : "bg-[#0A3622] text-white hover:bg-[#0A3622]/90"
+                        )}
+                      >
+                        {isBusy ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : isPosted ? (
+                          <Check className="size-3 text-emerald-600" />
+                        ) : (
+                          <CheckCircle2 className="size-3 text-[#C5A059]" />
+                        )}
+                        <span>{isPosted ? "Logged (Re-mark)" : "1-Tap Mark Shared"}</span>
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
-
-      {/* Add New Group Dialog */}
-      <Dialog open={isAddChannelOpen} onOpenChange={setIsAddChannelOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="font-display text-base font-bold">
-              Add New Marketing Channel / Community Group
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Register a WhatsApp neighborhood group or status line into the Al Ramlah distribution matrix.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleAddChannel} className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Group / Channel Name *</Label>
-              <Input
-                required
-                placeholder="e.g. Askari 10 Sector D Residents"
-                value={newChannelName}
-                onChange={(e) => setNewChannelName(e.target.value)}
-                className="text-xs"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Platform</Label>
-                <select
-                  value={newChannelPlatform}
-                  onChange={(e) =>
-                    setNewChannelPlatform(
-                      e.target.value as MarketingChannelRecord["platform"]
-                    )
-                  }
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs"
-                >
-                  <option value="whatsapp_group">WhatsApp Group</option>
-                  <option value="whatsapp_community">WhatsApp Community</option>
-                  <option value="whatsapp_status">WhatsApp Status</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Area Tag</Label>
-                <Input
-                  value={newChannelArea}
-                  onChange={(e) => setNewChannelArea(e.target.value)}
-                  className="text-xs"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Assigned Line</Label>
-                <select
-                  value={newChannelSender}
-                  onChange={(e) => setNewChannelSender(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs font-mono"
-                >
-                  <option value="03274029701">03274029701 (Primary)</option>
-                  <option value="03190462638">03190462638 (Secondary)</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Member Count Estimate</Label>
-                <Input
-                  type="number"
-                  value={newChannelMembers}
-                  onChange={(e) => setNewChannelMembers(Number(e.target.value) || 0)}
-                  className="text-xs font-mono"
-                />
-              </div>
-            </div>
-
-            <DialogFooter className="pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsAddChannelOpen(false)}
-                className="text-xs"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSavingChannel}
-                size="sm"
-                className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 text-xs font-bold"
-              >
-                {isSavingChannel ? (
-                  <Loader2 className="size-3.5 animate-spin mr-1" />
-                ) : null}
-                Save Channel
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       {/* High-Res Poster Preview Modal */}
       <Dialog
@@ -2293,18 +4170,93 @@ function BroadcastsAndOutreachTab({
   const [scheduledBroadcastTime, setScheduledBroadcastTime] =
     React.useState<string>("")
 
+  // Spec 0019 (Slice 38): Template Personalization & CSV State
+  const [defaultTemplateParams, setDefaultTemplateParams] = React.useState<
+    Record<string, string>
+  >({})
+  const [headerMediaUrl, setHeaderMediaUrl] = React.useState<string>("")
+  const [csvRawText, setCsvRawText] = React.useState<string>("")
+
+  const parsedCsv = React.useMemo(() => {
+    return parseWhatsappBroadcastCsv(csvRawText)
+  }, [csvRawText])
+
+  // Spec 0019 (Slice 38): Broadcast Details Dialog State
+  const [selectedBroadcastDetails, setSelectedBroadcastDetails] =
+    React.useState<BroadcastSummaryDetail | null>(null)
+  const [broadcastRecipientsList, setBroadcastRecipientsList] = React.useState<
+    BroadcastRecipientDetail[]
+  >([])
+  const [isLoadingBroadcastDetails, setIsLoadingBroadcastDetails] =
+    React.useState(false)
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = React.useState(false)
+  const [isRetryingBroadcast, setIsRetryingBroadcast] = React.useState(false)
+
+  const handleOpenBroadcastDetails = async (broadcast: any) => {
+    setSelectedBroadcastDetails(broadcast)
+    setIsLoadingBroadcastDetails(true)
+    setIsDetailsDialogOpen(true)
+    try {
+      const res = await getWhatsappBroadcastDetailsAction({
+        broadcastId: broadcast.id,
+      })
+      if (res.success && res.recipients) {
+        setBroadcastRecipientsList(res.recipients as BroadcastRecipientDetail[])
+        if (res.broadcast) {
+          setSelectedBroadcastDetails(res.broadcast as BroadcastSummaryDetail)
+        }
+      }
+    } finally {
+      setIsLoadingBroadcastDetails(false)
+    }
+  }
+
+  const handleRetryFailedRecipients = async (broadcastId: string) => {
+    setIsRetryingBroadcast(true)
+    try {
+      const res = await retryFailedWhatsappBroadcastRecipientsAction({
+        broadcastId,
+      })
+      if (res.success) {
+        const detailsRes = await getWhatsappBroadcastDetailsAction({
+          broadcastId,
+        })
+        if (detailsRes.success && detailsRes.recipients) {
+          setBroadcastRecipientsList(
+            detailsRes.recipients as BroadcastRecipientDetail[]
+          )
+          if (detailsRes.broadcast) {
+            setSelectedBroadcastDetails(
+              detailsRes.broadcast as BroadcastSummaryDetail
+            )
+          }
+        }
+        router.refresh()
+      }
+    } catch (err) {
+      console.error("Failed to retry failed broadcast recipients:", err)
+    } finally {
+      setIsRetryingBroadcast(false)
+    }
+  }
+
   // Launch State
   const [isLaunchingBroadcast, setIsLaunchingBroadcast] = React.useState(false)
   const [broadcastNotice, setBroadcastNotice] = React.useState<{
     type: "success" | "error"
     message: string
   } | null>(null)
+  const [activeBroadcastRunId, setActiveBroadcastRunId] =
+    React.useState<string | null>(null)
 
   // Compute recipient list based on segment
   const computedRecipientPhones = React.useMemo(() => {
     const now = new Date()
 
     if (recipientSegment === "custom_phones") {
+      if (parsedCsv.recipients.length > 0) {
+        return parsedCsv.recipients.map((r) => r.phone)
+      }
       return customPhonesText
         .split(/[\n,]+/)
         .map((p) => p.trim())
@@ -2340,7 +4292,7 @@ function BroadcastsAndOutreachTab({
         return state.isEligibleToday
       })
       .map((c) => c.whatsappNumber)
-  }, [recipientSegment, customPhonesText, outreachContacts])
+  }, [recipientSegment, customPhonesText, outreachContacts, parsedCsv])
 
   // Handle Launch Broadcast
   const handleLaunchBroadcast = async (e: React.FormEvent) => {
@@ -2362,7 +4314,8 @@ function BroadcastsAndOutreachTab({
     if (computedRecipientPhones.length === 0) {
       setBroadcastNotice({
         type: "error",
-        message: "Recipient list is empty. Select another segment or add phone numbers.",
+        message:
+          "Recipient list is empty. Select another segment, upload a CSV, or add phone numbers.",
       })
       return
     }
@@ -2371,18 +4324,36 @@ function BroadcastsAndOutreachTab({
     setBroadcastNotice(null)
 
     try {
-      const payload = {
+      const payload: any = {
         accountId: selectedAccountId,
         name: broadcastName.trim(),
         templateId: selectedTemplateId,
         recipientPhones: computedRecipientPhones,
+        defaultTemplateParams,
+        headerMediaUrl: headerMediaUrl.trim() || null,
         scheduledAt: scheduledBroadcastTime
           ? new Date(scheduledBroadcastTime).toISOString()
           : null,
       }
 
+      if (recipientSegment === "custom_phones" && csvRawText.trim()) {
+        payload.csvText = csvRawText
+        if (parsedCsv.recipients.length > 0) {
+          payload.recipients = parsedCsv.recipients.map((r) => ({
+            phone: r.phone,
+            name: r.name,
+            templateParams: r.customParams,
+          }))
+        }
+      }
+
       const res = await createAndQueueWhatsappBroadcastAction(payload)
       if (res.success) {
+        if (res.triggerRunId) {
+          setActiveBroadcastRunId(res.triggerRunId)
+        } else if (res.broadcastId) {
+          setActiveBroadcastRunId(`inline_wa_${res.broadcastId}`)
+        }
         setBroadcastNotice({
           type: "success",
           message: `Official Meta Broadcast queued for ${computedRecipientPhones.length} recipient(s)!`,
@@ -2421,6 +4392,16 @@ function BroadcastsAndOutreachTab({
 
   return (
     <div className="flex flex-col gap-8">
+      {/* Live Trigger.dev v4 Realtime Stream for Active WhatsApp Broadcast */}
+      {activeBroadcastRunId && (
+        <CampaignRealtimeStatus
+          runId={activeBroadcastRunId}
+          mode="whatsapp_broadcast"
+          title="Live Meta WhatsApp Broadcast Delivery Stream"
+          onComplete={() => router.refresh()}
+        />
+      )}
+
       {/* 1. Official Meta Template Broadcast Launch Card */}
       <Card className="border-[#C5A059]/40 bg-card shadow-sm">
         <CardHeader className="bg-secondary/20 border-b border-border pb-4">
@@ -2549,6 +4530,29 @@ function BroadcastsAndOutreachTab({
                     )}
                   </div>
                 )}
+
+                {/* Spec 0019 (Slice 38): Template Variables, Header Media & CSV Upload */}
+                {selectedTemplate && (
+                  <div className="pt-2">
+                    <WhatsappBroadcastPersonalizerFields
+                      templateBodyText={selectedTemplate.bodyText || ""}
+                      templateHeaderType={selectedTemplate.headerType || "NONE"}
+                      headerMediaUrl={headerMediaUrl}
+                      onHeaderMediaUrlChange={setHeaderMediaUrl}
+                      templateParams={defaultTemplateParams}
+                      onTemplateParamsChange={setDefaultTemplateParams}
+                      csvText={csvRawText}
+                      onCsvTextChange={(txt) => {
+                        setCsvRawText(txt)
+                        if (txt.trim()) {
+                          setRecipientSegment("custom_phones")
+                        }
+                      }}
+                      parsedRecipients={parsedCsv.recipients}
+                      csvErrors={parsedCsv.errors}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Right Column: Recipient Segment & Scheduling (5 cols) */}
@@ -2621,7 +4625,7 @@ function BroadcastsAndOutreachTab({
                   {recipientSegment === "custom_phones" && (
                     <Textarea
                       rows={3}
-                      placeholder="e.g. 923274029701, 923190462638"
+                      placeholder="e.g. 923001234567, 923219876543"
                       value={customPhonesText}
                       onChange={(e) => setCustomPhonesText(e.target.value)}
                       className="text-xs font-mono bg-white mt-2"
@@ -2717,6 +4721,16 @@ function BroadcastsAndOutreachTab({
                         {bc.failedCount > 0 && (
                           <span className="text-rose-600">Failed: {bc.failedCount}</span>
                         )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          onClick={() => handleOpenBroadcastDetails(bc)}
+                          className="h-7 text-[10px] gap-1 border-primary/30 text-primary hover:bg-primary/5 cursor-pointer ml-1"
+                        >
+                          <Eye className="size-3" />
+                          <span>Funnel &amp; Recipients</span>
+                        </Button>
                       </div>
                     </div>
                   )
@@ -2726,6 +4740,17 @@ function BroadcastsAndOutreachTab({
           )}
         </CardContent>
       </Card>
+
+      {/* Spec 0019 (Slice 38): Broadcast Delivery Funnel & Recipients Dialog */}
+      <WhatsappBroadcastDetailsDialog
+        open={isDetailsDialogOpen}
+        broadcast={selectedBroadcastDetails}
+        recipients={broadcastRecipientsList}
+        isLoading={isLoadingBroadcastDetails}
+        onClose={() => setIsDetailsDialogOpen(false)}
+        onRetryFailed={handleRetryFailedRecipients}
+        isRetrying={isRetryingBroadcast}
+      />
 
       {/* 2. 14-Day VIP Outreach CRM Section (Cleanly reusing OutreachClient!) */}
       <div className="space-y-3">

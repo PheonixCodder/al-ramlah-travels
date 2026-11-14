@@ -24,6 +24,7 @@ import {
   Loader2,
   MessageCircle,
 } from "lucide-react"
+import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
 
 export interface BookingModalPackage {
   id: string
@@ -79,7 +80,7 @@ export function GroupBookingModal({
   pkg,
   selectedBatchId,
   trigger,
-  agencyWhatsapp = "03274029701",
+  agencyWhatsapp = DEFAULT_COMPANY_INFO.primaryWhatsapp,
 }: GroupBookingModalProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)

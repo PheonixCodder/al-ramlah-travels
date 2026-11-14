@@ -99,6 +99,7 @@ export default async function AdminCampaignsPage({
           handle: socialIntegrations.handle,
           avatarUrl: socialIntegrations.avatarUrl,
           internalAccountId: socialIntegrations.internalAccountId,
+          status: socialIntegrations.status,
           isActive: socialIntegrations.isActive,
           tokenExpiresAt: socialIntegrations.tokenExpiresAt,
           scopes: socialIntegrations.scopes,

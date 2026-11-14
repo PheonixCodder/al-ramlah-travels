@@ -1,4 +1,13 @@
 import "dotenv/config"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
+import dotenv from "dotenv"
+
+if (!process.env.DATABASE_URL_POOLED && !process.env.DATABASE_URL) {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url))
+  dotenv.config({ path: path.resolve(currentDir, "../.env") })
+}
+
 import { neon } from "@neondatabase/serverless"
 import { drizzle } from "drizzle-orm/neon-http"
 import * as schema from "./schema"

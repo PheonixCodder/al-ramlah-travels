@@ -3,6 +3,7 @@ import { env } from "@/lib/env"
 import type {
   SocialOAuthAuthUrlResult,
   SocialOAuthTokenResult,
+  SocialPostAnalyticsSnapshot,
   SocialPostPayload,
   SocialProviderAdapter,
   SocialPublishResult,
@@ -216,21 +217,37 @@ export const tiktokProvider: SocialProviderAdapter = {
 
     const openId = user?.open_id || tokenData.open_id || "tiktok_user"
     const displayName = user?.display_name || user?.username || "TikTok Account"
+    const handle = user?.username ? `@${user.username}` : undefined
+    const expiresIn = tokenData.expires_in ?? 86400
+    const metadata = {
+      openId,
+      unionId: user?.union_id,
+      username: user?.username,
+    }
 
     return {
       internalAccountId: openId,
       name: displayName,
-      handle: user?.username ? `@${user.username}` : undefined,
+      handle,
       avatarUrl: user?.avatar_url,
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token,
-      expiresIn: tokenData.expires_in ?? 86400,
+      expiresIn,
       scopes: TIKTOK_SCOPES,
-      metadata: {
-        openId,
-        unionId: user?.union_id,
-        username: user?.username,
-      },
+      metadata,
+      candidates: [
+        {
+          internalAccountId: openId,
+          name: displayName,
+          handle,
+          avatarUrl: user?.avatar_url,
+          accessToken: tokenData.access_token,
+          refreshToken: tokenData.refresh_token,
+          expiresIn,
+          scopes: TIKTOK_SCOPES,
+          metadata,
+        },
+      ],
     }
   },
 
@@ -255,10 +272,9 @@ export const tiktokProvider: SocialProviderAdapter = {
     const tokenData = (await tokenRes.json()) as TikTokTokenResponse
 
     if (!tokenRes.ok || tokenData.error || !tokenData.access_token) {
+      const codePart = tokenData.error ? ` (${tokenData.error})` : ""
       throw new Error(
-        tokenData.error_description ||
-          tokenData.error ||
-          "Failed to refresh TikTok access token"
+        `${tokenData.error_description || tokenData.error || "Failed to refresh TikTok access token"}${codePart}`
       )
     }
 
@@ -430,4 +446,132 @@ export const tiktokProvider: SocialProviderAdapter = {
       rawResponse: data,
     }
   },
+
+  async fetchPostAnalytics(params: {
+    accessToken: string
+    externalPostId: string
+    accountId?: string
+    metadata?: Record<string, unknown>
+  }): Promise<SocialPostAnalyticsSnapshot> {
+    const { accessToken, externalPostId } = params
+    const res = await fetch(
+      "https://open.tiktokapis.com/v2/video/query/?fields=id,view_count,like_count,comment_count,share_count",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          filters: {
+            video_ids: [externalPostId],
+          },
+        }),
+      }
+    )
+
+    if (!res.ok) {
+      throw new Error(
+        `TikTok video query metrics request failed (${res.status})`
+      )
+    }
+
+    const data = (await res.json()) as {
+      data?: {
+        videos?: Array<{
+          id?: string
+          view_count?: number
+          like_count?: number
+          comment_count?: number
+          share_count?: number
+        }>
+      }
+    }
+
+    const video = data.data?.videos?.[0]
+
+    return {
+      impressions: Number(video?.view_count ?? 0),
+      likes: Number(video?.like_count ?? 0),
+      comments: Number(video?.comment_count ?? 0),
+      shares: Number(video?.share_count ?? 0),
+      clicks: 0,
+      lastSyncedAt: new Date().toISOString(),
+    }
+  },
 }
+
+export interface TikTokPublishStatusResult {
+  status:
+    | "PUBLISH_COMPLETE"
+    | "PROCESSING_DOWNLOAD"
+    | "PROCESSING_UPLOAD"
+    | "FAILED"
+    | "UNKNOWN"
+  publicPostId?: string
+  publishedUrl?: string
+  failReason?: string
+}
+
+export async function resolveTikTokPublishedPostId(params: {
+  accessToken: string
+  publishId: string
+  username?: string
+}): Promise<TikTokPublishStatusResult> {
+  const { accessToken, publishId, username } = params
+
+  try {
+    const res = await fetch(
+      "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json; charset=UTF-8",
+        },
+        body: JSON.stringify({ publish_id: publishId }),
+      }
+    )
+
+    if (!res.ok) {
+      return { status: "UNKNOWN", failReason: `HTTP ${res.status}` }
+    }
+
+    const data = (await res.json()) as {
+      data?: {
+        status?: string
+        publicaly_available_post_id?: string[]
+        fail_reason?: string
+      }
+      error?: { code: string; message: string }
+    }
+
+    const statusStr = data.data?.status || "UNKNOWN"
+    const publicPostIds = data.data?.publicaly_available_post_id
+    const publicPostId =
+      Array.isArray(publicPostIds) && publicPostIds.length > 0
+        ? publicPostIds[0]
+        : undefined
+
+    let publishedUrl: string | undefined
+    if (publicPostId) {
+      const userHandle = username
+        ? username.replace(/^@+/, "")
+        : "alramlahtravels"
+      publishedUrl = `https://www.tiktok.com/@${userHandle}/video/${publicPostId}`
+    }
+
+    return {
+      status: (statusStr as TikTokPublishStatusResult["status"]) || "UNKNOWN",
+      publicPostId,
+      publishedUrl,
+      failReason: data.data?.fail_reason,
+    }
+  } catch (err) {
+    return {
+      status: "UNKNOWN",
+      failReason: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+

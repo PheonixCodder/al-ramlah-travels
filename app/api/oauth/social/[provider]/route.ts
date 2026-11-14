@@ -58,7 +58,7 @@ export async function GET(
     // 1. Administrative access assertion
     await requireAdmin()
   } catch {
-    const loginUrl = new URL("/login?error=admin_required", request.url)
+    const loginUrl = new URL("/admin/login?error=admin_required", request.url)
     return NextResponse.redirect(loginUrl)
   }
 

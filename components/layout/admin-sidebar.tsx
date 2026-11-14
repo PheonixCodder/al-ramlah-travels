@@ -131,6 +131,7 @@ export function AdminSidebar({
   return (
     <Sidebar
       collapsible="icon"
+      aria-label="Admin navigation"
       className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground print:hidden"
       {...props}
     >
@@ -252,10 +253,10 @@ export function AdminSidebar({
 
                         {badgeValue && (
                           <SidebarMenuBadge
-                            className={
+                            className={`font-mono tabular-nums ${
                               item.badgeClass ??
                               "bg-sidebar-accent text-sidebar-foreground"
-                            }
+                            }`}
                           >
                             {badgeValue}
                           </SidebarMenuBadge>

@@ -4,9 +4,15 @@ import { eq, count, and, lt } from "drizzle-orm"
 import { db } from "@/db"
 import { applications, contactMessages, agencySettings } from "@/db/schema"
 import { requireAdmin } from "@/lib/auth-guard"
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
+import { AdminShellFrame } from "@/components/admin/shell/admin-shell-frame"
+import { MandatoryPasswordChangeGate } from "@/components/admin/shell/mandatory-password-change-gate"
 import { AdminSidebar } from "@/components/layout/admin-sidebar"
 import { AdminTopbar } from "@/components/layout/admin-topbar"
+import {
+  AdminSlaProvider,
+  DEFAULT_SLA_OVERDUE_HOURS,
+} from "@/components/layout/status-badge"
+import { ThemeProvider } from "@/components/theme-provider"
 
 function getSlaThreshold(slaHours: number): Date {
   return new Date(Date.now() - slaHours * 3600 * 1000)
@@ -24,6 +30,7 @@ export default async function AdminDashboardLayout({
     redirect("/admin/login?session_expired=1")
   }
 
+  let slaHours = DEFAULT_SLA_OVERDUE_HOURS
   let pendingQuoteCount = 0
   let overdueCount = 0
   let unreadMessagesCount = 0
@@ -35,7 +42,14 @@ export default async function AdminDashboardLayout({
       .where(eq(agencySettings.id, "default"))
       .limit(1)
 
-    const slaHours = settings?.slaOverdueHours ?? 24
+    if (
+      typeof settings?.slaOverdueHours === "number" &&
+      Number.isFinite(settings.slaOverdueHours) &&
+      settings.slaOverdueHours > 0
+    ) {
+      slaHours = settings.slaOverdueHours
+    }
+
     const slaThreshold = getSlaThreshold(slaHours)
 
     const [quotesRes, overdueRes, messagesRes] = await Promise.all([
@@ -68,29 +82,48 @@ export default async function AdminDashboardLayout({
   const user = {
     name: session.user.name,
     email: session.user.email,
-    role: (session.user as { role?: string }).role ?? "staff",
+    role: session.user.role ?? "staff",
   }
 
+  const mustChangePassword = Boolean(session.user.mustChangePassword)
+
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background print:block print:bg-white">
-        <AdminSidebar
-          user={user}
-          pendingQuotesCount={pendingQuoteCount}
-          unreadMessagesCount={unreadMessagesCount}
-        />
-        <SidebarInset className="flex flex-1 flex-col overflow-hidden bg-background">
-          <AdminTopbar
-            user={user}
-            pendingQuoteCount={pendingQuoteCount}
-            overdueCount={overdueCount}
-            unreadMessagesCount={unreadMessagesCount}
-          />
-          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 print:p-0 print:bg-white">
-            {children}
-          </main>
-        </SidebarInset>
-      </div>
-    </SidebarProvider>
+    <ThemeProvider
+      forcedTheme="light"
+      enableSystem={false}
+      disableTransitionOnChange
+    >
+      <AdminSlaProvider slaOverdueHours={slaHours}>
+        <AdminShellFrame
+          skipLinkLabel="Skip to main content"
+          sidebar={
+            <AdminSidebar
+              user={user}
+              pendingQuotesCount={pendingQuoteCount}
+              unreadMessagesCount={unreadMessagesCount}
+            />
+          }
+          topbar={
+            <AdminTopbar
+              user={user}
+              pendingQuoteCount={pendingQuoteCount}
+              overdueCount={overdueCount}
+              unreadMessagesCount={unreadMessagesCount}
+              slaOverdueHours={slaHours}
+            />
+          }
+        >
+          {/* Skip target `#main-content` is mounted by `AdminShellFrame` (`<a href="#main-content">Skip to main content</a>`) */}
+          {mustChangePassword ? (
+            <MandatoryPasswordChangeGate
+              userEmail={session.user.email}
+              loginHref="/admin/login?change_password=1"
+            />
+          ) : (
+            children
+          )}
+        </AdminShellFrame>
+      </AdminSlaProvider>
+    </ThemeProvider>
   )
 }

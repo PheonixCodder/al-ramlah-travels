@@ -3,8 +3,41 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
+export const DEFAULT_SLA_OVERDUE_HOURS = 2
+
+const AdminSlaContext = React.createContext<number | undefined>(undefined)
+
+export function AdminSlaProvider({
+  slaOverdueHours,
+  children,
+}: {
+  slaOverdueHours?: number
+  children: React.ReactNode
+}) {
+  const normalized =
+    typeof slaOverdueHours === "number" &&
+    Number.isFinite(slaOverdueHours) &&
+    slaOverdueHours > 0
+      ? slaOverdueHours
+      : DEFAULT_SLA_OVERDUE_HOURS
+
+  return (
+    <AdminSlaContext.Provider value={normalized}>
+      {children}
+    </AdminSlaContext.Provider>
+  )
+}
+
+export function useAdminSlaOverdueHours(): number | undefined {
+  return React.useContext(AdminSlaContext)
+}
+
 export type ApplicationStatus =
-  "pending_quote" | "quoted" | "approved" | "rejected" | "cancelled"
+  | "pending_quote"
+  | "quoted"
+  | "approved"
+  | "rejected"
+  | "cancelled"
 
 interface StatusConfig {
   label: string
@@ -57,13 +90,22 @@ export interface StatusBadgeProps {
   createdAt?: Date | string
   isOverdue?: boolean
   showSlaWarning?: boolean
+  slaOverdueHours?: number
   className?: string
 }
 
-function isCreatedOverdue(createdAt: Date | string): boolean {
+export function isCreatedOverdue(
+  createdAt: Date | string,
+  slaOverdueHours: number = DEFAULT_SLA_OVERDUE_HOURS,
+  nowMs: number = Date.now()
+): boolean {
   const createdTime = new Date(createdAt).getTime()
-  const now = new Date().getTime()
-  return now - createdTime > 24 * 60 * 60 * 1000
+  if (Number.isNaN(createdTime)) return false
+  const effectiveHours =
+    Number.isFinite(slaOverdueHours) && slaOverdueHours > 0
+      ? slaOverdueHours
+      : DEFAULT_SLA_OVERDUE_HOURS
+  return nowMs - createdTime > effectiveHours * 60 * 60 * 1000
 }
 
 export function StatusBadge({
@@ -71,22 +113,41 @@ export function StatusBadge({
   createdAt,
   isOverdue: isOverdueProp,
   showSlaWarning = true,
+  slaOverdueHours,
   className,
 }: StatusBadgeProps) {
-  // Normalize status key or fallback to cancelled/neutral
+  const contextSlaHours = useAdminSlaOverdueHours()
+
+  const effectiveSlaHours = React.useMemo(() => {
+    if (
+      typeof slaOverdueHours === "number" &&
+      Number.isFinite(slaOverdueHours) &&
+      slaOverdueHours > 0
+    ) {
+      return slaOverdueHours
+    }
+    if (
+      typeof contextSlaHours === "number" &&
+      Number.isFinite(contextSlaHours) &&
+      contextSlaHours > 0
+    ) {
+      return contextSlaHours
+    }
+    return DEFAULT_SLA_OVERDUE_HOURS
+  }, [slaOverdueHours, contextSlaHours])
+
   const normalizedStatus = (
     status in STATUS_CONFIG ? status : "pending_quote"
   ) as ApplicationStatus
 
   const config = STATUS_CONFIG[normalizedStatus]
 
-  // Check 24-hour SLA overdue condition for pending quotes
   const isOverdue = React.useMemo(() => {
     if (normalizedStatus !== "pending_quote") return false
     if (isOverdueProp !== undefined) return isOverdueProp
     if (!createdAt) return false
-    return isCreatedOverdue(createdAt)
-  }, [normalizedStatus, isOverdueProp, createdAt])
+    return isCreatedOverdue(createdAt, effectiveSlaHours)
+  }, [normalizedStatus, isOverdueProp, createdAt, effectiveSlaHours])
 
   return (
     <div className={cn("inline-flex items-center gap-1.5", className)}>
@@ -99,19 +160,24 @@ export function StatusBadge({
         )}
       >
         <span
+          aria-hidden="true"
           className={cn("size-1.5 shrink-0 rounded-full", config.dotClass)}
         />
         <span>{config.label}</span>
       </span>
 
-      {/* 24-Hour SLA Overdue Pulsing Warning */}
       {isOverdue && showSlaWarning && (
         <span
-          title="Quote is overdue SLA (more than 24 hours in pending queue)"
-          className="inline-flex animate-pulse items-center gap-1 rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700 shadow-2xs select-none"
+          title={`Quote is overdue SLA (more than ${effectiveSlaHours} ${effectiveSlaHours === 1 ? "hour" : "hours"} in pending queue)`}
+          className="inline-flex animate-pulse items-center gap-1 rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-800 tabular-nums shadow-2xs select-none motion-reduce:animate-none"
         >
-          <span className="size-1.5 shrink-0 rounded-full bg-red-600" />
-          <span>SLA Overdue (24h+)</span>
+          <span
+            aria-hidden="true"
+            className="size-1.5 shrink-0 rounded-full bg-red-600"
+          />
+          <span className="font-mono tabular-nums">
+            SLA Overdue ({effectiveSlaHours}h+)
+          </span>
         </span>
       )}
     </div>
@@ -131,7 +197,7 @@ export function TabularPrice({
   className?: string
 }) {
   const numericAmount = typeof amount === "string" ? parseFloat(amount) : amount
-  const formatted = isNaN(numericAmount)
+  const formatted = Number.isNaN(numericAmount)
     ? "0"
     : new Intl.NumberFormat("en-PK", {
         maximumFractionDigits: 0,

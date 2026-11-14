@@ -1,22 +1,16 @@
 import { z } from "zod"
+import { formatWhatsAppPhone, parsePhoneE164, toWhatsappJid } from "../phone"
 
 /**
- * Sanitizes an incoming Pakistani or international phone number for WhatsApp pairing code request.
- * - Strips all non-digit characters.
- * - Converts local Pakistani numbers (e.g. `03214629700` or `3214629700`) to E.164 without plus: `923214629700`.
+ * Sanitizes an incoming Pakistani or international phone number for WhatsApp pairing code request (`T-049`):
+ * - Delegates to `@/lib/phone` E.164 SSoT.
+ * - Converts local Pakistani numbers (`03214629700` or `3214629700`) to `923214629700`.
+ * - Preserves international numbers (`+44 (0) 7911 123456` -> `447911123456`, `+1 (555) 123-4567` -> `15551234567`, `+966 50 123 4567` -> `966501234567`).
+ * - Returns `""` on empty/non-phone inputs.
  */
 export function sanitizePhoneNumberForPairing(phone: string): string {
-  const digits = phone.replace(/\D/g, "")
-  if (digits.startsWith("00")) {
-    return digits.slice(2)
-  }
-  if (digits.startsWith("0") && digits.length === 11) {
-    return `92${digits.slice(1)}`
-  }
-  if (!digits.startsWith("92") && digits.length === 10) {
-    return `92${digits}`
-  }
-  return digits
+  if (!phone || typeof phone !== "string") return ""
+  return formatWhatsAppPhone(phone)
 }
 
 /**
@@ -31,20 +25,14 @@ export function formatPairingCode(code: string): string {
 }
 
 /**
- * Normalizes an incoming WhatsApp JID.
- * - Any JID matching /^status@broadcast(:.*)?$/ is normalized to literal "status@broadcast".
- * - If the JID lacks an "@" domain, strips non-digits and appends "@s.whatsapp.net".
+ * Normalizes an incoming WhatsApp JID (`T-049`):
+ * - Any JID matching `/^status@broadcast(:.*)?$/i` is normalized to literal `"status@broadcast"`.
+ * - Group/channel/LID JIDs (`@g.us`, `@newsletter`, `@lid`) are preserved cleanly.
+ * - Direct user JIDs (`@s.whatsapp.net`) and bare phone numbers are normalized through E.164 SSoT
+ *   (e.g. `"0327-4029701"` -> `"923274029701@s.whatsapp.net"`).
  */
 export function normalizeStatusJid(jid: string): string {
-  const trimmed = jid.trim()
-  if (/^status@broadcast(:.*)?$/.test(trimmed)) {
-    return "status@broadcast"
-  }
-  if (!trimmed.includes("@")) {
-    const digits = trimmed.replace(/\D/g, "")
-    return `${digits}@s.whatsapp.net`
-  }
-  return trimmed
+  return toWhatsappJid(jid)
 }
 
 /**
@@ -71,33 +59,50 @@ export function getPacingDelayRange(
 }
 
 export function getRandomPacingDelayMs(minSec: number, maxSec: number): number {
-  const minMs = minSec * 1000
-  const maxMs = maxSec * 1000
+  const safeMin = Math.max(0, Math.floor(minSec))
+  const safeMax = Math.max(safeMin, Math.floor(maxSec))
+  const minMs = safeMin * 1000
+  const maxMs = safeMax * 1000
   return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs
 }
 
-export const startLinkedDeviceConnectionSchema = z.object({
-  sessionKey: z.string().default("default"),
-  mode: z.enum(["qr", "pairing_code"]),
-  phoneNumber: z.string().optional(),
-})
+export const startLinkedDeviceConnectionSchema = z
+  .object({
+    sessionKey: z.string().trim().min(1).max(64).default("default"),
+    mode: z.enum(["qr", "pairing_code"]),
+    phoneNumber: z.string().trim().max(32).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.mode === "pairing_code") {
+      const parsed = parsePhoneE164(data.phoneNumber)
+      if (!parsed.valid || parsed.nationalDigits.length < 9) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["phoneNumber"],
+          message:
+            "A valid Pakistani or international E.164 phone number is required for pairing code mode",
+        })
+      }
+    }
+  })
 
 export type StartLinkedDeviceConnectionInput = z.infer<
   typeof startLinkedDeviceConnectionSchema
 >
 
 export const disconnectLinkedDeviceSchema = z.object({
-  sessionKey: z.string().default("default"),
+  sessionKey: z.string().trim().min(1).max(64).default("default"),
 })
 
 export const syncRealWhatsappGroupsSchema = z.object({
-  sessionKey: z.string().default("default"),
+  sessionKey: z.string().trim().min(1).max(64).default("default"),
 })
 
 export const createLinkedDeviceSessionSlotSchema = z.object({
-  label: z.string().min(2, "Label must be at least 2 characters").max(100),
+  label: z.string().trim().min(2, "Label must be at least 2 characters").max(100),
   sessionKey: z
     .string()
+    .trim()
     .min(2)
     .max(64)
     .regex(
@@ -112,8 +117,8 @@ export type CreateLinkedDeviceSessionSlotInput = z.infer<
 >
 
 export const updateLinkedDeviceSessionSlotSchema = z.object({
-  sessionKey: z.string().min(1, "Session key is required"),
-  label: z.string().min(2, "Label must be at least 2 characters").max(100),
+  sessionKey: z.string().trim().min(1, "Session key is required").max(64),
+  label: z.string().trim().min(2, "Label must be at least 2 characters").max(100),
 })
 
 export type UpdateLinkedDeviceSessionSlotInput = z.infer<
@@ -124,22 +129,39 @@ export const updateLinkedDeviceSessionLabelSchema = updateLinkedDeviceSessionSlo
 export type UpdateLinkedDeviceSessionLabelInput = UpdateLinkedDeviceSessionSlotInput
 
 export const deleteLinkedDeviceSessionSlotSchema = z.object({
-  sessionKey: z.string().min(1, "Session key is required"),
+  sessionKey: z.string().trim().min(1, "Session key is required").max(64),
 })
 
 export type DeleteLinkedDeviceSessionSlotInput = z.infer<
   typeof deleteLinkedDeviceSessionSlotSchema
 >
 
-export const dispatchAutomatedWhatsappGroupsCampaignSchema = z.object({
-  postAssetId: z.string().uuid("Invalid Post Asset ID"),
-  caption: z.string().min(1, "Caption cannot be empty"),
-  channelIds: z.array(z.string().uuid()).min(1, "Select at least 1 WhatsApp channel"),
-  pacingTier: z.enum(["fast", "safe", "ultra_safe"]).default("safe"),
-  minDelaySec: z.number().int().min(1).max(300).optional(),
-  maxDelaySec: z.number().int().min(1).max(600).optional(),
-  sessionKey: z.string().default("auto"),
-})
+export const dispatchAutomatedWhatsappGroupsCampaignSchema = z
+  .object({
+    postAssetId: z.string().uuid("Invalid Post Asset ID"),
+    caption: z.string().trim().min(1, "Caption cannot be empty").max(4096),
+    channelIds: z
+      .array(z.string().uuid())
+      .min(1, "Select at least 1 WhatsApp channel")
+      .max(200),
+    pacingTier: z.enum(["fast", "safe", "ultra_safe"]).default("safe"),
+    minDelaySec: z.number().int().min(1).max(300).optional(),
+    maxDelaySec: z.number().int().min(1).max(600).optional(),
+    sessionKey: z.string().trim().min(1).max(64).default("auto"),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.minDelaySec !== undefined &&
+      data.maxDelaySec !== undefined &&
+      data.maxDelaySec < data.minDelaySec
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["maxDelaySec"],
+        message: "maxDelaySec must be greater than or equal to minDelaySec",
+      })
+    }
+  })
 
 export type DispatchAutomatedWhatsappGroupsCampaignInput = z.infer<
   typeof dispatchAutomatedWhatsappGroupsCampaignSchema

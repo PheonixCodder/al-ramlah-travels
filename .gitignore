@@ -20,9 +20,16 @@
 /.trigger/
 .trigger/
 
-# local runtime uploads fallback
+# local runtime uploads & database backups
 /public/uploads/r2-local/
 public/uploads/r2-local/
+/backups/
+backups/
+*.dump
+
+# duplicate legacy agent skill mirror
+/agent/
+agent/
 
 # production
 /build

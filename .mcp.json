@@ -1,9 +1,10 @@
 {
   "mcpServers": {
     "trigger": {
-      "command": "node",
+      "command": "npx",
       "args": [
-        "C:\\nvm4w\\nodejs\\node_modules\\trigger.dev\\dist\\esm\\index.js",
+        "-y",
+        "trigger.dev@4.8.3",
         "mcp",
         "--project-ref",
         "proj_wceqpgjdgrgramynogwe"

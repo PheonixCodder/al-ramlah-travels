@@ -68,36 +68,38 @@ import {
   type UserAccountData,
 } from "@/components/admin/catalog/users-client"
 import {
-  upsertWhatsappAccountAction,
-  syncWhatsappTemplatesAction,
-  completeEmbeddedSignupCoexistenceAction,
-  createWhatsAppTemplateAction,
-  deleteWhatsAppTemplateAction,
-} from "@/app/actions/whatsapp-crm"
+  saveSettingsWhatsappAccountAction,
+  syncSettingsWhatsappTemplatesAction,
+  completeSettingsEmbeddedSignupAction,
+  createSettingsWhatsappTemplateAction,
+  deleteSettingsWhatsappTemplateAction,
+  disconnectSettingsSocialIntegrationAction,
+  saveSettingsManualSocialIntegrationAction,
+  selectSettingsSocialAccountCandidateAction,
+  refreshSettingsSocialTokenAction,
+} from "@/app/actions/catalog"
 import {
-  disconnectSocialIntegrationAction,
-  saveManualSocialIntegrationAction,
   getPendingSocialAccountCandidatesAction,
-  selectSocialAccountCandidateAction,
-  refreshSocialIntegrationTokenAction,
   type SafeSocialIntegration,
 } from "@/app/actions/social-scheduler"
 import type {
   SafeSocialAccountCandidate,
   SocialProviderId,
 } from "@/lib/social/types"
+import {
+  resolveSettingsTab,
+  type SettingsTabKey,
+} from "@/components/admin/settings/safe-settings-dto"
+import type { ConfigHealthSnapshot } from "@/components/admin/settings/config-health"
+import { ConfigHealthPanel } from "@/components/admin/settings/config-health-panel"
+import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
 import { cn } from "@/lib/utils"
 
 // ==========================================
 // Types
 // ==========================================
 
-export type SettingsTabKey =
-  | "connections"
-  | "whatsapp"
-  | "infrastructure"
-  | "agency"
-  | "staff"
+export type { SettingsTabKey }
 
 export interface SafeWhatsappAccount {
   id: string
@@ -108,7 +110,9 @@ export interface SafeWhatsappAccount {
   verifiedName: string | null
   qualityRating: string | null
   messagingLimit: string | null
-  webhookVerifyToken: string
+  hasAccessToken?: boolean
+  hasVerifyToken: boolean
+  verifyTokenPreview: string | null
   isActive: boolean
   isDefault: boolean
   accountRole?: string | null
@@ -155,6 +159,7 @@ export interface ConnectionsSettingsClientProps {
   whatsappAccounts: SafeWhatsappAccount[]
   whatsappTemplates: SafeWhatsappTemplate[]
   infrastructureStatus: SafeInfrastructureStatus
+  configHealth?: ConfigHealthSnapshot
   staffUsers: UserAccountData[]
   currentUserId: string
   currentUserRole: string
@@ -341,7 +346,13 @@ const TAB_CONFIG: TabMeta[] = [
     key: "agency",
     label: "Agency Parameters",
     icon: Building2,
-    description: "Official agency branding, helpline numbers, SLA overdue thresholds & SAR exchange rate",
+    description: "Official agency branding, regulatory licenses, banking IBAN governance, SLA thresholds & SAR rate",
+  },
+  {
+    key: "health",
+    label: "Config Health",
+    icon: Activity,
+    description: "Zero-secret readiness checks for PostgreSQL, R2, Gotenberg, Resend, WABA, Social OAuth & Trigger.dev",
   },
   {
     key: "staff",
@@ -367,6 +378,7 @@ export function ConnectionsSettingsClient({
   whatsappAccounts: initialWhatsappAccounts,
   whatsappTemplates: initialWhatsappTemplates,
   infrastructureStatus,
+  configHealth,
   staffUsers,
   currentUserId,
   currentUserRole,
@@ -377,23 +389,10 @@ export function ConnectionsSettingsClient({
 
   const isSuperAdmin = currentUserRole === "super_admin"
 
-  // URL state synchronization
-  const validTabKeys = useMemo<SettingsTabKey[]>(() => {
-    return isSuperAdmin
-      ? ["connections", "whatsapp", "infrastructure", "agency", "staff"]
-      : ["connections", "whatsapp", "infrastructure", "agency"]
-  }, [isSuperAdmin])
-
+  // URL state synchronization (`?tab=waba|devices|social|gotenberg|users|health|agency`)
   const activeTab: SettingsTabKey = useMemo(() => {
-    const urlTab = searchParams.get("tab") as SettingsTabKey | null
-    if (urlTab && validTabKeys.includes(urlTab)) {
-      return urlTab
-    }
-    if (validTabKeys.includes(initialTab as SettingsTabKey)) {
-      return initialTab as SettingsTabKey
-    }
-    return "connections"
-  }, [searchParams, initialTab, validTabKeys])
+    return resolveSettingsTab(searchParams.get("tab"), initialTab)
+  }, [searchParams, initialTab])
 
   const handleTabChange = (key: SettingsTabKey) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -579,7 +578,7 @@ export function ConnectionsSettingsClient({
     setCandidateError(null)
 
     try {
-      const res = await selectSocialAccountCandidateAction({
+      const res = await selectSettingsSocialAccountCandidateAction({
         provider: candidateProvider ?? undefined,
         integrationId: candidateIntegrationId,
         internalAccountId: selectedCandidateInternalId,
@@ -617,7 +616,7 @@ export function ConnectionsSettingsClient({
   const handleRefreshSingleToken = async (integrationId: string) => {
     setRefreshingTokenId(integrationId)
     try {
-      const res = await refreshSocialIntegrationTokenAction({ integrationId })
+      const res = await refreshSettingsSocialTokenAction({ integrationId })
       if (res.success) {
         startTransition(() => {
           router.refresh()
@@ -639,7 +638,7 @@ export function ConnectionsSettingsClient({
   const handleSweepExpiringTokens = async () => {
     setIsSweepingTokens(true)
     try {
-      const res = await refreshSocialIntegrationTokenAction({ withinHours: 168 })
+      const res = await refreshSettingsSocialTokenAction({ withinHours: 168 })
       if (res.success) {
         startTransition(() => {
           router.refresh()
@@ -680,7 +679,7 @@ export function ConnectionsSettingsClient({
     setManualError(null)
 
     try {
-      const result = await saveManualSocialIntegrationAction({
+      const result = await saveSettingsManualSocialIntegrationAction({
         provider: manualProvider,
         name: manualName.trim() || `Al Ramlah ${manualProvider}`,
         handle: manualHandle.trim() || undefined,
@@ -715,7 +714,7 @@ export function ConnectionsSettingsClient({
 
     setDisconnectingId(integrationId)
     try {
-      const res = await disconnectSocialIntegrationAction({ integrationId })
+      const res = await disconnectSettingsSocialIntegrationAction({ integrationId })
       if (res.success) {
         setSocialIntegrations((prev) =>
           prev.map((item) => (item.id === integrationId ? { ...item, isActive: false } : item))
@@ -793,7 +792,7 @@ export function ConnectionsSettingsClient({
   )
   const [wabaAccessToken, setWabaAccessToken] = useState("")
   const [wabaVerifyToken, setWabaVerifyToken] = useState(
-    activeWabaAccount?.webhookVerifyToken || "art_wa_token_verified"
+    activeWabaAccount ? "" : "art_wa_token_verified"
   )
   const [wabaPin, setWabaPin] = useState("")
   const [wabaIsDefault, setWabaIsDefault] = useState(
@@ -837,7 +836,7 @@ export function ConnectionsSettingsClient({
       setWabaId(slot.wabaId)
       setWabaDisplayPhone(slot.displayPhoneNumber)
       setWabaAccessToken("")
-      setWabaVerifyToken(slot.webhookVerifyToken)
+      setWabaVerifyToken("")
       setWabaPin("")
       setWabaIsDefault(slot.isDefault)
       setWabaAccountRole(
@@ -964,7 +963,7 @@ export function ConnectionsSettingsClient({
                 capturedSessionData.primary_waac_ids?.[0] ||
                 wabaPhoneNumberId
 
-              const result = await completeEmbeddedSignupCoexistenceAction({
+              const result = await completeSettingsEmbeddedSignupAction({
                 code,
                 wabaId: targetWaba,
                 phoneNumberId: targetPhoneId,
@@ -1050,14 +1049,14 @@ export function ConnectionsSettingsClient({
 
     setIsSavingWaba(true)
     try {
-      const res = await upsertWhatsappAccountAction({
+      const res = await saveSettingsWhatsappAccountAction({
         id: activeWabaAccount?.id,
         name: wabaName.trim(),
         phoneNumberId: wabaPhoneNumberId.trim(),
         wabaId: wabaId.trim(),
         displayPhoneNumber: wabaDisplayPhone.trim(),
         accessToken: wabaAccessToken.trim() || undefined,
-        webhookVerifyToken: wabaVerifyToken.trim() || "art_wa_token_default",
+        webhookVerifyToken: wabaVerifyToken.trim() || undefined,
         pin: wabaPin.trim() || undefined,
         isActive: true,
         isDefault: wabaIsDefault,
@@ -1067,7 +1066,7 @@ export function ConnectionsSettingsClient({
         embeddedSignupConfigId: embeddedConfigId.trim() || null,
       })
 
-      if (res && res.success) {
+      if (res && res.success && "accountId" in res) {
         setWabaFeedback({
           success: true,
           message:
@@ -1076,6 +1075,7 @@ export function ConnectionsSettingsClient({
               : "Dedicated AI Agent WhatsApp credentials verified and saved!",
         })
         setWabaAccessToken("") // Clear token from memory
+        setWabaVerifyToken("")
         setSelectedWabaId(res.accountId)
         startTransition(() => {
           router.refresh()
@@ -1083,7 +1083,9 @@ export function ConnectionsSettingsClient({
       } else {
         setWabaFeedback({
           success: false,
-          message: "Failed to save WhatsApp account credentials",
+          message:
+            (res && "error" in res && res.error) ||
+            "Failed to save WhatsApp account credentials",
         })
       }
     } catch (err) {
@@ -1106,7 +1108,7 @@ export function ConnectionsSettingsClient({
     setSyncFeedback(null)
 
     try {
-      const res = await syncWhatsappTemplatesAction(activeWabaAccount.id)
+      const res = await syncSettingsWhatsappTemplatesAction(activeWabaAccount.id)
       if (res.success) {
         setSyncFeedback(`Successfully synchronized Meta message templates!`)
         startTransition(() => {
@@ -1145,7 +1147,7 @@ export function ConnectionsSettingsClient({
     setCreateTemplateError(null)
 
     try {
-      const res = await createWhatsAppTemplateAction({
+      const res = await createSettingsWhatsappTemplateAction({
         accountId: activeWabaAccount.id,
         name: cleanName,
         category: templateCategoryInput,
@@ -1170,7 +1172,9 @@ export function ConnectionsSettingsClient({
               return {
                 type: "PHONE_NUMBER" as const,
                 text: b.text.trim().slice(0, 25),
-                phone_number: b.phone_number?.trim() || "+923008451122",
+                phone_number:
+                  b.phone_number?.trim() ||
+                  `+${DEFAULT_COMPANY_INFO.normalizedWhatsapp}`,
               }
             }
             return {
@@ -1191,7 +1195,7 @@ export function ConnectionsSettingsClient({
 
         startTransition(async () => {
           if (activeWabaAccount.id) {
-            await syncWhatsappTemplatesAction(activeWabaAccount.id)
+            await syncSettingsWhatsappTemplatesAction(activeWabaAccount.id)
             router.refresh()
           }
         })
@@ -1209,7 +1213,7 @@ export function ConnectionsSettingsClient({
     if (!templateToDelete) return
     setIsDeletingTemplate(true)
     try {
-      const res = await deleteWhatsAppTemplateAction({
+      const res = await deleteSettingsWhatsappTemplateAction({
         accountId: templateToDelete.accountId,
         templateId: templateToDelete.id,
         name: templateToDelete.name,
@@ -1247,6 +1251,9 @@ export function ConnectionsSettingsClient({
     whatsapp: activeWabaAccount ? "Connected" : "Setup",
     infrastructure: `${activeInfraCount}/4`,
     agency: "Active",
+    health: configHealth
+      ? `${configHealth.readyCount}/${configHealth.totalSubsystems}`
+      : `${activeInfraCount}/4`,
     staff: `${staffUsers.length}`,
   }
 
@@ -2074,33 +2081,30 @@ export function ConnectionsSettingsClient({
                   </div>
                 </div>
 
-                {/* Verify Token */}
+                {/* Verify Token (Masked Preview — Plaintext Never Sent to Browser) */}
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                     Webhook Verify Token
                   </label>
                   <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-2">
-                    <span className="font-mono text-xs text-foreground truncate flex-1 select-all">
-                      {activeWabaAccount?.webhookVerifyToken || "art_wa_token_default"}
+                    <span className="font-mono text-xs text-foreground truncate flex-1">
+                      {activeWabaAccount?.hasVerifyToken
+                        ? activeWabaAccount.verifyTokenPreview || "••••••••"
+                        : "Set when connecting WABA"}
                     </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() =>
-                        handleCopy(
-                          activeWabaAccount?.webhookVerifyToken || "art_wa_token_default",
-                          "verifyToken"
-                        )
-                      }
-                      title="Copy Verify Token"
-                    >
-                      {copiedKey === "verifyToken" ? (
-                        <Check className="size-3.5 text-emerald-600" />
-                      ) : (
-                        <Copy className="size-3.5 text-muted-foreground" />
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px] font-semibold",
+                        activeWabaAccount?.hasVerifyToken
+                          ? "border-emerald-500/40 text-emerald-700 bg-emerald-500/10"
+                          : "border-amber-500/40 text-amber-700 bg-amber-500/10"
                       )}
-                    </Button>
+                    >
+                      {activeWabaAccount?.hasVerifyToken
+                        ? "Redacted"
+                        : "Pending"}
+                    </Badge>
                   </div>
                 </div>
               </div>
@@ -2342,13 +2346,19 @@ export function ConnectionsSettingsClient({
 
                   <div className="space-y-1.5">
                     <Label htmlFor="waba-verify-token" className="text-xs font-semibold">
-                      Custom Webhook Verify Token
+                      Custom Webhook Verify Token{" "}
+                      {activeWabaAccount ? "(Leave blank to keep existing)" : ""}
                     </Label>
                     <Input
                       id="waba-verify-token"
+                      type="password"
                       value={wabaVerifyToken}
                       onChange={(e) => setWabaVerifyToken(e.target.value)}
-                      placeholder="art_wa_token_verified"
+                      placeholder={
+                        activeWabaAccount?.verifyTokenPreview
+                          ? `${activeWabaAccount.verifyTokenPreview} (Stored securely)`
+                          : "art_wa_token_verified"
+                      }
                       className="text-xs h-8 font-mono"
                     />
                   </div>
@@ -2864,12 +2874,24 @@ export function ConnectionsSettingsClient({
       {/* ========================================================================= */}
       {activeTab === "agency" && (
         <div className="min-h-[500px]">
-          <SettingsClient initialSettings={agencySettings} />
+          <SettingsClient
+            initialSettings={agencySettings}
+            isSuperAdmin={isSuperAdmin}
+          />
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 5: Staff Accounts & RBAC (Super Admin Only)                           */}
+      {/* TAB 5: Zero-Secret System Configuration Health (`?tab=health`)            */}
+      {/* ========================================================================= */}
+      {activeTab === "health" && configHealth && (
+        <div className="min-h-[500px]">
+          <ConfigHealthPanel initialSnapshot={configHealth} />
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 6: Staff Accounts & RBAC (Super Admin Only)                           */}
       {/* ========================================================================= */}
       {activeTab === "staff" && (
         <div className="min-h-[500px]">
@@ -3144,7 +3166,7 @@ export function ConnectionsSettingsClient({
                             )
                           )
                         }
-                        placeholder="+923008451122"
+                        placeholder={`+${DEFAULT_COMPANY_INFO.normalizedWhatsapp}`}
                         className="h-7 text-xs flex-1 font-mono"
                       />
                     )}

@@ -1,23 +1,23 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertTransportSector } from "@/app/actions/catalog"
-import { Plus, Loader2, Bus } from "lucide-react"
+import { Bus, Loader2, Plus } from "lucide-react"
 
 export interface SectorData {
   id?: string
@@ -81,6 +81,25 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
   const [isActive, setIsActive] = useState(sector?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(sector?.sortOrder ?? 0)
 
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setCode(sector?.code ?? "")
+    setLabel(sector?.label ?? "")
+    setOriginCity(sector?.originCity ?? "Jeddah")
+    setDestinationCity(sector?.destinationCity ?? "Makkah")
+    setOriginType(sector?.originType ?? "airport")
+    setDestinationType(sector?.destinationType ?? "hotel")
+    setSupportsTrain(sector?.supportsTrain ?? false)
+    setIsSharedBusEligible(sector?.isSharedBusEligible ?? false)
+    setSharedBusRateSarPerPax(sector?.sharedBusRateSarPerPax ?? 20)
+    setTerminalParkingFeeSar(sector?.terminalParkingFeeSar ?? 0)
+    setApproxDistanceKm(sector?.approxDistanceKm ?? 95)
+    setApproxDurationMinutes(sector?.approxDurationMinutes ?? 75)
+    setIsActive(sector?.isActive ?? true)
+    setSortOrder(sector?.sortOrder ?? 0)
+  }, [open, sector])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -108,7 +127,7 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
         setOpen(false)
         router.refresh()
       } else {
-        setError("Failed to save sector.")
+        setError(res.error || "Failed to save sector.")
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -135,13 +154,17 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
           )
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        key={open ? (sector?.id ?? "new") : "closed"}
+        className="sm:max-w-md"
+      >
         <DialogHeader>
           <DialogTitle>
             {sector ? `Edit ${sector.code}` : "Add Point-to-Point Sector"}
           </DialogTitle>
           <DialogDescription>
-            Configure origin, destination, transit time, bus seat rates, and terminal parking fees.
+            Configure origin, destination, transit time, bus seat rates, and
+            terminal parking fees.
           </DialogDescription>
         </DialogHeader>
 
@@ -160,6 +183,7 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 placeholder="e.g. JED_TO_MAKKAH"
+                className="font-mono"
                 required
               />
             </div>
@@ -262,7 +286,7 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
               <div className="flex items-center gap-1.5">
                 <Bus className="size-3.5 text-gold" />
                 <span className="text-xs font-semibold text-foreground">
-                  Shared Bus & Parking Parameters
+                  Shared Bus &amp; Parking Parameters
                 </span>
               </div>
               <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
@@ -341,7 +365,7 @@ export function SectorDialog({ sector, trigger }: SectorDialogProps) {
                 type="number"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="w-14 h-7 text-xs"
+                className="w-14 h-7 text-xs font-mono"
               />
             </div>
           </div>

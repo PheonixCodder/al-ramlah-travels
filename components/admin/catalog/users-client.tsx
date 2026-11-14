@@ -2,9 +2,9 @@
 
 import * as React from "react"
 import { useState, useTransition, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import {
   createStaffUser,
+  resetStaffPassword,
   toggleUserActive,
   updateUserRole,
 } from "@/app/actions/catalog"
@@ -31,6 +31,9 @@ import {
   Mail,
   UserCheck,
   Sparkles,
+  Eye,
+  EyeOff,
+  KeyRound,
 } from "lucide-react"
 
 export interface UserAccountData {
@@ -48,22 +51,43 @@ interface UsersClientProps {
   currentUserRole: string
 }
 
+function createRandomPassword(): string {
+  const chars =
+    "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*"
+  let pass = ""
+  for (let i = 0; i < 14; i++) {
+    pass += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return pass
+}
+
 export function UsersClient({
   initialUsers,
   currentUserId,
   currentUserRole,
 }: UsersClientProps) {
-  const router = useRouter()
   const [users, setUsers] = useState<UserAccountData[]>(initialUsers)
   const [openAdd, setOpenAdd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [bannerNotice, setBannerNotice] = useState<{
+    type: "error" | "success"
+    text: string
+  } | null>(null)
 
   // New staff form state
   const [newName, setNewName] = useState("")
   const [newEmail, setNewEmail] = useState("")
   const [newPassword, setNewPassword] = useState("")
+  const [showNewPassword, setShowNewPassword] = useState(false)
   const [newRole, setNewRole] = useState<"staff" | "super_admin">("staff")
+
+  // Password reset dialog state
+  const [resetTarget, setResetTarget] = useState<UserAccountData | null>(null)
+  const [resetPasswordVal, setResetPasswordVal] = useState("")
+  const [showResetPassword, setShowResetPassword] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
 
   const [, startTransition] = useTransition()
 
@@ -71,20 +95,30 @@ export function UsersClient({
     setUsers(initialUsers)
   }, [initialUsers])
 
-  const generateStrongPassword = () => {
-    const chars =
-      "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*"
-    let pass = ""
-    for (let i = 0; i < 12; i++) {
-      pass += chars.charAt(Math.floor(Math.random() * chars.length))
+  useEffect(() => {
+    if (openAdd) {
+      setError(null)
+      setNewName("")
+      setNewEmail("")
+      setNewPassword("")
+      setShowNewPassword(false)
+      setNewRole("staff")
     }
-    setNewPassword(pass)
-  }
+  }, [openAdd])
+
+  useEffect(() => {
+    if (resetTarget) {
+      setResetError(null)
+      setResetPasswordVal("")
+      setShowResetPassword(false)
+    }
+  }, [resetTarget])
 
   async function handleCreateUser(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setBannerNotice(null)
 
     try {
       const res = await createStaffUser({
@@ -93,16 +127,20 @@ export function UsersClient({
         password: newPassword,
         role: newRole,
       })
+      if (!res.success) {
+        setError(res.error || "Failed to create staff account.")
+        return
+      }
       if (res.data) {
         setUsers((prev) => [res.data as UserAccountData, ...prev])
       }
       setOpenAdd(false)
-      setNewName("")
-      setNewEmail("")
-      setNewPassword("")
+      setBannerNotice({
+        type: "success",
+        text: `Provisioned staff account for ${newEmail.trim().toLowerCase()}.`,
+      })
     } catch (err: unknown) {
-      if (err instanceof Error) setError(err.message)
-      else setError("Failed to create user.")
+      setError(err instanceof Error ? err.message : "Failed to create user.")
     } finally {
       setLoading(false)
     }
@@ -110,33 +148,91 @@ export function UsersClient({
 
   function handleToggleActive(userId: string, current: boolean) {
     const next = !current
+    setBannerNotice(null)
     startTransition(async () => {
       try {
         const res = await toggleUserActive(userId, next)
-        if (res.success) {
-          setUsers((prev) =>
-            prev.map((u) => (u.id === userId ? { ...u, isActive: next } : u))
-          )
+        if (!res.success) {
+          setBannerNotice({
+            type: "error",
+            text: res.error || "Could not change account status.",
+          })
+          return
         }
+        setUsers((prev) =>
+          prev.map((u) => (u.id === userId ? { ...u, isActive: next } : u))
+        )
+        setBannerNotice({
+          type: "success",
+          text: next
+            ? "Staff account reactivated."
+            : "Staff account deactivated and active sessions revoked.",
+        })
       } catch (err: unknown) {
-        alert(err instanceof Error ? err.message : "Action failed")
+        setBannerNotice({
+          type: "error",
+          text: err instanceof Error ? err.message : "Action failed.",
+        })
       }
     })
   }
 
   function handleRoleChange(userId: string, role: "staff" | "super_admin") {
+    setBannerNotice(null)
     startTransition(async () => {
       try {
         const res = await updateUserRole(userId, role)
-        if (res.success) {
-          setUsers((prev) =>
-            prev.map((u) => (u.id === userId ? { ...u, role } : u))
-          )
+        if (!res.success) {
+          setBannerNotice({
+            type: "error",
+            text: res.error || "Could not change account role.",
+          })
+          return
         }
+        setUsers((prev) =>
+          prev.map((u) => (u.id === userId ? { ...u, role } : u))
+        )
+        setBannerNotice({
+          type: "success",
+          text: `Updated role to ${role.replace("_", " ")} and refreshed session permissions.`,
+        })
       } catch (err: unknown) {
-        alert(err instanceof Error ? err.message : "Action failed")
+        setBannerNotice({
+          type: "error",
+          text: err instanceof Error ? err.message : "Role change failed.",
+        })
       }
     })
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault()
+    if (!resetTarget) return
+    setResetLoading(true)
+    setResetError(null)
+
+    try {
+      const res = await resetStaffPassword({
+        userId: resetTarget.id,
+        newPassword: resetPasswordVal,
+      })
+      if (!res.success) {
+        setResetError(res.error || "Failed to reset password.")
+        return
+      }
+      const targetEmail = resetTarget.email
+      setResetTarget(null)
+      setBannerNotice({
+        type: "success",
+        text: `Temporary password set for ${targetEmail} and active sessions revoked.`,
+      })
+    } catch (err: unknown) {
+      setResetError(
+        err instanceof Error ? err.message : "Failed to reset password."
+      )
+    } finally {
+      setResetLoading(false)
+    }
   }
 
   const isSuperAdmin = currentUserRole === "super_admin"
@@ -150,7 +246,7 @@ export function UsersClient({
             Staff & Administrative Roles
           </h1>
           <p className="text-sm text-muted-foreground">
-            Manage agency operators, quote worksheet reviewers, and super administrator privileges.
+            Manage agency consultants, Desk operators, and Super Administrator privileges. Deactivating or demoting an account immediately revokes its active sessions.
           </p>
         </div>
 
@@ -164,11 +260,14 @@ export function UsersClient({
                 </Button>
               }
             />
-            <DialogContent className="sm:max-w-md">
+            <DialogContent
+              key={openAdd ? "add-staff-open" : "add-staff-closed"}
+              className="sm:max-w-md"
+            >
               <DialogHeader>
                 <DialogTitle>Add Staff Operator</DialogTitle>
                 <DialogDescription>
-                  Create an administrative account for quote review and inquiry processing.
+                  Provision an authenticated consultant account without interrupting your current Super Admin session.
                 </DialogDescription>
               </DialogHeader>
 
@@ -204,10 +303,15 @@ export function UsersClient({
 
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="u-password">Temporary Password</Label>
+                    <Label htmlFor="u-password">
+                      Temporary Password (min 10 chars)
+                    </Label>
                     <button
                       type="button"
-                      onClick={generateStrongPassword}
+                      onClick={() => {
+                        setNewPassword(createRandomPassword())
+                        setShowNewPassword(true)
+                      }}
                       className="inline-flex items-center gap-1 text-[11px] font-semibold text-gold hover:underline cursor-pointer"
                     >
                       <Sparkles className="size-3 text-gold" />
@@ -217,14 +321,28 @@ export function UsersClient({
                   <div className="relative">
                     <Input
                       id="u-password"
-                      type="text"
+                      type={showNewPassword ? "text" : "password"}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Minimum 8 characters"
-                      minLength={8}
+                      placeholder="Minimum 10 characters"
+                      minLength={10}
                       required
-                      className="font-mono"
+                      className="font-mono pr-9"
                     />
+                    <button
+                      type="button"
+                      aria-label={
+                        showNewPassword ? "Hide password" : "Show password"
+                      }
+                      onClick={() => setShowNewPassword((v) => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                    >
+                      {showNewPassword ? (
+                        <EyeOff className="size-4" />
+                      ) : (
+                        <Eye className="size-4" />
+                      )}
+                    </button>
                   </div>
                 </div>
 
@@ -239,16 +357,18 @@ export function UsersClient({
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
                   >
                     <option value="staff">
-                      Staff Operator (Quotes & Inquiries)
+                      Staff Operator (Desk, Quotes & Inquiries)
                     </option>
                     <option value="super_admin">
-                      Super Admin (Full System Access)
+                      Super Admin (Master Rates, Settings & RBAC)
                     </option>
                   </select>
                 </div>
 
                 <DialogFooter className="pt-2">
-                  <DialogClose render={<Button variant="outline" type="button" />}>
+                  <DialogClose
+                    render={<Button variant="outline" type="button" />}
+                  >
                     Cancel
                   </DialogClose>
                   <Button
@@ -266,6 +386,18 @@ export function UsersClient({
         )}
       </div>
 
+      {bannerNotice && (
+        <div
+          className={
+            bannerNotice.type === "error"
+              ? "rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800"
+              : "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900"
+          }
+        >
+          {bannerNotice.text}
+        </div>
+      )}
+
       {/* Users Table Card */}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
         <div className="overflow-x-auto">
@@ -276,14 +408,19 @@ export function UsersClient({
                 <th className="px-5 py-3">Role Privilege</th>
                 <th className="px-5 py-3">Account Status</th>
                 <th className="px-5 py-3">Joined Date</th>
-                {isSuperAdmin && <th className="px-5 py-3 text-right">Actions</th>}
+                {isSuperAdmin && (
+                  <th className="px-5 py-3 text-right">Actions</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-border/80">
               {users.map((u) => {
                 const isSelf = u.id === currentUserId
                 return (
-                  <tr key={u.id} className="hover:bg-muted/10 transition-colors">
+                  <tr
+                    key={u.id}
+                    className="hover:bg-muted/10 transition-colors"
+                  >
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
                         <div className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
@@ -321,7 +458,9 @@ export function UsersClient({
                           className="rounded-md border border-input bg-background px-2 py-1 text-xs font-medium shadow-xs focus-visible:outline-ring"
                         >
                           <option value="staff">Staff Operator</option>
-                          <option value="super_admin">Super Administrator</option>
+                          <option value="super_admin">
+                            Super Administrator
+                          </option>
                         </select>
                       ) : (
                         <Badge
@@ -361,20 +500,35 @@ export function UsersClient({
 
                     {isSuperAdmin && (
                       <td className="px-5 py-4 text-right">
-                        {!isSelf && (
+                        <div className="inline-flex items-center gap-2">
                           <Button
                             variant="outline"
                             size="xs"
-                            onClick={() => handleToggleActive(u.id, u.isActive)}
-                            className={
-                              u.isActive
-                                ? "text-amber-700 hover:bg-amber-50 cursor-pointer"
-                                : "text-emerald-700 hover:bg-emerald-50 cursor-pointer"
-                            }
+                            type="button"
+                            onClick={() => setResetTarget(u)}
+                            className="gap-1 cursor-pointer"
                           >
-                            {u.isActive ? "Deactivate" : "Activate"}
+                            <KeyRound className="size-3" />
+                            <span>Reset Password</span>
                           </Button>
-                        )}
+                          {!isSelf && (
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              type="button"
+                              onClick={() =>
+                                handleToggleActive(u.id, u.isActive)
+                              }
+                              className={
+                                u.isActive
+                                  ? "text-amber-700 hover:bg-amber-50 cursor-pointer"
+                                  : "text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                              }
+                            >
+                              {u.isActive ? "Deactivate" : "Activate"}
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -384,6 +538,94 @@ export function UsersClient({
           </table>
         </div>
       </div>
+
+      {/* Password Reset Modal */}
+      <Dialog
+        open={Boolean(resetTarget)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setResetTarget(null)
+        }}
+      >
+        <DialogContent
+          key={resetTarget?.id ?? "reset-closed"}
+          className="sm:max-w-md"
+        >
+          <DialogHeader>
+            <DialogTitle>Reset Staff Password</DialogTitle>
+            <DialogDescription>
+              Set a new temporary password for{" "}
+              <strong>{resetTarget?.email}</strong>. All existing active sessions for this user will be immediately terminated.
+            </DialogDescription>
+          </DialogHeader>
+
+          {resetError && (
+            <div className="rounded-lg bg-red-50 p-2.5 text-xs text-red-800 border border-red-200">
+              {resetError}
+            </div>
+          )}
+
+          <form onSubmit={handleResetPassword} className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="u-reset-password">
+                  New Temporary Password (min 10 chars)
+                </Label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetPasswordVal(createRandomPassword())
+                    setShowResetPassword(true)
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-gold hover:underline cursor-pointer"
+                >
+                  <Sparkles className="size-3 text-gold" />
+                  <span>Generate</span>
+                </button>
+              </div>
+              <div className="relative">
+                <Input
+                  id="u-reset-password"
+                  type={showResetPassword ? "text" : "password"}
+                  value={resetPasswordVal}
+                  onChange={(e) => setResetPasswordVal(e.target.value)}
+                  minLength={10}
+                  required
+                  placeholder="Minimum 10 characters"
+                  className="font-mono pr-9"
+                />
+                <button
+                  type="button"
+                  aria-label={
+                    showResetPassword ? "Hide password" : "Show password"
+                  }
+                  onClick={() => setShowResetPassword((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                >
+                  {showResetPassword ? (
+                    <EyeOff className="size-4" />
+                  ) : (
+                    <Eye className="size-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" type="button" />}>
+                Cancel
+              </DialogClose>
+              <Button
+                type="submit"
+                disabled={resetLoading}
+                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+              >
+                {resetLoading && <Loader2 className="size-4 animate-spin" />}
+                <span>Save & Revoke Sessions</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

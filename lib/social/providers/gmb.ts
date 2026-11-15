@@ -1,4 +1,9 @@
 import { env } from "@/lib/env"
+import {
+  assertSafeSocialMediaUrl,
+  fetchWithTimeout,
+  validateSocialMediaUrlSyntax,
+} from "../safe-media"
 import type {
   SocialAccountCandidate,
   SocialOAuthAuthUrlResult,
@@ -10,11 +15,27 @@ import type {
   SocialValidationResult,
 } from "../types"
 
-const GMB_SCOPES = [
+export const GMB_SCOPES = [
   "https://www.googleapis.com/auth/business.manage",
   "https://www.googleapis.com/auth/userinfo.profile",
   "https://www.googleapis.com/auth/userinfo.email",
 ]
+
+export const GBP_ACCOUNT_MANAGEMENT_V1_BASE =
+  "https://mybusinessaccountmanagement.googleapis.com/v1"
+export const GBP_BUSINESS_INFO_V1_BASE =
+  "https://mybusinessbusinessinformation.googleapis.com/v1"
+export const GBP_PERFORMANCE_V1_BASE =
+  "https://businessprofileperformance.googleapis.com/v1"
+
+/**
+ * Readiness flag for Google Business Profile API Basic Access approval (`OD-11`, `T-035`).
+ */
+export function isGbpApiApproved(
+  sourceEnv: NodeJS.ProcessEnv = process.env
+): boolean {
+  return sourceEnv.GBP_API_APPROVED?.trim().toLowerCase() === "true"
+}
 
 interface GoogleTokenResponse {
   access_token?: string
@@ -44,6 +65,10 @@ interface GmbLocationsResponse {
       locality?: string
       addressLines?: string[]
     }
+    metadata?: {
+      mapsUri?: string
+      newReviewUri?: string
+    }
   }>
   error?: {
     code?: number
@@ -61,13 +86,41 @@ interface GmbLocalPostResponse {
   }
 }
 
+interface GbpPerformanceMultiDailyResponse {
+  multiDailyMetricTimeSeries?: Array<{
+    dailyMetricTimeSeries?: Array<{
+      dailyMetric?: string
+      timeSeries?: {
+        datedValues?: Array<{
+          value?: string | number
+        }>
+      }
+    }>
+  }>
+  error?: {
+    code?: number
+    message?: string
+  }
+}
+
+function extractLocationId(resourceOrAccountId: string): string {
+  const match = resourceOrAccountId.match(/locations\/([^/]+)/)
+  if (match?.[1]) {
+    return match[1]
+  }
+  const parts = resourceOrAccountId.split("/").filter(Boolean)
+  return parts[parts.length - 1] || resourceOrAccountId
+}
+
 export const gmbProvider: SocialProviderAdapter = {
   id: "gmb",
   name: "Google Business Profile",
   maxCaptionLength: 1500,
 
   buildAuthUrl(redirectUri: string, state: string): SocialOAuthAuthUrlResult {
-    const clientId = env.GOOGLE_OAUTH_CLIENT_ID?.trim()
+    const clientId = (
+      process.env.GOOGLE_OAUTH_CLIENT_ID || env.GOOGLE_OAUTH_CLIENT_ID
+    )?.trim()
     if (!clientId) {
       throw new Error(
         "Missing GOOGLE_OAUTH_CLIENT_ID: Google Business Profile OAuth requires a Google OAuth Client ID in environment variables."
@@ -93,8 +146,12 @@ export const gmbProvider: SocialProviderAdapter = {
     code: string,
     redirectUri: string
   ): Promise<SocialOAuthTokenResult> {
-    const clientId = env.GOOGLE_OAUTH_CLIENT_ID || ""
-    const clientSecret = env.GOOGLE_OAUTH_CLIENT_SECRET || ""
+    const clientId =
+      process.env.GOOGLE_OAUTH_CLIENT_ID || env.GOOGLE_OAUTH_CLIENT_ID || ""
+    const clientSecret =
+      process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
+      env.GOOGLE_OAUTH_CLIENT_SECRET ||
+      ""
 
     const body = new URLSearchParams({
       code,
@@ -104,11 +161,14 @@ export const gmbProvider: SocialProviderAdapter = {
       grant_type: "authorization_code",
     })
 
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
-    })
+    const tokenRes = await fetchWithTimeout(
+      "https://oauth2.googleapis.com/token",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+      }
+    )
     const tokenData = (await tokenRes.json()) as GoogleTokenResponse
 
     if (!tokenRes.ok || tokenData.error || !tokenData.access_token) {
@@ -122,9 +182,9 @@ export const gmbProvider: SocialProviderAdapter = {
     const accessToken = tokenData.access_token
     const expiresIn = tokenData.expires_in ?? 3600
 
-    // 1. Fetch Google Business accounts
-    const accountsRes = await fetch(
-      "https://mybusinessaccountmanagement.googleapis.com/v1/accounts",
+    // 1. Fetch Google Business accounts via Account Management API v1 (never fabricate fake gmb_pending_quota ACTIVE rows!)
+    const accountsRes = await fetchWithTimeout(
+      `${GBP_ACCOUNT_MANAGEMENT_V1_BASE}/accounts`,
       {
         headers: { Authorization: `Bearer ${accessToken}` },
       }
@@ -133,79 +193,14 @@ export const gmbProvider: SocialProviderAdapter = {
 
     if (!accountsRes.ok || accountsData.error) {
       const errMsg = accountsData.error?.message || ""
-      const isQuotaOrDisabled =
-        accountsRes.status === 429 ||
-        accountsRes.status === 403 ||
-        errMsg.toLowerCase().includes("quota") ||
-        errMsg.toLowerCase().includes("not enabled") ||
-        errMsg.toLowerCase().includes("has not used")
-
-      if (isQuotaOrDisabled) {
-        // Google sets newly enabled GBP APIs to 0 QPM until GBP quota form approval.
-        // Fall back to Google userinfo so the user's OAuth tokens & refresh token are saved!
-        let userEmail = "Google Business Manager"
-        let userName = "Al Ramlah Travels — Google Business Profile"
-        let userPicture: string | undefined
-        let userSub = "gmb_pending_quota"
-
-        try {
-          const profileRes = await fetch(
-            "https://www.googleapis.com/oauth2/v2/userinfo",
-            {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            }
-          )
-          if (profileRes.ok) {
-            const profile = (await profileRes.json()) as {
-              id?: string
-              email?: string
-              name?: string
-              picture?: string
-            }
-            if (profile.id) userSub = `accounts/${profile.id}/locations/primary`
-            if (profile.email) userEmail = profile.email
-            if (profile.name)
-              userName = `${profile.name} (Google Business Profile)`
-            if (profile.picture) userPicture = profile.picture
-          }
-        } catch {
-          // ignore userinfo error
-        }
-
-        const fallbackCandidate: SocialAccountCandidate = {
-          internalAccountId: userSub,
-          name: userName,
-          handle: `${userEmail} · GBP Quota Pending`,
-          avatarUrl: userPicture,
-          accessToken,
-          refreshToken: tokenData.refresh_token,
-          expiresIn,
-          scopes: GMB_SCOPES,
-          metadata: {
-            quotaPending: true,
-            quotaNotice:
-              "Google Business Profile OAuth connected! Note: Google Cloud defaults new GBP API projects to 0 QPM until approved via https://support.google.com/business/contact/api_default",
-            rawGoogleMessage: errMsg,
-          },
-        }
-
-        return {
-          internalAccountId: fallbackCandidate.internalAccountId,
-          name: fallbackCandidate.name,
-          handle: fallbackCandidate.handle,
-          avatarUrl: fallbackCandidate.avatarUrl,
-          accessToken,
-          refreshToken: tokenData.refresh_token,
-          expiresIn,
-          scopes: GMB_SCOPES,
-          metadata: fallbackCandidate.metadata,
-          candidates: [fallbackCandidate],
-        }
+      if (accountsRes.status === 429 || accountsRes.status === 403) {
+        throw new Error(
+          `Google Business Profile API access is pending Basic Access quota approval (HTTP ${accountsRes.status}): ${errMsg || "Request quota approval in Google Cloud Console and set GBP_API_APPROVED=true."}`
+        )
       }
-
       throw new Error(
         errMsg ||
-          `Google Business Profile API request failed (HTTP ${accountsRes.status}).`
+          `Google Business Profile Account Management v1 request failed (HTTP ${accountsRes.status}).`
       )
     }
 
@@ -215,14 +210,14 @@ export const gmbProvider: SocialProviderAdapter = {
       )
     }
 
-    // 2. Fetch business locations across all accounts
+    // 2. Fetch verified locations via Business Information API v1
     const candidates: SocialAccountCandidate[] = []
     let lastLocationError: string | undefined
 
     for (const acc of accountsData.accounts) {
-      const accountName = acc.name // "accounts/{accountId}"
-      const locRes = await fetch(
-        `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title,storefrontAddress`,
+      const accountName = acc.name
+      const locRes = await fetchWithTimeout(
+        `${GBP_BUSINESS_INFO_V1_BASE}/${accountName}/locations?readMask=name,title,storefrontAddress,metadata`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
@@ -232,12 +227,12 @@ export const gmbProvider: SocialProviderAdapter = {
       if (!locRes.ok || locData.error) {
         lastLocationError =
           locData.error?.message ||
-          `Google Business Profile location request failed (HTTP ${locRes.status}). Ensure My Business Business Information API is enabled in Google Cloud Console.`
+          `Google Business Profile Business Information v1 location request failed (HTTP ${locRes.status}).`
         continue
       }
 
       for (const loc of locData.locations || []) {
-        const locationId = loc.name.replace("locations/", "")
+        const locationId = loc.name.replace(/^locations\//, "")
         const fullResourceName = `${accountName}/locations/${locationId}`
         const locationTitle =
           loc.title || acc.accountName || "Al Ramlah Travels Google Profile"
@@ -254,9 +249,11 @@ export const gmbProvider: SocialProviderAdapter = {
           metadata: {
             accountName,
             accountDisplayName: acc.accountName,
-            locationName: loc.name,
+            locationName: `locations/${locationId}`,
+            locationId,
             locationTitle,
             locality,
+            mapsUri: loc.metadata?.mapsUri,
             fullResourceName,
           },
         })
@@ -268,11 +265,11 @@ export const gmbProvider: SocialProviderAdapter = {
         throw new Error(lastLocationError)
       }
       throw new Error(
-        `No verified business locations found under your Google Business Profile accounts. Please verify a location in Google Business Profile first.`
+        "No verified business locations found under your Google Business Profile accounts."
       )
     }
 
-    const primary = candidates[0]
+    const primary = candidates[0]!
 
     return {
       internalAccountId: primary.internalAccountId,
@@ -290,8 +287,12 @@ export const gmbProvider: SocialProviderAdapter = {
   async refreshAccessToken(
     refreshToken: string
   ): Promise<SocialOAuthTokenResult> {
-    const clientId = env.GOOGLE_OAUTH_CLIENT_ID || ""
-    const clientSecret = env.GOOGLE_OAUTH_CLIENT_SECRET || ""
+    const clientId =
+      process.env.GOOGLE_OAUTH_CLIENT_ID || env.GOOGLE_OAUTH_CLIENT_ID || ""
+    const clientSecret =
+      process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
+      env.GOOGLE_OAUTH_CLIENT_SECRET ||
+      ""
 
     const body = new URLSearchParams({
       client_id: clientId,
@@ -300,11 +301,14 @@ export const gmbProvider: SocialProviderAdapter = {
       grant_type: "refresh_token",
     })
 
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
-    })
+    const tokenRes = await fetchWithTimeout(
+      "https://oauth2.googleapis.com/token",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+      }
+    )
     const tokenData = (await tokenRes.json()) as GoogleTokenResponse
 
     if (!tokenRes.ok || tokenData.error || !tokenData.access_token) {
@@ -326,6 +330,7 @@ export const gmbProvider: SocialProviderAdapter = {
 
   validateSocialPost(payload: SocialPostPayload): SocialValidationResult {
     const errors: string[] = []
+    const mediaList = payload.media || []
 
     if (!payload.caption?.trim()) {
       errors.push("Google Business Profile posts require text summary content.")
@@ -335,18 +340,42 @@ export const gmbProvider: SocialProviderAdapter = {
       )
     }
 
-    if (payload.media && payload.media.length > 1) {
+    for (const item of mediaList) {
+      const urlErr = validateSocialMediaUrlSyntax(item.url)
+      if (urlErr) {
+        errors.push(urlErr)
+      }
+    }
+
+    if (mediaList.length > 1) {
       errors.push(
         "Google Business Profile local posts support at most one photo attachment."
       )
     }
 
-    if (payload.media && payload.media.length === 1) {
-      const item = payload.media[0]
-      if (item.type === "video" || item.url.toLowerCase().endsWith(".mp4")) {
+    if (mediaList.length === 1) {
+      const item = mediaList[0]!
+      const lower = item.url.toLowerCase()
+      if (
+        item.type === "video" ||
+        lower.endsWith(".mp4") ||
+        lower.endsWith(".mov") ||
+        lower.endsWith(".webm")
+      ) {
         errors.push(
           "Google Business Profile local posts do not support video attachments. Please attach a photo."
         )
+      }
+    }
+
+    if (payload.callToActionUrl) {
+      try {
+        const parsedCta = new URL(payload.callToActionUrl)
+        if (parsedCta.protocol !== "https:") {
+          errors.push("Google Business Profile CTA URL must use https://.")
+        }
+      } catch {
+        errors.push("Google Business Profile CTA URL is invalid.")
       }
     }
 
@@ -366,7 +395,21 @@ export const gmbProvider: SocialProviderAdapter = {
     idempotencyKey: string
   }): Promise<SocialPublishResult> {
     const { account, post } = params
-    const locationPath = account.internalAccountId // "accounts/{accountId}/locations/{locationId}"
+    const mediaList = post.media || []
+
+    // Always run SSRF / R2 HTTPS allowlist check on every media URL BEFORE any external call (T-034)
+    for (const item of mediaList) {
+      await assertSafeSocialMediaUrl(item.url)
+    }
+
+    if (!isGbpApiApproved()) {
+      throw new Error(
+        "Google Business Profile publishing is gated until GBP_API_APPROVED=true (pending Google Business Profile API Basic Access approval; OD-11)."
+      )
+    }
+
+    const locationId = extractLocationId(account.internalAccountId)
+    const locationResource = `locations/${locationId}`
     const accessToken = account.accessToken
 
     const postBody: Record<string, unknown> = {
@@ -375,11 +418,11 @@ export const gmbProvider: SocialProviderAdapter = {
       topicType: post.postType === "offer" ? "OFFER" : "STANDARD",
     }
 
-    if (post.media && post.media.length > 0) {
+    if (mediaList.length > 0) {
       postBody.media = [
         {
           mediaFormat: "PHOTO",
-          sourceUrl: post.media[0].url,
+          sourceUrl: mediaList[0]!.url,
         },
       ]
     }
@@ -399,8 +442,9 @@ export const gmbProvider: SocialProviderAdapter = {
       }
     }
 
-    const res = await fetch(
-      `https://mybusiness.googleapis.com/v4/${locationPath}/localPosts`,
+    // GBP Business Information v1 endpoint (sunset legacy v4 API removed per T-035)
+    const res = await fetchWithTimeout(
+      `${GBP_BUSINESS_INFO_V1_BASE}/${locationResource}/localPosts`,
       {
         method: "POST",
         headers: {
@@ -416,14 +460,17 @@ export const gmbProvider: SocialProviderAdapter = {
     if (!res.ok || data.state === "REJECTED" || !data.name) {
       throw new Error(
         data.error?.message ||
-          `Google Business Profile post rejected: ${JSON.stringify(data)}`
+          `Google Business Profile v1 post rejected (HTTP ${res.status})`
       )
     }
 
     const postId = data.name
-    const locationId = locationPath.split("/").pop()
+    const mapsUri =
+      typeof account.metadata?.mapsUri === "string"
+        ? account.metadata.mapsUri
+        : undefined
     const publishedUrl =
-      data.searchUrl || `https://business.google.com/locations/${locationId}`
+      data.searchUrl || mapsUri || `https://business.google.com/locations/${locationId}`
 
     return {
       externalPostId: postId,
@@ -438,54 +485,82 @@ export const gmbProvider: SocialProviderAdapter = {
     accountId?: string
     metadata?: Record<string, unknown>
   }): Promise<SocialPostAnalyticsSnapshot> {
-    const { accessToken, externalPostId, accountId } = params
-    const locationPath =
-      accountId || externalPostId.replace(/\/localPosts\/[^/]+$/, "")
+    if (!isGbpApiApproved()) {
+      throw new Error(
+        "Google Business Profile analytics requires GBP_API_APPROVED=true."
+      )
+    }
 
-    const res = await fetch(
-      `https://mybusiness.googleapis.com/v4/${locationPath}/localPosts:reportInsights`,
+    const { accessToken, externalPostId, accountId, metadata } = params
+    const rawLocationSource =
+      (typeof metadata?.locationId === "string" && metadata.locationId) ||
+      (typeof metadata?.locationName === "string" && metadata.locationName) ||
+      accountId ||
+      externalPostId.replace(/\/localPosts\/[^/]+$/, "")
+
+    const locationId = extractLocationId(rawLocationSource)
+    const now = new Date()
+    const start = new Date(now.getTime() - 30 * 86_400_000)
+
+    const query = new URLSearchParams()
+    for (const metric of [
+      "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
+      "BUSINESS_IMPRESSIONS_MOBILE_MAPS",
+      "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
+      "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
+      "WEBSITE_CLICKS",
+      "CALL_CLICKS",
+    ]) {
+      query.append("dailyMetrics", metric)
+    }
+    query.set("dailyRange.startDate.year", String(start.getUTCFullYear()))
+    query.set("dailyRange.startDate.month", String(start.getUTCMonth() + 1))
+    query.set("dailyRange.startDate.day", String(start.getUTCDate()))
+    query.set("dailyRange.endDate.year", String(now.getUTCFullYear()))
+    query.set("dailyRange.endDate.month", String(now.getUTCMonth() + 1))
+    query.set("dailyRange.endDate.day", String(now.getUTCDate()))
+
+    // Business Profile Performance API v1 (migrated off sunset legacy v4 API, T-035)
+    const res = await fetchWithTimeout(
+      `${GBP_PERFORMANCE_V1_BASE}/locations/${encodeURIComponent(
+        locationId
+      )}:fetchMultiDailyMetricsTimeSeries?${query.toString()}`,
       {
-        method: "POST",
+        method: "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          localPostNames: [externalPostId],
-          basicRequest: {
-            metricRequests: [
-              { metric: "LOCAL_POST_VIEWS_SEARCH" },
-              { metric: "LOCAL_POST_ACTIONS_CALL_TO_ACTION" },
-            ],
-          },
-        }),
       }
     )
 
     if (!res.ok) {
       throw new Error(
-        `Google Business localPost insights failed (${res.status})`
+        `Google Business Profile Performance API v1 failed (${res.status})`
       )
     }
 
-    const data = (await res.json()) as {
-      localPostMetrics?: Array<{
-        metricValues?: Array<{
-          metric?: string
-          totalValue?: { value?: string }
-        }>
-      }>
-    }
-
+    const data = (await res.json()) as GbpPerformanceMultiDailyResponse
     let impressions = 0
     let clicks = 0
 
-    for (const mv of data.localPostMetrics?.[0]?.metricValues || []) {
-      const val = Number(mv.totalValue?.value ?? 0)
-      if (mv.metric === "LOCAL_POST_VIEWS_SEARCH") {
-        impressions = val
-      } else if (mv.metric === "LOCAL_POST_ACTIONS_CALL_TO_ACTION") {
-        clicks = val
+    for (const group of data.multiDailyMetricTimeSeries || []) {
+      for (const series of group.dailyMetricTimeSeries || []) {
+        const metricName = series.dailyMetric || ""
+        let seriesSum = 0
+        for (const dv of series.timeSeries?.datedValues || []) {
+          const val = Number(dv.value ?? 0)
+          if (Number.isFinite(val)) {
+            seriesSum += val
+          }
+        }
+        if (metricName.startsWith("BUSINESS_IMPRESSIONS_")) {
+          impressions += seriesSum
+        } else if (
+          metricName === "WEBSITE_CLICKS" ||
+          metricName === "CALL_CLICKS"
+        ) {
+          clicks += seriesSum
+        }
       }
     }
 
@@ -496,6 +571,8 @@ export const gmbProvider: SocialProviderAdapter = {
       shares: 0,
       clicks,
       lastSyncedAt: new Date().toISOString(),
+      syncStatus: "live",
+      isLiveVerified: true,
     }
   },
 }

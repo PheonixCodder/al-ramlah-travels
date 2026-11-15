@@ -47,6 +47,42 @@ export interface SocialOfferDetails {
   terms?: string
 }
 
+export type TikTokPrivacyLevel =
+  | "PUBLIC_TO_EVERYONE"
+  | "MUTUAL_FOLLOW_FRIENDS"
+  | "FOLLOWER_OF_CREATOR"
+  | "SELF_ONLY"
+
+export interface TikTokPostSettings {
+  privacyLevel?: TikTokPrivacyLevel
+  disableComment?: boolean
+  disableDuet?: boolean
+  disableStitch?: boolean
+  commercialDisclosure?: boolean
+  brandOrganicToggle?: boolean
+  brandedContentToggle?: boolean
+  uploadMode?: "PULL_FROM_URL" | "FILE_UPLOAD"
+}
+
+export interface TikTokCreatorInfo {
+  creatorUsername: string
+  creatorNickname: string
+  creatorAvatarUrl?: string
+  privacyLevelOptions: TikTokPrivacyLevel[]
+  commentDisabled: boolean
+  duetDisabled: boolean
+  stitchDisabled: boolean
+  maxVideoPostDurationSec: number
+}
+
+export interface ScheduledPostExtraMeta {
+  title?: string
+  callToActionUrl?: string
+  callToActionType?: CallToActionActionType
+  offerDetails?: SocialOfferDetails
+  tiktokSettings?: TikTokPostSettings
+}
+
 export interface PlatformCaptionOverride {
   caption?: string
   firstComment?: string
@@ -54,7 +90,9 @@ export interface PlatformCaptionOverride {
 
 export type PlatformCaptionsMap = Partial<
   Record<SocialProviderId, PlatformCaptionOverride>
->
+> & {
+  _meta?: ScheduledPostExtraMeta
+}
 
 export interface EngagementPlugConfig {
   enabled: boolean
@@ -62,6 +100,7 @@ export interface EngagementPlugConfig {
   minViews: number
   plugText: string
   triggeredAt?: string
+  autoPlugFiredAt?: string
 }
 
 export interface SocialPostPayload {
@@ -77,6 +116,7 @@ export interface SocialPostPayload {
   callToActionUrl?: string
   callToActionType?: CallToActionActionType
   offerDetails?: SocialOfferDetails
+  tiktokSettings?: TikTokPostSettings
   settings?: Record<string, unknown>
 }
 
@@ -110,6 +150,8 @@ export interface FirstCommentPublishResult {
 
 export type SocialPublishCommentResult = FirstCommentPublishResult
 
+export type SocialAnalyticsSyncStatus = "live" | "unavailable" | "error"
+
 export interface SocialPostAnalyticsSnapshot {
   impressions: number
   likes: number
@@ -117,6 +159,8 @@ export interface SocialPostAnalyticsSnapshot {
   shares: number
   clicks: number
   lastSyncedAt: string
+  syncStatus?: SocialAnalyticsSyncStatus
+  isLiveVerified?: boolean
   firstCommentId?: string
   firstCommentPostedAt?: string
   firstCommentError?: string
@@ -185,6 +229,12 @@ export interface SocialAccountContext {
   metadata?: Record<string, unknown>
 }
 
+export interface SocialTokenRefreshContext {
+  internalAccountId?: string
+  pageId?: string
+  metadata?: Record<string, unknown>
+}
+
 export interface SocialProviderAdapter {
   readonly id: SocialProviderId
   readonly name: string
@@ -199,10 +249,11 @@ export interface SocialProviderAdapter {
     redirectUri: string,
     codeVerifier?: string
   ): Promise<SocialOAuthTokenResult>
-  refreshAccessToken?(refreshToken: string): Promise<SocialOAuthTokenResult>
-  validateSocialPost(
-    payload: SocialPostPayload
-  ): SocialValidationResult
+  refreshAccessToken?(
+    refreshToken: string,
+    context?: SocialTokenRefreshContext
+  ): Promise<SocialOAuthTokenResult>
+  validateSocialPost(payload: SocialPostPayload): SocialValidationResult
   publishPost(params: {
     account: SocialAccountContext
     post: SocialPostPayload
@@ -220,4 +271,3 @@ export interface SocialProviderAdapter {
 }
 
 export type SocialProvider = SocialProviderAdapter
-

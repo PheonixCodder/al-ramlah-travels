@@ -1,6 +1,9 @@
 import { and, eq, lte, ne } from "drizzle-orm"
 import { db } from "@/db"
-import { socialIntegrations } from "@/db/schema/social-scheduler"
+import {
+  socialIntegrations,
+  type SocialIntegration,
+} from "@/db/schema/social-scheduler"
 import { decryptToken, encryptToken } from "./crypto"
 import { getSocialProvider } from "./providers"
 import type { SocialProviderId } from "./types"
@@ -31,8 +34,8 @@ export function isPermanentOAuthRefreshError(error: unknown): boolean {
     error instanceof Error
       ? `${error.name} ${error.message}`
       : typeof error === "string"
-      ? error
-      : JSON.stringify(error ?? "")
+        ? error
+        : JSON.stringify(error ?? "")
 
   return /invalid_grant|OAuthException|code\s*190|\b190\b|Error validating access token|token_revoked|refresh_token_expired|refresh token is invalid|authorization_revoked|invalid_refresh_token/i.test(
     raw
@@ -40,9 +43,11 @@ export function isPermanentOAuthRefreshError(error: unknown): boolean {
 }
 
 /**
- * Refreshes a single social integration token on demand or as part of a batch scan.
- * Re-encrypts access & refresh tokens with AES-256-GCM and marks status = "EXPIRED"
- * only when the provider returns a permanent revocation error.
+ * Refreshes a single social integration token on demand or as part of a batch scan (`T-035`).
+ * - For Meta (`facebook` / `instagram`), passes `{ internalAccountId, pageId, metadata }` so the
+ *   provider adapter re-derives the Page Access Token via `/me/accounts` and NEVER overwrites
+ *   `encryptedAccessToken` with a bare User token!
+ * - Re-encrypts tokens via the v2 HKDF AES-256-GCM vault (`encryptToken`).
  */
 export async function refreshSingleSocialIntegrationToken(
   integrationId: string
@@ -55,6 +60,15 @@ export async function refreshSingleSocialIntegrationToken(
 
   if (!integration) {
     throw new Error(`Social integration ${integrationId} not found`)
+  }
+
+  if (integration.status === "PENDING_SELECTION") {
+    return {
+      integrationId: integration.id,
+      provider: integration.provider as SocialProviderId,
+      status: "skipped",
+      tokenExpiresAt: integration.tokenExpiresAt?.toISOString() ?? null,
+    }
   }
 
   const provider = integration.provider as SocialProviderId
@@ -72,8 +86,6 @@ export async function refreshSingleSocialIntegrationToken(
   const metaRecord =
     (integration.metadata as Record<string, unknown> | null) ?? {}
 
-  // Determine the refresh token source:
-  // For Meta (facebook / instagram), if encryptedRefreshToken is null, fall back to decrypting encryptedAccessToken
   const encryptedSource =
     integration.encryptedRefreshToken ||
     (provider === "facebook" || provider === "instagram"
@@ -103,7 +115,6 @@ export async function refreshSingleSocialIntegrationToken(
     }
   }
 
-  // Skip Composio or local mock tokens
   if (
     metaRecord.authSource === "composio" ||
     decryptedSource.startsWith("composio:") ||
@@ -120,20 +131,40 @@ export async function refreshSingleSocialIntegrationToken(
   const now = new Date()
 
   try {
-    const refreshed = await adapter.refreshAccessToken(decryptedSource)
+    const pageId =
+      typeof metaRecord.pageId === "string" ? metaRecord.pageId : undefined
+    const refreshed = await adapter.refreshAccessToken(decryptedSource, {
+      internalAccountId: integration.internalAccountId,
+      pageId,
+      metadata: metaRecord,
+    })
+
+    if (!refreshed.accessToken) {
+      throw new Error(
+        `Provider ${provider} returned an empty access token during refresh.`
+      )
+    }
+
     const newEncryptedAccess = encryptToken(refreshed.accessToken)
     const newEncryptedRefresh = refreshed.refreshToken
       ? encryptToken(refreshed.refreshToken)
       : integration.encryptedRefreshToken
-    const newExpiresAt = refreshed.expiresIn
-      ? new Date(now.getTime() + refreshed.expiresIn * 1000)
-      : integration.tokenExpiresAt
+    const newExpiresAt =
+      typeof refreshed.expiresIn === "number" && refreshed.expiresIn > 0
+        ? new Date(now.getTime() + refreshed.expiresIn * 1000)
+        : integration.tokenExpiresAt
 
     const updatedMeta: Record<string, unknown> = {
       ...metaRecord,
+      ...(refreshed.metadata ?? {}),
       lastRefreshedAt: now.toISOString(),
+      reauthRequired: false,
+    }
+    if (provider === "facebook" || provider === "instagram") {
+      updatedMeta.encryptedPageAccessToken = newEncryptedAccess
     }
     delete updatedMeta.lastRefreshError
+    delete updatedMeta.lastRefreshErrorAt
     delete updatedMeta.lastTransientRefreshWarning
 
     await db
@@ -168,6 +199,7 @@ export async function refreshSingleSocialIntegrationToken(
           isActive: false,
           metadata: {
             ...metaRecord,
+            reauthRequired: true,
             lastRefreshError: errMsg,
             expiredAt: now.toISOString(),
           },
@@ -183,7 +215,6 @@ export async function refreshSingleSocialIntegrationToken(
       }
     }
 
-    // Transient failure: preserve ACTIVE status so the next scheduled sweep retries cleanly
     await db
       .update(socialIntegrations)
       .set({
@@ -206,6 +237,37 @@ export async function refreshSingleSocialIntegrationToken(
 }
 
 /**
+ * Ensures an integration's decrypted access token is fresh before live publish or analytics sync.
+ * If `tokenExpiresAt` is within 2 minutes of expiring (or already expired), attempts an on-demand refresh.
+ */
+export async function resolveFreshIntegrationAccessToken(
+  integration: SocialIntegration
+): Promise<string> {
+  const nowMs = Date.now()
+  const expiresMs = integration.tokenExpiresAt
+    ? integration.tokenExpiresAt.getTime()
+    : null
+
+  if (expiresMs !== null && expiresMs <= nowMs + 120_000) {
+    const refreshRes = await refreshSingleSocialIntegrationToken(integration.id)
+    if (refreshRes.status === "refreshed") {
+      const [reloaded] = await db
+        .select({
+          encryptedAccessToken: socialIntegrations.encryptedAccessToken,
+        })
+        .from(socialIntegrations)
+        .where(eq(socialIntegrations.id, integration.id))
+        .limit(1)
+      if (reloaded?.encryptedAccessToken) {
+        return decryptToken(reloaded.encryptedAccessToken)
+      }
+    }
+  }
+
+  return decryptToken(integration.encryptedAccessToken)
+}
+
+/**
  * Proactive token refresh sweep:
  * Scans active socialIntegrations whose tokenExpiresAt is within `withinHours` (default 24 hours),
  * refreshes each sequentially with error isolation, re-encrypts tokens via encryptToken,
@@ -224,6 +286,7 @@ export async function refreshExpiringSocialTokens(options?: {
       and(
         eq(socialIntegrations.isActive, true),
         ne(socialIntegrations.status, "EXPIRED"),
+        ne(socialIntegrations.status, "PENDING_SELECTION"),
         lte(socialIntegrations.tokenExpiresAt, threshold)
       )
     )

@@ -1,3 +1,4 @@
+import { DEFAULT_OFFICE_ADDRESS } from "@/lib/company-info"
 import { buildArtFirstCommentPlug } from "./first-comment"
 import type { SocialPostFormat, SocialProviderId } from "./types"
 
@@ -144,6 +145,7 @@ export interface Core5PreviewInput {
   autoFirstComment?: boolean
   firstComment?: string | null
   whatsappNumber?: string | null
+  officeAddress?: string | null
   ctaType?: "BOOK" | "LEARN_MORE"
 }
 
@@ -246,14 +248,16 @@ export function resolveAspectRatioConfig(params: {
   if (!formatSupported) {
     if (provider === "gmb") {
       formatWarning = `Google Business Profile only supports local FEED update cards (${postFormat} will publish as a 4:5 Local Update).`
-    } else if (postFormat === "STORY" && (provider === "tiktok" || provider === "youtube")) {
+    } else if (
+      postFormat === "STORY" &&
+      (provider === "tiktok" || provider === "youtube")
+    ) {
       formatWarning = `${rules.label} does not support 24h ephemeral Stories via API (will render as a 9:16 vertical Short/Reel).`
     } else {
       formatWarning = `${rules.label} does not natively support ${postFormat} format.`
     }
   }
 
-  // TikTok & YouTube Shorts always use 9:16 vertical video frame
   if (provider === "tiktok" || provider === "youtube") {
     return {
       aspectRatio: "9:16",
@@ -265,7 +269,6 @@ export function resolveAspectRatioConfig(params: {
     }
   }
 
-  // Google Business Profile always renders 4:5 local update card
   if (provider === "gmb") {
     return {
       aspectRatio: "4:5",
@@ -277,7 +280,6 @@ export function resolveAspectRatioConfig(params: {
     }
   }
 
-  // Instagram & Facebook adapt to postFormat (FEED -> 4:5, REEL -> 9:16, STORY -> 9:16)
   if (postFormat === "REEL") {
     return {
       aspectRatio: "9:16",
@@ -311,10 +313,8 @@ export function resolveAspectRatioConfig(params: {
 }
 
 /**
- * Pure Core 5 social preview formatter & validator.
- * Computes exact character counts, fold truncations, hashtags, aspect ratio,
- * 2-step Spotlight -> Rate Sheet media frames, Pinned First Comment (`ART-...`),
- * and Google Business Profile WhatsApp CTA links.
+ * Pure Core 5 social preview formatter & validator (`T-089`, `OD-10`).
+ * Uses verified Askari 10, Airport Road, Lahore Cantt headquarters NAP.
  */
 export function formatCore5Preview(input: Core5PreviewInput): Core5PreviewSnapshot {
   const provider = input.provider
@@ -327,9 +327,9 @@ export function formatCore5Preview(input: Core5PreviewInput): Core5PreviewSnapsh
   const charLimit = CORE5_CHARACTER_LIMITS[provider]
   const remainingChars = charLimit - charCount
   const isOverLimit = charCount > charLimit
-  const isNearCaptionLimit = !isOverLimit && charCount >= Math.floor(charLimit * 0.9)
+  const isNearCaptionLimit =
+    !isOverLimit && charCount >= Math.floor(charLimit * 0.9)
 
-  // Title calculation (especially relevant for YouTube Shorts <= 100 chars)
   const firstNonEmptyLine =
     caption
       .split(/\r?\n/)
@@ -341,14 +341,12 @@ export function formatCore5Preview(input: Core5PreviewInput): Core5PreviewSnapsh
   const isOverTitleLimit =
     typeof maxTitleChars === "number" ? titleLength > maxTitleChars : false
 
-  // Fold truncation
   const foldLimit = CORE5_FOLD_LIMITS[provider]
   const isTruncatedAtFold = charCount > foldLimit
   const foldPreviewText = isTruncatedAtFold
     ? `${caption.slice(0, foldLimit).trimEnd()}...`
     : caption
 
-  // Hashtags extraction
   const hashtags = extractHashtags(caption)
   const hashtagCount = hashtags.length
   const isOverHashtagLimit =
@@ -356,7 +354,6 @@ export function formatCore5Preview(input: Core5PreviewInput): Core5PreviewSnapsh
       ? hashtagCount > rules.maxHashtags
       : false
 
-  // Build media frames (supports SPOTLIGHT_THEN_SHEET 2-step funnel)
   const isTwoStep =
     input.publishMode === "SPOTLIGHT_THEN_SHEET" ||
     input.publishMode === "step_1_spotlight_hook"
@@ -393,7 +390,10 @@ export function formatCore5Preview(input: Core5PreviewInput): Core5PreviewSnapsh
     rawUrls.forEach((url, idx) => {
       mediaFrames.push({
         index: idx,
-        label: rawUrls.length > 1 ? `Slide ${idx + 1} of ${rawUrls.length}` : "Primary Media",
+        label:
+          rawUrls.length > 1
+            ? `Slide ${idx + 1} of ${rawUrls.length}`
+            : "Primary Media",
         url,
         stage: idx === 0 ? "spotlight" : "media",
         isVideo: isVideoUrl(url),
@@ -410,20 +410,20 @@ export function formatCore5Preview(input: Core5PreviewInput): Core5PreviewSnapsh
     })
   }
 
-  // Aspect ratio & layout mode
   const aspectConfig = resolveAspectRatioConfig({
     provider,
     postFormat: effectiveFormat,
     mediaCount: mediaFrames.length,
   })
 
-  // Pinned First Comment resolution (IG, FB, YouTube when postFormat !== STORY)
   const normalizedCode = normalizeArtPostCode(input.postCode)
   let resolvedCommentText = input.firstComment?.trim() || ""
 
   const shouldAutoGenerateComment =
     Boolean(input.autoFirstComment) ||
-    (!resolvedCommentText && Boolean(normalizedCode) && input.autoFirstComment !== false)
+    (!resolvedCommentText &&
+      Boolean(normalizedCode) &&
+      input.autoFirstComment !== false)
 
   if (!resolvedCommentText && shouldAutoGenerateComment && normalizedCode) {
     resolvedCommentText = buildArtFirstCommentPlug({
@@ -461,7 +461,6 @@ export function formatCore5Preview(input: Core5PreviewInput): Core5PreviewSnapsh
     unsupportedReason,
   }
 
-  // Google Business Profile Call-To-Action button resolution
   const waPhone = normalizeWhatsappNumber(input.whatsappNumber)
   const ctaCode = normalizedCode || "ART-UMRAH-01"
   const waPrefill = `Assalamu Alaikum Al Ramlah Travels, I want details for package ${ctaCode}`
@@ -472,14 +471,17 @@ export function formatCore5Preview(input: Core5PreviewInput): Core5PreviewSnapsh
       ? `Learn More (${ctaCode})`
       : `Book on WhatsApp (${ctaCode})`
 
+  const resolvedAddress =
+    input.officeAddress?.trim() || DEFAULT_OFFICE_ADDRESS
+
   const gmbCallToAction: GmbCallToActionPreview | null =
     provider === "gmb"
       ? {
           actionType: ctaActionType,
           label: ctaButtonLabel,
           url: waUrl,
-          verifiedBadgeLabel: "Verified • Askari 10 & DHA Lahore",
-          branchLabel: "Al Ramlah Travels — Askari 10 & DHA Lahore",
+          verifiedBadgeLabel: "Verified • Askari 10, Lahore Cantt",
+          branchLabel: `Al Ramlah Travels — ${resolvedAddress}`,
         }
       : null
 
@@ -493,7 +495,6 @@ export function formatCore5Preview(input: Core5PreviewInput): Core5PreviewSnapsh
       }
     : null
 
-  // Validation & operator warnings
   const warnings: string[] = []
 
   if (isOverLimit) {

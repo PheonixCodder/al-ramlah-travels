@@ -1,7 +1,13 @@
-import fs from "node:fs/promises"
-import path from "node:path"
 import { env } from "@/lib/env"
 import { encryptToken } from "../crypto"
+import {
+  assertSafeSocialMediaUrl,
+   DEFAULT_SOCIAL_VIDEO_TIMEOUT_MS,
+  fetchWithTimeout,
+  MAX_SOCIAL_VIDEO_BYTES,
+  openSafeSocialMediaStream,
+  validateSocialMediaUrlSyntax,
+} from "../safe-media"
 import type {
   FirstCommentPublishResult,
   SocialAccountCandidate,
@@ -13,21 +19,24 @@ import type {
   SocialProviderAdapter,
   SocialPublishCommentParams,
   SocialPublishResult,
+  SocialTokenRefreshContext,
   SocialValidationResult,
 } from "../types"
 
-const GRAPH_API_VERSION = "v25.0"
+export const GRAPH_API_VERSION = "v21.0"
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`
 
-const FACEBOOK_SCOPES = [
+export const FACEBOOK_SCOPES = [
   "pages_show_list",
   "pages_manage_posts",
   "pages_read_engagement",
+  "pages_manage_engagement",
+  "read_insights",
   "business_management",
 ]
 
 interface MetaTokenResponse {
-  access_token: string
+  access_token?: string
   token_type?: string
   expires_in?: number
   error?: {
@@ -41,7 +50,7 @@ interface MetaPageItem {
   id: string
   name: string
   category?: string
-  access_token: string
+  access_token?: string
   picture?: {
     data?: {
       url?: string
@@ -70,22 +79,7 @@ interface FbPublishResponse {
   }
 }
 
-async function fetchMediaBinaryBuffer(urlOrPath: string): Promise<Buffer> {
-  if (urlOrPath.startsWith("http://") || urlOrPath.startsWith("https://")) {
-    const res = await fetch(urlOrPath)
-    if (!res.ok) {
-      throw new Error(
-        `Failed to download video from ${urlOrPath} for Facebook 3-phase upload: HTTP ${res.status}`
-      )
-    }
-    const arrayBuf = await res.arrayBuffer()
-    return Buffer.from(arrayBuf)
-  }
-
-  const cleanPath = urlOrPath.startsWith("/") ? urlOrPath.slice(1) : urlOrPath
-  const localFilePath = path.join(process.cwd(), "public", cleanPath)
-  return await fs.readFile(localFilePath)
-}
+type DuplexRequestInit = RequestInit & { duplex?: "half" }
 
 function resolveEffectivePostFormat(post: SocialPostPayload): SocialPostFormat {
   if (post.postFormat) {
@@ -97,13 +91,69 @@ function resolveEffectivePostFormat(post: SocialPostPayload): SocialPostFormat {
   return "FEED"
 }
 
+function isVideoMediaItem(item: { type: "image" | "video"; url: string }): boolean {
+  const lower = item.url.toLowerCase()
+  return (
+    item.type === "video" ||
+    lower.endsWith(".mp4") ||
+    lower.endsWith(".mov") ||
+    lower.endsWith(".webm")
+  )
+}
+
+async function cleanupFacebookGraphObject(
+  objectId: string,
+  accessToken: string
+): Promise<void> {
+  if (!objectId) return
+  try {
+    await fetchWithTimeout(
+      `${GRAPH_BASE_URL}/${encodeURIComponent(objectId)}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      10_000
+    )
+  } catch {
+    // Best-effort cleanup of orphaned unpublished media
+  }
+}
+
+async function fetchManagedFacebookPages(
+  userOrPageToken: string
+): Promise<MetaPageItem[]> {
+  const pagesRes = await fetchWithTimeout(
+    `${GRAPH_BASE_URL}/me/accounts?fields=id,name,category,access_token,picture{url}`,
+    {
+      headers: {
+        Authorization: `Bearer ${userOrPageToken}`,
+      },
+    }
+  )
+  const pagesData = (await pagesRes.json()) as MetaPagesResponse
+
+  if (!pagesRes.ok || pagesData.error) {
+    const codePart = pagesData.error?.code ? ` (code ${pagesData.error.code})` : ""
+    throw new Error(
+      `${pagesData.error?.message || "Failed to fetch managed Facebook Pages"}${codePart}`
+    )
+  }
+
+  return pagesData.data || []
+}
+
 export const facebookProvider: SocialProviderAdapter = {
   id: "facebook",
   name: "Facebook Page",
   maxCaptionLength: 63206,
 
   buildAuthUrl(redirectUri: string, state: string): SocialOAuthAuthUrlResult {
-    const clientId = env.FACEBOOK_CLIENT_ID?.trim()
+    const clientId = (
+      process.env.FACEBOOK_CLIENT_ID || env.FACEBOOK_CLIENT_ID
+    )?.trim()
     if (!clientId) {
       throw new Error(
         "Missing FACEBOOK_CLIENT_ID: Facebook Page OAuth requires a registered Meta App ID in environment variables."
@@ -127,10 +177,12 @@ export const facebookProvider: SocialProviderAdapter = {
     code: string,
     redirectUri: string
   ): Promise<SocialOAuthTokenResult> {
-    const clientId = env.FACEBOOK_CLIENT_ID || ""
-    const clientSecret = env.FACEBOOK_CLIENT_SECRET || ""
+    const clientId =
+      process.env.FACEBOOK_CLIENT_ID || env.FACEBOOK_CLIENT_ID || ""
+    const clientSecret =
+      process.env.FACEBOOK_CLIENT_SECRET || env.FACEBOOK_CLIENT_SECRET || ""
 
-    // 1. Code to short-lived user token
+    // 1. Exchange code for short-lived user token
     const tokenParams = new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
@@ -138,7 +190,7 @@ export const facebookProvider: SocialProviderAdapter = {
       code,
     })
 
-    const tokenRes = await fetch(
+    const tokenRes = await fetchWithTimeout(
       `${GRAPH_BASE_URL}/oauth/access_token?${tokenParams.toString()}`
     )
     const tokenData = (await tokenRes.json()) as MetaTokenResponse
@@ -150,7 +202,7 @@ export const facebookProvider: SocialProviderAdapter = {
       )
     }
 
-    // 2. Short-lived to long-lived token
+    // 2. Exchange short-lived token for long-lived user token (never stamp 1h token as 60d!)
     const exchangeParams = new URLSearchParams({
       grant_type: "fb_exchange_token",
       client_id: clientId,
@@ -158,35 +210,42 @@ export const facebookProvider: SocialProviderAdapter = {
       fb_exchange_token: tokenData.access_token,
     })
 
-    const longLivedRes = await fetch(
+    const longLivedRes = await fetchWithTimeout(
       `${GRAPH_BASE_URL}/oauth/access_token?${exchangeParams.toString()}`
     )
     const longLivedData = (await longLivedRes.json()) as MetaTokenResponse
-    const longLivedToken = longLivedData.access_token || tokenData.access_token
-    const expiresIn = longLivedData.expires_in ?? 5184000
 
-    // 3. Get user managed Pages
-    const pagesRes = await fetch(
-      `${GRAPH_BASE_URL}/me/accounts?fields=id,name,category,access_token,picture{url}&access_token=${longLivedToken}`
-    )
-    const pagesData = (await pagesRes.json()) as MetaPagesResponse
-
-    if (!pagesRes.ok || pagesData.error || !pagesData.data?.length) {
+    if (!longLivedRes.ok || longLivedData.error || !longLivedData.access_token) {
+      const codePart = longLivedData.error?.code
+        ? ` (code ${longLivedData.error.code})`
+        : ""
       throw new Error(
-        pagesData.error?.message ||
-          "No Facebook Pages found for your account. Please create or manage a Facebook Page first."
+        `${longLivedData.error?.message || "Failed to exchange Facebook short-lived token for long-lived token"}${codePart}`
       )
     }
 
-    const candidates: SocialAccountCandidate[] = pagesData.data.map((p) => {
-      const pageToken = p.access_token || longLivedToken
+    const longLivedUserToken = longLivedData.access_token
+    const expiresIn = longLivedData.expires_in ?? 5184000
+
+    // 3. Fetch managed Pages to obtain Page-scoped Access Tokens
+    const pages = await fetchManagedFacebookPages(longLivedUserToken)
+    const validPages = pages.filter((p) => Boolean(p.id && p.access_token))
+
+    if (validPages.length === 0) {
+      throw new Error(
+        "No Facebook Pages with Page Access Tokens found for your account. Please grant Page management permissions."
+      )
+    }
+
+    const candidates: SocialAccountCandidate[] = validPages.map((p) => {
+      const pageToken = p.access_token!
       return {
         internalAccountId: p.id,
         name: p.name,
         handle: p.category || p.name,
         avatarUrl: p.picture?.data?.url,
         accessToken: pageToken,
-        refreshToken: longLivedToken,
+        refreshToken: longLivedUserToken,
         expiresIn,
         scopes: FACEBOOK_SCOPES,
         metadata: {
@@ -198,7 +257,7 @@ export const facebookProvider: SocialProviderAdapter = {
       }
     })
 
-    const primary = candidates[0]
+    const primary = candidates[0]!
 
     return {
       internalAccountId: primary.internalAccountId,
@@ -215,10 +274,13 @@ export const facebookProvider: SocialProviderAdapter = {
   },
 
   async refreshAccessToken(
-    refreshToken: string
+    refreshToken: string,
+    context?: SocialTokenRefreshContext
   ): Promise<SocialOAuthTokenResult> {
-    const clientId = env.FACEBOOK_CLIENT_ID || ""
-    const clientSecret = env.FACEBOOK_CLIENT_SECRET || ""
+    const clientId =
+      process.env.FACEBOOK_CLIENT_ID || env.FACEBOOK_CLIENT_ID || ""
+    const clientSecret =
+      process.env.FACEBOOK_CLIENT_SECRET || env.FACEBOOK_CLIENT_SECRET || ""
 
     const exchangeParams = new URLSearchParams({
       grant_type: "fb_exchange_token",
@@ -227,7 +289,7 @@ export const facebookProvider: SocialProviderAdapter = {
       fb_exchange_token: refreshToken,
     })
 
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${GRAPH_BASE_URL}/oauth/access_token?${exchangeParams.toString()}`
     )
     const data = (await res.json()) as MetaTokenResponse
@@ -235,28 +297,80 @@ export const facebookProvider: SocialProviderAdapter = {
     if (!res.ok || data.error || !data.access_token) {
       const codePart = data.error?.code ? ` (code ${data.error.code})` : ""
       throw new Error(
-        `${data.error?.message || "Failed to refresh Facebook page token"}${codePart}`
+        `${data.error?.message || "Failed to refresh Facebook long-lived user token"}${codePart}`
       )
     }
 
-    return {
-      internalAccountId: "",
-      name: "",
-      accessToken: data.access_token,
-      refreshToken: data.access_token,
-      expiresIn: data.expires_in ?? 5184000,
+    const refreshedUserToken = data.access_token
+    const expiresIn = data.expires_in ?? 5184000
+
+    // Re-derive the Page Access Token via /me/accounts so we NEVER overwrite a Page token with a User token (T-035)
+    const pages = await fetchManagedFacebookPages(refreshedUserToken)
+    const validPages = pages.filter((p) => Boolean(p.id && p.access_token))
+
+    if (validPages.length === 0) {
+      throw new Error(
+        "Facebook token refresh failed: /me/accounts returned zero managed Pages with Page Access Tokens."
+      )
+    }
+
+    const targetPageId =
+      context?.pageId ||
+      (typeof context?.metadata?.pageId === "string"
+        ? context.metadata.pageId
+        : undefined) ||
+      context?.internalAccountId
+
+    const matchedPage = targetPageId
+      ? validPages.find((p) => p.id === targetPageId)
+      : validPages[0]
+
+    if (!matchedPage || !matchedPage.access_token) {
+      throw new Error(
+        `Facebook Page ${targetPageId || "(unknown)"} was not found in /me/accounts during Page token refresh.`
+      )
+    }
+
+    const candidates: SocialAccountCandidate[] = validPages.map((p) => ({
+      internalAccountId: p.id,
+      name: p.name,
+      handle: p.category || p.name,
+      avatarUrl: p.picture?.data?.url,
+      accessToken: p.access_token!,
+      refreshToken: refreshedUserToken,
+      expiresIn,
       scopes: FACEBOOK_SCOPES,
+      metadata: {
+        pageId: p.id,
+        pageName: p.name,
+        category: p.category,
+      },
+    }))
+
+    return {
+      internalAccountId: matchedPage.id,
+      name: matchedPage.name,
+      handle: matchedPage.category || matchedPage.name,
+      avatarUrl: matchedPage.picture?.data?.url,
+      accessToken: matchedPage.access_token,
+      refreshToken: refreshedUserToken,
+      expiresIn,
+      scopes: FACEBOOK_SCOPES,
+      metadata: {
+        pageId: matchedPage.id,
+        pageName: matchedPage.name,
+        category: matchedPage.category,
+      },
+      candidates,
     }
   },
 
   validateSocialPost(payload: SocialPostPayload): SocialValidationResult {
     const errors: string[] = []
     const format = resolveEffectivePostFormat(payload)
+    const mediaList = payload.media || []
 
-    if (
-      !payload.caption?.trim() &&
-      (!payload.media || payload.media.length === 0)
-    ) {
+    if (!payload.caption?.trim() && mediaList.length === 0) {
       errors.push(
         "Facebook posts require at least text content or media attachments."
       )
@@ -268,21 +382,30 @@ export const facebookProvider: SocialProviderAdapter = {
       )
     }
 
+    for (const item of mediaList) {
+      const urlErr = validateSocialMediaUrlSyntax(item.url)
+      if (urlErr) {
+        errors.push(urlErr)
+      }
+    }
+
     if (format === "REEL") {
-      if (!payload.media || payload.media.length !== 1) {
+      if (mediaList.length !== 1) {
         errors.push("Facebook Reels require exactly one video attachment.")
-      } else {
-        const item = payload.media[0]
-        const isVideo =
-          item.type === "video" || item.url.toLowerCase().endsWith(".mp4")
-        if (!isVideo) {
-          errors.push("Facebook Reels require an MP4 video attachment.")
-        }
+      } else if (!isVideoMediaItem(mediaList[0]!)) {
+        errors.push("Facebook Reels require an MP4 video attachment.")
       }
     } else if (format === "STORY") {
-      if (!payload.media || payload.media.length !== 1) {
+      if (mediaList.length !== 1) {
         errors.push(
           "Facebook Stories require a single photo or video attachment."
+        )
+      }
+    } else if (mediaList.length > 1) {
+      const videoCount = mediaList.filter((m) => isVideoMediaItem(m)).length
+      if (videoCount > 0) {
+        errors.push(
+          "Facebook Feed albums support multiple photos or a single video, not mixed photo+video or multi-video albums."
         )
       }
     }
@@ -306,86 +429,118 @@ export const facebookProvider: SocialProviderAdapter = {
     const pageId = account.internalAccountId
     const accessToken = account.accessToken
     const format = resolveEffectivePostFormat(post)
-
     const mediaList = post.media || []
 
+    // Validate all media URLs via SSRF / R2 HTTPS allowlist guard BEFORE any Graph API call (T-034)
+    for (const item of mediaList) {
+      await assertSafeSocialMediaUrl(item.url)
+    }
+
     // -----------------------------------------
-    // Branch A: Facebook Reels 3-Phase Upload (/{page-id}/video_reels)
+    // Branch A: Facebook Reels 3-Phase Streamed Upload (/{page-id}/video_reels)
     // -----------------------------------------
     if (format === "REEL") {
       if (mediaList.length === 0) {
         throw new Error("Facebook Reels require a video attachment")
       }
 
-      // Phase 1: Start upload session
-      const startRes = await fetch(`${GRAPH_BASE_URL}/${pageId}/video_reels`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          upload_phase: "start",
-          access_token: accessToken,
-        }).toString(),
-      })
-      const startData = (await startRes.json()) as FbPublishResponse
-
-      if (!startRes.ok || !startData.video_id) {
-        throw new Error(
-          startData.error?.message ||
-            "Facebook Reels Phase 1 (start) initialization failed"
-        )
-      }
-
-      const videoId = startData.video_id
-      const uploadUrl =
-        startData.upload_url ||
-        `https://rupload.facebook.com/video-upload/${GRAPH_API_VERSION}/${videoId}`
-
-      // Phase 2: Binary stream transfer to rupload.facebook.com
-      const videoBuffer = await fetchMediaBinaryBuffer(mediaList[0].url)
-      const transferRes = await fetch(uploadUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `OAuth ${accessToken}`,
-          offset: "0",
-          file_size: String(videoBuffer.byteLength),
-          "Content-Type": "application/octet-stream",
-        },
-        body: new Uint8Array(videoBuffer),
+      const videoStream = await openSafeSocialMediaStream(mediaList[0]!.url, {
+        maxBytes: MAX_SOCIAL_VIDEO_BYTES,
+        requireContentLength: true,
       })
 
-      if (!transferRes.ok) {
-        const errText = await transferRes.text().catch(() => "")
-        throw new Error(
-          `Facebook Reels Phase 2 (binary upload) failed: HTTP ${transferRes.status} ${errText}`
+      let createdVideoId = ""
+      try {
+        const startRes = await fetchWithTimeout(
+          `${GRAPH_BASE_URL}/${pageId}/video_reels`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              upload_phase: "start",
+            }).toString(),
+          }
         )
-      }
+        const startData = (await startRes.json()) as FbPublishResponse
 
-      // Phase 3: Finish and publish Reel
-      const finishRes = await fetch(`${GRAPH_BASE_URL}/${pageId}/video_reels`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          upload_phase: "finish",
-          video_id: videoId,
-          video_state: "PUBLISHED",
-          description: post.caption || "",
-          access_token: accessToken,
-        }).toString(),
-      })
-      const finishData = (await finishRes.json()) as FbPublishResponse
+        if (!startRes.ok || !startData.video_id) {
+          throw new Error(
+            startData.error?.message ||
+              "Facebook Reels Phase 1 (start) initialization failed"
+          )
+        }
 
-      if (!finishRes.ok || finishData.error) {
-        throw new Error(
-          finishData.error?.message ||
-            "Facebook Reels Phase 3 (finish) publication failed"
+        const videoId = startData.video_id
+        createdVideoId = videoId
+        const uploadUrl =
+          startData.upload_url ||
+          `https://rupload.facebook.com/video-upload/${GRAPH_API_VERSION}/${videoId}`
+
+        const transferInit: DuplexRequestInit = {
+          method: "POST",
+          headers: {
+            Authorization: `OAuth ${accessToken}`,
+            offset: "0",
+            file_size: String(videoStream.contentLength),
+            "Content-Type": "application/octet-stream",
+          },
+          body: videoStream.stream,
+          duplex: "half",
+        }
+
+        const transferRes = await fetchWithTimeout(
+          uploadUrl,
+          transferInit,
+          DEFAULT_SOCIAL_VIDEO_TIMEOUT_MS
         )
-      }
 
-      const externalId = finishData.post_id || finishData.id || videoId
-      return {
-        externalPostId: externalId,
-        publishedUrl: `https://www.facebook.com/reel/${videoId}`,
-        rawResponse: finishData,
+        if (!transferRes.ok) {
+          const errText = await transferRes.text().catch(() => "")
+          throw new Error(
+            `Facebook Reels Phase 2 (stream upload) failed: HTTP ${transferRes.status} ${errText}`
+          )
+        }
+
+        const finishRes = await fetchWithTimeout(
+          `${GRAPH_BASE_URL}/${pageId}/video_reels`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              upload_phase: "finish",
+              video_id: videoId,
+              video_state: "PUBLISHED",
+              description: post.caption || "",
+            }).toString(),
+          }
+        )
+        const finishData = (await finishRes.json()) as FbPublishResponse
+
+        if (!finishRes.ok || finishData.error) {
+          throw new Error(
+            finishData.error?.message ||
+              "Facebook Reels Phase 3 (finish) publication failed"
+          )
+        }
+
+        const externalId = finishData.post_id || finishData.id || videoId
+        return {
+          externalPostId: externalId,
+          publishedUrl: `https://www.facebook.com/reel/${videoId}`,
+          rawResponse: finishData,
+        }
+      } catch (err) {
+        await videoStream.stream.cancel().catch(() => undefined)
+        if (createdVideoId) {
+          await cleanupFacebookGraphObject(createdVideoId, accessToken)
+        }
+        throw err
       }
     }
 
@@ -399,22 +554,21 @@ export const facebookProvider: SocialProviderAdapter = {
         )
       }
 
-      const firstMedia = mediaList[0]
-      const isVideo =
-        firstMedia.type === "video" ||
-        firstMedia.url.toLowerCase().endsWith(".mp4")
+      const firstMedia = mediaList[0]!
+      const isVideo = isVideoMediaItem(firstMedia)
 
       if (!isVideo) {
-        // Photo Story: 1. Upload unpublished photo -> 2. Publish to /photo_stories
-        const uploadPhotoRes = await fetch(
+        const uploadPhotoRes = await fetchWithTimeout(
           `${GRAPH_BASE_URL}/${pageId}/photos`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
             body: new URLSearchParams({
               url: firstMedia.url,
               published: "false",
-              access_token: accessToken,
             }).toString(),
           }
         )
@@ -428,20 +582,23 @@ export const facebookProvider: SocialProviderAdapter = {
           )
         }
 
-        const storyRes = await fetch(
+        const storyRes = await fetchWithTimeout(
           `${GRAPH_BASE_URL}/${pageId}/photo_stories`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
             body: new URLSearchParams({
               photo_id: uploadPhotoData.id,
-              access_token: accessToken,
             }).toString(),
           }
         )
         const storyData = (await storyRes.json()) as FbPublishResponse
 
         if (!storyRes.ok || storyData.error) {
+          await cleanupFacebookGraphObject(uploadPhotoData.id, accessToken)
           throw new Error(
             storyData.error?.message ||
               "Facebook Photo Story step 2 (/photo_stories) failed"
@@ -457,91 +614,116 @@ export const facebookProvider: SocialProviderAdapter = {
         }
       }
 
-      // Video Story: 3-phase upload via /{page-id}/video_stories
-      const startRes = await fetch(
-        `${GRAPH_BASE_URL}/${pageId}/video_stories`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            upload_phase: "start",
-            access_token: accessToken,
-          }).toString(),
-        }
-      )
-      const startData = (await startRes.json()) as FbPublishResponse
-
-      if (!startRes.ok || !startData.video_id) {
-        throw new Error(
-          startData.error?.message ||
-            "Facebook Video Story Phase 1 (start) initialization failed"
-        )
-      }
-
-      const videoId = startData.video_id
-      const uploadUrl =
-        startData.upload_url ||
-        `https://rupload.facebook.com/video-upload/${GRAPH_API_VERSION}/${videoId}`
-
-      const videoBuffer = await fetchMediaBinaryBuffer(firstMedia.url)
-      const transferRes = await fetch(uploadUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `OAuth ${accessToken}`,
-          offset: "0",
-          file_size: String(videoBuffer.byteLength),
-          "Content-Type": "application/octet-stream",
-        },
-        body: new Uint8Array(videoBuffer),
+      const videoStream = await openSafeSocialMediaStream(firstMedia.url, {
+        maxBytes: MAX_SOCIAL_VIDEO_BYTES,
+        requireContentLength: true,
       })
 
-      if (!transferRes.ok) {
-        const errText = await transferRes.text().catch(() => "")
-        throw new Error(
-          `Facebook Video Story Phase 2 (binary upload) failed: HTTP ${transferRes.status} ${errText}`
+      let createdVideoId = ""
+      try {
+        const startRes = await fetchWithTimeout(
+          `${GRAPH_BASE_URL}/${pageId}/video_stories`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              upload_phase: "start",
+            }).toString(),
+          }
         )
-      }
+        const startData = (await startRes.json()) as FbPublishResponse
 
-      const finishRes = await fetch(
-        `${GRAPH_BASE_URL}/${pageId}/video_stories`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            upload_phase: "finish",
-            video_id: videoId,
-            access_token: accessToken,
-          }).toString(),
+        if (!startRes.ok || !startData.video_id) {
+          throw new Error(
+            startData.error?.message ||
+              "Facebook Video Story Phase 1 (start) initialization failed"
+          )
         }
-      )
-      const finishData = (await finishRes.json()) as FbPublishResponse
 
-      if (!finishRes.ok || finishData.error) {
-        throw new Error(
-          finishData.error?.message ||
-            "Facebook Video Story Phase 3 (finish) publication failed"
+        const videoId = startData.video_id
+        createdVideoId = videoId
+        const uploadUrl =
+          startData.upload_url ||
+          `https://rupload.facebook.com/video-upload/${GRAPH_API_VERSION}/${videoId}`
+
+        const transferInit: DuplexRequestInit = {
+          method: "POST",
+          headers: {
+            Authorization: `OAuth ${accessToken}`,
+            offset: "0",
+            file_size: String(videoStream.contentLength),
+            "Content-Type": "application/octet-stream",
+          },
+          body: videoStream.stream,
+          duplex: "half",
+        }
+
+        const transferRes = await fetchWithTimeout(
+          uploadUrl,
+          transferInit,
+          DEFAULT_SOCIAL_VIDEO_TIMEOUT_MS
         )
-      }
 
-      const externalId = finishData.post_id || finishData.id || videoId
-      return {
-        externalPostId: externalId,
-        publishedUrl: `https://www.facebook.com/stories/${pageId}`,
-        rawResponse: finishData,
+        if (!transferRes.ok) {
+          const errText = await transferRes.text().catch(() => "")
+          throw new Error(
+            `Facebook Video Story Phase 2 (stream upload) failed: HTTP ${transferRes.status} ${errText}`
+          )
+        }
+
+        const finishRes = await fetchWithTimeout(
+          `${GRAPH_BASE_URL}/${pageId}/video_stories`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              upload_phase: "finish",
+              video_id: videoId,
+            }).toString(),
+          }
+        )
+        const finishData = (await finishRes.json()) as FbPublishResponse
+
+        if (!finishRes.ok || finishData.error) {
+          throw new Error(
+            finishData.error?.message ||
+              "Facebook Video Story Phase 3 (finish) publication failed"
+          )
+        }
+
+        const externalId = finishData.post_id || finishData.id || videoId
+        return {
+          externalPostId: externalId,
+          publishedUrl: `https://www.facebook.com/stories/${pageId}`,
+          rawResponse: finishData,
+        }
+      } catch (err) {
+        await videoStream.stream.cancel().catch(() => undefined)
+        if (createdVideoId) {
+          await cleanupFacebookGraphObject(createdVideoId, accessToken)
+        }
+        throw err
       }
     }
 
     // -----------------------------------------
     // Branch C: Standard FEED Post
     // -----------------------------------------
-    // 1. Text only post
     if (mediaList.length === 0) {
-      const feedRes = await fetch(`${GRAPH_BASE_URL}/${pageId}/feed`, {
+      const feedRes = await fetchWithTimeout(`${GRAPH_BASE_URL}/${pageId}/feed`, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
         body: new URLSearchParams({
           message: post.caption,
-          access_token: accessToken,
         }).toString(),
       })
       const feedData = (await feedRes.json()) as FbPublishResponse
@@ -559,23 +741,22 @@ export const facebookProvider: SocialProviderAdapter = {
       }
     }
 
-    // 2. Single Video post
-    const hasVideo =
-      mediaList.length === 1 &&
-      (mediaList[0].type === "video" ||
-        mediaList[0].url.toLowerCase().endsWith(".mp4"))
-
-    if (hasVideo) {
-      const videoRes = await fetch(`${GRAPH_BASE_URL}/${pageId}/videos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          file_url: mediaList[0].url,
-          description: post.caption,
-          title: post.title || "",
-          access_token: accessToken,
-        }).toString(),
-      })
+    if (mediaList.length === 1 && isVideoMediaItem(mediaList[0]!)) {
+      const videoRes = await fetchWithTimeout(
+        `${GRAPH_BASE_URL}/${pageId}/videos`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams({
+            file_url: mediaList[0]!.url,
+            description: post.caption,
+            title: post.title || "",
+          }).toString(),
+        }
+      )
       const videoData = (await videoRes.json()) as FbPublishResponse
 
       if (!videoRes.ok || !videoData.id) {
@@ -591,17 +772,21 @@ export const facebookProvider: SocialProviderAdapter = {
       }
     }
 
-    // 3. Single Photo post
     if (mediaList.length === 1) {
-      const photoRes = await fetch(`${GRAPH_BASE_URL}/${pageId}/photos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          url: mediaList[0].url,
-          caption: post.caption,
-          access_token: accessToken,
-        }).toString(),
-      })
+      const photoRes = await fetchWithTimeout(
+        `${GRAPH_BASE_URL}/${pageId}/photos`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams({
+            url: mediaList[0]!.url,
+            caption: post.caption,
+          }).toString(),
+        }
+      )
       const photoData = (await photoRes.json()) as FbPublishResponse
 
       if (!photoRes.ok || (!photoData.id && !photoData.post_id)) {
@@ -618,50 +803,66 @@ export const facebookProvider: SocialProviderAdapter = {
       }
     }
 
-    // 4. Multi-photo album post
+    // Multi-photo album post with orphan cleanup if a subsequent step fails (T-070)
     const attachedMedia: Array<{ media_fbid: string }> = []
-    for (const item of mediaList) {
-      const uploadRes = await fetch(`${GRAPH_BASE_URL}/${pageId}/photos`, {
+    try {
+      for (const item of mediaList) {
+        const uploadRes = await fetchWithTimeout(
+          `${GRAPH_BASE_URL}/${pageId}/photos`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              url: item.url,
+              published: "false",
+            }).toString(),
+          }
+        )
+        const uploadData = (await uploadRes.json()) as FbPublishResponse
+
+        if (!uploadRes.ok || !uploadData.id) {
+          throw new Error(
+            uploadData.error?.message ||
+              "Facebook photo upload failed during album creation"
+          )
+        }
+        attachedMedia.push({ media_fbid: uploadData.id })
+      }
+
+      const feedRes = await fetchWithTimeout(`${GRAPH_BASE_URL}/${pageId}/feed`, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
         body: new URLSearchParams({
-          url: item.url,
-          published: "false",
-          access_token: accessToken,
+          message: post.caption,
+          attached_media: JSON.stringify(attachedMedia),
         }).toString(),
       })
-      const uploadData = (await uploadRes.json()) as FbPublishResponse
+      const feedData = (await feedRes.json()) as FbPublishResponse
 
-      if (!uploadRes.ok || !uploadData.id) {
+      if (!feedRes.ok || !feedData.id) {
         throw new Error(
-          uploadData.error?.message ||
-            "Facebook photo upload failed during album creation"
+          feedData.error?.message || "Facebook multi-photo publication failed"
         )
       }
-      attachedMedia.push({ media_fbid: uploadData.id })
-    }
 
-    const feedRes = await fetch(`${GRAPH_BASE_URL}/${pageId}/feed`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        message: post.caption,
-        attached_media: JSON.stringify(attachedMedia),
-        access_token: accessToken,
-      }).toString(),
-    })
-    const feedData = (await feedRes.json()) as FbPublishResponse
-
-    if (!feedRes.ok || !feedData.id) {
-      throw new Error(
-        feedData.error?.message || "Facebook multi-photo publication failed"
+      return {
+        externalPostId: feedData.id,
+        publishedUrl: `https://www.facebook.com/${feedData.id}`,
+        rawResponse: feedData,
+      }
+    } catch (err) {
+      await Promise.allSettled(
+        attachedMedia.map((m) =>
+          cleanupFacebookGraphObject(m.media_fbid, accessToken)
+        )
       )
-    }
-
-    return {
-      externalPostId: feedData.id,
-      publishedUrl: `https://www.facebook.com/${feedData.id}`,
-      rawResponse: feedData,
+      throw err
     }
   },
 
@@ -670,14 +871,19 @@ export const facebookProvider: SocialProviderAdapter = {
   ): Promise<FirstCommentPublishResult> {
     const { accessToken, externalPostId, commentText } = params
 
-    const res = await fetch(`${GRAPH_BASE_URL}/${externalPostId}/comments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        message: commentText,
-        access_token: accessToken,
-      }).toString(),
-    })
+    const res = await fetchWithTimeout(
+      `${GRAPH_BASE_URL}/${externalPostId}/comments`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          message: commentText,
+        }).toString(),
+      }
+    )
     const data = (await res.json()) as FbPublishResponse
 
     if (!res.ok || !data.id) {
@@ -701,13 +907,35 @@ export const facebookProvider: SocialProviderAdapter = {
     metadata?: Record<string, unknown>
   }): Promise<SocialPostAnalyticsSnapshot> {
     const { accessToken, externalPostId } = params
-    const fields =
-      "shares,likes.summary(true),comments.summary(true),insights.metric(post_impressions,post_clicks)"
-    const res = await fetch(
-      `${GRAPH_BASE_URL}/${externalPostId}?fields=${encodeURIComponent(
-        fields
-      )}&access_token=${encodeURIComponent(accessToken)}`
+    // Graph API v21.0+ uses `post_media_view` instead of deprecated `post_impressions` (T-070)
+    const primaryFields =
+      "shares,reactions.summary(total_count),likes.summary(true),comments.summary(true),insights.metric(post_media_view,post_clicks)"
+
+    let res = await fetchWithTimeout(
+      `${GRAPH_BASE_URL}/${encodeURIComponent(
+        externalPostId
+      )}?fields=${encodeURIComponent(primaryFields)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
     )
+
+    if (!res.ok && res.status === 400) {
+      const basicFields =
+        "shares,reactions.summary(total_count),likes.summary(true),comments.summary(true)"
+      res = await fetchWithTimeout(
+        `${GRAPH_BASE_URL}/${encodeURIComponent(
+          externalPostId
+        )}?fields=${encodeURIComponent(basicFields)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      )
+    }
 
     if (!res.ok) {
       throw new Error(`Facebook post metrics request failed (${res.status})`)
@@ -715,6 +943,7 @@ export const facebookProvider: SocialProviderAdapter = {
 
     const data = (await res.json()) as {
       shares?: { count?: number }
+      reactions?: { summary?: { total_count?: number } }
       likes?: { summary?: { total_count?: number } }
       comments?: { summary?: { total_count?: number } }
       insights?: {
@@ -730,21 +959,31 @@ export const facebookProvider: SocialProviderAdapter = {
 
     for (const item of data.insights?.data || []) {
       const val = Number(item.values?.[0]?.value ?? 0)
-      if (item.name === "post_impressions") {
+      if (
+        item.name === "post_media_view" ||
+        item.name === "post_impressions"
+      ) {
         impressions = val
       } else if (item.name === "post_clicks") {
         clicks = val
       }
     }
 
+    const reactionsCount = Number(
+      data.reactions?.summary?.total_count ??
+        data.likes?.summary?.total_count ??
+        0
+    )
+
     return {
       impressions,
-      likes: Number(data.likes?.summary?.total_count ?? 0),
+      likes: reactionsCount,
       comments: Number(data.comments?.summary?.total_count ?? 0),
       shares: Number(data.shares?.count ?? 0),
       clicks,
       lastSyncedAt: new Date().toISOString(),
+      syncStatus: "live",
+      isLiveVerified: true,
     }
   },
 }
-

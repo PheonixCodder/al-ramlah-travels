@@ -1,4 +1,4 @@
-import type { SocialProviderId } from "./types"
+import type { SocialAnalyticsSyncStatus, SocialProviderId } from "./types"
 
 export const CORE5_PROVIDERS: SocialProviderId[] = [
   "instagram",
@@ -15,20 +15,24 @@ export interface PostTargetAnalyticsSnapshot {
   caption?: string | null
   provider: SocialProviderId
   accountName?: string | null
-  views?: number
-  impressions?: number
-  likes: number
-  comments: number
-  shares: number
-  clicks?: number
+  views?: number | null
+  impressions?: number | null
+  likes?: number | null
+  comments?: number | null
+  shares?: number | null
+  clicks?: number | null
   publishedUrl?: string | null
   lastSyncedAt?: string | null
+  syncStatus?: SocialAnalyticsSyncStatus
+  isLiveVerified?: boolean
 }
 
 export interface PlatformAnalyticsSummary {
   provider: SocialProviderId
   postsCount: number
   publishedTargetsCount: number
+  liveSyncedTargetsCount: number
+  unavailableTargetsCount: number
   views: number
   impressions: number
   likes: number
@@ -42,6 +46,8 @@ export interface PlatformAnalyticsSummary {
 
 export interface CampaignAnalyticsOverview {
   totalPosts: number
+  liveSyncedTargetsCount: number
+  unavailableTargetsCount: number
   totalViews: number
   totalImpressions: number
   totalLikes: number
@@ -56,6 +62,9 @@ export interface CampaignAnalyticsOverview {
     PostTargetAnalyticsSnapshot & {
       views: number
       impressions: number
+      likes: number
+      comments: number
+      shares: number
       clicks: number
       totalEngagements: number
       engagementRatePct: number
@@ -71,15 +80,15 @@ export type CrossChannelAnalyticsSummary = CampaignAnalyticsOverview
  * `((likes + comments + shares + clicks) / views) * 100`, or `0` when `views === 0`.
  */
 export function computeEngagementRate(metrics: {
-  views?: number
-  impressions?: number
-  likes: number
-  comments: number
-  shares: number
-  clicks?: number
+  views?: number | null
+  impressions?: number | null
+  likes?: number | null
+  comments?: number | null
+  shares?: number | null
+  clicks?: number | null
 }): number {
   const views = Number(metrics.views ?? metrics.impressions ?? 0)
-  if (views <= 0) {
+  if (!Number.isFinite(views) || views <= 0) {
     return 0
   }
   const likes = Number(metrics.likes ?? 0)
@@ -97,6 +106,8 @@ function createEmptyPlatformSummary(
     provider,
     postsCount: 0,
     publishedTargetsCount: 0,
+    liveSyncedTargetsCount: 0,
+    unavailableTargetsCount: 0,
     views: 0,
     impressions: 0,
     likes: 0,
@@ -110,8 +121,9 @@ function createEmptyPlatformSummary(
 }
 
 /**
- * Pure cross-channel analytics rollup across all Core 5 providers
- * (`instagram`, `facebook`, `tiktok`, `youtube`, `gmb`).
+ * Pure honest cross-channel analytics rollup across all Core 5 providers (`T-036`).
+ * Targets marked `syncStatus === "unavailable"` or `isLiveVerified === false` (or lacking
+ * any synced metrics) are counted in `unavailableTargetsCount` and never fabricate numbers.
  */
 export function aggregateCampaignAnalytics(
   targets: PostTargetAnalyticsSnapshot[]
@@ -129,21 +141,37 @@ export function aggregateCampaignAnalytics(
   let totalComments = 0
   let totalShares = 0
   let totalClicks = 0
+  let liveSyncedTargetsCount = 0
+  let unavailableTargetsCount = 0
 
-  const normalizedItems: Array<
-    PostTargetAnalyticsSnapshot & {
-      views: number
-      impressions: number
-      clicks: number
-      totalEngagements: number
-      engagementRatePct: number
-    }
-  > = []
+  const normalizedItems: CampaignAnalyticsOverview["topPosts"] = []
 
   for (const item of targets || []) {
     const provider = CORE5_PROVIDERS.includes(item.provider)
       ? item.provider
       : "instagram"
+
+    const plat = byPlatform[provider]
+    plat.postsCount += 1
+    plat.publishedTargetsCount += 1
+
+    const isUnavailable =
+      item.syncStatus === "unavailable" ||
+      item.syncStatus === "error" ||
+      item.isLiveVerified === false ||
+      (item.views === null &&
+        item.impressions === null &&
+        item.likes === null &&
+        !item.lastSyncedAt)
+
+    if (isUnavailable) {
+      plat.unavailableTargetsCount += 1
+      unavailableTargetsCount += 1
+      continue
+    }
+
+    plat.liveSyncedTargetsCount += 1
+    liveSyncedTargetsCount += 1
 
     const views = Math.max(0, Number(item.views ?? item.impressions ?? 0))
     const likes = Math.max(0, Number(item.likes ?? 0))
@@ -165,9 +193,6 @@ export function aggregateCampaignAnalytics(
     totalShares += shares
     totalClicks += clicks
 
-    const plat = byPlatform[provider]
-    plat.postsCount += 1
-    plat.publishedTargetsCount += 1
     plat.views += views
     plat.impressions += views
     plat.likes += likes
@@ -217,6 +242,8 @@ export function aggregateCampaignAnalytics(
 
   return {
     totalPosts: targets ? targets.length : 0,
+    liveSyncedTargetsCount,
+    unavailableTargetsCount,
     totalViews,
     totalImpressions: totalViews,
     totalLikes,

@@ -1,97 +1,84 @@
-import crypto from "node:crypto"
-import { env } from "@/lib/env"
+import {
+  decryptVaultSecret,
+  encryptVaultSecret,
+  isVaultCiphertext,
+} from "@/lib/security/vault"
 
-const ALGORITHM = "aes-256-gcm"
-const IV_LENGTH = 12
-const AUTH_TAG_LENGTH = 16
-
-/**
- * Derives a 32-byte cryptographic key for AES-256-GCM token encryption.
- * In production, strictly requires ENCRYPTION_KEY (64 hex characters or 32 bytes).
- * In development / test, falls back safely to SHA-256(BETTER_AUTH_SECRET).
- */
-function getEncryptionKey(): Buffer {
-  const customKey = env.ENCRYPTION_KEY?.trim()
-  if (customKey) {
-    if (customKey.length === 64 && /^[0-9a-fA-F]+$/.test(customKey)) {
-      return Buffer.from(customKey, "hex")
-    }
-    if (Buffer.byteLength(customKey, "utf8") === 32) {
-      return Buffer.from(customKey, "utf8")
-    }
-    return crypto.createHash("sha256").update(customKey).digest()
-  }
-
-  if (env.NODE_ENV === "production") {
-    throw new Error(
-      "Missing ENCRYPTION_KEY: Production requires a dedicated 32-byte hex encryption key in environment variables."
-    )
-  }
-
-  const fallbackSource =
-    env.BETTER_AUTH_SECRET || "al-ramlah-travels-dev-encryption-key-fallback"
-  return crypto.createHash("sha256").update(fallbackSource).digest()
-}
+const LEGACY_IV_BYTES = 12
+const LEGACY_AUTH_TAG_BYTES = 16
 
 /**
- * Encrypts a sensitive string (such as an OAuth access or refresh token) using AES-256-GCM.
- * Output format: `${ivHex}:${authTagHex}:${ciphertextHex}`
+ * Encrypts a sensitive OAuth token or pending candidate credential via the
+ * versioned AES-256-GCM HKDF vault (`lib/security/vault.ts`, `T-069`).
+ * Output format: `v2:<kid>:<ivHex>:<tagHex>:<ciphertextHex>`
  */
 export function encryptToken(plaintext: string): string {
   if (!plaintext) {
     return ""
   }
-  const key = getEncryptionKey()
-  const iv = crypto.randomBytes(IV_LENGTH)
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv, {
-    authTagLength: AUTH_TAG_LENGTH,
-  })
-
-  let encrypted = cipher.update(plaintext, "utf8", "hex")
-  encrypted += cipher.final("hex")
-  const authTag = cipher.getAuthTag()
-
-  return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`
+  return encryptVaultSecret(plaintext, { legacyFormat: "iv-tag-ct" })
 }
 
 /**
- * Decrypts a token payload encrypted with AES-256-GCM.
- * Expects format: `${ivHex}:${authTagHex}:${ciphertextHex}`
+ * Decrypts a social credential encrypted with either the v2 HKDF AES-256-GCM vault
+ * (`v2:<kid>:<iv>:<tag>:<ct>`) or legacy 3-part AES-256-GCM (`iv:tag:ciphertext`).
  */
 export function decryptToken(payload: string): string {
   if (!payload) {
     return ""
   }
+
+  if (payload.startsWith("v2:")) {
+    if (!isVaultCiphertext(payload)) {
+      throw new Error(
+        "Invalid encrypted token format. Malformed v2 vault envelope."
+      )
+    }
+    try {
+      return decryptVaultSecret(payload, { legacyFormat: "iv-tag-ct" })
+    } catch {
+      throw new Error(
+        "Decryption failed: Token authentication tag mismatch or corrupted ciphertext."
+      )
+    }
+  }
+
   const parts = payload.split(":")
   if (parts.length !== 3) {
     throw new Error(
-      "Invalid encrypted token format. Expected iv:authTag:ciphertext"
+      "Invalid encrypted token format. Expected v2 vault envelope or iv:authTag:ciphertext"
     )
   }
 
-  const [ivHex, authTagHex, encryptedHex] = parts
-  const key = getEncryptionKey()
+  const [ivHex, authTagHex, encryptedHex] = parts as [string, string, string]
+  if (!/^[0-9a-fA-F]+$/.test(ivHex)) {
+    throw new Error(`Invalid IV length: expected ${LEGACY_IV_BYTES} bytes`)
+  }
+  if (!/^[0-9a-fA-F]+$/.test(authTagHex)) {
+    throw new Error(
+      `Invalid auth tag length: expected ${LEGACY_AUTH_TAG_BYTES} bytes`
+    )
+  }
+  if (encryptedHex.length > 0 && !/^[0-9a-fA-F]+$/.test(encryptedHex)) {
+    throw new Error(
+      "Decryption failed: Token authentication tag mismatch or corrupted ciphertext."
+    )
+  }
+
   const iv = Buffer.from(ivHex, "hex")
   const authTag = Buffer.from(authTagHex, "hex")
 
-  if (iv.length !== IV_LENGTH) {
-    throw new Error(`Invalid IV length: expected ${IV_LENGTH} bytes`)
+  if (iv.length !== LEGACY_IV_BYTES) {
+    throw new Error(`Invalid IV length: expected ${LEGACY_IV_BYTES} bytes`)
   }
-  if (authTag.length !== AUTH_TAG_LENGTH) {
+  if (authTag.length !== LEGACY_AUTH_TAG_BYTES) {
     throw new Error(
-      `Invalid auth tag length: expected ${AUTH_TAG_LENGTH} bytes`
+      `Invalid auth tag length: expected ${LEGACY_AUTH_TAG_BYTES} bytes`
     )
   }
 
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, {
-    authTagLength: AUTH_TAG_LENGTH,
-  })
-  decipher.setAuthTag(authTag)
-
   try {
-    let decrypted = decipher.update(encryptedHex, "hex", "utf8")
-    decrypted += decipher.final("utf8")
-    return decrypted
+    return decryptVaultSecret(payload, { legacyFormat: "iv-tag-ct" })
   } catch {
     throw new Error(
       "Decryption failed: Token authentication tag mismatch or corrupted ciphertext."

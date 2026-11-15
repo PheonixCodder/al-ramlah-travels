@@ -1,5 +1,10 @@
 import { env } from "@/lib/env"
 import { encryptToken } from "../crypto"
+import {
+  assertSafeSocialMediaUrl,
+  fetchWithTimeout,
+  validateSocialMediaUrlSyntax,
+} from "../safe-media"
 import type {
   FirstCommentPublishResult,
   SocialAccountCandidate,
@@ -11,27 +16,30 @@ import type {
   SocialProviderAdapter,
   SocialPublishCommentParams,
   SocialPublishResult,
+  SocialTokenRefreshContext,
   SocialValidationResult,
 } from "../types"
 
-const GRAPH_API_VERSION = "v25.0"
+export const GRAPH_API_VERSION = "v21.0"
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`
 
-const INSTAGRAM_SCOPES = [
+export const INSTAGRAM_SCOPES = [
   "instagram_basic",
   "instagram_content_publish",
+  "instagram_manage_comments",
+  "instagram_manage_insights",
   "pages_show_list",
   "pages_read_engagement",
   "business_management",
 ]
 
 interface MetaTokenResponse {
-  access_token: string
+  access_token?: string
   token_type?: string
   expires_in?: number
   error?: {
     message: string
-    type: string
+    type?: string
     code: number
     error_subcode?: number
   }
@@ -47,7 +55,7 @@ interface IgBusinessAccountInfo {
 interface MetaPageItem {
   id: string
   name: string
-  access_token: string
+  access_token?: string
   instagram_business_account?: IgBusinessAccountInfo
 }
 
@@ -115,6 +123,16 @@ function resolveEffectiveIgPostFormat(
   return "FEED"
 }
 
+function isVideoMediaItem(item: { type: "image" | "video"; url: string }): boolean {
+  const lower = item.url.toLowerCase()
+  return (
+    item.type === "video" ||
+    lower.endsWith(".mp4") ||
+    lower.endsWith(".mov") ||
+    lower.endsWith(".webm")
+  )
+}
+
 export function isInstagramPublishTransientTimeout(
   httpStatus: number,
   errorObj?: { message?: string; code?: number; error_subcode?: number }
@@ -135,8 +153,7 @@ export function isInstagramPublishTransientTimeout(
 /**
  * Postiz-equivalent timeout recovery:
  * When POST /{ig-user-id}/media_publish fails with transient timeout code -2 or subcode 2207051
- * after the container reaches FINISHED, query GET /{ig-user-id}/media?fields=id,shortcode,permalink,caption,timestamp&limit=5
- * to recover the published media ID instead of failing or double-posting.
+ * after the container reaches FINISHED, query GET /{ig-user-id}/media to recover the published media ID.
  */
 export async function resolveInstagramReleaseId(params: {
   igUserId: string
@@ -151,11 +168,15 @@ export async function resolveInstagramReleaseId(params: {
     const queryParams = new URLSearchParams({
       fields: "id,shortcode,permalink,caption,timestamp",
       limit: "5",
-      access_token: accessToken,
     })
 
-    const res = await fetch(
-      `${GRAPH_BASE_URL}/${igUserId}/media?${queryParams.toString()}`
+    const res = await fetchWithTimeout(
+      `${GRAPH_BASE_URL}/${encodeURIComponent(igUserId)}/media?${queryParams.toString()}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
     )
     if (!res.ok) {
       return null
@@ -206,8 +227,9 @@ export async function resolveInstagramReleaseId(params: {
 }
 
 /**
- * Polls a single child video container until status_code === "FINISHED".
- * If status_code is "ERROR" or "EXPIRED", aborts immediately with a non-retryable descriptive error.
+ * Polls an Instagram container (single REEL/STORY/video/image or CAROUSEL parent/child)
+ * until `status_code === "FINISHED"` (`T-035`).
+ * Aborts immediately on `ERROR` or `EXPIRED`.
  */
 export async function pollInstagramContainerFinished(params: {
   containerId: string
@@ -215,30 +237,43 @@ export async function pollInstagramContainerFinished(params: {
   maxAttempts?: number
   delayMs?: number
 }): Promise<void> {
-  const { containerId, accessToken, maxAttempts = 30, delayMs = 2000 } = params
+  const {
+    containerId,
+    accessToken,
+    maxAttempts = 30,
+    delayMs = process.env.NODE_ENV === "test" ? 10 : 2000,
+  } = params
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const res = await fetch(
-      `${GRAPH_BASE_URL}/${containerId}?fields=status_code,status&access_token=${encodeURIComponent(
-        accessToken
-      )}`
+    const res = await fetchWithTimeout(
+      `${GRAPH_BASE_URL}/${encodeURIComponent(containerId)}?fields=status_code,status`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
     )
     if (!res.ok) {
       throw new Error(
-        `Failed to check container ${containerId} status (${res.status})`
+        `Failed to check Instagram container ${containerId} status (${res.status})`
       )
     }
 
-    const data = (await res.json()) as { status_code?: string; status?: string }
+    const data = (await res.json()) as {
+      status_code?: string
+      status?: string
+      id?: string
+    }
     const code = data.status_code?.toUpperCase()
 
-    if (code === "FINISHED") {
+    // Image containers sometimes omit status_code once immediately ready, or return FINISHED/PUBLISHED
+    if (code === "FINISHED" || code === "PUBLISHED" || (!code && data.id)) {
       return
     }
 
     if (code === "ERROR" || code === "EXPIRED") {
       throw new Error(
-        `Instagram video container ${containerId} processing failed with status: ${code}`
+        `Instagram media container ${containerId} processing failed with status: ${code}${data.status ? ` (${data.status})` : ""}`
       )
     }
 
@@ -248,7 +283,32 @@ export async function pollInstagramContainerFinished(params: {
   }
 
   throw new Error(
-    `Instagram video container ${containerId} timed out after ${maxAttempts * (delayMs / 1000)}s`
+    `Instagram media container ${containerId} timed out after ${maxAttempts} status checks`
+  )
+}
+
+async function fetchPagesWithInstagramAccounts(
+  longLivedUserToken: string
+): Promise<MetaPageItem[]> {
+  const pagesRes = await fetchWithTimeout(
+    `${GRAPH_BASE_URL}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}`,
+    {
+      headers: {
+        Authorization: `Bearer ${longLivedUserToken}`,
+      },
+    }
+  )
+  const pagesData = (await pagesRes.json()) as MetaPagesResponse
+
+  if (!pagesRes.ok || pagesData.error) {
+    const codePart = pagesData.error?.code ? ` (code ${pagesData.error.code})` : ""
+    throw new Error(
+      `${pagesData.error?.message || "Failed to fetch Facebook Pages to detect connected Instagram Business account"}${codePart}`
+    )
+  }
+
+  return (pagesData.data || []).filter(
+    (p) => Boolean(p.instagram_business_account?.id && p.access_token)
   )
 }
 
@@ -258,7 +318,9 @@ export const instagramProvider: SocialProviderAdapter = {
   maxCaptionLength: 2200,
 
   buildAuthUrl(redirectUri: string, state: string): SocialOAuthAuthUrlResult {
-    const clientId = env.FACEBOOK_CLIENT_ID?.trim()
+    const clientId = (
+      process.env.FACEBOOK_CLIENT_ID || env.FACEBOOK_CLIENT_ID
+    )?.trim()
     if (!clientId) {
       throw new Error(
         "Missing FACEBOOK_CLIENT_ID: Instagram Business OAuth requires a registered Meta App ID in environment variables."
@@ -282,10 +344,11 @@ export const instagramProvider: SocialProviderAdapter = {
     code: string,
     redirectUri: string
   ): Promise<SocialOAuthTokenResult> {
-    const clientId = env.FACEBOOK_CLIENT_ID || ""
-    const clientSecret = env.FACEBOOK_CLIENT_SECRET || ""
+    const clientId =
+      process.env.FACEBOOK_CLIENT_ID || env.FACEBOOK_CLIENT_ID || ""
+    const clientSecret =
+      process.env.FACEBOOK_CLIENT_SECRET || env.FACEBOOK_CLIENT_SECRET || ""
 
-    // 1. Exchange authorization code for short-lived user token
     const tokenParams = new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
@@ -293,7 +356,7 @@ export const instagramProvider: SocialProviderAdapter = {
       code,
     })
 
-    const tokenRes = await fetch(
+    const tokenRes = await fetchWithTimeout(
       `${GRAPH_BASE_URL}/oauth/access_token?${tokenParams.toString()}`
     )
     const tokenData = (await tokenRes.json()) as MetaTokenResponse
@@ -305,7 +368,7 @@ export const instagramProvider: SocialProviderAdapter = {
       )
     }
 
-    // 2. Exchange short-lived token for long-lived user token (60 days)
+    // Exchange short-lived token for long-lived user token (never stamp 1h token as 60d, T-035)
     const exchangeParams = new URLSearchParams({
       grant_type: "fb_exchange_token",
       client_id: clientId,
@@ -313,29 +376,24 @@ export const instagramProvider: SocialProviderAdapter = {
       fb_exchange_token: tokenData.access_token,
     })
 
-    const longLivedRes = await fetch(
+    const longLivedRes = await fetchWithTimeout(
       `${GRAPH_BASE_URL}/oauth/access_token?${exchangeParams.toString()}`
     )
     const longLivedData = (await longLivedRes.json()) as MetaTokenResponse
-    const longLivedToken = longLivedData.access_token || tokenData.access_token
-    const expiresIn = longLivedData.expires_in ?? 5184000 // 60 days in seconds
 
-    // 3. Find connected Instagram Business Accounts across all Facebook Pages
-    const pagesRes = await fetch(
-      `${GRAPH_BASE_URL}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}&access_token=${longLivedToken}`
-    )
-    const pagesData = (await pagesRes.json()) as MetaPagesResponse
-
-    if (!pagesRes.ok || pagesData.error) {
+    if (!longLivedRes.ok || longLivedData.error || !longLivedData.access_token) {
+      const codePart = longLivedData.error?.code
+        ? ` (code ${longLivedData.error.code})`
+        : ""
       throw new Error(
-        pagesData.error?.message ||
-          "Failed to fetch Facebook Pages to detect connected Instagram Business account"
+        `${longLivedData.error?.message || "Failed to exchange Instagram short-lived token for long-lived token"}${codePart}`
       )
     }
 
-    const pagesWithIg = (pagesData.data || []).filter(
-      (p) => Boolean(p.instagram_business_account?.id)
-    )
+    const longLivedUserToken = longLivedData.access_token
+    const expiresIn = longLivedData.expires_in ?? 5184000
+
+    const pagesWithIg = await fetchPagesWithInstagramAccounts(longLivedUserToken)
 
     if (pagesWithIg.length === 0) {
       throw new Error(
@@ -345,14 +403,14 @@ export const instagramProvider: SocialProviderAdapter = {
 
     const candidates: SocialAccountCandidate[] = pagesWithIg.map((page) => {
       const ig = page.instagram_business_account!
-      const pageAccessToken = page.access_token || longLivedToken
+      const pageAccessToken = page.access_token!
       return {
         internalAccountId: ig.id,
         name: ig.name || ig.username || page.name,
         handle: ig.username ? `@${ig.username}` : undefined,
         avatarUrl: ig.profile_picture_url,
         accessToken: pageAccessToken,
-        refreshToken: longLivedToken,
+        refreshToken: longLivedUserToken,
         expiresIn,
         scopes: INSTAGRAM_SCOPES,
         metadata: {
@@ -365,7 +423,7 @@ export const instagramProvider: SocialProviderAdapter = {
       }
     })
 
-    const primary = candidates[0]
+    const primary = candidates[0]!
 
     return {
       internalAccountId: primary.internalAccountId,
@@ -382,10 +440,13 @@ export const instagramProvider: SocialProviderAdapter = {
   },
 
   async refreshAccessToken(
-    refreshToken: string
+    refreshToken: string,
+    context?: SocialTokenRefreshContext
   ): Promise<SocialOAuthTokenResult> {
-    const clientId = env.FACEBOOK_CLIENT_ID || ""
-    const clientSecret = env.FACEBOOK_CLIENT_SECRET || ""
+    const clientId =
+      process.env.FACEBOOK_CLIENT_ID || env.FACEBOOK_CLIENT_ID || ""
+    const clientSecret =
+      process.env.FACEBOOK_CLIENT_SECRET || env.FACEBOOK_CLIENT_SECRET || ""
 
     const exchangeParams = new URLSearchParams({
       grant_type: "fb_exchange_token",
@@ -394,7 +455,7 @@ export const instagramProvider: SocialProviderAdapter = {
       fb_exchange_token: refreshToken,
     })
 
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${GRAPH_BASE_URL}/oauth/access_token?${exchangeParams.toString()}`
     )
     const data = (await res.json()) as MetaTokenResponse
@@ -402,23 +463,89 @@ export const instagramProvider: SocialProviderAdapter = {
     if (!res.ok || data.error || !data.access_token) {
       const codePart = data.error?.code ? ` (code ${data.error.code})` : ""
       throw new Error(
-        `${data.error?.message || "Failed to refresh Instagram long-lived token"}${codePart}`
+        `${data.error?.message || "Failed to refresh Instagram long-lived user token"}${codePart}`
       )
     }
 
+    const refreshedUserToken = data.access_token
+    const expiresIn = data.expires_in ?? 5184000
+
+    // Re-derive Page Access Token via /me/accounts (never overwrite Page token with User token, T-035)
+    const pagesWithIg = await fetchPagesWithInstagramAccounts(refreshedUserToken)
+    if (pagesWithIg.length === 0) {
+      throw new Error(
+        "Instagram token refresh failed: /me/accounts returned zero linked Instagram Business accounts with Page Access Tokens."
+      )
+    }
+
+    const targetIgId = context?.internalAccountId
+    const targetPageId =
+      context?.pageId ||
+      (typeof context?.metadata?.pageId === "string"
+        ? context.metadata.pageId
+        : undefined)
+
+    const matchedPage =
+      (targetIgId
+        ? pagesWithIg.find(
+            (p) => p.instagram_business_account?.id === targetIgId
+          )
+        : undefined) ||
+      (targetPageId
+        ? pagesWithIg.find((p) => p.id === targetPageId)
+        : undefined) ||
+      (!targetIgId && !targetPageId ? pagesWithIg[0] : undefined)
+
+    if (!matchedPage || !matchedPage.access_token || !matchedPage.instagram_business_account) {
+      throw new Error(
+        `Instagram Business account ${targetIgId || targetPageId || "(unknown)"} was not found in /me/accounts during Page token refresh.`
+      )
+    }
+
+    const ig = matchedPage.instagram_business_account
+    const candidates: SocialAccountCandidate[] = pagesWithIg.map((page) => {
+      const pageIg = page.instagram_business_account!
+      return {
+        internalAccountId: pageIg.id,
+        name: pageIg.name || pageIg.username || page.name,
+        handle: pageIg.username ? `@${pageIg.username}` : undefined,
+        avatarUrl: pageIg.profile_picture_url,
+        accessToken: page.access_token!,
+        refreshToken: refreshedUserToken,
+        expiresIn,
+        scopes: INSTAGRAM_SCOPES,
+        metadata: {
+          pageId: page.id,
+          pageName: page.name,
+          igUserId: pageIg.id,
+          igUsername: pageIg.username,
+        },
+      }
+    })
+
     return {
-      internalAccountId: "",
-      name: "",
-      accessToken: data.access_token,
-      refreshToken: data.access_token,
-      expiresIn: data.expires_in ?? 5184000,
+      internalAccountId: ig.id,
+      name: ig.name || ig.username || matchedPage.name,
+      handle: ig.username ? `@${ig.username}` : undefined,
+      avatarUrl: ig.profile_picture_url,
+      accessToken: matchedPage.access_token,
+      refreshToken: refreshedUserToken,
+      expiresIn,
       scopes: INSTAGRAM_SCOPES,
+      metadata: {
+        pageId: matchedPage.id,
+        pageName: matchedPage.name,
+        igUserId: ig.id,
+        igUsername: ig.username,
+      },
+      candidates,
     }
   },
 
   validateSocialPost(payload: SocialPostPayload): SocialValidationResult {
     const errors: string[] = []
     const format = resolveEffectiveIgPostFormat(payload)
+    const mediaList = payload.media || []
 
     if (format !== "STORY" && !payload.caption?.trim()) {
       errors.push("Caption is required for Instagram posts.")
@@ -428,19 +555,30 @@ export const instagramProvider: SocialProviderAdapter = {
       )
     }
 
-    if (!payload.media || payload.media.length === 0) {
+    for (const item of mediaList) {
+      const urlErr = validateSocialMediaUrlSyntax(item.url)
+      if (urlErr) {
+        errors.push(urlErr)
+      }
+    }
+
+    if (mediaList.length === 0) {
       errors.push(
         "Instagram posts require at least one photo or video attachment."
       )
-    } else if (format === "REEL" && payload.media.length !== 1) {
-      errors.push("Instagram Reels require a single video attachment.")
-    } else if (format === "STORY" && payload.media.length !== 1) {
+    } else if (format === "REEL") {
+      if (mediaList.length !== 1) {
+        errors.push("Instagram Reels require a single video attachment.")
+      } else if (!isVideoMediaItem(mediaList[0]!)) {
+        errors.push("Instagram Reels require an MP4 video attachment.")
+      }
+    } else if (format === "STORY" && mediaList.length !== 1) {
       errors.push(
         "Instagram Stories require a single photo or video attachment."
       )
-    } else if (payload.media.length > 10) {
+    } else if (mediaList.length > 10) {
       errors.push(
-        `Instagram carousels support up to 10 attachments (provided: ${payload.media.length}).`
+        `Instagram carousels support up to 10 attachments (provided: ${mediaList.length}).`
       )
     }
 
@@ -468,20 +606,21 @@ export const instagramProvider: SocialProviderAdapter = {
       throw new Error("Cannot publish to Instagram without media attachments")
     }
 
+    // Validate all media URLs via SSRF / R2 HTTPS allowlist guard BEFORE any Graph API call (T-034)
+    for (const item of post.media) {
+      await assertSafeSocialMediaUrl(item.url)
+    }
+
     const isCarousel = post.media.length > 1 && format === "FEED"
     let creationId: string
 
     if (!isCarousel) {
-      const mediaItem = post.media[0]
-      const isVideo =
-        mediaItem.type === "video" ||
-        mediaItem.url.toLowerCase().endsWith(".mp4")
+      const mediaItem = post.media[0]!
+      const isVideo = isVideoMediaItem(mediaItem)
 
-      const createBody: Record<string, string> = {
-        access_token: accessToken,
-      }
+      const createBody: Record<string, string> = {}
 
-      if (post.caption) {
+      if (post.caption && format !== "STORY") {
         createBody.caption = post.caption
       }
 
@@ -500,11 +639,17 @@ export const instagramProvider: SocialProviderAdapter = {
         createBody.image_url = mediaItem.url
       }
 
-      const createRes = await fetch(`${GRAPH_BASE_URL}/${igUserId}/media`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams(createBody).toString(),
-      })
+      const createRes = await fetchWithTimeout(
+        `${GRAPH_BASE_URL}/${encodeURIComponent(igUserId)}/media`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams(createBody).toString(),
+        }
+      )
       const createData = (await createRes.json()) as ContainerResponse
 
       if (!createRes.ok || !createData.id) {
@@ -514,17 +659,19 @@ export const instagramProvider: SocialProviderAdapter = {
         )
       }
       creationId = createData.id
+
+      // Poll single REEL / STORY / video / image container until FINISHED before /media_publish (T-035)
+      await pollInstagramContainerFinished({
+        containerId: creationId,
+        accessToken,
+      })
     } else {
-      // Carousel publishing: create child containers then parent carousel container
       const childContainerIds: string[] = []
-      const videoChildContainerIds: string[] = []
 
       for (const item of post.media) {
-        const isVideo =
-          item.type === "video" || item.url.toLowerCase().endsWith(".mp4")
+        const isVideo = isVideoMediaItem(item)
         const childBody: Record<string, string> = {
           is_carousel_item: "true",
-          access_token: accessToken,
         }
 
         if (isVideo) {
@@ -534,11 +681,17 @@ export const instagramProvider: SocialProviderAdapter = {
           childBody.image_url = item.url
         }
 
-        const childRes = await fetch(`${GRAPH_BASE_URL}/${igUserId}/media`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams(childBody).toString(),
-        })
+        const childRes = await fetchWithTimeout(
+          `${GRAPH_BASE_URL}/${encodeURIComponent(igUserId)}/media`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams(childBody).toString(),
+          }
+        )
         const childData = (await childRes.json()) as ContainerResponse
 
         if (!childRes.ok || !childData.id) {
@@ -548,32 +701,32 @@ export const instagramProvider: SocialProviderAdapter = {
           )
         }
         childContainerIds.push(childData.id)
+
         if (isVideo) {
-          videoChildContainerIds.push(childData.id)
+          await pollInstagramContainerFinished({
+            containerId: childData.id,
+            accessToken,
+          })
         }
       }
 
-      // Poll all video child containers until FINISHED before parent container creation
-      for (const videoContainerId of videoChildContainerIds) {
-        await pollInstagramContainerFinished({
-          containerId: videoContainerId,
-          accessToken,
-        })
-      }
-
-      // Create parent carousel container
       const carouselBody = {
         media_type: "CAROUSEL",
         children: childContainerIds.join(","),
         caption: post.caption,
-        access_token: accessToken,
       }
 
-      const carouselRes = await fetch(`${GRAPH_BASE_URL}/${igUserId}/media`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams(carouselBody).toString(),
-      })
+      const carouselRes = await fetchWithTimeout(
+        `${GRAPH_BASE_URL}/${encodeURIComponent(igUserId)}/media`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams(carouselBody).toString(),
+        }
+      )
       const carouselData = (await carouselRes.json()) as ContainerResponse
 
       if (!carouselRes.ok || !carouselData.id) {
@@ -583,6 +736,12 @@ export const instagramProvider: SocialProviderAdapter = {
         )
       }
       creationId = carouselData.id
+
+      // Poll parent carousel container until FINISHED before /media_publish (T-035)
+      await pollInstagramContainerFinished({
+        containerId: creationId,
+        accessToken,
+      })
     }
 
     // Step 2: Publish container via media_publish with resolveInstagramReleaseId timeout recovery
@@ -591,14 +750,16 @@ export const instagramProvider: SocialProviderAdapter = {
     let publishData: PublishResponse | undefined
 
     try {
-      const publishRes = await fetch(
-        `${GRAPH_BASE_URL}/${igUserId}/media_publish`,
+      const publishRes = await fetchWithTimeout(
+        `${GRAPH_BASE_URL}/${encodeURIComponent(igUserId)}/media_publish`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
           body: new URLSearchParams({
             creation_id: creationId,
-            access_token: accessToken,
           }).toString(),
         }
       )
@@ -657,8 +818,13 @@ export const instagramProvider: SocialProviderAdapter = {
     // Step 3: Fetch permanent permalink
     let publishedUrl = `https://www.instagram.com/p/${igMediaId}`
     try {
-      const infoRes = await fetch(
-        `${GRAPH_BASE_URL}/${igMediaId}?fields=permalink&access_token=${accessToken}`
+      const infoRes = await fetchWithTimeout(
+        `${GRAPH_BASE_URL}/${encodeURIComponent(igMediaId)}?fields=permalink`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
       )
       const infoData = (await infoRes.json()) as MediaStatusResponse
       if (infoData.permalink) {
@@ -680,14 +846,19 @@ export const instagramProvider: SocialProviderAdapter = {
   ): Promise<FirstCommentPublishResult> {
     const { accessToken, externalPostId, commentText } = params
 
-    const res = await fetch(`${GRAPH_BASE_URL}/${externalPostId}/comments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        message: commentText,
-        access_token: accessToken,
-      }).toString(),
-    })
+    const res = await fetchWithTimeout(
+      `${GRAPH_BASE_URL}/${encodeURIComponent(externalPostId)}/comments`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          message: commentText,
+        }).toString(),
+      }
+    )
     const data = (await res.json()) as PublishResponse
 
     if (!res.ok || !data.id) {
@@ -718,10 +889,15 @@ export const instagramProvider: SocialProviderAdapter = {
     let shares = 0
     let clicks = 0
 
-    const basicRes = await fetch(
-      `${GRAPH_BASE_URL}/${externalPostId}?fields=like_count,comments_count&access_token=${encodeURIComponent(
-        accessToken
-      )}`
+    const basicRes = await fetchWithTimeout(
+      `${GRAPH_BASE_URL}/${encodeURIComponent(
+        externalPostId
+      )}?fields=like_count,comments_count`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
     )
 
     if (!basicRes.ok) {
@@ -737,11 +913,17 @@ export const instagramProvider: SocialProviderAdapter = {
     likes = Number(basicData.like_count ?? 0)
     comments = Number(basicData.comments_count ?? 0)
 
+    // Graph API v21.0+ uses `views,reach,shares,saved` instead of deprecated `impressions`
     try {
-      const insightsRes = await fetch(
-        `${GRAPH_BASE_URL}/${externalPostId}/insights?metric=impressions,reach,shares,saved&access_token=${encodeURIComponent(
-          accessToken
-        )}`
+      const insightsRes = await fetchWithTimeout(
+        `${GRAPH_BASE_URL}/${encodeURIComponent(
+          externalPostId
+        )}/insights?metric=views,reach,shares,saved`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
       )
       if (insightsRes.ok) {
         const insightsData = (await insightsRes.json()) as {
@@ -752,7 +934,7 @@ export const instagramProvider: SocialProviderAdapter = {
         }
         for (const item of insightsData.data || []) {
           const val = Number(item.values?.[0]?.value ?? 0)
-          if (item.name === "impressions" && val > 0) {
+          if (item.name === "views" && val > 0) {
             impressions = val
           } else if (item.name === "reach" && impressions === 0) {
             impressions = val
@@ -764,7 +946,7 @@ export const instagramProvider: SocialProviderAdapter = {
         }
       }
     } catch {
-      // Insights endpoint is optional
+      // Basic like_count and comments_count remain live-verified even if Insights scope is restricted
     }
 
     return {
@@ -774,7 +956,8 @@ export const instagramProvider: SocialProviderAdapter = {
       shares,
       clicks,
       lastSyncedAt: new Date().toISOString(),
+      syncStatus: "live",
+      isLiveVerified: true,
     }
   },
 }
-

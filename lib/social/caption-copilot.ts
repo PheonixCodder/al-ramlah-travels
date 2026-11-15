@@ -1,17 +1,26 @@
 /**
  * Al Ramlah Travels — AI Social Caption & Hashtag Copilot
- * Spec 0020 (Slice 39)
+ * Spec 0020 (Slice 39) + Audit Hardening (`T-089`, `OD-10`)
  *
  * Generates tailored copy for Instagram, Facebook, TikTok, YouTube Shorts,
  * and Google Business Profile alongside 3 viral hooks and first-comment copy.
- * Uses Vercel AI SDK (OpenRouter / Gemini) with an offline deterministic
- * luxury Haramain fallback.
+ * Uses Vercel AI SDK (`gemini-2.5-flash` via OpenRouter or Google AI) with a
+ * deterministic luxury Haramain fallback anchored to the verified Askari 10 Lahore HQ.
  */
 
-import { generateText, Output } from "ai"
-import { createOpenRouter } from "@openrouter/ai-sdk-provider"
+import { generateText, Output, type LanguageModel } from "ai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
+import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import { z } from "zod"
+import {
+  DEFAULT_OFFICE_ADDRESS,
+  normalizeWhatsappNumber,
+} from "@/lib/company-info"
+import {
+  BRAND_HOTLINE_DISPLAY,
+  BRAND_PRIMARY_WHATSAPP_DIGITS,
+} from "@/lib/constants/brand"
+import { logger } from "@/lib/logger"
 
 export interface GenerateSocialCaptionsInput {
   postCode?: string
@@ -28,6 +37,9 @@ export interface GenerateSocialCaptionsInput {
   nightsMadinah?: number | null
   airlineName?: string | null
   customNotes?: string | null
+  officeAddress?: string | null
+  whatsappNumber?: string | null
+  helplineDisplay?: string | null
 }
 
 export interface GeneratedPlatformCaptionsResult {
@@ -51,9 +63,26 @@ function formatPkr(num: number | null | undefined, fallback: string): string {
   return fallback
 }
 
+function resolveVerifiedBrandContact(input: GenerateSocialCaptionsInput): {
+  officeAddress: string
+  waDigits: string
+  helplineDisplay: string
+} {
+  const officeAddress =
+    input.officeAddress?.trim() || DEFAULT_OFFICE_ADDRESS
+  const waDigits =
+    (input.whatsappNumber
+      ? normalizeWhatsappNumber(input.whatsappNumber)
+      : "") || BRAND_PRIMARY_WHATSAPP_DIGITS
+  const helplineDisplay =
+    input.helplineDisplay?.trim() || BRAND_HOTLINE_DISPLAY
+
+  return { officeAddress, waDigits, helplineDisplay }
+}
+
 /**
- * Deterministic luxury Haramain generator.
- * Produces complete, high-converting copy without external API dependencies.
+ * Deterministic luxury Haramain generator (`T-089`, `OD-10`).
+ * Uses verified Askari 10, Airport Road, Lahore Cantt headquarters NAP (`getCompanyInfo()`).
  */
 export function buildDeterministicSocialCaptions(
   input: GenerateSocialCaptionsInput
@@ -71,7 +100,10 @@ export function buildDeterministicSocialCaptions(
   const doublePkr = formatPkr(input.doublePricePkr, "PKR 345,000")
   const sharingPkr = formatPkr(input.sharingPricePkr, "PKR 275,000")
 
-  const waLink = `https://wa.me/923274029701?text=${encodeURIComponent(
+  const { officeAddress, waDigits, helplineDisplay } =
+    resolveVerifiedBrandContact(input)
+
+  const waLink = `https://wa.me/${waDigits}?text=${encodeURIComponent(
     `Salam Al Ramlah Travels! I am inquiring about package [${code}]: ${title}. Please share available departure dates.`
   )}`
 
@@ -81,7 +113,7 @@ export function buildDeterministicSocialCaptions(
     "Limited Ramadan & Season Slots — Reserve Your Sacred Pilgrimage Today.",
   ]
 
-  const suggestedFirstComment = `🕋 Assalamu Alaikum! To reserve your seats for [${code}] or customize your family itinerary:\n\n📱 Instant WhatsApp: ${waLink}\n📞 Helpline: +92 327 4029701\n📍 Askari 10 & DHA Lahore Offices`
+  const suggestedFirstComment = `🕋 Assalamu Alaikum! To reserve your seats for [${code}] or customize your family itinerary:\n\n📱 Instant WhatsApp: ${waLink}\n📞 Helpline: ${helplineDisplay}\n📍 ${officeAddress}`
 
   const instagramCaption = `﷽
 Labbaik Allahumma Labbaik 🕋✨
@@ -104,7 +136,7 @@ Experience the sacred pilgrimage with absolute peace of mind. Al Ramlah Travels 
 
 👇 Comment "UMRAH" or click the link in bio / first comment to book instantly with code [${code}].
 
-#Umrah2026 #AlRamlahTravels #UmrahPackages #Makkah #Madinah #Haramain #LahoreUmrah #UmrahPakistan #VIPUmrah #HajjUmrah #UmrahGuide #Askari10 #DHALahore #SacredJourney #KhidmatEHujjaj #UmrahVisa #UmrahFromLahore #SwissotelMakkah`
+#Umrah2026 #AlRamlahTravels #UmrahPackages #Makkah #Madinah #Haramain #LahoreUmrah #UmrahPakistan #VIPUmrah #HajjUmrah #UmrahGuide #Askari10 #LahoreCantt #SacredJourney #KhidmatEHujjaj #UmrahVisa #UmrahFromLahore #SwissotelMakkah`
 
   const facebookCaption = `🕋 Executive Umrah 2026 with Al Ramlah Travels — Reserve Your Spiritual Journey [${code}]
 
@@ -125,10 +157,10 @@ Plan your sacred pilgrimage with verified luxury accommodations and seamless gro
 
 📲 Direct Booking & Inquiries:
 WhatsApp: ${waLink}
-UAN / Helpline: +92 327 4029701
+Helpline: ${helplineDisplay}
 
-🏢 Visit Our Offices:
-Askari 10 Commercial Area & DHA Phase 5, Lahore, Pakistan.`
+🏢 Visit Our Lahore Headquarters:
+${officeAddress}.`
 
   const tiktokCaption = `🕋 ${title} [${code}] | 5-Star Haramain from ${quadPkr}! Direct Flights & VIP Ziyarat. WhatsApp 0327-4029701 to book. #umrah #makkah #madinah #alramlahtravels #pakistan #fyp #viral`
 
@@ -146,8 +178,8 @@ Package Details:
 
 Contact & WhatsApp Reservations:
 WhatsApp: ${waLink}
-Helpline: +92 327 4029701
-Offices: Askari 10 & DHA Lahore, Pakistan.
+Helpline: ${helplineDisplay}
+Headquarters: ${officeAddress}.
 
 #Shorts #Umrah #Makkah #Madinah #AlRamlahTravels #Umrah2026`
 
@@ -155,7 +187,7 @@ Offices: Askari 10 & DHA Lahore, Pakistan.
 
 Al Ramlah Travels announces confirmed departure dates for our 2026 Umrah series. Featuring 5-star hotels in Makkah (${makkahHotel}) and Madinah (${madinahHotel}) with direct flights via ${airline}. Quad rooms starting from ${quadPkr}.
 
-Visit our Lahore offices at Askari 10 & DHA or chat with our pilgrim consultants on WhatsApp: +92 327 4029701.`
+Visit our Lahore office at ${officeAddress} or chat with our pilgrim consultants on WhatsApp: ${helplineDisplay}.`
 
   return {
     hooks,
@@ -188,6 +220,8 @@ Visit our Lahore offices at Askari 10 & DHA or chat with our pilgrim consultants
   }
 }
 
+export const generateSocialCaptionsFallback = buildDeterministicSocialCaptions
+
 const aiCopilotResponseSchema = z.object({
   hooks: z.tuple([z.string(), z.string(), z.string()]),
   instagramCaption: z.string(),
@@ -203,14 +237,17 @@ const aiCopilotResponseSchema = z.object({
 })
 
 /**
- * Generates platform-tailored social media captions using Vercel AI SDK
- * with OpenRouter / Google Gemini, or falls back to deterministic luxury output.
+ * Generates platform-tailored social media captions using Vercel AI SDK (`gemini-2.5-flash`)
+ * with OpenRouter (`data_collection: "deny"`) or Google Generative AI, falling back to
+ * deterministic luxury Haramain copy anchored to Askari 10, Lahore Cantt (`T-089`).
  */
 export async function generateSocialCaptionsCopilot(
   input: GenerateSocialCaptionsInput
 ): Promise<GeneratedPlatformCaptionsResult> {
   const openRouterKey = process.env.OPENROUTER_API_KEY?.trim()
-  const geminiKey = process.env.GEMINI_API_KEY?.trim()
+  const geminiKey = (
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY
+  )?.trim()
 
   if (!openRouterKey && !geminiKey) {
     return buildDeterministicSocialCaptions(input)
@@ -218,16 +255,19 @@ export async function generateSocialCaptionsCopilot(
 
   const code = (input.postCode || "ART-UMRAH-01").toUpperCase().trim()
   const title = (input.title || "Executive Umrah Package 2026").trim()
+  const { officeAddress, waDigits, helplineDisplay } =
+    resolveVerifiedBrandContact(input)
 
-  const systemPrompt = `You are the lead marketing copywriter for Al Ramlah Travels, an elite Umrah & Hajj agency based in Askari 10 and DHA Lahore, Pakistan.
+  const systemPrompt = `You are the lead marketing copywriter for Al Ramlah Travels, an elite Umrah & Hajj agency headquartered at ${officeAddress}, Pakistan.
 Brand Voice: Reverent, luxurious, trustworthy, professional ("Khidmat-e-Hujjaj"), transparent on pricing in PKR, urgent yet spiritual.
 Language: English with authentic Islamic greetings (﷽, Bismillah, Labbaik Allahumma Labbaik, SubhanAllah).
+Strict NAP Rule: ONLY cite our verified office address (${officeAddress}) and verified helpline (${helplineDisplay}). NEVER invent unverified branch addresses or secondary locations.
 Rules:
 1. Instagram: Rich narrative, line breaks, emojis, bullet points, hotel walk distances, room price table, 15-20 Umrah hashtags, call to action referencing link in bio / first comment.
-2. Facebook: Community-focused, full quad/triple/double/sharing PKR matrix, clickable WhatsApp CTA (https://wa.me/923274029701), office NAP (Askari 10 & DHA Lahore).
+2. Facebook: Community-focused, full quad/triple/double/sharing PKR matrix, clickable WhatsApp CTA (https://wa.me/${waDigits}), verified headquarters NAP (${officeAddress}).
 3. TikTok: Punchy 80-120 character hook, key price, discovery hashtags (#umrah #makkah #madinah #alramlahtravels).
 4. YouTube Shorts: Title under 100 characters ending with #Shorts. Comprehensive video description with itinerary & helpline.
-5. Google Business Profile: Local business update format (max 1500 chars), NAP consistency, Book action.
+5. Google Business Profile: Local business update format (max 1500 chars), strict NAP consistency (${officeAddress}), Book action.
 6. Provide 3 distinct viral hooks: Hook 1 (Spiritual journey), Hook 2 (Luxury value), Hook 3 (Seasonal/Ramadan urgency).`
 
   const userPrompt = `Generate complete platform-tailored captions for:
@@ -246,14 +286,15 @@ Pricing (PKR):
 ${input.customNotes ? `Custom Notes: ${input.customNotes}` : ""}`
 
   try {
-    let modelInstance: any
-    let modelName = "openrouter/google/gemini-2.5-flash"
+    let modelInstance: LanguageModel
+    let modelName: string
 
     if (openRouterKey) {
       const openrouter = createOpenRouter({ apiKey: openRouterKey })
       modelInstance = openrouter("google/gemini-2.5-flash")
-    } else if (geminiKey) {
-      const google = createGoogleGenerativeAI({ apiKey: geminiKey })
+      modelName = "openrouter/google/gemini-2.5-flash"
+    } else {
+      const google = createGoogleGenerativeAI({ apiKey: geminiKey! })
       modelInstance = google("gemini-2.5-flash")
       modelName = "google/gemini-2.5-flash"
     }
@@ -264,15 +305,26 @@ ${input.customNotes ? `Custom Notes: ${input.customNotes}` : ""}`
       prompt: userPrompt,
       output: Output.object({ schema: aiCopilotResponseSchema }),
       temperature: 0.7,
+      maxOutputTokens: 2500,
+      abortSignal: AbortSignal.timeout(30_000),
+      providerOptions: openRouterKey
+        ? {
+            openrouter: {
+              provider: {
+                data_collection: "deny",
+              },
+            },
+          }
+        : undefined,
     })
 
     if (output) {
-      const waLink = `https://wa.me/923274029701?text=${encodeURIComponent(
+      const waLink = `https://wa.me/${waDigits}?text=${encodeURIComponent(
         `Salam Al Ramlah Travels! Inquiring about [${code}]: ${title}.`
       )}`
       const suggestedFirstComment =
         output.instagramFirstComment ||
-        `🕋 Assalamu Alaikum! To book [${code}] or customize your itinerary: WhatsApp ${waLink} | Helpline: +92 327 4029701`
+        `🕋 Assalamu Alaikum! To book [${code}] or customize your itinerary: WhatsApp ${waLink} | Helpline: ${helplineDisplay} | ${officeAddress}`
 
       return {
         hooks: output.hooks,
@@ -306,11 +358,10 @@ ${input.customNotes ? `Custom Notes: ${input.customNotes}` : ""}`
     }
 
     return buildDeterministicSocialCaptions(input)
-  } catch (err) {
-    console.warn(
-      "[Social Caption Copilot] AI call failed, falling back to deterministic luxury output:",
-      err instanceof Error ? err.message : String(err)
-    )
+  } catch (err: unknown) {
+    logger.warn("Social caption copilot AI call failed, using deterministic Haramain copy", {
+      error: err,
+    })
     return buildDeterministicSocialCaptions(input)
   }
 }

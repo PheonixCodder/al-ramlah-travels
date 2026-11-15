@@ -1,16 +1,27 @@
 import type { SocialProviderAdapter, SocialProviderId } from "../types"
 import { facebookProvider } from "./facebook"
-import { gmbProvider } from "./gmb"
+import { gmbProvider, isGbpApiApproved } from "./gmb"
 import {
   instagramProvider,
   pollInstagramContainerFinished,
 } from "./instagram"
 import {
-  tiktokProvider,
+  isTikTokDirectPostApproved,
+  pollTikTokPublishComplete,
+  queryTikTokCreatorInfo,
   queryTikTokCreatorPrivacyLevel,
   resolveTikTokPublishedPostId,
+  tiktokProvider,
 } from "./tiktok"
-import { youtubeProvider } from "./youtube"
+import {
+  getYouTubeDailyQuotaUsage,
+  reserveYouTubeQuotaUnits,
+  resetYouTubeQuotaTrackerForTests,
+  YOUTUBE_DAILY_QUOTA_LIMIT,
+  YOUTUBE_SCOPES,
+  YOUTUBE_VIDEO_INSERT_UNITS,
+  youtubeProvider,
+} from "./youtube"
 
 export {
   facebookProvider,
@@ -18,9 +29,19 @@ export {
   instagramProvider,
   tiktokProvider,
   youtubeProvider,
+  isGbpApiApproved,
+  isTikTokDirectPostApproved,
+  queryTikTokCreatorInfo,
   queryTikTokCreatorPrivacyLevel,
+  pollTikTokPublishComplete,
   pollInstagramContainerFinished,
   resolveTikTokPublishedPostId,
+  getYouTubeDailyQuotaUsage,
+  reserveYouTubeQuotaUnits,
+  resetYouTubeQuotaTrackerForTests,
+  YOUTUBE_DAILY_QUOTA_LIMIT,
+  YOUTUBE_SCOPES,
+  YOUTUBE_VIDEO_INSERT_UNITS,
 }
 
 export const SOCIAL_PROVIDERS: Record<SocialProviderId, SocialProviderAdapter> =

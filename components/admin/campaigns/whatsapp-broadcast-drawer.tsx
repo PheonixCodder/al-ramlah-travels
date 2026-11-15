@@ -3,34 +3,21 @@
 import * as React from "react"
 import { useState, useMemo } from "react"
 import {
-  AlertCircle,
-  AlertTriangle,
-  ArrowRight,
   Check,
   CheckCheck,
-  CheckCircle2,
-  Clock,
-  ExternalLink,
-  Eye,
   FileSpreadsheet,
-  FileText,
-  Filter,
   Image as ImageIcon,
   Loader2,
-  Phone,
   Radio,
   RefreshCw,
   Search,
   Send,
   Sparkles,
-  Users,
-  X,
   XCircle,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -45,7 +32,6 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   extractTemplatePlaceholders,
   interpolateTemplateVariables,
-  parseWhatsappBroadcastCsv,
   type ParsedBroadcastRecipient,
 } from "@/lib/whatsapp/template-variables"
 import { cn } from "@/lib/utils"
@@ -96,6 +82,16 @@ export interface WhatsappBroadcastDetailsDialogProps {
   onClose: () => void
   onRetryFailed?: (broadcastId: string) => Promise<void> | void
   isRetrying?: boolean
+  userRole?: "super_admin" | "staff"
+}
+
+export function filterTemplatesForWhatsappAccount<
+  T extends { accountId: string; status: string },
+>(templates: T[], selectedAccountId: string): T[] {
+  if (!selectedAccountId) return []
+  return templates.filter(
+    (t) => t.accountId === selectedAccountId && t.status === "APPROVED"
+  )
 }
 
 // ==========================================
@@ -110,6 +106,7 @@ export function WhatsappBroadcastDetailsDialog({
   onClose,
   onRetryFailed,
   isRetrying = false,
+  userRole = "super_admin",
 }: WhatsappBroadcastDetailsDialogProps) {
   const [filterTab, setFilterTab] = useState<
     "all" | "delivered_read" | "failed" | "pending"
@@ -207,8 +204,10 @@ export function WhatsappBroadcastDetailsDialog({
               </div>
             </div>
 
-            {/* 1-Click Retry Failed Button */}
-            {broadcast.failedCount > 0 && onRetryFailed && (
+            {/* 1-Click Retry Failed Button (Super Admin Only per OD-07) */}
+            {broadcast.failedCount > 0 &&
+              onRetryFailed &&
+              userRole === "super_admin" && (
               <Button
                 type="button"
                 size="sm"
@@ -626,7 +625,7 @@ export function WhatsappBroadcastPersonalizerFields({
                   className="flex flex-col gap-1.5 p-2.5 rounded border border-border/60 bg-muted/15"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-mono font-bold text-emerald-800 dark:text-emerald-300">
+                    <span className="text-[11px] font-mono font-bold text-emerald-800">
                       Placeholder &#123;&#123;{idx}&#125;&#125;
                     </span>
                     <div className="flex items-center gap-1">
@@ -691,7 +690,7 @@ export function WhatsappBroadcastPersonalizerFields({
         )}
 
         {csvErrors && csvErrors.length > 0 && (
-          <div className="p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-[11px]">
+          <div className="p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-900 text-[11px]">
             <span className="font-semibold">CSV Warnings:</span>
             <ul className="list-disc pl-4 mt-1 space-y-0.5 text-[10px]">
               {csvErrors.slice(0, 3).map((err, i) => (
@@ -711,8 +710,8 @@ export function WhatsappBroadcastPersonalizerFields({
           <Label className="text-xs font-semibold text-muted-foreground">
             Live Preview for First Recipient ({sampleContact.name}):
           </Label>
-          <div className="p-3 rounded-xl bg-[#EFEAE2] dark:bg-stone-900 border border-border/80 text-xs">
-            <div className="p-3 rounded-lg bg-white dark:bg-card border border-border/40 shadow-sm text-foreground whitespace-pre-wrap leading-relaxed text-[11px]">
+          <div className="p-3 rounded-xl bg-[#EFEAE2] border border-border/80 text-xs">
+            <div className="p-3 rounded-lg bg-white border border-border/40 shadow-sm text-foreground whitespace-pre-wrap leading-relaxed text-[11px]">
               {simulatedPreview}
             </div>
           </div>

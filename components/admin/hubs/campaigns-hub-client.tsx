@@ -2,9 +2,7 @@
 
 import * as React from "react"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
-import Image from "next/image"
 import {
-  Share2,
   Calendar,
   MessageSquare,
   Send,
@@ -24,17 +22,12 @@ import {
   Eye,
   RefreshCw,
   Layers,
-  Filter,
-  ArrowRight,
   ShieldCheck,
   Smartphone,
   Users,
-  Radio,
-  Globe,
-  Tag,
-  Building2,
   FileText,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   ChevronUp,
   TrendingUp,
@@ -45,6 +38,7 @@ import {
   Film,
   Image as ImageIcon,
   UploadCloud,
+  Lock,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -57,7 +51,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -79,8 +72,8 @@ import {
   syncAllPublishedPostsAnalyticsAction,
   generateSocialCaptionsCopilotAction,
   getNextFreeSocialSlotAction,
+  getTikTokCreatorInfoAction,
   type SafeSocialIntegration,
-  type ScheduledPostWithTargets,
 } from "@/app/actions/social-scheduler"
 import type { SocialPostAnalyticsData } from "@/db/schema/social-scheduler"
 import {
@@ -93,12 +86,19 @@ import type {
   PlatformCaptionsMap,
   SocialPostFormat,
   SocialProviderId,
+  TikTokCreatorInfo,
+  TikTokPrivacyLevel,
 } from "@/lib/social/types"
 import { buildArtFirstCommentPlug } from "@/lib/social/first-comment"
 import { SocialPlatformPreview } from "@/components/admin/campaigns/social-platform-preview"
 import { StudioMediaPickerModal } from "@/components/admin/campaigns/studio-media-picker-modal"
 import { SocialCalendarView } from "@/components/admin/campaigns/social-calendar-view"
-import { parsePktSlotToUtc } from "@/lib/social/time-slots"
+import {
+  formatPktDateKey,
+  formatPktDateTimeLocal,
+  parsePktDateTimeLocal,
+  parsePktSlotToUtc,
+} from "@/lib/social/time-slots"
 import {
   createAndQueueWhatsappBroadcastAction,
   getWhatsappBroadcastDetailsAction,
@@ -111,17 +111,7 @@ import {
   type BroadcastSummaryDetail,
 } from "@/components/admin/campaigns/whatsapp-broadcast-drawer"
 import { parseWhatsappBroadcastCsv } from "@/lib/whatsapp/template-variables"
-import {
-  dispatchOrLogDistribution,
-  upsertMarketingChannel,
-} from "@/app/actions/marketing-ops"
-import {
-  dispatchAutomatedWhatsappGroupsCampaignAction,
-  listLinkedDeviceSessionsAction,
-  syncAllConnectedLinkedDevicesAction,
-  syncRealWhatsappGroupsAction,
-  type SafeLinkedDeviceSession,
-} from "@/app/actions/whatsapp-linked-device"
+import { dispatchOrLogDistribution } from "@/app/actions/marketing-ops"
 import {
   OutreachClient,
   type OutreachContactRow,
@@ -130,13 +120,213 @@ import {
 } from "@/components/admin/marketing/outreach-client"
 import { CampaignRealtimeStatus } from "@/components/admin/campaigns/campaign-realtime-status"
 import { computeOutreachCooldownState } from "@/lib/domain/marketing-ops"
+import { DEFAULT_OFFICE_ADDRESS } from "@/lib/company-info"
 import { cn } from "@/lib/utils"
 
 // ==========================================
-// 1. DATA CONTRACTS & INTERFACES
+// 1. DATA CONTRACTS & PURE HELPERS
 // ==========================================
 
 export type { SafeSocialIntegration }
+
+export interface CampaignsSummaryCounts {
+  totalScheduledPosts: number
+  totalPostAssets: number
+  totalOutreachContacts: number
+  totalBroadcasts: number
+  postsPage: number
+  postsPageSize: number
+  contactsPage: number
+  contactsPageSize: number
+}
+
+export interface CampaignsCompanyInfo {
+  officeAddress: string
+  primaryWhatsapp: string
+  normalizedWhatsapp: string
+  hotlineDisplay: string
+}
+
+export type CampaignsTabKey = "social" | "whatsapp" | "outreach"
+
+/**
+ * Normalizes legacy and alias `?tab=` query values onto the 3 canonical
+ * `/admin/campaigns` tab keys (`T-089`).
+ */
+export function normalizeCampaignsTab(
+  raw: string | null | undefined
+): CampaignsTabKey {
+  const cleaned = (raw || "").trim().toLowerCase()
+  if (
+    cleaned === "whatsapp" ||
+    cleaned === "distribution" ||
+    cleaned === "groups" ||
+    cleaned === "queue" ||
+    cleaned === "wa"
+  ) {
+    return "whatsapp"
+  }
+  if (
+    cleaned === "outreach" ||
+    cleaned === "broadcasts" ||
+    cleaned === "broadcast" ||
+    cleaned === "vip"
+  ) {
+    return "outreach"
+  }
+  return "social"
+}
+
+/**
+ * Strictly filters Meta message templates and broadcast logs to the active
+ * `selectedAccountId` so multi-WABA accounts never cross-contaminate (`T-071`).
+ */
+export function filterWhatsappResourcesByAccount<
+  TTemplate extends { id: string; accountId: string; status: string },
+  TBroadcast extends { id: string; accountId: string },
+>(
+  templates: TTemplate[],
+  broadcasts: TBroadcast[],
+  selectedAccountId: string
+): {
+  approvedTemplates: TTemplate[]
+  accountBroadcasts: TBroadcast[]
+} {
+  if (!selectedAccountId) {
+    return { approvedTemplates: [], accountBroadcasts: [] }
+  }
+  return {
+    approvedTemplates: templates.filter(
+      (t) => t.accountId === selectedAccountId && t.status === "APPROVED"
+    ),
+    accountBroadcasts: broadcasts.filter(
+      (b) => b.accountId === selectedAccountId
+    ),
+  }
+}
+
+export interface WhatsappQueueSummary {
+  whatsappChannels: MarketingChannelRecord[]
+  sharedChannelIds: Set<string>
+  failedChannelIds: Set<string>
+  queuedChannelIds: Set<string>
+  totalActiveChannels: number
+  sharedCountToday: number
+  failedCountToday: number
+}
+
+/**
+ * Computes daily WhatsApp Group & Status distribution status strictly across
+ * WhatsApp channel types, excluding `status === "failed"` from `sharedCountToday`
+ * and flagging failed dispatches explicitly (`T-071`, `OD-01`).
+ */
+export function summarizeWhatsappQueueStatus(
+  channels: MarketingChannelRecord[],
+  distributionsForDate: Pick<DistributionRecord, "channelId" | "status">[]
+): WhatsappQueueSummary {
+  const whatsappChannels = channels.filter(
+    (c) =>
+      c.platform === "whatsapp_group" ||
+      c.platform === "whatsapp_community" ||
+      c.platform === "whatsapp_status"
+  )
+
+  const sharedChannelIds = new Set<string>()
+  const failedRawIds = new Set<string>()
+  const queuedRawIds = new Set<string>()
+
+  for (const dist of distributionsForDate) {
+    if (
+      dist.status === "sent" ||
+      dist.status === "posted" ||
+      dist.status === "manual_logged"
+    ) {
+      sharedChannelIds.add(dist.channelId)
+    } else if (dist.status === "failed") {
+      failedRawIds.add(dist.channelId)
+    } else if (
+      dist.status === "planned" ||
+      dist.status === "queued" ||
+      dist.status === "queued_auto"
+    ) {
+      queuedRawIds.add(dist.channelId)
+    }
+  }
+
+  const failedChannelIds = new Set<string>()
+  for (const id of failedRawIds) {
+    if (!sharedChannelIds.has(id)) {
+      failedChannelIds.add(id)
+    }
+  }
+
+  const queuedChannelIds = new Set<string>()
+  for (const id of queuedRawIds) {
+    if (!sharedChannelIds.has(id) && !failedChannelIds.has(id)) {
+      queuedChannelIds.add(id)
+    }
+  }
+
+  const activeChannels = whatsappChannels.filter((c) => c.isActive)
+  const sharedCountToday = activeChannels.filter((c) =>
+    sharedChannelIds.has(c.id)
+  ).length
+  const failedCountToday = activeChannels.filter((c) =>
+    failedChannelIds.has(c.id)
+  ).length
+
+  return {
+    whatsappChannels,
+    sharedChannelIds,
+    failedChannelIds,
+    queuedChannelIds,
+    totalActiveChannels: activeChannels.length,
+    sharedCountToday,
+    failedCountToday,
+  }
+}
+
+/**
+ * Validates composer media URLs on the client before submitting, rejecting
+ * ephemeral browser `blob:` URLs, `data:`/`file:` URIs, and non-HTTPS links (`T-070`).
+ */
+export function isValidSocialComposerMediaUrl(rawUrl: string): {
+  valid: boolean
+  error?: string
+} {
+  const trimmed = rawUrl.trim()
+  if (!trimmed) {
+    return { valid: false, error: "Media URL cannot be empty." }
+  }
+  if (/^blob:/i.test(trimmed)) {
+    return {
+      valid: false,
+      error:
+        "Temporary browser blob: URLs cannot be saved. Please upload media to Cloudflare R2 first.",
+    }
+  }
+  if (/^(file|data|javascript|vbscript):/i.test(trimmed)) {
+    return {
+      valid: false,
+      error: "Local file: and data: URIs are not permitted for social publishing.",
+    }
+  }
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol !== "https:") {
+      return {
+        valid: false,
+        error: "Social media URLs must use HTTPS (Cloudflare R2).",
+      }
+    }
+    return { valid: true }
+  } catch {
+    return {
+      valid: false,
+      error: "Media URL must be a valid absolute HTTPS URL.",
+    }
+  }
+}
 
 export interface ScheduledPostTargetItem {
   id: string
@@ -199,7 +389,10 @@ export interface ScheduledPostItem {
 export interface PostAssetRecord {
   id: string
   postCode: string
-  kind: "multi_package_sheet" | "single_package_spotlight" | "custom_quotation_pdf"
+  kind:
+    | "multi_package_sheet"
+    | "single_package_spotlight"
+    | "custom_quotation_pdf"
   title: string
   supplierId: string
   flyerId: string
@@ -340,11 +533,15 @@ export interface WhatsappBroadcastRecord {
   template?: WhatsappTemplateRecord | null
 }
 
-export type CampaignsTabKey = "social" | "whatsapp" | "outreach"
-
 export interface CampaignsHubClientProps {
   initialTab?: string
   initialAssetId?: string
+  userRole?: "super_admin" | "staff"
+  companyInfo?: CampaignsCompanyInfo
+  tiktokDirectPostApproved?: boolean
+  gbpApiApproved?: boolean
+  summaryCounts?: CampaignsSummaryCounts
+  degradedWarnings?: string[]
   socialIntegrations: SafeSocialIntegration[]
   scheduledPosts: ScheduledPostItem[]
   postAssets: PostAssetRecord[]
@@ -376,7 +573,7 @@ const CAMPAIGN_TABS: Array<{
     label: "100% Ban-Safe WhatsApp Groups & Status Queue",
     icon: MessageSquare,
     description:
-      "Manual assisted distribution queue for 30+ community groups and 2 WhatsApp Status lines with 1-tap formatted caption copying and 4K poster downloads.",
+      "Manual assisted distribution queue for community WhatsApp groups and Status lines with 1-tap formatted caption copying and 4K poster downloads.",
   },
   {
     key: "outreach",
@@ -393,11 +590,36 @@ const CORE_5_PLATFORMS: Array<{
   badge: string
   color: string
 }> = [
-  { id: "instagram", name: "Instagram Business", badge: "IG", color: "bg-pink-100 text-pink-800 border-pink-300" },
-  { id: "facebook", name: "Facebook Pages", badge: "FB", color: "bg-blue-100 text-blue-800 border-blue-300" },
-  { id: "tiktok", name: "TikTok Business", badge: "TikTok", color: "bg-slate-100 text-slate-900 border-slate-300" },
-  { id: "youtube", name: "YouTube Channel", badge: "YT", color: "bg-red-100 text-red-800 border-red-300" },
-  { id: "gmb", name: "Google Business Profile", badge: "GMB", color: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+  {
+    id: "instagram",
+    name: "Instagram Business",
+    badge: "IG",
+    color: "bg-pink-100 text-pink-800 border-pink-300",
+  },
+  {
+    id: "facebook",
+    name: "Facebook Pages",
+    badge: "FB",
+    color: "bg-blue-100 text-blue-800 border-blue-300",
+  },
+  {
+    id: "tiktok",
+    name: "TikTok Business",
+    badge: "TikTok",
+    color: "bg-slate-100 text-slate-900 border-slate-300",
+  },
+  {
+    id: "youtube",
+    name: "YouTube Channel",
+    badge: "YT",
+    color: "bg-red-100 text-red-800 border-red-300",
+  },
+  {
+    id: "gmb",
+    name: "Google Business Profile",
+    badge: "GMB",
+    color: "bg-emerald-100 text-emerald-800 border-emerald-300",
+  },
 ]
 
 function formatDateSafe(val: Date | string | null | undefined): string {
@@ -405,11 +627,18 @@ function formatDateSafe(val: Date | string | null | undefined): string {
   const d = typeof val === "string" ? new Date(val) : val
   if (isNaN(d.getTime())) return "—"
   return d.toLocaleDateString("en-PK", {
+    timeZone: "Asia/Karachi",
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   })
+}
+
+function isRealTriggerRunId(runId: string | null | undefined): runId is string {
+  return Boolean(
+    runId && runId.trim().length > 0 && !runId.startsWith("inline_")
+  )
 }
 
 // ==========================================
@@ -419,6 +648,12 @@ function formatDateSafe(val: Date | string | null | undefined): string {
 export function CampaignsHubClient({
   initialTab = "social",
   initialAssetId = "",
+  userRole = "staff",
+  companyInfo,
+  tiktokDirectPostApproved = false,
+  gbpApiApproved = false,
+  summaryCounts,
+  degradedWarnings = [],
   socialIntegrations,
   scheduledPosts,
   postAssets,
@@ -435,17 +670,12 @@ export function CampaignsHubClient({
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  const validTabKeys: CampaignsTabKey[] = ["social", "whatsapp", "outreach"]
-
   const activeTab: CampaignsTabKey = React.useMemo(() => {
-    const urlTab = searchParams.get("tab") as CampaignsTabKey | null
-    if (urlTab && validTabKeys.includes(urlTab)) {
-      return urlTab
+    const urlTab = searchParams.get("tab")
+    if (urlTab) {
+      return normalizeCampaignsTab(urlTab)
     }
-    if (validTabKeys.includes(initialTab as CampaignsTabKey)) {
-      return initialTab as CampaignsTabKey
-    }
-    return "social"
+    return normalizeCampaignsTab(initialTab)
   }, [searchParams, initialTab])
 
   const handleTabChange = (key: CampaignsTabKey) => {
@@ -454,22 +684,67 @@ export function CampaignsHubClient({
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
-  // Active Meta Tab Details
+  const handlePageParamChange = (
+    paramKey: "postsPage" | "contactsPage",
+    nextPage: number
+  ) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set(paramKey, String(Math.max(1, nextPage)))
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
   const activeMeta =
     CAMPAIGN_TABS.find((t) => t.key === activeTab) || CAMPAIGN_TABS[0]
 
-  // Global KPIs
+  const whatsappChannelsCount = React.useMemo(
+    () =>
+      marketingChannels.filter(
+        (c) =>
+          c.platform === "whatsapp_group" ||
+          c.platform === "whatsapp_community" ||
+          c.platform === "whatsapp_status"
+      ).length,
+    [marketingChannels]
+  )
+
   const activeSocialAccountsCount = socialIntegrations.filter(
     (i) => i.isActive
   ).length
-  const totalChannelsCount = marketingChannels.length
   const scheduledCount = scheduledPosts.filter(
     (p) => p.status === "scheduled" || p.status === "publishing"
   ).length
-  const vipContactsCount = outreachContacts.length
+  const totalScheduledPostsCount =
+    summaryCounts?.totalScheduledPosts ?? scheduledPosts.length
+  const totalVipContactsCount =
+    summaryCounts?.totalOutreachContacts ?? outreachContacts.length
+
+  const officeLocationLabel =
+    companyInfo?.officeAddress || DEFAULT_OFFICE_ADDRESS
+  const primaryWhatsappDigits =
+    companyInfo?.normalizedWhatsapp || "923274029701"
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Non-silent SSR Query Warning Banner */}
+      {degradedWarnings.length > 0 && (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-400 bg-amber-50 px-4 py-3 text-xs text-amber-950 flex items-start gap-2.5"
+        >
+          <AlertTriangle className="size-4 text-amber-700 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <p className="font-bold">
+              Some campaign datasets loaded in degraded mode:
+            </p>
+            <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
+              {degradedWarnings.map((w, idx) => (
+                <li key={idx}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* Hub Header */}
       <div className="flex flex-col gap-2 border-b border-border/80 pb-5">
         <div className="flex items-center gap-2 flex-wrap">
@@ -478,12 +753,13 @@ export function CampaignsHubClient({
           </span>
           <Badge
             variant="outline"
-            className="text-[10px] font-mono border-primary/30 text-primary bg-primary/5"
+            className="text-[10px] font-mono tabular-nums border-primary/30 text-primary bg-primary/5"
           >
-            {activeSocialAccountsCount} Social Channels • {totalChannelsCount} WhatsApp Groups • {vipContactsCount} VIP Contacts
+            {activeSocialAccountsCount} Social Channels • {whatsappChannelsCount}{" "}
+            WhatsApp Channels • {totalVipContactsCount} VIP Contacts
           </Badge>
           {scheduledCount > 0 && (
-            <Badge className="text-[10px] bg-emerald-600 text-white font-mono">
+            <Badge className="text-[10px] bg-emerald-600 text-white font-mono tabular-nums">
               {scheduledCount} Posts Active in Queue
             </Badge>
           )}
@@ -526,18 +802,18 @@ export function CampaignsHubClient({
                 />
                 <span>{tab.label}</span>
                 {tab.key === "social" && (
-                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.2 text-[10px] font-mono">
-                    {scheduledPosts.length}
+                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.2 text-[10px] font-mono tabular-nums">
+                    {totalScheduledPostsCount}
                   </span>
                 )}
                 {tab.key === "whatsapp" && (
-                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.2 text-[10px] font-mono">
-                    {marketingChannels.length}
+                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.2 text-[10px] font-mono tabular-nums">
+                    {whatsappChannelsCount}
                   </span>
                 )}
                 {tab.key === "outreach" && (
-                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.2 text-[10px] font-mono">
-                    {outreachContacts.length}
+                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.2 text-[10px] font-mono tabular-nums">
+                    {totalVipContactsCount}
                   </span>
                 )}
               </button>
@@ -550,6 +826,13 @@ export function CampaignsHubClient({
       {activeTab === "social" && (
         <SocialCalendarTab
           initialAssetId={initialAssetId}
+          userRole={userRole}
+          officeLocationLabel={officeLocationLabel}
+          primaryWhatsappDigits={primaryWhatsappDigits}
+          tiktokDirectPostApproved={tiktokDirectPostApproved}
+          gbpApiApproved={gbpApiApproved}
+          summaryCounts={summaryCounts}
+          onPostsPageChange={(page) => handlePageParamChange("postsPage", page)}
           socialIntegrations={socialIntegrations}
           scheduledPosts={scheduledPosts}
           postAssets={postAssets}
@@ -570,6 +853,12 @@ export function CampaignsHubClient({
       {/* Tab 3: Official Meta Broadcasts & VIP Outreach */}
       {activeTab === "outreach" && (
         <BroadcastsAndOutreachTab
+          userRole={userRole}
+          officeLocationLabel={officeLocationLabel}
+          summaryCounts={summaryCounts}
+          onContactsPageChange={(page) =>
+            handlePageParamChange("contactsPage", page)
+          }
           whatsappAccounts={whatsappAccounts}
           whatsappTemplates={whatsappTemplates}
           whatsappBroadcasts={whatsappBroadcasts}
@@ -588,12 +877,26 @@ export function CampaignsHubClient({
 
 function SocialCalendarTab({
   initialAssetId,
+  userRole,
+  officeLocationLabel,
+  primaryWhatsappDigits,
+  tiktokDirectPostApproved,
+  gbpApiApproved,
+  summaryCounts,
+  onPostsPageChange,
   socialIntegrations,
   scheduledPosts,
   postAssets,
   supplierFlyers,
 }: {
   initialAssetId: string
+  userRole: "super_admin" | "staff"
+  officeLocationLabel: string
+  primaryWhatsappDigits: string
+  tiktokDirectPostApproved: boolean
+  gbpApiApproved: boolean
+  summaryCounts?: CampaignsSummaryCounts
+  onPostsPageChange: (page: number) => void
   socialIntegrations: SafeSocialIntegration[]
   scheduledPosts: ScheduledPostItem[]
   postAssets: PostAssetRecord[]
@@ -601,7 +904,6 @@ function SocialCalendarTab({
 }) {
   const router = useRouter()
 
-  // Selected Primary Asset
   const [selectedAssetId, setSelectedAssetId] = React.useState<string>(() => {
     if (initialAssetId && postAssets.some((a) => a.id === initialAssetId)) {
       return initialAssetId
@@ -614,7 +916,6 @@ function SocialCalendarTab({
     [postAssets, selectedAssetId]
   )
 
-  // Caption state
   const [caption, setCaption] = React.useState<string>(() => {
     return (
       selectedAsset?.captionInstagram ||
@@ -623,32 +924,30 @@ function SocialCalendarTab({
     )
   })
 
-  // Synchronize caption when asset selection changes
   React.useEffect(() => {
     if (selectedAsset) {
       setCaption(
         selectedAsset.captionInstagram ||
-        selectedAsset.captionWhatsapp ||
-        ""
+          selectedAsset.captionWhatsapp ||
+          ""
       )
     }
   }, [selectedAsset])
 
-  // Linked Supplier Flyer & 1080x1520 Normalized Social Sheet
   const matchingFlyer = React.useMemo(
     () => supplierFlyers.find((f) => f.id === selectedAsset?.flyerId),
     [supplierFlyers, selectedAsset?.flyerId]
   )
 
+  // Preserve Spotlight child image URL (`T-070`): only prefer flyer sheet JPEG for multi_package_sheet!
   const preferredAssetMediaUrl = React.useMemo(() => {
-    return (
-      matchingFlyer?.socialReadySheetJpegUrl ||
-      selectedAsset?.imageUrl ||
-      ""
-    )
-  }, [matchingFlyer?.socialReadySheetJpegUrl, selectedAsset?.imageUrl])
+    if (!selectedAsset) return ""
+    if (selectedAsset.kind === "multi_package_sheet") {
+      return matchingFlyer?.socialReadySheetJpegUrl || selectedAsset.imageUrl
+    }
+    return selectedAsset.imageUrl
+  }, [selectedAsset, matchingFlyer?.socialReadySheetJpegUrl])
 
-  // Custom Media URLs
   const [customMediaInput, setCustomMediaInput] = React.useState("")
   const [mediaUrls, setMediaUrls] = React.useState<string[]>(() => {
     return preferredAssetMediaUrl ? [preferredAssetMediaUrl] : []
@@ -671,7 +970,6 @@ function SocialCalendarTab({
     })
   }, [mediaUrls])
 
-  // Target Integrations Selection
   const activeIntegrations = React.useMemo(
     () => socialIntegrations.filter((i) => i.isActive),
     [socialIntegrations]
@@ -680,50 +978,102 @@ function SocialCalendarTab({
   const [selectedTargetIds, setSelectedTargetIds] = React.useState<string[]>(
     () =>
       activeIntegrations
-        .filter((i) => (i.provider === "youtube" ? isVideoMedia : true))
+        .filter((i) => {
+          if (i.provider === "youtube" && !isVideoMedia) return false
+          if (i.provider === "gmb" && !gbpApiApproved) return false
+          return true
+        })
         .map((i) => i.id)
   )
 
-  // Deselect YouTube if media is changed to non-video
   React.useEffect(() => {
     if (!isVideoMedia && mediaUrls.length > 0) {
-      setSelectedTargetIds((prev) => {
-        const yt = activeIntegrations.find((i) => i.provider === "youtube")
-        return yt && prev.includes(yt.id) ? prev.filter((id) => id !== yt.id) : prev
-      })
+      setSelectedTargetIds((prev) =>
+        prev.filter((id) => {
+          const found = activeIntegrations.find((i) => i.id === id)
+          return found?.provider !== "youtube"
+        })
+      )
     }
   }, [isVideoMedia, mediaUrls.length, activeIntegrations])
 
   const toggleTargetIntegration = (id: string) => {
     const integration = activeIntegrations.find((i) => i.id === id)
-    if (integration?.provider === "youtube" && !isVideoMedia) {
-      return
-    }
+    if (!integration) return
+    if (integration.provider === "youtube" && !isVideoMedia) return
+    if (integration.provider === "gmb" && !gbpApiApproved) return
+
     setSelectedTargetIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     )
   }
 
-  // Post Format (FEED, REEL, STORY)
-  const [postFormat, setPostFormat] = React.useState<SocialPostFormat>("FEED")
+  // TikTok Audit UX Controls State (`T-070`, `OD-11`)
+  const selectedTikTokIntegration = React.useMemo(
+    () =>
+      activeIntegrations.find(
+        (i) => i.provider === "tiktok" && selectedTargetIds.includes(i.id)
+      ) || null,
+    [activeIntegrations, selectedTargetIds]
+  )
 
-  // First-Comment Auto-Plug (IG & FB)
+  const [tiktokCreatorInfo, setTiktokCreatorInfo] =
+    React.useState<TikTokCreatorInfo | null>(null)
+  const [tiktokPrivacyLevel, setTiktokPrivacyLevel] = React.useState<
+    TikTokPrivacyLevel | ""
+  >(() => (tiktokDirectPostApproved ? "" : "SELF_ONLY"))
+  const [tiktokAllowComment, setTiktokAllowComment] = React.useState(false)
+  const [tiktokAllowDuet, setTiktokAllowDuet] = React.useState(false)
+  const [tiktokAllowStitch, setTiktokAllowStitch] = React.useState(false)
+  const [tiktokCommercialToggle, setTiktokCommercialToggle] =
+    React.useState(false)
+  const [tiktokBrandOrganic, setTiktokBrandOrganic] = React.useState(false)
+  const [tiktokBrandContent, setTiktokBrandContent] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!selectedTikTokIntegration) return
+    let cancelled = false
+    void getTikTokCreatorInfoAction({
+      integrationId: selectedTikTokIntegration.id,
+    }).then((res) => {
+      if (cancelled || !res.success || !res.creatorInfo) return
+      setTiktokCreatorInfo(res.creatorInfo)
+      if (!tiktokDirectPostApproved) {
+        setTiktokPrivacyLevel("SELF_ONLY")
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedTikTokIntegration, tiktokDirectPostApproved])
+
+  // GMB Call-To-Action Controls (`T-070`)
+  const hasSelectedGmb = React.useMemo(
+    () =>
+      activeIntegrations.some(
+        (i) => i.provider === "gmb" && selectedTargetIds.includes(i.id)
+      ),
+    [activeIntegrations, selectedTargetIds]
+  )
+  const [gmbCallToActionType, setGmbCallToActionType] = React.useState<
+    "BOOK" | "LEARN_MORE"
+  >("BOOK")
+  const [gmbCallToActionUrl, setGmbCallToActionUrl] = React.useState<string>("")
+
+  const [postFormat, setPostFormat] = React.useState<SocialPostFormat>("FEED")
   const [firstComment, setFirstComment] = React.useState<string>("")
   const [isGeneratingFirstComment, setIsGeneratingFirstComment] =
     React.useState(false)
 
-  // Publication Scheduling
+  // PKT-anchored `datetime-local` state (`T-089`)
   const [publishNow, setPublishNow] = React.useState(true)
-  const [scheduledDateTime, setScheduledDateTime] = React.useState<string>(() => {
-    const d = new Date(Date.now() + 2 * 60 * 60 * 1000)
-    return d.toISOString().slice(0, 16)
-  })
+  const [scheduledDateTime, setScheduledDateTime] = React.useState<string>(() =>
+    formatPktDateTimeLocal(new Date(Date.now() + 2 * 60 * 60 * 1000))
+  )
 
-  // 2-Step Attention-Grabber Funnel Toggle
   const [isTwoStepEnabled, setIsTwoStepEnabled] = React.useState(false)
   const [twoStepDelayMinutes, setTwoStepDelayMinutes] = React.useState(180)
 
-  // Paired Step-2 Follow-Up Sheet
   const sheetAssets = React.useMemo(
     () => postAssets.filter((a) => a.kind === "multi_package_sheet"),
     [postAssets]
@@ -747,27 +1097,27 @@ function SocialCalendarTab({
     if (followUpAsset) {
       setFollowUpCaption(
         followUpAsset.captionInstagram ||
-        followUpAsset.captionWhatsapp ||
-        ""
+          followUpAsset.captionWhatsapp ||
+          ""
       )
     }
   }, [followUpAsset])
 
-  // Form Submitting & Alerts
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [composerNotice, setComposerNotice] = React.useState<{
     type: "success" | "error"
     message: string
   } | null>(null)
-  const [activeSocialRunId, setActiveSocialRunId] = React.useState<string | null>(
-    null
-  )
+  const [activeSocialRunId, setActiveSocialRunId] = React.useState<
+    string | null
+  >(null)
 
-  // Queue actions state
   const [busyActionId, setBusyActionId] = React.useState<string | null>(null)
-  const [syncingAnalyticsPostId, setSyncingAnalyticsPostId] =
-    React.useState<string | null>(null)
-  const [isSyncingAllAnalytics, setIsSyncingAllAnalytics] = React.useState(false)
+  const [syncingAnalyticsPostId, setSyncingAnalyticsPostId] = React.useState<
+    string | null
+  >(null)
+  const [isSyncingAllAnalytics, setIsSyncingAllAnalytics] =
+    React.useState(false)
   const [queueFilter, setQueueFilter] = React.useState<string>("all")
   const [previewModalPost, setPreviewModalPost] =
     React.useState<ScheduledPostItem | null>(null)
@@ -783,14 +1133,12 @@ function SocialCalendarTab({
     )
   }
 
-  // Phase 3 States: Sub-view, Studio Picker, R2 Upload, AI Copilot, PKT Slots & Auto-Plug
   const [activeSocialSubView, setActiveSocialSubView] = React.useState<
     "calendar" | "queue"
   >("calendar")
   const [isStudioPickerOpen, setIsStudioPickerOpen] = React.useState(false)
   const [isUploadingR2, setIsUploadingR2] = React.useState(false)
 
-  // Per-Platform Caption Override Tabs
   const [platformCaptions, setPlatformCaptions] = React.useState<
     Partial<
       Record<SocialProviderId, { caption?: string; firstComment?: string }>
@@ -800,21 +1148,19 @@ function SocialCalendarTab({
     "global" | SocialProviderId
   >("global")
 
-  // AI Caption Copilot & PKT Slot Queueing
   const [isGeneratingAiCaptions, setIsGeneratingAiCaptions] =
     React.useState(false)
   const [isQueueingNextSlot, setIsQueueingNextSlot] = React.useState(false)
 
-  // Reactive Engagement Auto-Plug configuration
   const [isEngagementPlugEnabled, setIsEngagementPlugEnabled] =
     React.useState(false)
   const [engagementMinLikes, setEngagementMinLikes] = React.useState(25)
   const [engagementMinViews, setEngagementMinViews] = React.useState(500)
   const [engagementPlugText, setEngagementPlugText] = React.useState<string>(
-    "🕋 Urgent Update: Limited seats remaining for this package! WhatsApp our Lahore pilgrims desk directly for immediate confirmation: https://wa.me/923274029701?text=Salam%20Al%20Ramlah%20Travels!%20Inquiring%20about%20booking."
+    () =>
+      `🕋 Urgent Update: Limited seats remaining for this package! WhatsApp our Lahore pilgrims desk directly for immediate confirmation: https://wa.me/${primaryWhatsappDigits}?text=Salam%20Al%20Ramlah%20Travels!%20Inquiring%20about%20booking.`
   )
 
-  // Matched package for ART-... code & pricing in live previewer
   const matchedComposerPackage = React.useMemo(
     () =>
       matchingFlyer?.packages.find(
@@ -824,21 +1170,33 @@ function SocialCalendarTab({
   )
 
   const selectedProvidersForPreview = React.useMemo<SocialProviderId[]>(() => {
-    const chosen = activeIntegrations
-      .filter((i) => selectedTargetIds.includes(i.id))
-      .map((i) => i.provider)
+    const chosen = Array.from(
+      new Set(
+        activeIntegrations
+          .filter((i) => selectedTargetIds.includes(i.id))
+          .map((i) => i.provider)
+      )
+    )
     return chosen.length > 0
       ? chosen
       : ["instagram", "facebook", "tiktok", "youtube", "gmb"]
   }, [activeIntegrations, selectedTargetIds])
 
-  // Cross-Channel Campaign Analytics Overview Rollup across all scheduled/published posts
+  // Honest Cross-Channel Analytics Rollup (`T-036`)
   const campaignAnalyticsOverview = React.useMemo(() => {
     const snapshots: PostTargetAnalyticsSnapshot[] = []
     for (const post of scheduledPosts) {
       for (const target of post.targets) {
         if (target.status === "published" || target.analyticsData) {
-          const data = target.analyticsData
+          const data = target.analyticsData as
+            | (NonNullable<typeof target.analyticsData> & {
+                syncStatus?: "live" | "unavailable" | "error"
+                isLiveVerified?: boolean
+              })
+            | null
+          const hasLive =
+            data?.isLiveVerified ??
+            (data?.syncStatus ? data.syncStatus === "live" : Boolean(data))
           snapshots.push({
             targetId: target.id,
             postId: post.id,
@@ -854,6 +1212,8 @@ function SocialCalendarTab({
             clicks: data?.clicks ?? 0,
             publishedUrl: target.publishedUrl,
             lastSyncedAt: data?.lastSyncedAt ?? null,
+            syncStatus: data?.syncStatus ?? (hasLive ? "live" : "unavailable"),
+            isLiveVerified: hasLive,
           })
         }
       }
@@ -861,21 +1221,24 @@ function SocialCalendarTab({
     return aggregateCampaignAnalytics(snapshots)
   }, [scheduledPosts])
 
-  // 1-Click Sync All Published Analytics
   const handleSyncAllAnalytics = async () => {
     setIsSyncingAllAnalytics(true)
     try {
       const res = await syncAllPublishedPostsAnalyticsAction({ limit: 25 })
       if (res.success) {
+        const unavailNote =
+          res.unavailableTargetsCount && res.unavailableTargetsCount > 0
+            ? ` (${res.unavailableTargetsCount} target(s) unavailable without live API metrics)`
+            : ""
         setComposerNotice({
           type: "success",
-          message: `Synced analytics across ${res.syncedPostsCount ?? 0} published post(s) and ${res.syncedTargetsCount ?? 0} channel target(s)!`,
+          message: `Synced live analytics across ${res.syncedTargetsCount ?? 0} channel target(s)${unavailNote}.`,
         })
         router.refresh()
       } else {
         setComposerNotice({
           type: "error",
-          message: res.error || "Failed to sync all published post analytics.",
+          message: res.error || "Failed to sync published post analytics.",
         })
       }
     } finally {
@@ -883,12 +1246,10 @@ function SocialCalendarTab({
     }
   }
 
-  // 1-Click Generate ART-... First-Comment WhatsApp CTA
   const handleGenerateFirstComment = async () => {
     setIsGeneratingFirstComment(true)
     try {
       const matchedPackage = matchedComposerPackage
-
       if (selectedAsset?.id) {
         const res = await generateArtFirstCommentAction({
           postAssetId: selectedAsset.id,
@@ -907,7 +1268,6 @@ function SocialCalendarTab({
         }
       }
 
-      // Client-side fallback using shared helper
       const fallbackComment = buildArtFirstCommentPlug({
         postCode:
           matchedPackage?.postCode ||
@@ -920,6 +1280,7 @@ function SocialCalendarTab({
         doublePricePkr: matchedPackage?.retailDoublePkr,
         makkahHotelName: matchedPackage?.makkahHotelName,
         madinahHotelName: matchedPackage?.madinahHotelName,
+        whatsappNumber: primaryWhatsappDigits,
       })
       setFirstComment(fallbackComment)
     } finally {
@@ -927,7 +1288,6 @@ function SocialCalendarTab({
     }
   }
 
-  // Handle Sync Post Analytics
   const handleSyncPostAnalytics = async (postId: string) => {
     setSyncingAnalyticsPostId(postId)
     try {
@@ -947,7 +1307,6 @@ function SocialCalendarTab({
     }
   }
 
-  // Active platform caption & first-comment for device preview synchronization
   const currentTabCaption = React.useMemo(() => {
     if (activeCaptionTab === "global") return caption
     return platformCaptions[activeCaptionTab]?.caption || caption
@@ -960,7 +1319,6 @@ function SocialCalendarTab({
       : firstComment
   }, [activeCaptionTab, firstComment, platformCaptions])
 
-  // AI Social Caption Copilot generator
   const handleGenerateAiCaptions = async () => {
     setIsGeneratingAiCaptions(true)
     setComposerNotice(null)
@@ -968,7 +1326,9 @@ function SocialCalendarTab({
       const res = await generateSocialCaptionsCopilotAction({
         postCode: matchedComposerPackage?.postCode || selectedAsset?.postCode,
         title: selectedAsset?.title,
-        campaignStage: isTwoStepEnabled ? "step_1_spotlight_hook" : "standalone",
+        campaignStage: isTwoStepEnabled
+          ? "step_1_spotlight_hook"
+          : "standalone",
         postFormat,
         sharingPricePkr: matchedComposerPackage?.retailSharingPkr,
         quadPricePkr: matchedComposerPackage?.retailQuadPkr,
@@ -1005,7 +1365,7 @@ function SocialCalendarTab({
         })
         setComposerNotice({
           type: "success",
-          message: `✨ AI generated 5 platform-optimized captions & hooks using ${res.result.modelUsed}!`,
+          message: `✨ AI generated 5 platform-optimized captions & hooks (${res.result.modelUsed}).`,
         })
       } else {
         setComposerNotice({
@@ -1024,21 +1384,17 @@ function SocialCalendarTab({
     }
   }
 
-  // Queue in next open PKT slot
+  // Queue in next open PKT slot using PKT-anchored formatter (`T-089`)
   const handleQueueNextFreeSlot = async () => {
     setIsQueueingNextSlot(true)
     try {
       const res = await getNextFreeSocialSlotAction()
       if (res.success && res.nextSlotUtc) {
         setPublishNow(false)
-        const d = new Date(res.nextSlotUtc)
-        const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-          .toISOString()
-          .slice(0, 16)
-        setScheduledDateTime(localIso)
+        setScheduledDateTime(formatPktDateTimeLocal(new Date(res.nextSlotUtc)))
         setComposerNotice({
           type: "success",
-          message: `⚡ Queued in next open peak window: ${res.pktLabel}`,
+          message: `⚡ Queued in next open PKT peak window: ${res.pktLabel}`,
         })
       } else {
         setComposerNotice({
@@ -1049,18 +1405,20 @@ function SocialCalendarTab({
     } catch (err: unknown) {
       setComposerNotice({
         type: "error",
-        message: err instanceof Error ? err.message : "Failed to calculate slot.",
+        message:
+          err instanceof Error ? err.message : "Failed to calculate slot.",
       })
     } finally {
       setIsQueueingNextSlot(false)
     }
   }
 
-  // Direct R2 / local media upload
+  // Direct R2 media upload — NEVER falls back to ephemeral `blob:` URLs (`T-070`)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setIsUploadingR2(true)
+    setComposerNotice(null)
     try {
       const presignRes = await fetch("/api/uploads/presign", {
         method: "POST",
@@ -1074,7 +1432,10 @@ function SocialCalendarTab({
       })
 
       if (presignRes.ok) {
-        const presignData = await presignRes.json()
+        const presignData = (await presignRes.json()) as {
+          uploadUrl?: string
+          publicUrl?: string
+        }
         if (presignData.uploadUrl && presignData.publicUrl) {
           const uploadRes = await fetch(presignData.uploadUrl, {
             method: "PUT",
@@ -1082,40 +1443,50 @@ function SocialCalendarTab({
             body: file,
           })
           if (uploadRes.ok) {
-            setMediaUrls((prev) => [...prev, presignData.publicUrl])
-            return
+            const check = isValidSocialComposerMediaUrl(presignData.publicUrl)
+            if (check.valid) {
+              setMediaUrls((prev) => [...prev, presignData.publicUrl!])
+              return
+            }
           }
         }
       }
 
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("folder", "social-media")
-      const localRes = await fetch("/api/uploads/local", {
-        method: "POST",
-        body: formData,
+      setComposerNotice({
+        type: "error",
+        message:
+          "Cloudflare R2 media upload failed. Verify R2 storage configuration and retry — local browser blob: URLs are blocked.",
       })
-      if (localRes.ok) {
-        const localData = await localRes.json()
-        if (localData.url) {
-          setMediaUrls((prev) => [...prev, localData.url])
-          return
-        }
-      }
-
-      const objUrl = URL.createObjectURL(file)
-      setMediaUrls((prev) => [...prev, objUrl])
-    } catch (uploadErr) {
-      console.warn("[Media Upload Fallback]:", uploadErr)
-      const objUrl = URL.createObjectURL(file)
-      setMediaUrls((prev) => [...prev, objUrl])
+    } catch (uploadErr: unknown) {
+      setComposerNotice({
+        type: "error",
+        message:
+          uploadErr instanceof Error
+            ? `Cloudflare R2 upload failed: ${uploadErr.message}`
+            : "Cloudflare R2 upload failed. Local blob: URLs cannot be saved.",
+      })
     } finally {
       setIsUploadingR2(false)
       if (e.target) e.target.value = ""
     }
   }
 
-  // Handle Create Scheduled Post
+  const handleAddCustomMediaUrl = () => {
+    const candidate = customMediaInput.trim()
+    if (!candidate) return
+    const check = isValidSocialComposerMediaUrl(candidate)
+    if (!check.valid) {
+      setComposerNotice({
+        type: "error",
+        message: check.error || "Invalid media URL.",
+      })
+      return
+    }
+    setMediaUrls((prev) => [...prev, candidate])
+    setCustomMediaInput("")
+    setComposerNotice(null)
+  }
+
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault()
     if (selectedTargetIds.length === 0) {
@@ -1135,9 +1506,57 @@ function SocialCalendarTab({
     if (postFormat === "REEL" && !isVideoMedia) {
       setComposerNotice({
         type: "error",
-        message: "REEL format requires an MP4/MOV video URL in Attached Media URLs.",
+        message:
+          "REEL format requires an MP4/MOV video URL in Attached Media URLs.",
       })
       return
+    }
+
+    const finalMediaUrls = mediaUrls.map((u) => u.trim()).filter(Boolean)
+    for (const url of finalMediaUrls) {
+      const check = isValidSocialComposerMediaUrl(url)
+      if (!check.valid) {
+        setComposerNotice({
+          type: "error",
+          message: check.error || `Invalid media URL: ${url}`,
+        })
+        return
+      }
+    }
+
+    if (selectedTikTokIntegration) {
+      if (!tiktokPrivacyLevel) {
+        setComposerNotice({
+          type: "error",
+          message:
+            "TikTok Audit Compliance requires selecting a Privacy Level explicitly before publishing.",
+        })
+        return
+      }
+      if (
+        tiktokCommercialToggle &&
+        !tiktokBrandOrganic &&
+        !tiktokBrandContent
+      ) {
+        setComposerNotice({
+          type: "error",
+          message:
+            "When TikTok Commercial Content Disclosure is enabled, select 'Your Brand' and/or 'Branded Content'.",
+        })
+        return
+      }
+      if (
+        tiktokCommercialToggle &&
+        tiktokBrandContent &&
+        tiktokPrivacyLevel === "SELF_ONLY"
+      ) {
+        setComposerNotice({
+          type: "error",
+          message:
+            "TikTok Branded Content cannot be published with Private (SELF_ONLY) visibility.",
+        })
+        return
+      }
     }
 
     setIsSubmitting(true)
@@ -1146,9 +1565,7 @@ function SocialCalendarTab({
     try {
       const scheduledDate = publishNow
         ? new Date()
-        : new Date(scheduledDateTime)
-
-      const finalMediaUrls = mediaUrls.filter((u) => u.trim().length > 0)
+        : parsePktDateTimeLocal(scheduledDateTime)
 
       const derivedPostType =
         postFormat === "REEL"
@@ -1161,7 +1578,7 @@ function SocialCalendarTab({
           ? ("carousel" as const)
           : ("single_image" as const)
 
-      const payload = {
+      const res = await createScheduledSocialPostAction({
         postAssetId: selectedAssetId || undefined,
         caption: caption.trim(),
         postType: derivedPostType,
@@ -1184,35 +1601,54 @@ function SocialCalendarTab({
           ? ("step_1_spotlight_hook" as const)
           : ("standalone" as const),
         scheduledFor: scheduledDate,
+        scheduledForPktLocal: publishNow ? undefined : scheduledDateTime,
         targetIntegrationIds: selectedTargetIds,
         twoStepDelayMinutes: isTwoStepEnabled ? twoStepDelayMinutes : 180,
         publishNow,
         title: selectedAsset?.title,
+        gmbCallToActionType: hasSelectedGmb ? gmbCallToActionType : undefined,
+        gmbCallToActionUrl:
+          hasSelectedGmb && gmbCallToActionUrl.trim()
+            ? gmbCallToActionUrl.trim()
+            : undefined,
+        tiktokSettings: selectedTikTokIntegration
+          ? {
+              privacyLevel: tiktokPrivacyLevel || "SELF_ONLY",
+              allowComment: tiktokAllowComment,
+              allowDuet: tiktokAllowDuet,
+              allowStitch: tiktokAllowStitch,
+              commercialContentToggle: tiktokCommercialToggle,
+              brandOrganicToggle: tiktokBrandOrganic,
+              brandContentToggle: tiktokBrandContent,
+            }
+          : undefined,
         followUpPost:
           isTwoStepEnabled && followUpAssetId
             ? {
                 caption: followUpCaption.trim(),
                 postAssetId: followUpAssetId,
-                mediaUrls: followUpAsset?.imageUrl ? [followUpAsset.imageUrl] : [],
+                mediaUrls: followUpAsset?.imageUrl
+                  ? [followUpAsset.imageUrl]
+                  : [],
                 postType: "carousel" as const,
                 postFormat: "FEED" as const,
                 firstComment: firstComment.trim() ? firstComment.trim() : null,
                 title: followUpAsset?.title,
               }
             : undefined,
-      }
-
-      const res = await createScheduledSocialPostAction(payload)
+      })
 
       if (res.success) {
-        if (res.postId && publishNow) {
-          setActiveSocialRunId(`inline_social_${res.postId}`)
+        if (isRealTriggerRunId(res.triggerRunId)) {
+          setActiveSocialRunId(res.triggerRunId)
+        } else {
+          setActiveSocialRunId(null)
         }
         setComposerNotice({
           type: "success",
           message: publishNow
-            ? `Post (${postFormat}) successfully published across ${selectedTargetIds.length} connected channel(s)!`
-            : `Post (${postFormat}) successfully scheduled for ${formatDateSafe(scheduledDate)} across ${selectedTargetIds.length} channel(s)!`,
+            ? `Post (${postFormat}) processed across ${selectedTargetIds.length} channel target(s).`
+            : `Post (${postFormat}) scheduled for ${formatDateSafe(scheduledDate)} (PKT) across ${selectedTargetIds.length} channel(s).`,
         })
         router.refresh()
       } else {
@@ -1234,7 +1670,6 @@ function SocialCalendarTab({
     }
   }
 
-  // Handle Cancel Post
   const handleCancelPost = async (postId: string) => {
     setBusyActionId(postId)
     try {
@@ -1242,14 +1677,16 @@ function SocialCalendarTab({
       if (res.success) {
         router.refresh()
       } else {
-        alert(res.error || "Failed to cancel post")
+        setComposerNotice({
+          type: "error",
+          message: res.error || "Failed to cancel post.",
+        })
       }
     } finally {
       setBusyActionId(null)
     }
   }
 
-  // Handle Retry Target
   const handleRetryTarget = async (targetId: string) => {
     setBusyActionId(targetId)
     try {
@@ -1257,32 +1694,44 @@ function SocialCalendarTab({
       if (res.success) {
         router.refresh()
       } else {
-        alert(res.error || "Target retry failed")
+        setComposerNotice({
+          type: "error",
+          message: res.error || "Target retry failed.",
+        })
       }
     } finally {
       setBusyActionId(null)
     }
   }
 
-  // Filtered Queue Posts
   const filteredPosts = React.useMemo(() => {
     if (queueFilter === "all") return scheduledPosts
     return scheduledPosts.filter((p) => p.status === queueFilter)
   }, [scheduledPosts, queueFilter])
 
-  // Active publishing run from queue or immediate trigger
   const livePublishingPost = React.useMemo(() => {
     return scheduledPosts.find(
-      (p) => p.status === "publishing" && Boolean(p.triggerRunId)
+      (p) => p.status === "publishing" && isRealTriggerRunId(p.triggerRunId)
     )
   }, [scheduledPosts])
 
-  const effectiveSocialRunId =
-    livePublishingPost?.triggerRunId || activeSocialRunId
+  const effectiveSocialRunId = isRealTriggerRunId(
+    livePublishingPost?.triggerRunId
+  )
+    ? livePublishingPost!.triggerRunId
+    : activeSocialRunId
+
+  const totalScheduledPosts =
+    summaryCounts?.totalScheduledPosts ?? scheduledPosts.length
+  const postsPage = summaryCounts?.postsPage ?? 1
+  const postsPageSize = summaryCounts?.postsPageSize ?? 60
+  const totalPostsPages = Math.max(
+    1,
+    Math.ceil(totalScheduledPosts / postsPageSize)
+  )
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Live Trigger.dev v4 Realtime Stream for Active Publishing */}
       {effectiveSocialRunId && (
         <CampaignRealtimeStatus
           runId={effectiveSocialRunId}
@@ -1292,23 +1741,34 @@ function SocialCalendarTab({
         />
       )}
 
-      {/* 0. Core 5 Analytics Overview Bar */}
+      {/* 0. Honest Core 5 Analytics Overview Bar (`T-036`) */}
       <Card className="border-[#C5A059]/50 bg-gradient-to-r from-[#0A3622]/[0.04] via-card to-[#C5A059]/[0.06] shadow-xs">
         <CardHeader className="pb-3 border-b border-border/80">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <CardTitle className="font-display text-base font-bold flex items-center gap-2">
+              <CardTitle className="font-display text-base font-bold flex items-center gap-2 flex-wrap">
                 <BarChart3 className="size-4 text-[#C5A059]" />
                 <span>Core 5 Cross-Channel Analytics Overview</span>
                 <Badge
                   variant="outline"
-                  className="text-[10px] font-mono border-[#C5A059]/60 text-[#0A3622]"
+                  className="text-[10px] font-mono tabular-nums border-[#C5A059]/60 text-[#0A3622]"
                 >
-                  {campaignAnalyticsOverview.totalPosts} Published Targets
+                  {campaignAnalyticsOverview.liveSyncedTargetsCount} Live Synced
                 </Badge>
+                {campaignAnalyticsOverview.unavailableTargetsCount > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] font-mono tabular-nums border-amber-400 bg-amber-50 text-amber-900"
+                  >
+                    {campaignAnalyticsOverview.unavailableTargetsCount} Awaiting
+                    Live Sync
+                  </Badge>
+                )}
               </CardTitle>
               <CardDescription className="text-xs">
-                Aggregated performance across Instagram, Facebook Pages, TikTok, YouTube Shorts &amp; Google Business Profile.
+                Verified live API telemetry across Instagram, Facebook Pages,
+                TikTok, YouTube Shorts &amp; Google Business Profile (zero
+                estimated or synthetic metrics).
               </CardDescription>
             </div>
 
@@ -1336,42 +1796,47 @@ function SocialCalendarTab({
                 ) : (
                   <RefreshCw className="size-3.5 text-[#C5A059]" />
                 )}
-                <span>Sync All Analytics</span>
+                <span>Sync Live Analytics</span>
               </Button>
             </div>
           </div>
         </CardHeader>
 
         <CardContent className="p-4 space-y-4">
-          {/* 5 KPI Summary Cards */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <div className="rounded-xl border border-border bg-white p-3 space-y-1">
               <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
-                <span>Total Views</span>
+                <span>Verified Views</span>
                 <Eye className="size-3.5 text-primary" />
               </div>
-              <p className="font-mono text-lg font-bold text-foreground">
-                {campaignAnalyticsOverview.totalViews.toLocaleString()}
+              <p className="font-mono tabular-nums text-lg font-bold text-foreground">
+                {campaignAnalyticsOverview.liveSyncedTargetsCount > 0
+                  ? campaignAnalyticsOverview.totalViews.toLocaleString()
+                  : "—"}
               </p>
             </div>
 
             <div className="rounded-xl border border-border bg-white p-3 space-y-1">
               <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
-                <span>Total Likes</span>
+                <span>Verified Likes</span>
                 <Heart className="size-3.5 text-rose-600" />
               </div>
-              <p className="font-mono text-lg font-bold text-foreground">
-                {campaignAnalyticsOverview.totalLikes.toLocaleString()}
+              <p className="font-mono tabular-nums text-lg font-bold text-foreground">
+                {campaignAnalyticsOverview.liveSyncedTargetsCount > 0
+                  ? campaignAnalyticsOverview.totalLikes.toLocaleString()
+                  : "—"}
               </p>
             </div>
 
             <div className="rounded-xl border border-border bg-white p-3 space-y-1">
               <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
-                <span>Total Comments</span>
+                <span>Verified Comments</span>
                 <MessageSquare className="size-3.5 text-blue-600" />
               </div>
-              <p className="font-mono text-lg font-bold text-foreground">
-                {campaignAnalyticsOverview.totalComments.toLocaleString()}
+              <p className="font-mono tabular-nums text-lg font-bold text-foreground">
+                {campaignAnalyticsOverview.liveSyncedTargetsCount > 0
+                  ? campaignAnalyticsOverview.totalComments.toLocaleString()
+                  : "—"}
               </p>
             </div>
 
@@ -1380,11 +1845,13 @@ function SocialCalendarTab({
                 <span>Shares &amp; Clicks</span>
                 <MousePointerClick className="size-3.5 text-[#C5A059]" />
               </div>
-              <p className="font-mono text-lg font-bold text-foreground">
-                {(
-                  campaignAnalyticsOverview.totalShares +
-                  campaignAnalyticsOverview.totalClicks
-                ).toLocaleString()}
+              <p className="font-mono tabular-nums text-lg font-bold text-foreground">
+                {campaignAnalyticsOverview.liveSyncedTargetsCount > 0
+                  ? (
+                      campaignAnalyticsOverview.totalShares +
+                      campaignAnalyticsOverview.totalClicks
+                    ).toLocaleString()
+                  : "—"}
               </p>
             </div>
 
@@ -1393,13 +1860,14 @@ function SocialCalendarTab({
                 <span>Avg Engagement</span>
                 <TrendingUp className="size-3.5 text-[#C5A059]" />
               </div>
-              <p className="font-mono text-lg font-bold text-[#0A3622]">
-                {campaignAnalyticsOverview.engagementRatePct.toFixed(2)}%
+              <p className="font-mono tabular-nums text-lg font-bold text-[#0A3622]">
+                {campaignAnalyticsOverview.liveSyncedTargetsCount > 0
+                  ? `${campaignAnalyticsOverview.engagementRatePct.toFixed(2)}%`
+                  : "—"}
               </p>
             </div>
           </div>
 
-          {/* Per-Platform Mini Breakdown Pills for IG, FB, TikTok, YouTube, GMB */}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
             {CORE_5_PLATFORMS.map((plat) => {
               const summary = campaignAnalyticsOverview.byPlatform[plat.id]
@@ -1418,19 +1886,27 @@ function SocialCalendarTab({
                       {plat.badge}
                     </span>
                     <div className="min-w-0">
-                      <p className="font-semibold text-[11px] truncate">
-                        {summary.views.toLocaleString()} views
+                      <p className="font-semibold text-[11px] truncate tabular-nums">
+                        {summary.liveSyncedTargetsCount > 0
+                          ? `${summary.views.toLocaleString()} views`
+                          : "No live sync"}
                       </p>
-                      <p className="text-[10px] text-muted-foreground font-mono">
-                        {summary.likes}♥ · {summary.comments}💬 · {summary.clicks}⚡
+                      <p className="text-[10px] text-muted-foreground font-mono tabular-nums">
+                        {summary.liveSyncedTargetsCount > 0
+                          ? `${summary.likes}♥ · ${summary.comments}💬 · ${summary.clicks}⚡`
+                          : summary.unavailableTargetsCount > 0
+                          ? `${summary.unavailableTargetsCount} unsynced`
+                          : "—"}
                       </p>
                     </div>
                   </div>
                   <Badge
                     variant="outline"
-                    className="font-mono text-[10px] border-[#C5A059]/40 text-[#0A3622] shrink-0"
+                    className="font-mono tabular-nums text-[10px] border-[#C5A059]/40 text-[#0A3622] shrink-0"
                   >
-                    {summary.engagementRatePct.toFixed(1)}%
+                    {summary.liveSyncedTargetsCount > 0
+                      ? `${summary.engagementRatePct.toFixed(1)}%`
+                      : "—"}
                   </Badge>
                 </div>
               )
@@ -1449,15 +1925,17 @@ function SocialCalendarTab({
                 <span>Core 5 Social Post Composer</span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Broadcast official Al Ramlah 4K posters, vertical Reels &amp; Stories directly to Instagram, Facebook Pages, TikTok, YouTube &amp; Google Business Profile.
+                Broadcast official Al Ramlah 4K posters, vertical Reels &amp;
+                Stories across connected Instagram, Facebook Pages, TikTok,
+                YouTube &amp; Google Business accounts.
               </CardDescription>
             </div>
             <div className="flex items-center gap-1.5">
               <Badge
                 variant="outline"
-                className="text-[11px] font-mono border-primary/30 text-primary"
+                className="text-[11px] font-mono tabular-nums border-primary/30 text-primary"
               >
-                {activeIntegrations.length} / 5 Channels Connected
+                {activeIntegrations.length} Active Account(s) Connected
               </Badge>
             </div>
           </div>
@@ -1466,8 +1944,9 @@ function SocialCalendarTab({
         <CardContent className="p-4 sm:p-6 space-y-6">
           {composerNotice && (
             <div
+              role="alert"
               className={cn(
-                "rounded-xl border p-3.5 text-xs font-semibold flex items-center justify-between",
+                "rounded-xl border p-3.5 text-xs font-semibold flex items-center justify-between gap-2",
                 composerNotice.type === "success"
                   ? "border-emerald-300 bg-emerald-50 text-emerald-950"
                   : "border-rose-300 bg-rose-50 text-rose-950"
@@ -1477,7 +1956,7 @@ function SocialCalendarTab({
               <button
                 type="button"
                 onClick={() => setComposerNotice(null)}
-                className="underline cursor-pointer"
+                className="underline cursor-pointer shrink-0"
               >
                 Dismiss
               </button>
@@ -1486,12 +1965,12 @@ function SocialCalendarTab({
 
           <form onSubmit={handleCreatePost} className="space-y-6">
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-              {/* Left Column: Asset, Format & Media Selection (5 cols) */}
+              {/* Left Column: Asset, Format & Media Selection */}
               <div className="lg:col-span-5 space-y-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-primary flex items-center justify-between">
                     <span>1. Select 4K Poster / Spotlight Asset</span>
-                    <span className="text-[10px] text-muted-foreground font-normal">
+                    <span className="text-[10px] text-muted-foreground font-normal tabular-nums">
                       {postAssets.length} Available
                     </span>
                   </Label>
@@ -1514,11 +1993,13 @@ function SocialCalendarTab({
                     className="w-full text-xs font-semibold border-[#C5A059]/60 text-[#0A3622] hover:bg-[#C5A059]/10 gap-1.5 cursor-pointer mt-1"
                   >
                     <Sparkles className="size-3.5 text-[#C5A059]" />
-                    <span>Pick from Studio Library (4K Posters &amp; Flyers)</span>
+                    <span>
+                      Pick from Studio Library (4K Posters &amp; Flyers)
+                    </span>
                   </Button>
                 </div>
 
-                {/* Post Format Selector (FEED, REEL, STORY) */}
+                {/* Post Format Selector */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-bold text-foreground">
@@ -1572,7 +2053,9 @@ function SocialCalendarTab({
                             <FmtIcon
                               className={cn(
                                 "size-3.5",
-                                active ? "text-[#C5A059]" : "text-muted-foreground"
+                                active
+                                  ? "text-[#C5A059]"
+                                  : "text-muted-foreground"
                               )}
                             />
                             <span>{fmt.label}</span>
@@ -1585,8 +2068,9 @@ function SocialCalendarTab({
                     })}
                   </div>
                   {postFormat === "REEL" && !isVideoMedia && (
-                    <p className="text-[10px] font-medium text-amber-800 bg-amber-50 border border-amber-300 rounded-md px-2.5 py-1.5">
-                      Reel / Short format requires an `.mp4` or `.mov` video URL in Attached Media URLs below.
+                    <p className="text-[10px] font-medium text-amber-900 bg-amber-50 border border-amber-300 rounded-md px-2.5 py-1.5">
+                      Reel / Short format requires an `.mp4` or `.mov` video URL
+                      in Attached Media URLs below.
                     </p>
                   )}
                 </div>
@@ -1615,7 +2099,7 @@ function SocialCalendarTab({
                           </span>
                           <Badge
                             variant="outline"
-                            className="text-[9px] px-1.5 py-0 border-[#C5A059]/40 text-[#C5A059] uppercase font-semibold"
+                            className="text-[9px] px-1.5 py-0 border-[#C5A059]/40 text-[#0A3622] uppercase font-semibold"
                           >
                             {selectedAsset.kind.replace(/_/g, " ")}
                           </Badge>
@@ -1656,14 +2140,14 @@ function SocialCalendarTab({
                   </div>
                 )}
 
-                {/* Additional Media URL input */}
+                {/* Media URLs & R2 Dropzone */}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">
                     Attached Media URLs ({mediaUrls.length})
                   </Label>
                   <div className="flex gap-2">
                     <Input
-                      placeholder="https://... image or video URL"
+                      placeholder="https://... Cloudflare R2 image or MP4 URL"
                       value={customMediaInput}
                       onChange={(e) => setCustomMediaInput(e.target.value)}
                       className="h-8 text-xs bg-white"
@@ -1672,32 +2156,30 @@ function SocialCalendarTab({
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        if (customMediaInput.trim()) {
-                          setMediaUrls((prev) => [...prev, customMediaInput.trim()])
-                          setCustomMediaInput("")
-                        }
-                      }}
+                      onClick={handleAddCustomMediaUrl}
                       className="h-8 text-xs shrink-0"
                     >
                       <Plus className="size-3 mr-1" />
                       Add URL
                     </Button>
                   </div>
-                  {mediaUrls.length > 1 && (
+                  {mediaUrls.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       {mediaUrls.map((url, idx) => (
                         <span
                           key={idx}
                           className="inline-flex items-center gap-1 rounded bg-secondary px-2 py-0.5 text-[10px] font-mono text-muted-foreground"
                         >
-                          <span className="truncate max-w-[140px]">{url}</span>
+                          <span className="truncate max-w-[160px]">{url}</span>
                           <button
                             type="button"
                             onClick={() =>
-                              setMediaUrls((prev) => prev.filter((_, i) => i !== idx))
+                              setMediaUrls((prev) =>
+                                prev.filter((_, i) => i !== idx)
+                              )
                             }
                             className="hover:text-rose-600"
+                            aria-label="Remove media URL"
                           >
                             <X className="size-3" />
                           </button>
@@ -1706,7 +2188,6 @@ function SocialCalendarTab({
                     </div>
                   )}
 
-                  {/* Direct R2 Upload Dropzone */}
                   <div className="relative rounded-xl border border-dashed border-[#C5A059]/50 bg-[#C5A059]/5 p-3 text-center transition-all hover:bg-[#C5A059]/10 mt-2">
                     <input
                       type="file"
@@ -1727,16 +2208,15 @@ function SocialCalendarTab({
                           : "Drag & Drop or Click to Upload Media"}
                       </span>
                       <span className="text-[10px] text-muted-foreground">
-                        Direct R2 upload (Images or MP4 Videos)
+                        Direct Cloudflare R2 HTTPS upload (Images or MP4 Videos)
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Right Column: Caption, First-Comment Auto-Plug & Target Channels (7 cols) */}
+              {/* Right Column: Captions, Multi-Account Channels & Compliance Controls */}
               <div className="lg:col-span-7 space-y-4">
-                {/* 2. Multi-Platform Social Media Caption & AI Copilot */}
                 <div className="space-y-2.5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <Label className="text-xs font-bold text-foreground flex items-center gap-2">
@@ -1771,42 +2251,12 @@ function SocialCalendarTab({
                   {/* Platform Tabs Bar */}
                   <div className="flex items-center gap-1 overflow-x-auto pb-1 border-b border-border">
                     {[
-                      {
-                        id: "global" as const,
-                        label: "Global Default",
-                        limit: 63206,
-                        icon: "🌐",
-                      },
-                      {
-                        id: "instagram" as const,
-                        label: "Instagram",
-                        limit: 2200,
-                        icon: "📸",
-                      },
-                      {
-                        id: "facebook" as const,
-                        label: "Facebook",
-                        limit: 63206,
-                        icon: "📘",
-                      },
-                      {
-                        id: "tiktok" as const,
-                        label: "TikTok",
-                        limit: 2000,
-                        icon: "🎵",
-                      },
-                      {
-                        id: "youtube" as const,
-                        label: "YouTube",
-                        limit: 5000,
-                        icon: "▶️",
-                      },
-                      {
-                        id: "gmb" as const,
-                        label: "Google Biz",
-                        limit: 1500,
-                        icon: "📍",
-                      },
+                      { id: "global" as const, label: "Global Default", icon: "🌐" },
+                      { id: "instagram" as const, label: "Instagram", icon: "📸" },
+                      { id: "facebook" as const, label: "Facebook", icon: "📘" },
+                      { id: "tiktok" as const, label: "TikTok", icon: "🎵" },
+                      { id: "youtube" as const, label: "YouTube", icon: "▶️" },
+                      { id: "gmb" as const, label: "Google Biz", icon: "📍" },
                     ].map((tab) => {
                       const isActive = activeCaptionTab === tab.id
                       const hasOverride =
@@ -1835,13 +2285,17 @@ function SocialCalendarTab({
                     })}
                   </div>
 
-                  {/* Tab Content: Global Default */}
-                  {activeCaptionTab === "global" && (
+                  {activeCaptionTab === "global" ? (
                     <div className="space-y-3">
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                          <span>Primary default copy applied to all channels without custom overrides</span>
-                          <span className="font-mono">{caption.length} / 63,206</span>
+                          <span>
+                            Primary default copy applied to channels without
+                            custom overrides
+                          </span>
+                          <span className="font-mono tabular-nums">
+                            {caption.length} / 63,206
+                          </span>
                         </div>
                         <Textarea
                           rows={5}
@@ -1857,24 +2311,30 @@ function SocialCalendarTab({
                           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                             <span className="font-semibold text-foreground flex items-center gap-1">
                               <MessageSquare className="size-3 text-[#C5A059]" />
-                              <span>Global First Comment (IG &amp; FB)</span>
+                              <span>Global First Comment (IG, FB &amp; YT)</span>
                             </span>
-                            <span className="font-mono">{firstComment.length} chars</span>
+                            <button
+                              type="button"
+                              disabled={isGeneratingFirstComment}
+                              onClick={handleGenerateFirstComment}
+                              className="text-[10px] font-semibold text-primary hover:underline cursor-pointer"
+                            >
+                              {isGeneratingFirstComment
+                                ? "Generating..."
+                                : "Auto-Generate ART-... CTA"}
+                            </button>
                           </div>
                           <Textarea
                             rows={2}
                             value={firstComment}
                             onChange={(e) => setFirstComment(e.target.value)}
-                            placeholder="Optional pinned first comment with ART-... booking link..."
+                            placeholder="Optional pinned first comment with ART-... WhatsApp booking link..."
                             className="text-xs font-mono leading-relaxed bg-white"
                           />
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {/* Tab Content: Specific Platform Overrides */}
-                  {activeCaptionTab !== "global" && (
+                  ) : (
                     <div className="space-y-3">
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
@@ -1899,19 +2359,20 @@ function SocialCalendarTab({
                                 Reset to Global
                               </button>
                             )}
-                            <span className="font-mono">
+                            <span className="font-mono tabular-nums">
                               {(
                                 platformCaptions[activeCaptionTab]?.caption ||
                                 caption
                               ).length}{" "}
-                              Chars
+                              chars
                             </span>
                           </div>
                         </div>
                         <Textarea
                           rows={5}
                           value={
-                            platformCaptions[activeCaptionTab]?.caption !== undefined
+                            platformCaptions[activeCaptionTab]?.caption !==
+                            undefined
                               ? platformCaptions[activeCaptionTab]?.caption
                               : caption
                           }
@@ -1930,7 +2391,6 @@ function SocialCalendarTab({
                         />
                       </div>
 
-                      {/* Platform-specific first comment if supported */}
                       {["instagram", "facebook", "youtube"].includes(
                         activeCaptionTab
                       ) && (
@@ -1938,12 +2398,15 @@ function SocialCalendarTab({
                           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                             <span className="font-semibold text-foreground flex items-center gap-1">
                               <MessageSquare className="size-3 text-[#C5A059]" />
-                              <span>{activeCaptionTab.toUpperCase()} Pinned First Comment</span>
+                              <span>
+                                {activeCaptionTab.toUpperCase()} Pinned First
+                                Comment
+                              </span>
                             </span>
-                            <span className="font-mono">
+                            <span className="font-mono tabular-nums">
                               {(
-                                platformCaptions[activeCaptionTab]?.firstComment ??
-                                firstComment
+                                platformCaptions[activeCaptionTab]
+                                  ?.firstComment ?? firstComment
                               ).length}{" "}
                               chars
                             </span>
@@ -1951,9 +2414,10 @@ function SocialCalendarTab({
                           <Textarea
                             rows={2}
                             value={
-                              platformCaptions[activeCaptionTab]?.firstComment !==
-                              undefined
-                                ? platformCaptions[activeCaptionTab]?.firstComment
+                              platformCaptions[activeCaptionTab]
+                                ?.firstComment !== undefined
+                                ? platformCaptions[activeCaptionTab]
+                                    ?.firstComment
                                 : firstComment
                             }
                             onChange={(e) => {
@@ -1975,30 +2439,34 @@ function SocialCalendarTab({
                   )}
                 </div>
 
-                {/* Target Connected Social Channels */}
+                {/* 3. Multi-Account Target Social Channels (`T-069`, `T-071`, `OD-07`, `OD-11`) */}
                 <div className="space-y-2 pt-2 border-t border-border">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-bold text-foreground">
-                      3. Target Social Channels (Core 5)
+                      3. Target Social Accounts
                     </Label>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => {
-                          const eligible = activeIntegrations.filter((i) =>
-                            i.provider === "youtube" ? isVideoMedia : true
-                          )
+                          const eligible = activeIntegrations.filter((i) => {
+                            if (i.provider === "youtube" && !isVideoMedia)
+                              return false
+                            if (i.provider === "gmb" && !gbpApiApproved)
+                              return false
+                            return true
+                          })
                           setSelectedTargetIds(eligible.map((i) => i.id))
                         }}
-                        className="text-[11px] font-semibold text-primary hover:underline"
+                        className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
                       >
-                        Select All Connected
+                        Select Eligible
                       </button>
                       <span className="text-border">•</span>
                       <button
                         type="button"
                         onClick={() => setSelectedTargetIds([])}
-                        className="text-[11px] font-medium text-muted-foreground hover:underline"
+                        className="text-[11px] font-medium text-muted-foreground hover:underline cursor-pointer"
                       >
                         Clear
                       </button>
@@ -2006,43 +2474,52 @@ function SocialCalendarTab({
                   </div>
 
                   {activeIntegrations.length === 0 ? (
-                    <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-3 text-xs text-amber-900 flex items-start gap-2.5">
+                    <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-3 text-xs text-amber-950 flex items-start gap-2.5">
                       <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-bold">No Social Channels Connected Yet</p>
-                        <p className="text-[11px] text-amber-800 mt-0.5">
-                          Link your Instagram, Facebook Pages, TikTok, YouTube, or Google Business profile in{" "}
-                          <a
-                            href="/admin/settings?tab=connections"
-                            className="underline font-bold text-amber-950"
-                          >
-                            Settings &rarr; Social Channels
-                          </a>{" "}
-                          to publish automatically.
+                        <p className="font-bold">
+                          No Social Channels Connected Yet
                         </p>
+                        {userRole === "super_admin" ? (
+                          <p className="text-[11px] text-amber-900 mt-0.5">
+                            Link Instagram, Facebook Pages, TikTok, YouTube, or
+                            Google Business in{" "}
+                            <a
+                              href="/admin/settings?tab=social"
+                              className="underline font-bold"
+                            >
+                              Settings &rarr; Social OAuth
+                            </a>{" "}
+                            to publish automatically.
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-amber-900 mt-0.5">
+                            Ask a Super Administrator to connect official OAuth
+                            social channels in Settings.
+                          </p>
+                        )}
                       </div>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {CORE_5_PLATFORMS.map((platform) => {
-                        const integration = activeIntegrations.find(
-                          (i) => i.provider === platform.id
-                        )
-                        const isConnected = Boolean(integration)
+                      {activeIntegrations.map((integration) => {
+                        const platformMeta = CORE_5_PLATFORMS.find(
+                          (p) => p.id === integration.provider
+                        )!
                         const isYouTubeBlocked =
-                          platform.id === "youtube" && !isVideoMedia
-                        const canSelect = isConnected && !isYouTubeBlocked
-                        const isSelected = Boolean(
+                          integration.provider === "youtube" && !isVideoMedia
+                        const isGmbBlocked =
+                          integration.provider === "gmb" && !gbpApiApproved
+                        const canSelect = !isYouTubeBlocked && !isGmbBlocked
+                        const isSelected =
                           canSelect &&
-                            integration &&
-                            selectedTargetIds.includes(integration.id)
-                        )
+                          selectedTargetIds.includes(integration.id)
 
                         return (
                           <div
-                            key={platform.id}
+                            key={integration.id}
                             onClick={() => {
-                              if (canSelect && integration) {
+                              if (canSelect) {
                                 toggleTargetIntegration(integration.id)
                               }
                             }}
@@ -2060,28 +2537,35 @@ function SocialCalendarTab({
                               <span
                                 className={cn(
                                   "rounded px-1.5 py-0.5 font-mono text-[9px] font-bold border shrink-0",
-                                  platform.color
+                                  platformMeta.color
                                 )}
                               >
-                                {platform.badge}
+                                {platformMeta.badge}
                               </span>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <p className="font-semibold text-foreground truncate text-[11px]">
-                                    {platform.name}
+                                    {integration.name}
                                   </p>
                                   {isYouTubeBlocked && (
-                                    <span className="rounded px-1 py-0.2 text-[9px] font-medium bg-amber-500/10 text-amber-800 border border-amber-500/30">
-                                      Requires MP4 Video
+                                    <span className="rounded px-1 py-0.2 text-[9px] font-medium bg-amber-500/10 text-amber-900 border border-amber-500/30">
+                                      Requires MP4
                                     </span>
                                   )}
+                                  {isGmbBlocked && (
+                                    <span className="rounded px-1 py-0.2 text-[9px] font-medium bg-amber-500/10 text-amber-900 border border-amber-500/30">
+                                      GBP API Pending
+                                    </span>
+                                  )}
+                                  {integration.provider === "tiktok" &&
+                                    !tiktokDirectPostApproved && (
+                                      <span className="rounded px-1 py-0.2 text-[9px] font-medium bg-slate-100 text-slate-800 border border-slate-300">
+                                        Sandbox: SELF_ONLY
+                                      </span>
+                                    )}
                                 </div>
                                 <p className="text-[10px] text-muted-foreground truncate">
-                                  {isYouTubeBlocked
-                                    ? "YouTube Shorts requires MP4 video"
-                                    : isConnected
-                                    ? integration?.handle || integration?.name
-                                    : "Not Connected in Settings"}
+                                  {integration.handle || platformMeta.name}
                                 </p>
                               </div>
                             </div>
@@ -2098,10 +2582,211 @@ function SocialCalendarTab({
                     </div>
                   )}
                 </div>
+
+                {/* TikTok Direct Post Compliance & Privacy UX (`T-070`, `OD-11`) */}
+                {selectedTikTokIntegration && (
+                  <div className="rounded-xl border border-slate-300 bg-slate-50/70 p-3.5 space-y-3 text-xs">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="size-4 text-[#0A3622]" />
+                        <span className="font-bold text-foreground">
+                          TikTok Direct Post Privacy &amp; Disclosure Controls
+                        </span>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] font-mono border-slate-300 text-slate-800"
+                      >
+                        {tiktokCreatorInfo?.creatorNickname ||
+                          selectedTikTokIntegration.handle ||
+                          selectedTikTokIntegration.name}
+                      </Badge>
+                    </div>
+
+                    {!tiktokDirectPostApproved && (
+                      <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded-md px-2.5 py-1.5">
+                        TikTok Direct Post audit is pending (`TIKTOK_DIRECT_POST_APPROVED=false`): uploads are restricted to Private (`SELF_ONLY`) visibility until approved.
+                      </p>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-[11px] font-semibold">
+                          Who Can View This Post (Required)
+                        </Label>
+                        <select
+                          value={tiktokPrivacyLevel}
+                          onChange={(e) =>
+                            setTiktokPrivacyLevel(
+                              e.target.value as TikTokPrivacyLevel | ""
+                            )
+                          }
+                          className="flex h-8 w-full rounded-md border border-input bg-white px-2 text-xs"
+                        >
+                          <option value="">Select TikTok privacy...</option>
+                          {(
+                            tiktokCreatorInfo?.privacyLevelOptions || [
+                              "SELF_ONLY",
+                              "MUTUAL_FOLLOW_FRIENDS",
+                              "FOLLOWER_OF_CREATOR",
+                              "PUBLIC_TO_EVERYONE",
+                            ]
+                          ).map((opt) => {
+                            const locked =
+                              !tiktokDirectPostApproved && opt !== "SELF_ONLY"
+                            return (
+                              <option
+                                key={opt}
+                                value={opt}
+                                disabled={locked}
+                              >
+                                {opt === "SELF_ONLY"
+                                  ? "Only Me (Private)"
+                                  : opt === "PUBLIC_TO_EVERYONE"
+                                  ? "Public to Everyone"
+                                  : opt.replace(/_/g, " ")}
+                                {locked ? " (Requires TikTok Audit)" : ""}
+                              </option>
+                            )
+                          })}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] font-semibold">
+                          Allow Viewers To
+                        </Label>
+                        <div className="flex flex-wrap items-center gap-3 pt-1">
+                          <label className="inline-flex items-center gap-1.5 text-[11px]">
+                            <input
+                              type="checkbox"
+                              disabled={Boolean(
+                                tiktokCreatorInfo?.commentDisabled
+                              )}
+                              checked={tiktokAllowComment}
+                              onChange={(e) =>
+                                setTiktokAllowComment(e.target.checked)
+                              }
+                              className="accent-[#0A3622]"
+                            />
+                            <span>Comment</span>
+                          </label>
+                          <label className="inline-flex items-center gap-1.5 text-[11px]">
+                            <input
+                              type="checkbox"
+                              disabled={Boolean(
+                                tiktokCreatorInfo?.duetDisabled || !isVideoMedia
+                              )}
+                              checked={tiktokAllowDuet}
+                              onChange={(e) =>
+                                setTiktokAllowDuet(e.target.checked)
+                              }
+                              className="accent-[#0A3622]"
+                            />
+                            <span>Duet</span>
+                          </label>
+                          <label className="inline-flex items-center gap-1.5 text-[11px]">
+                            <input
+                              type="checkbox"
+                              disabled={Boolean(
+                                tiktokCreatorInfo?.stitchDisabled ||
+                                  !isVideoMedia
+                              )}
+                              checked={tiktokAllowStitch}
+                              onChange={(e) =>
+                                setTiktokAllowStitch(e.target.checked)
+                              }
+                              className="accent-[#0A3622]"
+                            />
+                            <span>Stitch</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-200 space-y-2">
+                      <label className="inline-flex items-center gap-2 font-semibold text-[11px] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={tiktokCommercialToggle}
+                          onChange={(e) =>
+                            setTiktokCommercialToggle(e.target.checked)
+                          }
+                          className="accent-[#0A3622]"
+                        />
+                        <span>
+                          Disclose Commercial Content (Promotional / Branded)
+                        </span>
+                      </label>
+
+                      {tiktokCommercialToggle && (
+                        <div className="flex flex-wrap items-center gap-4 pl-5 text-[11px]">
+                          <label className="inline-flex items-center gap-1.5">
+                            <input
+                              type="checkbox"
+                              checked={tiktokBrandOrganic}
+                              onChange={(e) =>
+                                setTiktokBrandOrganic(e.target.checked)
+                              }
+                              className="accent-[#0A3622]"
+                            />
+                            <span>Your Brand (Al Ramlah Travels)</span>
+                          </label>
+                          <label className="inline-flex items-center gap-1.5">
+                            <input
+                              type="checkbox"
+                              disabled={tiktokPrivacyLevel === "SELF_ONLY"}
+                              checked={tiktokBrandContent}
+                              onChange={(e) =>
+                                setTiktokBrandContent(e.target.checked)
+                              }
+                              className="accent-[#0A3622]"
+                            />
+                            <span>Branded Content (Paid Partnership)</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Google Business Profile CTA Controls (`T-070`) */}
+                {hasSelectedGmb && (
+                  <div className="rounded-xl border border-emerald-300 bg-emerald-50/50 p-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-semibold">
+                        Google Business CTA Button
+                      </Label>
+                      <select
+                        value={gmbCallToActionType}
+                        onChange={(e) =>
+                          setGmbCallToActionType(
+                            e.target.value as "BOOK" | "LEARN_MORE"
+                          )
+                        }
+                        className="flex h-8 w-full rounded-md border border-input bg-white px-2 text-xs"
+                      >
+                        <option value="BOOK">Book</option>
+                        <option value="LEARN_MORE">Learn More</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-semibold">
+                        CTA Destination URL (Optional)
+                      </Label>
+                      <Input
+                        value={gmbCallToActionUrl}
+                        onChange={(e) => setGmbCallToActionUrl(e.target.value)}
+                        placeholder={`https://wa.me/${primaryWhatsappDigits}`}
+                        className="h-8 text-xs bg-white font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* 2-Step Attention-Grabber Funnel Box */}
+            {/* 2-Step Attention-Grabber Funnel */}
             <div className="rounded-xl border border-[#C5A059]/40 bg-[#C5A059]/5 p-4 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div className="flex items-center gap-2.5">
@@ -2109,12 +2794,14 @@ function SocialCalendarTab({
                   <div>
                     <h4 className="text-xs font-bold text-foreground flex items-center gap-2">
                       <span>2-Step Attention-Grabber Funnel</span>
-                      <Badge className="text-[9px] bg-[#C5A059] text-white">
+                      <Badge className="text-[9px] bg-[#C5A059] text-slate-950 font-bold">
                         Algorithmic Boost
                       </Badge>
                     </h4>
                     <p className="text-[11px] text-muted-foreground">
-                      Hook the feed with a Single Spotlight first → auto-publish the complete Multi-Package Sheet after a configurable delay.
+                      Hook the feed with a Single Spotlight first &rarr;
+                      auto-publish the complete Multi-Package Sheet after a
+                      configurable delay.
                     </p>
                   </div>
                 </div>
@@ -2152,8 +2839,9 @@ function SocialCalendarTab({
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold flex items-center justify-between">
                       <span>Step 2 Automated Delay</span>
-                      <span className="font-mono text-primary font-bold">
-                        {twoStepDelayMinutes} Minutes ({Math.round((twoStepDelayMinutes / 60) * 10) / 10}h)
+                      <span className="font-mono tabular-nums text-primary font-bold">
+                        {twoStepDelayMinutes} Minutes (
+                        {Math.round((twoStepDelayMinutes / 60) * 10) / 10}h)
                       </span>
                     </Label>
                     <div className="flex items-center gap-1.5">
@@ -2163,7 +2851,7 @@ function SocialCalendarTab({
                           type="button"
                           onClick={() => setTwoStepDelayMinutes(mins)}
                           className={cn(
-                            "rounded border px-2 py-1 text-[10px] font-bold transition-all",
+                            "rounded border px-2 py-1 text-[10px] font-bold transition-all cursor-pointer",
                             twoStepDelayMinutes === mins
                               ? "border-primary bg-primary text-white"
                               : "border-border bg-white text-foreground hover:border-[#C5A059]"
@@ -2188,7 +2876,7 @@ function SocialCalendarTab({
               )}
             </div>
 
-            {/* Reactive Engagement Auto-Plug Card */}
+            {/* Reactive Engagement Auto-Plug Card (`T-036`) */}
             <div className="rounded-xl border border-border bg-card p-3.5 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -2197,11 +2885,13 @@ function SocialCalendarTab({
                     <h4 className="text-xs font-bold text-foreground flex items-center gap-2">
                       <span>Reactive Engagement Auto-Plug</span>
                       <Badge className="text-[9px] bg-[#0A3622] text-white">
-                        Lead Conversion
+                        Verified Live Metrics Only
                       </Badge>
                     </h4>
                     <p className="text-[11px] text-muted-foreground">
-                      Auto-injects a high-urgency WhatsApp booking CTA comment on Instagram, Facebook, and YouTube when post reaches engagement thresholds.
+                      Posts a single idempotent WhatsApp booking CTA comment on
+                      Instagram, Facebook, or YouTube only after verified live
+                      API metrics cross your threshold.
                     </p>
                   </div>
                 </div>
@@ -2210,7 +2900,9 @@ function SocialCalendarTab({
                   <input
                     type="checkbox"
                     checked={isEngagementPlugEnabled}
-                    onChange={(e) => setIsEngagementPlugEnabled(e.target.checked)}
+                    onChange={(e) =>
+                      setIsEngagementPlugEnabled(e.target.checked)
+                    }
                     className="size-4 rounded text-primary accent-[#0A3622]"
                   />
                   <span>Enable Auto-Plug</span>
@@ -2222,7 +2914,7 @@ function SocialCalendarTab({
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-[11px] font-semibold text-muted-foreground">
-                        Min Likes Threshold
+                        Min Verified Likes Threshold
                       </Label>
                       <Input
                         type="number"
@@ -2236,7 +2928,7 @@ function SocialCalendarTab({
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[11px] font-semibold text-muted-foreground">
-                        Min Views / Impressions Threshold
+                        Min Verified Views Threshold
                       </Label>
                       <Input
                         type="number"
@@ -2297,6 +2989,8 @@ function SocialCalendarTab({
                   currentTabFirstComment.trim() || selectedAsset
                 )}
                 firstComment={currentTabFirstComment}
+                whatsappNumber={primaryWhatsappDigits}
+                officeLocationLabel={officeLocationLabel}
                 selectedProviders={selectedProvidersForPreview}
                 connectedAccounts={activeIntegrations.map((i) => ({
                   provider: i.provider,
@@ -2307,7 +3001,7 @@ function SocialCalendarTab({
               />
             </div>
 
-            {/* Publication Timing & Submit Bar */}
+            {/* Publication Timing & Submit Bar (`T-089` PKT-locked) */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-border">
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2">
@@ -2329,7 +3023,7 @@ function SocialCalendarTab({
                       onChange={() => setPublishNow(false)}
                       className="accent-[#0A3622]"
                     />
-                    <span>Schedule for Later</span>
+                    <span>Schedule for Later (PKT)</span>
                   </label>
                 </div>
 
@@ -2342,6 +3036,12 @@ function SocialCalendarTab({
                       onChange={(e) => setScheduledDateTime(e.target.value)}
                       className="h-8 text-xs font-mono bg-white w-48"
                     />
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-mono border-[#C5A059]/60 text-[#0A3622]"
+                    >
+                      PKT +05:00
+                    </Badge>
                   </div>
                 )}
 
@@ -2374,8 +3074,8 @@ function SocialCalendarTab({
                 )}
                 <span>
                   {publishNow
-                    ? `Publish ${postFormat} Immediately (${selectedTargetIds.length} Channels)`
-                    : `Schedule ${postFormat} (${selectedTargetIds.length} Channels)`}
+                    ? `Publish ${postFormat} Immediately (${selectedTargetIds.length} Account${selectedTargetIds.length === 1 ? "" : "s"})`
+                    : `Schedule ${postFormat} (${selectedTargetIds.length} Account${selectedTargetIds.length === 1 ? "" : "s"})`}
                 </span>
               </Button>
             </div>
@@ -2393,18 +3093,17 @@ function SocialCalendarTab({
                 <span>
                   {activeSocialSubView === "calendar"
                     ? "PKT Social Publishing Calendar"
-                    : `Live Scheduled & Published Queue (${scheduledPosts.length})`}
+                    : `Scheduled & Published Queue (${totalScheduledPosts})`}
                 </span>
               </CardTitle>
               <CardDescription className="text-xs">
                 {activeSocialSubView === "calendar"
                   ? "Interactive visual calendar in Asia/Karachi (UTC+5) with peak Umrah slots (11 AM, 4 PM, 9 PM) and 1-click rescheduling."
-                  : "Monitor live post state across channels, preview across Core 5 devices, or inspect per-platform engagement analytics."}
+                  : "Monitor live post state across accounts, preview across Core 5 devices, or inspect verified per-platform engagement analytics."}
               </CardDescription>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Sub-view toggle (Calendar vs List) */}
               <div className="flex items-center bg-secondary p-0.5 rounded-lg border border-border">
                 <button
                   type="button"
@@ -2432,7 +3131,6 @@ function SocialCalendarTab({
                 </button>
               </div>
 
-              {/* Filter buttons when in queue mode */}
               {activeSocialSubView === "queue" && (
                 <div className="flex items-center gap-1 overflow-x-auto">
                   {[
@@ -2448,7 +3146,7 @@ function SocialCalendarTab({
                       type="button"
                       onClick={() => setQueueFilter(f.id)}
                       className={cn(
-                        "rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all",
+                        "rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer",
                         queueFilter === f.id
                           ? "bg-[#0A3622] text-white font-bold"
                           : "bg-secondary text-muted-foreground hover:text-foreground"
@@ -2469,12 +3167,7 @@ function SocialCalendarTab({
               scheduledPosts={scheduledPosts}
               onSelectSlot={(dateKey, slot) => {
                 const newUtc = parsePktSlotToUtc(dateKey, slot)
-                const localIso = new Date(
-                  newUtc.getTime() - newUtc.getTimezoneOffset() * 60000
-                )
-                  .toISOString()
-                  .slice(0, 16)
-                setScheduledDateTime(localIso)
+                setScheduledDateTime(formatPktDateTimeLocal(newUtc))
                 setPublishNow(false)
                 setComposerNotice({
                   type: "success",
@@ -2500,7 +3193,6 @@ function SocialCalendarTab({
                 post.id
               )
 
-              // Aggregate analytics across published targets
               const aggregatedMetrics = post.targets.reduce(
                 (acc, t) => {
                   const data = t.analyticsData
@@ -2513,10 +3205,13 @@ function SocialCalendarTab({
                     acc.clicks += data.clicks || 0
                     if (
                       data.lastSyncedAt &&
-                      (!acc.lastSyncedAt || data.lastSyncedAt > acc.lastSyncedAt)
+                      (!acc.lastSyncedAt ||
+                        data.lastSyncedAt > acc.lastSyncedAt)
                     ) {
                       acc.lastSyncedAt = data.lastSyncedAt
                     }
+                  } else if (t.status === "published") {
+                    acc.unavailableCount += 1
                   }
                   if (t.firstCommentExternalId || data?.firstCommentId) {
                     acc.firstCommentCount += 1
@@ -2525,6 +3220,7 @@ function SocialCalendarTab({
                 },
                 {
                   hasMetrics: false,
+                  unavailableCount: 0,
                   impressions: 0,
                   likes: 0,
                   comments: 0,
@@ -2550,7 +3246,6 @@ function SocialCalendarTab({
                 >
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                     <div className="flex items-start gap-3 min-w-0">
-                      {/* Thumbnail */}
                       <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
                         {post.postAsset?.imageUrl || post.mediaUrls[0] ? (
                           <img
@@ -2587,12 +3282,17 @@ function SocialCalendarTab({
                           <Badge
                             className={cn(
                               "text-[10px] font-bold capitalize",
-                              post.status === "completed" && "bg-emerald-600 text-white",
-                              post.status === "scheduled" && "bg-amber-600 text-white",
-                              post.status === "publishing" && "bg-blue-600 text-white",
-                              (post.status === "failed" || post.status === "partially_failed") &&
+                              post.status === "completed" &&
+                                "bg-emerald-600 text-white",
+                              post.status === "scheduled" &&
+                                "bg-amber-600 text-white",
+                              post.status === "publishing" &&
+                                "bg-blue-600 text-white",
+                              (post.status === "failed" ||
+                                post.status === "partially_failed") &&
                                 "bg-rose-600 text-white",
-                              post.status === "cancelled" && "bg-slate-500 text-white"
+                              post.status === "cancelled" &&
+                                "bg-slate-500 text-white"
                             )}
                           >
                             {post.status.replace(/_/g, " ")}
@@ -2615,20 +3315,22 @@ function SocialCalendarTab({
                         </p>
 
                         <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5 flex-wrap">
-                          <span>Scheduled For: {formatDateSafe(post.scheduledFor)}</span>
+                          <span>
+                            Scheduled (PKT): {formatDateSafe(post.scheduledFor)}
+                          </span>
                           {post.twoStepDelayMinutes && (
                             <span>• Delay: {post.twoStepDelayMinutes}m</span>
                           )}
                           {aggregatedMetrics.lastSyncedAt && (
                             <span>
-                              • Metrics Synced: {formatDateSafe(aggregatedMetrics.lastSyncedAt)}
+                              • Synced:{" "}
+                              {formatDateSafe(aggregatedMetrics.lastSyncedAt)}
                             </span>
                           )}
                         </div>
                       </div>
                     </div>
 
-                    {/* Post Level Actions */}
                     <div className="flex items-center gap-2 shrink-0 flex-wrap">
                       <Button
                         type="button"
@@ -2659,7 +3361,8 @@ function SocialCalendarTab({
                         </Button>
                       )}
 
-                      {(post.status === "scheduled" || post.status === "draft") && (
+                      {(post.status === "scheduled" ||
+                        post.status === "draft") && (
                         <Button
                           type="button"
                           variant="outline"
@@ -2679,46 +3382,56 @@ function SocialCalendarTab({
                     </div>
                   </div>
 
-                  {/* Core 5 Analytics Badges Strip + Expandable Per-Platform Breakdown Toggle */}
+                  {/* Honest Analytics Strip (`T-036`) */}
                   {(aggregatedMetrics.hasMetrics || hasPublishedTargets) && (
                     <div className="space-y-2">
                       <div className="rounded-lg border border-border/70 bg-secondary/20 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                        <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                        <div className="flex items-center gap-1.5 font-semibold text-foreground flex-wrap">
                           <BarChart3 className="size-3.5 text-[#C5A059]" />
-                          <span>Core 5 Engagement Metrics:</span>
-                          <Badge
-                            variant="outline"
-                            className="text-[9px] font-mono border-[#C5A059]/50 text-[#0A3622]"
-                          >
-                            {postEngagementRatePct.toFixed(2)}% Eng. Rate
-                          </Badge>
+                          <span>Live Engagement Metrics:</span>
+                          {aggregatedMetrics.hasMetrics ? (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] font-mono tabular-nums border-[#C5A059]/50 text-[#0A3622]"
+                            >
+                              {postEngagementRatePct.toFixed(2)}% Eng. Rate
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] font-mono border-amber-400 bg-amber-50 text-amber-900"
+                            >
+                              Analytics unavailable — click Sync Metrics
+                            </Badge>
+                          )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
-                          <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
-                            <Eye className="size-3 text-primary" />
-                            <span>Views:</span>
-                            <strong>{aggregatedMetrics.impressions.toLocaleString()}</strong>
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
-                            <Heart className="size-3 text-rose-600" />
-                            <span>Likes:</span>
-                            <strong>{aggregatedMetrics.likes.toLocaleString()}</strong>
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
-                            <MessageSquare className="size-3 text-blue-600" />
-                            <span>Comments:</span>
-                            <strong>{aggregatedMetrics.comments.toLocaleString()}</strong>
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
-                            <Share2 className="size-3 text-emerald-600" />
-                            <span>Shares:</span>
-                            <strong>{aggregatedMetrics.shares.toLocaleString()}</strong>
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
-                            <MousePointerClick className="size-3 text-[#C5A059]" />
-                            <span>Clicks:</span>
-                            <strong>{aggregatedMetrics.clicks.toLocaleString()}</strong>
-                          </span>
+
+                        <div className="flex flex-wrap items-center gap-2 font-mono tabular-nums text-[11px]">
+                          {aggregatedMetrics.hasMetrics && (
+                            <>
+                              <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
+                                <Eye className="size-3 text-primary" />
+                                <span>Views:</span>
+                                <strong>
+                                  {aggregatedMetrics.impressions.toLocaleString()}
+                                </strong>
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
+                                <Heart className="size-3 text-rose-600" />
+                                <span>Likes:</span>
+                                <strong>
+                                  {aggregatedMetrics.likes.toLocaleString()}
+                                </strong>
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
+                                <MessageSquare className="size-3 text-blue-600" />
+                                <span>Comments:</span>
+                                <strong>
+                                  {aggregatedMetrics.comments.toLocaleString()}
+                                </strong>
+                              </span>
+                            </>
+                          )}
 
                           <button
                             type="button"
@@ -2726,7 +3439,9 @@ function SocialCalendarTab({
                             className="inline-flex items-center gap-1 rounded bg-[#0A3622] text-white px-2 py-0.5 text-[10px] font-sans font-bold cursor-pointer hover:bg-[#0A3622]/90"
                           >
                             <span>
-                              {isBreakdownExpanded ? "Hide Breakdown" : "Per-Platform Breakdown"}
+                              {isBreakdownExpanded
+                                ? "Hide Breakdown"
+                                : "Per-Platform Breakdown"}
                             </span>
                             {isBreakdownExpanded ? (
                               <ChevronUp className="size-3 text-[#C5A059]" />
@@ -2737,26 +3452,41 @@ function SocialCalendarTab({
                         </div>
                       </div>
 
-                      {/* Expandable Per-Platform Analytics Breakdown Section */}
                       {isBreakdownExpanded && (
                         <div className="rounded-xl border border-[#C5A059]/40 bg-[#C5A059]/5 p-3 space-y-2">
-                          <div className="flex items-center justify-between text-[11px] font-bold text-[#0A3622]">
-                            <span>Per-Platform Analytics Breakdown ({post.targets.length} Channels)</span>
-                            {aggregatedMetrics.lastSyncedAt && (
-                              <span className="font-mono text-[10px] text-muted-foreground font-normal">
-                                Last Synced: {formatDateSafe(aggregatedMetrics.lastSyncedAt)}
-                              </span>
-                            )}
-                          </div>
-
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                             {post.targets.map((target) => {
                               const data = target.analyticsData
-                              const views = data?.impressions ?? 0
-                              const likes = data?.likes ?? 0
-                              const comments = data?.comments ?? 0
-                              const shares = data?.shares ?? 0
-                              const clicks = data?.clicks ?? 0
+                              if (!data) {
+                                return (
+                                  <div
+                                    key={target.id}
+                                    className="rounded-lg border border-border bg-white p-2.5 space-y-1.5 text-[11px]"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[9px] font-mono uppercase border-primary/30 text-primary"
+                                      >
+                                        {target.integration.provider}
+                                      </Badge>
+                                      <span className="text-[10px] text-amber-800 font-medium">
+                                        Unavailable
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground">
+                                      Live provider metrics not yet synced for{" "}
+                                      {target.integration.name}.
+                                    </p>
+                                  </div>
+                                )
+                              }
+
+                              const views = data.impressions ?? 0
+                              const likes = data.likes ?? 0
+                              const comments = data.comments ?? 0
+                              const shares = data.shares ?? 0
+                              const clicks = data.clicks ?? 0
                               const ratePct = computeEngagementRate({
                                 views,
                                 likes,
@@ -2782,43 +3512,65 @@ function SocialCalendarTab({
                                         {target.integration.name}
                                       </span>
                                     </div>
-                                    <span className="font-mono text-[10px] font-bold text-[#0A3622]">
+                                    <span className="font-mono tabular-nums text-[10px] font-bold text-[#0A3622]">
                                       {ratePct.toFixed(2)}%
                                     </span>
                                   </div>
 
-                                  <div className="grid grid-cols-5 gap-1 text-center font-mono text-[10px] bg-secondary/30 rounded p-1.5">
+                                  <div className="grid grid-cols-5 gap-1 text-center font-mono tabular-nums text-[10px] bg-secondary/30 rounded p-1.5">
                                     <div>
-                                      <p className="text-[9px] text-muted-foreground">Views</p>
-                                      <p className="font-bold">{views.toLocaleString()}</p>
+                                      <p className="text-[9px] text-muted-foreground">
+                                        Views
+                                      </p>
+                                      <p className="font-bold">
+                                        {views.toLocaleString()}
+                                      </p>
                                     </div>
                                     <div>
-                                      <p className="text-[9px] text-muted-foreground">Likes</p>
-                                      <p className="font-bold">{likes.toLocaleString()}</p>
+                                      <p className="text-[9px] text-muted-foreground">
+                                        Likes
+                                      </p>
+                                      <p className="font-bold">
+                                        {likes.toLocaleString()}
+                                      </p>
                                     </div>
                                     <div>
-                                      <p className="text-[9px] text-muted-foreground">Cmts</p>
-                                      <p className="font-bold">{comments.toLocaleString()}</p>
+                                      <p className="text-[9px] text-muted-foreground">
+                                        Cmts
+                                      </p>
+                                      <p className="font-bold">
+                                        {comments.toLocaleString()}
+                                      </p>
                                     </div>
                                     <div>
-                                      <p className="text-[9px] text-muted-foreground">Shares</p>
-                                      <p className="font-bold">{shares.toLocaleString()}</p>
+                                      <p className="text-[9px] text-muted-foreground">
+                                        Shares
+                                      </p>
+                                      <p className="font-bold">
+                                        {shares.toLocaleString()}
+                                      </p>
                                     </div>
                                     <div>
-                                      <p className="text-[9px] text-muted-foreground">Clicks</p>
-                                      <p className="font-bold">{clicks.toLocaleString()}</p>
+                                      <p className="text-[9px] text-muted-foreground">
+                                        Clicks
+                                      </p>
+                                      <p className="font-bold">
+                                        {clicks.toLocaleString()}
+                                      </p>
                                     </div>
                                   </div>
 
-                                  {/* Engagement Rate Progress Bar */}
                                   <div className="space-y-1">
                                     <Progress
-                                      value={Math.min(100, Math.round(ratePct * 5))}
+                                      value={Math.min(
+                                        100,
+                                        Math.round(ratePct * 5)
+                                      )}
                                       className="h-1.5 bg-secondary"
                                     />
                                     <div className="flex items-center justify-between text-[9px] text-muted-foreground">
                                       <span>
-                                        {data?.lastSyncedAt
+                                        {data.lastSyncedAt
                                           ? `Synced ${formatDateSafe(data.lastSyncedAt)}`
                                           : "Not synced yet"}
                                       </span>
@@ -2878,8 +3630,9 @@ function SocialCalendarTab({
                           </span>
 
                           {targetAnalytics && (
-                            <span className="font-mono text-[10px] text-emerald-800 bg-white/80 rounded px-1">
-                              {targetAnalytics.impressions}v · {targetAnalytics.likes}♥
+                            <span className="font-mono tabular-nums text-[10px] text-emerald-800 bg-white/80 rounded px-1">
+                              {targetAnalytics.impressions}v ·{" "}
+                              {targetAnalytics.likes}♥
                             </span>
                           )}
 
@@ -2927,10 +3680,44 @@ function SocialCalendarTab({
               )
             })
           )}
+
+          {/* Pagination Bar for Scheduled Posts (`T-071`) */}
+          {totalPostsPages > 1 && (
+            <div className="pt-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+              <span className="tabular-nums">
+                Page {postsPage} of {totalPostsPages} ({totalScheduledPosts}{" "}
+                total posts)
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={postsPage <= 1}
+                  onClick={() => onPostsPageChange(postsPage - 1)}
+                  className="h-7 text-xs gap-1"
+                >
+                  <ChevronLeft className="size-3.5" />
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={postsPage >= totalPostsPages}
+                  onClick={() => onPostsPageChange(postsPage + 1)}
+                  className="h-7 text-xs gap-1"
+                >
+                  Next
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* 3. Queue Post Device Preview Modal */}
+      {/* Queue Post Device Preview Modal */}
       <Dialog
         open={Boolean(previewModalPost)}
         onOpenChange={(open) => {
@@ -2949,7 +3736,9 @@ function SocialCalendarTab({
               </span>
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Inspect how this scheduled/published post renders across Instagram, Facebook, TikTok, YouTube Shorts, and Google Business Profile.
+              Inspect how this scheduled/published post renders across
+              Instagram, Facebook, TikTok, YouTube Shorts, and Google Business
+              Profile.
             </DialogDescription>
           </DialogHeader>
 
@@ -2977,6 +3766,8 @@ function SocialCalendarTab({
               postCode={previewModalPost.postAsset?.postCode || "ART-UMRAH-01"}
               autoFirstComment={Boolean(previewModalPost.firstComment)}
               firstComment={previewModalPost.firstComment}
+              whatsappNumber={primaryWhatsappDigits}
+              officeLocationLabel={officeLocationLabel}
               selectedProviders={previewModalPost.targets.map(
                 (t) => t.integration.provider
               )}
@@ -3002,21 +3793,24 @@ function SocialCalendarTab({
         </DialogContent>
       </Dialog>
 
-      {/* 4. Responsive 2-Column Split Social Composer Modal (max-w-5xl) */}
+      {/* Split Studio Composer Modal */}
       <Dialog open={isComposerModalOpen} onOpenChange={setIsComposerModalOpen}>
         <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display text-base font-bold flex items-center gap-2">
               <Sparkles className="size-4 text-[#C5A059]" />
-              <span>Core 5 Split Studio Composer &amp; Live Device Previewer</span>
+              <span>
+                Core 5 Split Studio Composer &amp; Live Device Previewer
+              </span>
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Edit your caption, toggle Feed / Reel / Story format, or switch 2-step Spotlight mode on the left and watch all 5 platform mockups update live on the right.
+              Edit your caption, toggle Feed / Reel / Story format, or switch
+              2-step Spotlight mode on the left and watch all 5 platform mockups
+              update live on the right.
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
-            {/* Left Column: Live Composer Controls */}
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold">
@@ -3085,7 +3879,6 @@ function SocialCalendarTab({
               )}
             </div>
 
-            {/* Right Column: Live 5-Platform Interactive Device Mockup */}
             <SocialPlatformPreview
               caption={caption}
               title={selectedAsset?.title}
@@ -3114,6 +3907,8 @@ function SocialCalendarTab({
               madinahHotelName={matchedComposerPackage?.madinahHotelName}
               autoFirstComment={Boolean(firstComment.trim() || selectedAsset)}
               firstComment={firstComment}
+              whatsappNumber={primaryWhatsappDigits}
+              officeLocationLabel={officeLocationLabel}
               selectedProviders={selectedProvidersForPreview}
               connectedAccounts={activeIntegrations.map((i) => ({
                 provider: i.provider,
@@ -3137,7 +3932,7 @@ function SocialCalendarTab({
         </DialogContent>
       </Dialog>
 
-      {/* 5. Studio Media Library Picker Modal */}
+      {/* Studio Media Picker Modal */}
       <StudioMediaPickerModal
         isOpen={isStudioPickerOpen}
         onClose={() => setIsStudioPickerOpen(false)}
@@ -3152,11 +3947,7 @@ function SocialCalendarTab({
 }
 
 // ==========================================
-// 4. TAB 2: 100% BAN-SAFE WHATSAPP QUEUE
-// ==========================================
-
-// ==========================================
-// 4. TAB 2: 100% BAN-SAFE WHATSAPP QUEUE & AUTO-POSTER
+// 4. TAB 2: 100% BAN-SAFE MANUAL ASSISTED WHATSAPP QUEUE (`OD-01`, `T-071`)
 // ==========================================
 
 function WhatsAppQueueTab({
@@ -3172,13 +3963,9 @@ function WhatsAppQueueTab({
 }) {
   const router = useRouter()
 
-  const todayIso = React.useMemo(() => {
-    return new Date().toISOString().split("T")[0]!
-  }, [])
+  const todayPktKey = React.useMemo(() => formatPktDateKey(new Date()), [])
+  const [selectedDate, setSelectedDate] = React.useState(todayPktKey)
 
-  const [selectedDate, setSelectedDate] = React.useState(todayIso)
-
-  // Selected Asset for WhatsApp Distribution
   const [selectedAssetId, setSelectedAssetId] = React.useState<string>(() => {
     if (initialAssetId && postAssets.some((a) => a.id === initialAssetId)) {
       return initialAssetId
@@ -3191,7 +3978,6 @@ function WhatsAppQueueTab({
     [postAssets, selectedAssetId]
   )
 
-  // Formatted Caption for WhatsApp
   const [whatsappCaption, setWhatsappCaption] = React.useState<string>(() => {
     return selectedAsset?.captionWhatsapp || ""
   })
@@ -3202,100 +3988,61 @@ function WhatsAppQueueTab({
     }
   }, [selectedAsset])
 
-  // Filters & Search
   const [areaFilter, setAreaFilter] = React.useState("all")
   const [selectedLineFilter, setSelectedLineFilter] = React.useState("all")
   const [searchQuery, setSearchQuery] = React.useState("")
+  const [selectedChannelIds, setSelectedChannelIds] = React.useState<string[]>(
+    []
+  )
+  const [isBulkLogging, setIsBulkLogging] = React.useState(false)
 
-  // Multi-Selection State for Auto-Post Campaign
-  const [selectedChannelIds, setSelectedChannelIds] = React.useState<string[]>([])
-  const [pacingTier, setPacingTier] = React.useState<"fast" | "safe" | "ultra_safe">("safe")
-  const [senderRoutingLine, setSenderRoutingLine] = React.useState("auto")
-  const [isDispatchingCampaign, setIsDispatchingCampaign] = React.useState(false)
-
-  // Linked WhatsApp Device Sessions (Live Status Bar)
-  const [linkedSessions, setLinkedSessions] = React.useState<SafeLinkedDeviceSession[]>([])
-  const [isLoadingSessions, setIsLoadingSessions] = React.useState(false)
-  const [isSyncingGroups, setIsSyncingGroups] = React.useState(false)
-
-  const loadSessions = React.useCallback(async () => {
-    setIsLoadingSessions(true)
-    try {
-      const res = await listLinkedDeviceSessionsAction()
-      if (res.success && res.sessions) {
-        setLinkedSessions(res.sessions)
-      }
-    } catch (err) {
-      console.error("Failed to load linked sessions:", err)
-    } finally {
-      setIsLoadingSessions(false)
-    }
-  }, [])
-
-  React.useEffect(() => {
-    loadSessions()
-  }, [loadSessions])
-
-  const handleSyncGroups = async () => {
-    setIsSyncingGroups(true)
-    try {
-      const res = await syncAllConnectedLinkedDevicesAction()
-      if (res.success) {
-        setActionNotice({
-          type: "success",
-          message: `Successfully synchronized ${res.totalSyncedGroups ?? 0} WhatsApp groups from connected devices.`,
-        })
-        router.refresh()
-        await loadSessions()
-      } else {
-        setActionNotice({
-          type: "error",
-          message: res.error || "Failed to sync WhatsApp groups.",
-        })
-      }
-    } catch (err: unknown) {
-      setActionNotice({
-        type: "error",
-        message: err instanceof Error ? err.message : "Error syncing groups.",
-      })
-    } finally {
-      setIsSyncingGroups(false)
-    }
-  }
-
-  // Interactive Action States
   const [copiedCaption, setCopiedCaption] = React.useState(false)
   const [busyChannelId, setBusyChannelId] = React.useState<string | null>(null)
   const [actionNotice, setActionNotice] = React.useState<{
     type: "success" | "error"
     message: string
   } | null>(null)
+  const [previewPosterUrl, setPreviewPosterUrl] = React.useState<string | null>(
+    null
+  )
 
-  // High-Res Poster Preview Dialog
-  const [previewPosterUrl, setPreviewPosterUrl] = React.useState<string | null>(null)
-
-  // Distributions logged for the selected date
   const distributionsToday = React.useMemo(() => {
     return dailyDistributions.filter((d) => d.scheduledDate === selectedDate)
   }, [dailyDistributions, selectedDate])
 
-  const postedChannelIds = React.useMemo(() => {
-    return new Set(distributionsToday.map((d) => d.channelId))
-  }, [distributionsToday])
+  // Strict WhatsApp channel filter + honest shared vs failed status summary (`T-071`, `OD-01`)
+  const queueSummary = React.useMemo(
+    () => summarizeWhatsappQueueStatus(marketingChannels, distributionsToday),
+    [marketingChannels, distributionsToday]
+  )
+
+  const {
+    whatsappChannels,
+    sharedChannelIds,
+    failedChannelIds,
+    queuedChannelIds,
+    totalActiveChannels,
+    sharedCountToday,
+    failedCountToday,
+  } = queueSummary
+
+  const progressPercent =
+    totalActiveChannels > 0
+      ? Math.round((sharedCountToday / totalActiveChannels) * 100)
+      : 0
 
   const distinctPhoneLines = React.useMemo(() => {
     const lines = new Set<string>()
-    for (const c of marketingChannels) {
+    for (const c of whatsappChannels) {
       if (c.senderWhatsappNumber) {
         lines.add(c.senderWhatsappNumber)
       }
     }
     return Array.from(lines)
-  }, [marketingChannels])
+  }, [whatsappChannels])
 
-  // Filtered Channels
   const filteredChannels = React.useMemo(() => {
-    return marketingChannels.filter((c) => {
+    return whatsappChannels.filter((c) => {
       if (selectedLineFilter !== "all") {
         if (c.senderWhatsappNumber !== selectedLineFilter) return false
       }
@@ -3312,24 +4059,14 @@ function WhatsAppQueueTab({
           c.name.toLowerCase().includes(q) ||
           c.areaTag.toLowerCase().includes(q) ||
           (c.senderWhatsappNumber && c.senderWhatsappNumber.includes(q)) ||
-          (c.externalGroupIdOrHandle && c.externalGroupIdOrHandle.toLowerCase().includes(q))
+          (c.externalGroupIdOrHandle &&
+            c.externalGroupIdOrHandle.toLowerCase().includes(q))
         )
       }
       return true
     })
-  }, [marketingChannels, selectedLineFilter, areaFilter, searchQuery])
+  }, [whatsappChannels, selectedLineFilter, areaFilter, searchQuery])
 
-  // Progress metrics
-  const totalActiveChannels = marketingChannels.filter((c) => c.isActive).length
-  const sharedCountToday = marketingChannels.filter(
-    (c) => c.isActive && postedChannelIds.has(c.id)
-  ).length
-  const progressPercent =
-    totalActiveChannels > 0
-      ? Math.round((sharedCountToday / totalActiveChannels) * 100)
-      : 0
-
-  // 1-Tap Copy Caption
   const handleCopyCaption = async () => {
     if (!whatsappCaption) return
     try {
@@ -3337,11 +4074,13 @@ function WhatsAppQueueTab({
       setCopiedCaption(true)
       setTimeout(() => setCopiedCaption(false), 2500)
     } catch {
-      setActionNotice({ type: "error", message: "Failed to copy caption to clipboard." })
+      setActionNotice({
+        type: "error",
+        message: "Failed to copy caption to clipboard.",
+      })
     }
   }
 
-  // 1-Tap Download 4K Poster
   const handleDownloadPoster = (url?: string) => {
     const targetUrl = url || selectedAsset?.imageUrl
     if (!targetUrl) return
@@ -3356,7 +4095,6 @@ function WhatsAppQueueTab({
     document.body.removeChild(link)
   }
 
-  // Multi-Selection helpers
   const handleToggleChannel = (channelId: string) => {
     setSelectedChannelIds((prev) =>
       prev.includes(channelId)
@@ -3365,82 +4103,6 @@ function WhatsAppQueueTab({
     )
   }
 
-  const handleSelectAllGroups = () => {
-    const groupIds = marketingChannels
-      .filter((c) => c.platform === "whatsapp_group" && c.isActive)
-      .map((c) => c.id)
-    setSelectedChannelIds(groupIds)
-  }
-
-  const handleIncludeStatus = () => {
-    const statusChannel = marketingChannels.find(
-      (c) => c.platform === "whatsapp_status" && c.isActive
-    )
-    if (!statusChannel) return
-    setSelectedChannelIds((prev) =>
-      prev.includes(statusChannel.id)
-        ? prev.filter((id) => id !== statusChannel.id)
-        : [...prev, statusChannel.id]
-    )
-  }
-
-  const handleClearSelection = () => {
-    setSelectedChannelIds([])
-  }
-
-  // Automated Ban-Safe Group Broadcast Trigger
-  const handleDispatchAutomatedCampaign = async () => {
-    if (!selectedAsset) {
-      setActionNotice({ type: "error", message: "Please select an active poster asset." })
-      return
-    }
-    if (selectedChannelIds.length === 0) {
-      setActionNotice({
-        type: "error",
-        message: "Please select at least 1 synced WhatsApp group or Status.",
-      })
-      return
-    }
-    if (!whatsappCaption.trim()) {
-      setActionNotice({ type: "error", message: "Caption cannot be empty." })
-      return
-    }
-
-    setIsDispatchingCampaign(true)
-    setActionNotice(null)
-
-    try {
-      const res = await dispatchAutomatedWhatsappGroupsCampaignAction({
-        postAssetId: selectedAsset.id,
-        caption: whatsappCaption,
-        channelIds: selectedChannelIds,
-        pacingTier,
-        sessionKey: senderRoutingLine,
-      })
-
-      if (res.success) {
-        setActionNotice({
-          type: "success",
-          message: `Campaign initiated for ${res.totalTargets ?? selectedChannelIds.length} channels with ${pacingTier.replace(/_/g, " ")} pacing! Tasks are running with human-like typing simulation.`,
-        })
-        router.refresh()
-      } else {
-        setActionNotice({
-          type: "error",
-          message: res.error || "Failed to dispatch automated campaign.",
-        })
-      }
-    } catch (err: unknown) {
-      setActionNotice({
-        type: "error",
-        message: err instanceof Error ? err.message : "Error dispatching campaign.",
-      })
-    } finally {
-      setIsDispatchingCampaign(false)
-    }
-  }
-
-  // 1-Tap Mark Shared Today (Manual audit backup)
   const handleMarkSharedToday = async (channelId: string) => {
     if (!selectedAsset) return
     setBusyChannelId(channelId)
@@ -3457,63 +4119,87 @@ function WhatsAppQueueTab({
       })
 
       if (res.success) {
-        setActionNotice({ type: "success", message: "Marked shared successfully!" })
+        setActionNotice({
+          type: "success",
+          message: "Marked shared in today's distribution ledger.",
+        })
         router.refresh()
       } else {
-        setActionNotice({ type: "error", message: res.error || "Failed to mark distribution." })
+        setActionNotice({
+          type: "error",
+          message: res.error || "Failed to log distribution.",
+        })
       }
     } catch (err: unknown) {
       setActionNotice({
         type: "error",
-        message: err instanceof Error ? err.message : "Error logging distribution.",
+        message:
+          err instanceof Error ? err.message : "Error logging distribution.",
       })
     } finally {
       setBusyChannelId(null)
     }
   }
 
-  const connectedSessions = React.useMemo(() => {
-    return linkedSessions.filter((s) => s.status === "connected")
-  }, [linkedSessions])
-
-  const isStatusIncluded = Boolean(
-    marketingChannels.some(
-      (c) => c.platform === "whatsapp_status" && selectedChannelIds.includes(c.id)
-    )
-  )
+  const handleBulkMarkShared = async () => {
+    if (!selectedAsset || selectedChannelIds.length === 0) return
+    setIsBulkLogging(true)
+    setActionNotice(null)
+    try {
+      const res = await dispatchOrLogDistribution({
+        scheduledDate: selectedDate,
+        channelIds: selectedChannelIds,
+        postAssetId: selectedAsset.id,
+        stage: "standalone",
+        captionUsed: whatsappCaption,
+        dispatchMode: "manual_log",
+      })
+      if (res.success) {
+        setSelectedChannelIds([])
+        setActionNotice({
+          type: "success",
+          message: `Logged ${selectedChannelIds.length} WhatsApp group/status share(s) for ${selectedDate}.`,
+        })
+        router.refresh()
+      } else {
+        setActionNotice({
+          type: "error",
+          message: res.error || "Failed to log selected shares.",
+        })
+      }
+    } finally {
+      setIsBulkLogging(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
-      {/* 1. Sleek Connected WhatsApp Phone Status Bar */}
+      {/* 1. 100% Ban-Safe Compliance Banner (`OD-01`) */}
       <div className="rounded-xl border border-emerald-300 bg-emerald-50/70 p-4 text-xs text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
         <div className="flex items-start gap-3">
-          <Smartphone className="size-5 text-emerald-700 shrink-0 mt-0.5" />
+          <ShieldCheck className="size-5 text-emerald-700 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h4 className="font-bold text-sm text-emerald-950">
-                Connected WhatsApp Phones ({connectedSessions.length})
+                100% Ban-Safe Manual Assisted WhatsApp Group &amp; Status Queue
               </h4>
-              {connectedSessions.length === 0 ? (
-                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-800 border-amber-300">
-                  No phones connected
+              <Badge
+                variant="outline"
+                className="text-[10px] bg-white border-emerald-400 text-emerald-900 font-semibold"
+              >
+                Zero Unofficial Bot Risk
+              </Badge>
+              {failedCountToday > 0 && (
+                <Badge className="text-[10px] bg-rose-600 text-white font-semibold">
+                  {failedCountToday} Failed Dispatch
+                  {failedCountToday > 1 ? "es" : ""} Need Manual Share
                 </Badge>
-              ) : (
-                connectedSessions.map((s) => (
-                  <Badge
-                    key={s.sessionKey}
-                    variant="outline"
-                    className="text-[10px] font-mono bg-white border-emerald-400 text-emerald-900 font-semibold flex items-center gap-1.5"
-                  >
-                    <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>{s.label}</span>
-                    {s.phoneNumber && <span className="text-emerald-700 font-bold">(+{s.phoneNumber})</span>}
-                    <span className="text-muted-foreground text-[9px]">({s.groupsSyncedCount} groups)</span>
-                  </Badge>
-                ))
               )}
             </div>
-            <p className="text-emerald-800 text-[11px] max-w-3xl">
-              Real WhatsApp groups and status channels are auto-synchronized from your connected WhatsApp lines. Dispatches simulate human typing with pacing delays to protect your accounts.
+            <p className="text-emerald-900 text-[11px] max-w-3xl">
+              Protect official Al Ramlah WhatsApp numbers from automated group
+              bans: copy the formatted caption in 1 tap, download the 4K poster,
+              share via WhatsApp Web / Desktop, and log completion below.
             </p>
           </div>
         </div>
@@ -3521,52 +4207,38 @@ function WhatsAppQueueTab({
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
           <Button
             type="button"
-            size="sm"
-            onClick={handleSyncGroups}
-            disabled={isSyncingGroups || connectedSessions.length === 0}
-            className="bg-[#0A3622] text-white hover:bg-[#124B30] text-xs font-bold gap-1.5 cursor-pointer h-8"
-          >
-            <RefreshCw className={cn("size-3.5 text-[#C5A059]", isSyncingGroups && "animate-spin")} />
-            <span>{isSyncingGroups ? "Syncing Groups..." : "Sync Groups"}</span>
-          </Button>
-
-          <Button
-            type="button"
             variant="outline"
             size="sm"
-            onClick={() => router.push("/admin/settings?tab=whatsapp")}
-            className="border-emerald-300 bg-white hover:bg-emerald-100 text-emerald-950 text-xs font-semibold gap-1 h-8 cursor-pointer"
-          >
-            <span>Manage Phones in Settings</span>
-            <ChevronRight className="size-3.5" />
-          </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => window.open("https://web.whatsapp.com", "_blank")}
+            onClick={() =>
+              window.open(
+                "https://web.whatsapp.com",
+                "_blank",
+                "noopener,noreferrer"
+              )
+            }
             className="border-emerald-300 bg-white hover:bg-emerald-100 text-emerald-950 text-xs font-semibold gap-1.5 h-8 cursor-pointer"
           >
             <Smartphone className="size-3.5 text-[#C5A059]" />
-            <span>Open Web</span>
+            <span>Open WhatsApp Web</span>
           </Button>
         </div>
       </div>
 
       {actionNotice && (
         <div
-          className={`rounded-xl border p-3.5 text-xs font-semibold flex items-center justify-between gap-2 shadow-xs ${
+          role="alert"
+          className={cn(
+            "rounded-xl border p-3.5 text-xs font-semibold flex items-center justify-between gap-2 shadow-xs",
             actionNotice.type === "success"
               ? "border-emerald-400 bg-emerald-50 text-emerald-950"
-              : "border-red-400 bg-red-50 text-red-950"
-          }`}
+              : "border-rose-400 bg-rose-50 text-rose-950"
+          )}
         >
           <div className="flex items-center gap-2">
             {actionNotice.type === "success" ? (
               <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
             ) : (
-              <AlertCircle className="size-4 text-red-600 shrink-0" />
+              <AlertCircle className="size-4 text-rose-600 shrink-0" />
             )}
             <span>{actionNotice.message}</span>
           </div>
@@ -3580,17 +4252,21 @@ function WhatsAppQueueTab({
         </div>
       )}
 
-      {/* 2. Active 4K Poster Showcase & 1-Tap Action Card */}
+      {/* 2. Active 4K Poster & 1-Tap Manual Assisted Bar */}
       <Card className="border-[#C5A059]/40 bg-card shadow-sm">
         <CardHeader className="bg-secondary/20 border-b border-border pb-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="font-display text-base font-bold flex items-center gap-2">
                 <Sparkles className="size-4 text-[#C5A059]" />
-                <span>Today&apos;s Active Poster &amp; Automated Group Broadcast Bar</span>
+                <span>
+                  Today&apos;s Active Poster &amp; 1-Tap Assisted Share Controls
+                </span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Select today&apos;s 4K spotlight poster, configure human pacing, and dispatch hands-free to your synchronized WhatsApp groups.
+                Select today&apos;s 4K spotlight poster, copy the WhatsApp
+                markdown caption, and track community group &amp; Status shares
+                for {selectedDate} (PKT).
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -3607,7 +4283,6 @@ function WhatsAppQueueTab({
 
         <CardContent className="p-4 sm:p-6 space-y-4">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-            {/* Left: Poster Selector & Image Preview (4 cols) */}
             <div className="lg:col-span-4 space-y-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-primary">
@@ -3662,7 +4337,6 @@ function WhatsAppQueueTab({
               )}
             </div>
 
-            {/* Right: Formatted WhatsApp Caption & Automated Broadcast Controls (8 cols) */}
             <div className="lg:col-span-8 space-y-4">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -3672,7 +4346,7 @@ function WhatsAppQueueTab({
                       WhatsApp Markdown Ready
                     </Badge>
                   </Label>
-                  <span className="text-[10px] text-muted-foreground font-mono">
+                  <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
                     {whatsappCaption.length} chars
                   </span>
                 </div>
@@ -3684,128 +4358,15 @@ function WhatsAppQueueTab({
                 />
               </div>
 
-              {/* Automated Paced Broadcast Control Bar */}
-              <div className="rounded-xl border border-emerald-300/80 bg-emerald-50/50 p-4 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/80 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <Radio className="size-4 text-emerald-700 animate-pulse" />
-                    <span className="text-xs font-bold text-emerald-950">
-                      Automated Group Dispatcher ({selectedChannelIds.length} Selected)
-                    </span>
-                  </div>
-
-                  {/* Sender Line Routing & Anti-Ban Pacing Tier Selectors */}
-                  <div className="flex items-center gap-3 text-xs flex-wrap">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-emerald-800 font-semibold">Sender Line:</span>
-                      <select
-                        value={senderRoutingLine}
-                        onChange={(e) => setSenderRoutingLine(e.target.value)}
-                        className="h-7 rounded-md border border-emerald-300 bg-white px-2 text-[11px] font-medium text-emerald-950 focus:outline-none"
-                      >
-                        <option value="auto">Auto-Match Group&apos;s Phone Line (Recommended)</option>
-                        {connectedSessions.map((s) => (
-                          <option key={s.sessionKey} value={s.sessionKey}>
-                            Force via {s.label} {s.phoneNumber ? `(+${s.phoneNumber})` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-emerald-800 font-semibold">Pacing:</span>
-                      <select
-                        value={pacingTier}
-                        onChange={(e) =>
-                          setPacingTier(e.target.value as "fast" | "safe" | "ultra_safe")
-                        }
-                        className="h-7 rounded-md border border-emerald-300 bg-white px-2 text-[11px] font-medium text-emerald-950 focus:outline-none"
-                      >
-                        <option value="safe">Safe (25–45s) — Recommended</option>
-                        <option value="fast">Fast (10–20s) — VIP Groups Only</option>
-                        <option value="ultra_safe">Ultra-Safe (45–90s) — For 30+ Groups</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleDispatchAutomatedCampaign}
-                    disabled={
-                      isDispatchingCampaign ||
-                      selectedChannelIds.length === 0 ||
-                      !selectedAsset
-                    }
-                    className="h-9 px-4 text-xs font-bold bg-[#0A3622] hover:bg-[#124B30] text-white shadow-xs cursor-pointer gap-2"
-                  >
-                    {isDispatchingCampaign ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin text-[#C5A059]" />
-                        <span>Dispatching with Human Presence...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="size-4 text-[#C5A059]" />
-                        <span>
-                          Auto-Post Flyer &amp; Caption to Selected ({selectedChannelIds.length})
-                        </span>
-                      </>
-                    )}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSelectAllGroups}
-                    className="h-9 text-xs font-semibold bg-white border-emerald-300 text-emerald-950 hover:bg-emerald-100 cursor-pointer"
-                  >
-                    <CheckCircle2 className="size-3.5 mr-1 text-emerald-700" />
-                    <span>Select All Groups</span>
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleIncludeStatus}
-                    className={`h-9 text-xs font-semibold border-emerald-300 cursor-pointer ${
-                      isStatusIncluded
-                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                        : "bg-white text-emerald-950 hover:bg-emerald-100"
-                    }`}
-                  >
-                    <Radio className="size-3.5 mr-1" />
-                    <span>{isStatusIncluded ? "Status Included ✓" : "+ Include My Status"}</span>
-                  </Button>
-
-                  {selectedChannelIds.length > 0 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleClearSelection}
-                      className="h-9 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-                    >
-                      <span>Clear</span>
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* 1-Tap Manual Fallback Bar */}
               <div className="flex flex-wrap items-center gap-2.5 pt-1">
                 <Button
                   type="button"
                   onClick={handleCopyCaption}
                   className={cn(
-                    "h-8 text-xs font-bold gap-1.5 cursor-pointer transition-all",
+                    "h-9 text-xs font-bold gap-1.5 cursor-pointer transition-all",
                     copiedCaption
                       ? "bg-emerald-600 text-white"
-                      : "bg-secondary text-foreground hover:bg-secondary/80"
+                      : "bg-[#0A3622] text-white hover:bg-[#0A3622]/90"
                   )}
                 >
                   {copiedCaption ? (
@@ -3813,30 +4374,61 @@ function WhatsAppQueueTab({
                   ) : (
                     <Copy className="size-3.5 text-[#C5A059]" />
                   )}
-                  <span>{copiedCaption ? "Caption Copied!" : "1-Tap Copy Caption"}</span>
+                  <span>
+                    {copiedCaption ? "Caption Copied!" : "1-Tap Copy Caption"}
+                  </span>
                 </Button>
 
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => handleDownloadPoster()}
-                  className="h-8 text-xs font-semibold gap-1.5 border-border hover:bg-white cursor-pointer"
+                  className="h-9 text-xs font-semibold gap-1.5 border-border hover:bg-white cursor-pointer"
                 >
                   <Download className="size-3.5 text-[#C5A059]" />
                   <span>1-Tap Download 4K Poster</span>
                 </Button>
+
+                {selectedChannelIds.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isBulkLogging || !selectedAsset}
+                    onClick={handleBulkMarkShared}
+                    className="h-9 text-xs font-bold border-emerald-400 bg-emerald-50 text-emerald-950 hover:bg-emerald-100 gap-1.5 cursor-pointer"
+                  >
+                    {isBulkLogging ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="size-3.5 text-emerald-700" />
+                    )}
+                    <span>
+                      Mark Selected Shared ({selectedChannelIds.length})
+                    </span>
+                  </Button>
+                )}
               </div>
 
               {/* Daily Progress Bar */}
               <div className="rounded-xl border border-border bg-secondary/15 p-3.5 space-y-2">
-                <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center justify-between text-xs flex-wrap gap-2">
                   <span className="font-bold text-foreground flex items-center gap-1.5">
                     <CheckCircle2 className="size-4 text-emerald-600" />
-                    <span>Daily Community Distribution Progress ({selectedDate})</span>
+                    <span>
+                      Daily Community Distribution Progress ({selectedDate})
+                    </span>
                   </span>
-                  <span className="font-mono font-bold text-primary">
-                    {sharedCountToday} / {totalActiveChannels} Shared ({progressPercent}%)
-                  </span>
+                  <div className="flex items-center gap-2 font-mono tabular-nums">
+                    <span className="font-bold text-primary">
+                      {sharedCountToday} / {totalActiveChannels} Shared (
+                      {progressPercent}%)
+                    </span>
+                    {failedCountToday > 0 && (
+                      <span className="text-rose-700 font-bold">
+                        • {failedCountToday} Failed
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <Progress value={progressPercent} className="h-2 bg-secondary" />
               </div>
@@ -3845,7 +4437,7 @@ function WhatsAppQueueTab({
         </CardContent>
       </Card>
 
-      {/* 3. Real WhatsApp Groups & Status Channel Matrix */}
+      {/* 3. WhatsApp Groups & Status Channel Matrix */}
       <Card className="border-border bg-card shadow-xs">
         <CardHeader className="pb-3 border-b border-border">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -3853,110 +4445,106 @@ function WhatsAppQueueTab({
               <CardTitle className="font-display text-base font-bold flex items-center gap-2">
                 <Users className="size-4 text-primary" />
                 <span>
-                  Synchronized Real WhatsApp Groups &amp; Status ({marketingChannels.length})
+                  WhatsApp Community Groups &amp; Status Queue (
+                  {whatsappChannels.length})
                 </span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Real WhatsApp groups auto-discovered from your connected phone lines. Dispatches simulate human typing with pacing delays to protect your accounts.
+                Track daily assisted shares across community groups and official
+                WhatsApp Status lines. Failed dispatches are highlighted in red
+                and excluded from completed share counts.
               </CardDescription>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Search input */}
               <div className="relative">
                 <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search synced groups..."
+                  placeholder="Search WhatsApp groups..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="h-8 pl-8 text-xs w-44 bg-white"
                 />
               </div>
 
-              {/* Area selector */}
               <select
                 value={areaFilter}
                 onChange={(e) => setAreaFilter(e.target.value)}
                 className="flex h-8 rounded-md border border-input bg-background px-2.5 text-xs"
               >
-                <option value="all">All Channels ({marketingChannels.length})</option>
+                <option value="all">
+                  All WhatsApp Channels ({whatsappChannels.length})
+                </option>
                 <option value="Status">WhatsApp Status Lines</option>
-                <option value="Synced WhatsApp Group">Synced WhatsApp Groups</option>
               </select>
             </div>
           </div>
         </CardHeader>
 
-        {/* Connected Phone Line Filter Pill Bar */}
-        <div className="bg-secondary/25 border-b border-border px-4 py-2.5 flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mr-1">
-            Filter by Phone Line:
-          </span>
-          <button
-            type="button"
-            onClick={() => setSelectedLineFilter("all")}
-            className={cn(
-              "px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer",
-              selectedLineFilter === "all"
-                ? "bg-[#0A3622] text-white border-[#C5A059]"
-                : "bg-white text-muted-foreground hover:text-foreground border-border"
-            )}
-          >
-            All Lines ({marketingChannels.length})
-          </button>
-          {distinctPhoneLines.map((line) => {
-            const count = marketingChannels.filter((c) => c.senderWhatsappNumber === line).length
-            return (
-              <button
-                key={line}
-                type="button"
-                onClick={() => setSelectedLineFilter(line)}
-                className={cn(
-                  "px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5",
-                  selectedLineFilter === line
-                    ? "bg-[#0A3622] text-white border-[#C5A059]"
-                    : "bg-white text-muted-foreground hover:text-foreground border-border"
-                )}
-              >
-                <span>📱</span>
-                <span>{line}</span>
-                <span className="text-[10px] opacity-80 font-mono">({count})</span>
-              </button>
-            )
-          })}
-        </div>
+        {distinctPhoneLines.length > 0 && (
+          <div className="bg-secondary/25 border-b border-border px-4 py-2.5 flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mr-1">
+              Filter by Phone Line:
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedLineFilter("all")}
+              className={cn(
+                "px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer",
+                selectedLineFilter === "all"
+                  ? "bg-[#0A3622] text-white border-[#C5A059]"
+                  : "bg-white text-muted-foreground hover:text-foreground border-border"
+              )}
+            >
+              All Lines ({whatsappChannels.length})
+            </button>
+            {distinctPhoneLines.map((line) => {
+              const count = whatsappChannels.filter(
+                (c) => c.senderWhatsappNumber === line
+              ).length
+              return (
+                <button
+                  key={line}
+                  type="button"
+                  onClick={() => setSelectedLineFilter(line)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5",
+                    selectedLineFilter === line
+                      ? "bg-[#0A3622] text-white border-[#C5A059]"
+                      : "bg-white text-muted-foreground hover:text-foreground border-border"
+                  )}
+                >
+                  <span>📱</span>
+                  <span>{line}</span>
+                  <span className="text-[10px] opacity-80 font-mono tabular-nums">
+                    ({count})
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         <CardContent className="p-4">
-          {marketingChannels.length === 0 ? (
-            /* Clear Empty State when 0 groups are synced yet */
-            <div className="rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/40 p-8 sm:p-12 text-center space-y-4">
-              <div className="size-14 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center mx-auto text-emerald-800">
-                <Users className="size-7" />
+          {whatsappChannels.length === 0 ? (
+            <div className="rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/40 p-8 sm:p-12 text-center space-y-3">
+              <div className="size-12 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center mx-auto text-emerald-800">
+                <Users className="size-6" />
               </div>
-              <div className="max-w-md mx-auto space-y-2">
-                <h4 className="font-bold text-base text-emerald-950">
-                  No WhatsApp Groups or Status Synced Yet
-                </h4>
-                <p className="text-xs text-emerald-800 leading-relaxed">
-                  Connect your WhatsApp phone in Settings and click <strong>&quot;Sync Groups&quot;</strong> to automatically discover and list all your community groups here!
-                </p>
-                <div className="pt-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => router.push("/admin/settings?tab=whatsapp")}
-                    className="bg-[#0A3622] hover:bg-[#124B30] text-white text-xs font-bold gap-1.5 cursor-pointer"
-                  >
-                    <span>Connect Phone in Settings</span>
-                    <ChevronRight className="size-3.5" />
-                  </Button>
-                </div>
-              </div>
+              <h4 className="font-bold text-base text-emerald-950">
+                No WhatsApp Groups or Status Channels Registered Yet
+              </h4>
+              <p className="text-xs text-emerald-900 max-w-md mx-auto">
+                Add your community WhatsApp groups and Status lines to track
+                daily ban-safe manual assisted poster shares.
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filteredChannels.map((ch) => {
-                const isPosted = postedChannelIds.has(ch.id)
+                const isShared = sharedChannelIds.has(ch.id)
+                const isFailed = failedChannelIds.has(ch.id)
+                const isQueued = queuedChannelIds.has(ch.id)
                 const distributionLog = distributionsToday.find(
                   (d) => d.channelId === ch.id
                 )
@@ -3971,7 +4559,9 @@ function WhatsAppQueueTab({
                       "rounded-xl border p-3.5 space-y-2.5 transition-all bg-white cursor-pointer select-none",
                       isSelected
                         ? "border-[#0A3622] ring-2 ring-[#0A3622]/20 bg-emerald-50/20"
-                        : isPosted
+                        : isFailed
+                        ? "border-rose-300 bg-rose-50/30"
+                        : isShared
                         ? "border-emerald-300 bg-emerald-50/10"
                         : "border-border hover:border-[#C5A059]"
                     )}
@@ -3985,23 +4575,24 @@ function WhatsAppQueueTab({
                             e.stopPropagation()
                             handleToggleChannel(ch.id)
                           }}
-                          className="size-4 mt-0.5 rounded border-border text-[#0A3622] focus:ring-[#0A3622] cursor-pointer"
+                          className="size-4 mt-0.5 rounded border-border text-[#0A3622] accent-[#0A3622] cursor-pointer"
                         />
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <Badge
                               variant="outline"
-                              className="text-[9px] px-1.5 py-0 border-[#C5A059]/50 text-[#C5A059] uppercase font-bold"
+                              className="text-[9px] px-1.5 py-0 border-[#C5A059]/50 text-[#0A3622] uppercase font-bold"
                             >
                               {ch.areaTag}
                             </Badge>
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] font-mono px-2 py-0 border-emerald-500/50 bg-emerald-50 text-emerald-900 font-bold flex items-center gap-1"
-                            >
-                              <span>📱</span>
-                              <span>{ch.senderWhatsappNumber || "Connected Line"}</span>
-                            </Badge>
+                            {ch.senderWhatsappNumber && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-mono px-2 py-0 border-emerald-500/50 bg-emerald-50 text-emerald-900 font-bold"
+                              >
+                                📱 {ch.senderWhatsappNumber}
+                              </Badge>
+                            )}
                           </div>
 
                           <h4 className="text-xs font-bold text-foreground mt-1 truncate">
@@ -4013,21 +4604,27 @@ function WhatsAppQueueTab({
                             <span className="capitalize">
                               {ch.platform.replace(/_/g, " ")}
                             </span>
-                            {ch.memberCount ? ` · ~${ch.memberCount} members` : ""}
+                            {ch.memberCount
+                              ? ` · ~${ch.memberCount} members`
+                              : ""}
                           </p>
-
-                          {ch.externalGroupIdOrHandle && (
-                            <p className="text-[9px] font-mono text-muted-foreground/80 truncate">
-                              ID: {ch.externalGroupIdOrHandle}
-                            </p>
-                          )}
                         </div>
                       </div>
 
-                      {isPosted ? (
+                      {isShared ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-800 shrink-0">
                           <CheckCircle2 className="size-3 text-emerald-600" />
                           <span>Shared</span>
+                        </span>
+                      ) : isFailed ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 border border-rose-300 px-2 py-0.5 text-[10px] font-bold text-rose-800 shrink-0">
+                          <XCircle className="size-3 text-rose-600" />
+                          <span>Failed</span>
+                        </span>
+                      ) : isQueued ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 border border-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-900 shrink-0">
+                          <Clock className="size-3 text-amber-700" />
+                          <span>Queued</span>
                         </span>
                       ) : (
                         <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground shrink-0">
@@ -4046,26 +4643,44 @@ function WhatsAppQueueTab({
                       className="flex items-center justify-between gap-2 pt-2 border-t border-border/70"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      {ch.inviteLinkOrUrl && (
+                        <a
+                          href={ch.inviteLinkOrUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] font-semibold text-foreground hover:border-[#C5A059]"
+                        >
+                          <ExternalLink className="size-3 text-[#C5A059]" />
+                          <span>Open</span>
+                        </a>
+                      )}
+
                       <Button
                         type="button"
                         size="sm"
-                        disabled={isBusy}
+                        disabled={isBusy || !selectedAsset}
                         onClick={() => handleMarkSharedToday(ch.id)}
                         className={cn(
                           "h-7 text-[11px] font-bold gap-1 cursor-pointer flex-1",
-                          isPosted
+                          isShared
                             ? "border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
                             : "bg-[#0A3622] text-white hover:bg-[#0A3622]/90"
                         )}
                       >
                         {isBusy ? (
                           <Loader2 className="size-3 animate-spin" />
-                        ) : isPosted ? (
+                        ) : isShared ? (
                           <Check className="size-3 text-emerald-600" />
                         ) : (
                           <CheckCircle2 className="size-3 text-[#C5A059]" />
                         )}
-                        <span>{isPosted ? "Logged (Re-mark)" : "1-Tap Mark Shared"}</span>
+                        <span>
+                          {isShared
+                            ? "Logged (Re-mark)"
+                            : isFailed
+                            ? "Mark Manually Shared"
+                            : "1-Tap Mark Shared"}
+                        </span>
                       </Button>
                     </div>
                   </div>
@@ -4081,7 +4696,7 @@ function WhatsAppQueueTab({
         open={Boolean(previewPosterUrl)}
         onOpenChange={(open) => !open && setPreviewPosterUrl(null)}
       >
-        <DialogContent className="max-w-2xl p-2 bg-black/95 text-white border-gold/40">
+        <DialogContent className="max-w-2xl p-2 bg-black/95 text-white border-[#C5A059]/40">
           <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg">
             {previewPosterUrl && (
               <img
@@ -4112,10 +4727,14 @@ function WhatsAppQueueTab({
 }
 
 // ==========================================
-// 5. TAB 3: OFFICIAL BROADCASTS & VIP OUTREACH
+// 5. TAB 3: OFFICIAL BROADCASTS & VIP OUTREACH (`T-071`, `OD-07`, `T-089`)
 // ==========================================
 
 function BroadcastsAndOutreachTab({
+  userRole,
+  officeLocationLabel,
+  summaryCounts,
+  onContactsPageChange,
   whatsappAccounts,
   whatsappTemplates,
   whatsappBroadcasts,
@@ -4123,6 +4742,10 @@ function BroadcastsAndOutreachTab({
   postAssets,
   outreachLogs,
 }: {
+  userRole: "super_admin" | "staff"
+  officeLocationLabel: string
+  summaryCounts?: CampaignsSummaryCounts
+  onContactsPageChange: (page: number) => void
   whatsappAccounts: SafeWhatsappAccount[]
   whatsappTemplates: WhatsappTemplateRecord[]
   whatsappBroadcasts: WhatsappBroadcastRecord[]
@@ -4131,8 +4754,8 @@ function BroadcastsAndOutreachTab({
   outreachLogs: OutreachLogRow[]
 }) {
   const router = useRouter()
+  const isSuperAdmin = userRole === "super_admin"
 
-  // Selected WhatsApp Account
   const defaultAccount =
     whatsappAccounts.find((a) => a.isDefault && a.isActive) ||
     whatsappAccounts[0]
@@ -4141,36 +4764,44 @@ function BroadcastsAndOutreachTab({
     () => defaultAccount?.id || ""
   )
 
-  // Approved templates only
-  const approvedTemplates = React.useMemo(() => {
-    return whatsappTemplates.filter((t) => t.status === "APPROVED")
-  }, [whatsappTemplates])
+  // Strictly scope both approved templates AND broadcast history to `selectedAccountId` (`T-071`)
+  const { approvedTemplates, accountBroadcasts } = React.useMemo(
+    () =>
+      filterWhatsappResourcesByAccount(
+        whatsappTemplates,
+        whatsappBroadcasts,
+        selectedAccountId
+      ),
+    [whatsappTemplates, whatsappBroadcasts, selectedAccountId]
+  )
 
   const [selectedTemplateId, setSelectedTemplateId] = React.useState<string>(
     () => approvedTemplates[0]?.id || ""
   )
 
+  // Reset `selectedTemplateId` whenever WABA account changes (`T-071`)
+  React.useEffect(() => {
+    if (!approvedTemplates.some((t) => t.id === selectedTemplateId)) {
+      setSelectedTemplateId(approvedTemplates[0]?.id || "")
+    }
+  }, [approvedTemplates, selectedTemplateId])
+
   const selectedTemplate = React.useMemo(() => {
     return approvedTemplates.find((t) => t.id === selectedTemplateId)
   }, [approvedTemplates, selectedTemplateId])
 
-  // Broadcast Name
   const [broadcastName, setBroadcastName] = React.useState(
-    "Ramadan 2026 Umrah Spotlight Announcement"
+    "Ramadan 2027 Umrah Spotlight Announcement"
   )
 
-  // Target Segment
   const [recipientSegment, setRecipientSegment] = React.useState<
-    "all_vip" | "eligible_only" | "askari_dha" | "custom_phones"
+    "all_vip" | "eligible_only" | "askari_cantt" | "custom_phones"
   >("eligible_only")
 
   const [customPhonesText, setCustomPhonesText] = React.useState("")
-
-  // Timing
   const [scheduledBroadcastTime, setScheduledBroadcastTime] =
     React.useState<string>("")
 
-  // Spec 0019 (Slice 38): Template Personalization & CSV State
   const [defaultTemplateParams, setDefaultTemplateParams] = React.useState<
     Record<string, string>
   >({})
@@ -4181,7 +4812,6 @@ function BroadcastsAndOutreachTab({
     return parseWhatsappBroadcastCsv(csvRawText)
   }, [csvRawText])
 
-  // Spec 0019 (Slice 38): Broadcast Details Dialog State
   const [selectedBroadcastDetails, setSelectedBroadcastDetails] =
     React.useState<BroadcastSummaryDetail | null>(null)
   const [broadcastRecipientsList, setBroadcastRecipientsList] = React.useState<
@@ -4192,8 +4822,25 @@ function BroadcastsAndOutreachTab({
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = React.useState(false)
   const [isRetryingBroadcast, setIsRetryingBroadcast] = React.useState(false)
 
-  const handleOpenBroadcastDetails = async (broadcast: any) => {
-    setSelectedBroadcastDetails(broadcast)
+  const handleOpenBroadcastDetails = async (
+    broadcast: WhatsappBroadcastRecord
+  ) => {
+    setSelectedBroadcastDetails({
+      id: broadcast.id,
+      name: broadcast.name,
+      templateName: broadcast.templateName,
+      templateLanguage: broadcast.templateLanguage,
+      status: broadcast.status,
+      totalRecipients: broadcast.totalRecipients,
+      sentCount: broadcast.sentCount,
+      deliveredCount: broadcast.deliveredCount,
+      readCount: broadcast.readCount,
+      failedCount: broadcast.failedCount,
+      scheduledAt: broadcast.scheduledAt,
+      startedAt: broadcast.startedAt,
+      completedAt: broadcast.completedAt,
+      createdAt: broadcast.createdAt,
+    })
     setIsLoadingBroadcastDetails(true)
     setIsDetailsDialogOpen(true)
     try {
@@ -4212,6 +4859,7 @@ function BroadcastsAndOutreachTab({
   }
 
   const handleRetryFailedRecipients = async (broadcastId: string) => {
+    if (!isSuperAdmin) return
     setIsRetryingBroadcast(true)
     try {
       const res = await retryFailedWhatsappBroadcastRecipientsAction({
@@ -4233,23 +4881,20 @@ function BroadcastsAndOutreachTab({
         }
         router.refresh()
       }
-    } catch (err) {
-      console.error("Failed to retry failed broadcast recipients:", err)
     } finally {
       setIsRetryingBroadcast(false)
     }
   }
 
-  // Launch State
   const [isLaunchingBroadcast, setIsLaunchingBroadcast] = React.useState(false)
   const [broadcastNotice, setBroadcastNotice] = React.useState<{
     type: "success" | "error"
     message: string
   } | null>(null)
-  const [activeBroadcastRunId, setActiveBroadcastRunId] =
-    React.useState<string | null>(null)
+  const [activeBroadcastRunId, setActiveBroadcastRunId] = React.useState<
+    string | null
+  >(null)
 
-  // Compute recipient list based on segment
   const computedRecipientPhones = React.useMemo(() => {
     const now = new Date()
 
@@ -4269,18 +4914,17 @@ function BroadcastsAndOutreachTab({
         .map((c) => c.whatsappNumber)
     }
 
-    if (recipientSegment === "askari_dha") {
+    if (recipientSegment === "askari_cantt") {
       return outreachContacts
         .filter(
           (c) =>
             c.interestStatus !== "do_not_contact" &&
             (c.areaCommunity?.toLowerCase().includes("askari") ||
-              c.areaCommunity?.toLowerCase().includes("dha"))
+              c.areaCommunity?.toLowerCase().includes("cantt"))
         )
         .map((c) => c.whatsappNumber)
     }
 
-    // eligible_only (outside 14-day cooldown)
     return outreachContacts
       .filter((c) => {
         if (c.interestStatus === "do_not_contact") return false
@@ -4294,9 +4938,16 @@ function BroadcastsAndOutreachTab({
       .map((c) => c.whatsappNumber)
   }, [recipientSegment, customPhonesText, outreachContacts, parsedCsv])
 
-  // Handle Launch Broadcast
   const handleLaunchBroadcast = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!isSuperAdmin) {
+      setBroadcastNotice({
+        type: "error",
+        message:
+          "Forbidden: Super Administrator privilege required to launch bulk Meta broadcasts.",
+      })
+      return
+    }
     if (!selectedAccountId) {
       setBroadcastNotice({
         type: "error",
@@ -4304,10 +4955,14 @@ function BroadcastsAndOutreachTab({
       })
       return
     }
-    if (!selectedTemplateId) {
+    if (
+      !selectedTemplateId ||
+      !approvedTemplates.some((t) => t.id === selectedTemplateId)
+    ) {
       setBroadcastNotice({
         type: "error",
-        message: "Please select an APPROVED Meta template to broadcast.",
+        message:
+          "Please select an APPROVED Meta template belonging to the selected WhatsApp Business Account.",
       })
       return
     }
@@ -4324,7 +4979,21 @@ function BroadcastsAndOutreachTab({
     setBroadcastNotice(null)
 
     try {
-      const payload: any = {
+      const payload: {
+        accountId: string
+        name: string
+        templateId: string
+        recipientPhones: string[]
+        defaultTemplateParams: Record<string, string>
+        headerMediaUrl: string | null
+        scheduledAt: string | null
+        csvText?: string
+        recipients?: Array<{
+          phone: string
+          name?: string
+          templateParams?: string[] | Record<string, string>
+        }>
+      } = {
         accountId: selectedAccountId,
         name: broadcastName.trim(),
         templateId: selectedTemplateId,
@@ -4332,7 +5001,7 @@ function BroadcastsAndOutreachTab({
         defaultTemplateParams,
         headerMediaUrl: headerMediaUrl.trim() || null,
         scheduledAt: scheduledBroadcastTime
-          ? new Date(scheduledBroadcastTime).toISOString()
+          ? parsePktDateTimeLocal(scheduledBroadcastTime).toISOString()
           : null,
       }
 
@@ -4349,10 +5018,10 @@ function BroadcastsAndOutreachTab({
 
       const res = await createAndQueueWhatsappBroadcastAction(payload)
       if (res.success) {
-        if (res.triggerRunId) {
+        if (isRealTriggerRunId(res.triggerRunId)) {
           setActiveBroadcastRunId(res.triggerRunId)
-        } else if (res.broadcastId) {
-          setActiveBroadcastRunId(`inline_wa_${res.broadcastId}`)
+        } else {
+          setActiveBroadcastRunId(null)
         }
         setBroadcastNotice({
           type: "success",
@@ -4378,7 +5047,6 @@ function BroadcastsAndOutreachTab({
     }
   }
 
-  // Map postAssets to OutreachAssetRow for OutreachClient
   const outreachAssets: OutreachAssetRow[] = React.useMemo(() => {
     return postAssets.map((a) => ({
       id: a.id,
@@ -4390,9 +5058,17 @@ function BroadcastsAndOutreachTab({
     }))
   }, [postAssets])
 
+  const totalOutreachContacts =
+    summaryCounts?.totalOutreachContacts ?? outreachContacts.length
+  const contactsPage = summaryCounts?.contactsPage ?? 1
+  const contactsPageSize = summaryCounts?.contactsPageSize ?? 150
+  const totalContactsPages = Math.max(
+    1,
+    Math.ceil(totalOutreachContacts / contactsPageSize)
+  )
+
   return (
     <div className="flex flex-col gap-8">
-      {/* Live Trigger.dev v4 Realtime Stream for Active WhatsApp Broadcast */}
       {activeBroadcastRunId && (
         <CampaignRealtimeStatus
           runId={activeBroadcastRunId}
@@ -4409,26 +5085,43 @@ function BroadcastsAndOutreachTab({
             <div>
               <CardTitle className="font-display text-base font-bold flex items-center gap-2">
                 <Send className="size-4 text-[#C5A059]" />
-                <span>Official Meta WhatsApp Cloud API Template Broadcasts</span>
+                <span>
+                  Official Meta WhatsApp Cloud API Template Broadcasts
+                </span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Launch 100% compliant broadcast notifications to opt-in subscribers using pre-approved Meta message templates.
+                Launch compliant broadcast notifications to opt-in subscribers
+                using pre-approved Meta message templates scoped to the selected
+                WABA line.
               </CardDescription>
             </div>
             <Badge
               variant="outline"
-              className="text-[11px] font-mono border-primary/30 text-primary"
+              className="text-[11px] font-mono tabular-nums border-primary/30 text-primary"
             >
-              {approvedTemplates.length} Approved Templates Available
+              {approvedTemplates.length} Approved Templates on Selected Line
             </Badge>
           </div>
         </CardHeader>
 
         <CardContent className="p-4 sm:p-6 space-y-6">
+          {!isSuperAdmin && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs text-amber-950 flex items-center gap-2.5">
+              <Lock className="size-4 text-amber-700 shrink-0" />
+              <span>
+                <strong>Super Administrator Required:</strong> Paid bulk Meta
+                Cloud API broadcast launches and mass retries are restricted to{" "}
+                <code>super_admin</code> accounts. Staff consultants can review
+                funnel history and run 1-on-1 VIP outreach below.
+              </span>
+            </div>
+          )}
+
           {broadcastNotice && (
             <div
+              role="alert"
               className={cn(
-                "rounded-xl border p-3.5 text-xs font-semibold flex items-center justify-between",
+                "rounded-xl border p-3.5 text-xs font-semibold flex items-center justify-between gap-2",
                 broadcastNotice.type === "success"
                   ? "border-emerald-300 bg-emerald-50 text-emerald-950"
                   : "border-rose-300 bg-rose-50 text-rose-950"
@@ -4438,7 +5131,7 @@ function BroadcastsAndOutreachTab({
               <button
                 type="button"
                 onClick={() => setBroadcastNotice(null)}
-                className="underline cursor-pointer"
+                className="underline cursor-pointer shrink-0"
               >
                 Dismiss
               </button>
@@ -4447,7 +5140,6 @@ function BroadcastsAndOutreachTab({
 
           <form onSubmit={handleLaunchBroadcast} className="space-y-6">
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-              {/* Left Column: Account, Template & Name (7 cols) */}
               <div className="lg:col-span-7 space-y-4">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
@@ -4473,9 +5165,10 @@ function BroadcastsAndOutreachTab({
                     </Label>
                     <Input
                       required
+                      disabled={!isSuperAdmin}
                       value={broadcastName}
                       onChange={(e) => setBroadcastName(e.target.value)}
-                      placeholder="e.g. Ramadan 2026 Announcement"
+                      placeholder="e.g. Ramadan 2027 Announcement"
                       className="h-9 text-xs bg-white"
                     />
                   </div>
@@ -4483,25 +5176,31 @@ function BroadcastsAndOutreachTab({
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold flex items-center justify-between">
-                    <span>Approved Meta Template</span>
+                    <span>Approved Meta Template (Scoped to Selected WABA)</span>
                     <span className="text-[10px] text-muted-foreground font-normal">
-                      Only &apos;APPROVED&apos; status can be broadcast
+                      Only &apos;APPROVED&apos; templates on this line
                     </span>
                   </Label>
                   <select
                     value={selectedTemplateId}
                     onChange={(e) => setSelectedTemplateId(e.target.value)}
+                    disabled={!isSuperAdmin || approvedTemplates.length === 0}
                     className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs font-mono"
                   >
-                    {approvedTemplates.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} [{t.language}] — {t.category}
+                    {approvedTemplates.length === 0 ? (
+                      <option value="">
+                        No APPROVED templates on selected WABA account
                       </option>
-                    ))}
+                    ) : (
+                      approvedTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} [{t.language}] — {t.category}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 
-                {/* Template Preview Card */}
                 {selectedTemplate && (
                   <div className="rounded-xl border border-border bg-secondary/15 p-3.5 space-y-2">
                     <div className="flex items-center justify-between text-xs">
@@ -4531,12 +5230,13 @@ function BroadcastsAndOutreachTab({
                   </div>
                 )}
 
-                {/* Spec 0019 (Slice 38): Template Variables, Header Media & CSV Upload */}
-                {selectedTemplate && (
+                {selectedTemplate && isSuperAdmin && (
                   <div className="pt-2">
                     <WhatsappBroadcastPersonalizerFields
                       templateBodyText={selectedTemplate.bodyText || ""}
-                      templateHeaderType={selectedTemplate.headerType || "NONE"}
+                      templateHeaderType={
+                        selectedTemplate.headerType || "NONE"
+                      }
                       headerMediaUrl={headerMediaUrl}
                       onHeaderMediaUrlChange={setHeaderMediaUrl}
                       templateParams={defaultTemplateParams}
@@ -4555,14 +5255,13 @@ function BroadcastsAndOutreachTab({
                 )}
               </div>
 
-              {/* Right Column: Recipient Segment & Scheduling (5 cols) */}
               <div className="lg:col-span-5 space-y-4">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-semibold">
                       Target Recipient Segment
                     </Label>
-                    <span className="font-mono text-xs font-bold text-primary">
+                    <span className="font-mono tabular-nums text-xs font-bold text-primary">
                       {computedRecipientPhones.length} Recipients
                     </span>
                   </div>
@@ -4575,9 +5274,9 @@ function BroadcastsAndOutreachTab({
                         desc: "Outside 14-day personal cooldown window",
                       },
                       {
-                        id: "askari_dha",
-                        label: "Askari 10 & DHA VIP Residents",
-                        desc: "Targeted luxury neighborhood contacts",
+                        id: "askari_cantt",
+                        label: "Askari 10 & Lahore Cantt VIP Residents",
+                        desc: `Neighborhood contacts near ${officeLocationLabel}`,
                       },
                       {
                         id: "all_vip",
@@ -4586,7 +5285,7 @@ function BroadcastsAndOutreachTab({
                       },
                       {
                         id: "custom_phones",
-                        label: "Custom Phone Number List",
+                        label: "Custom Phone Number List / CSV",
                         desc: "Paste comma or newline separated phones",
                       },
                     ].map((seg) => (
@@ -4602,6 +5301,7 @@ function BroadcastsAndOutreachTab({
                         <input
                           type="radio"
                           name="recipientSegment"
+                          disabled={!isSuperAdmin}
                           checked={recipientSegment === seg.id}
                           onChange={() =>
                             setRecipientSegment(
@@ -4625,6 +5325,7 @@ function BroadcastsAndOutreachTab({
                   {recipientSegment === "custom_phones" && (
                     <Textarea
                       rows={3}
+                      disabled={!isSuperAdmin}
                       placeholder="e.g. 923001234567, 923219876543"
                       value={customPhonesText}
                       onChange={(e) => setCustomPhonesText(e.target.value)}
@@ -4635,52 +5336,63 @@ function BroadcastsAndOutreachTab({
 
                 <div className="space-y-1.5 pt-2 border-t border-border">
                   <Label className="text-xs font-semibold">
-                    Schedule Timing (Optional)
+                    Schedule Timing in PKT (Optional)
                   </Label>
                   <Input
                     type="datetime-local"
+                    disabled={!isSuperAdmin}
                     value={scheduledBroadcastTime}
                     onChange={(e) => setScheduledBroadcastTime(e.target.value)}
                     className="h-9 text-xs font-mono bg-white"
                   />
                   <p className="text-[10px] text-muted-foreground">
-                    Leave blank to dispatch immediately.
+                    Interpreted in Asia/Karachi (+05:00). Leave blank to
+                    dispatch immediately.
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-end pt-3 border-t border-border">
-              <Button
-                type="submit"
-                disabled={isLaunchingBroadcast || computedRecipientPhones.length === 0}
-                className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-bold text-xs gap-2 cursor-pointer"
-              >
-                {isLaunchingBroadcast ? (
-                  <Loader2 className="size-4 animate-spin text-[#C5A059]" />
-                ) : (
-                  <Send className="size-4 text-[#C5A059]" />
-                )}
-                <span>
-                  {scheduledBroadcastTime
-                    ? `Schedule Broadcast for ${computedRecipientPhones.length} Contacts`
-                    : `Queue & Launch Broadcast (${computedRecipientPhones.length} Contacts)`}
-                </span>
-              </Button>
-            </div>
+            {isSuperAdmin && (
+              <div className="flex items-center justify-end pt-3 border-t border-border">
+                <Button
+                  type="submit"
+                  disabled={
+                    isLaunchingBroadcast ||
+                    computedRecipientPhones.length === 0 ||
+                    !selectedTemplateId
+                  }
+                  className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-bold text-xs gap-2 cursor-pointer"
+                >
+                  {isLaunchingBroadcast ? (
+                    <Loader2 className="size-4 animate-spin text-[#C5A059]" />
+                  ) : (
+                    <Send className="size-4 text-[#C5A059]" />
+                  )}
+                  <span>
+                    {scheduledBroadcastTime
+                      ? `Schedule Broadcast for ${computedRecipientPhones.length} Contacts`
+                      : `Queue & Launch Broadcast (${computedRecipientPhones.length} Contacts)`}
+                  </span>
+                </Button>
+              </div>
+            )}
           </form>
 
-          {/* Recent Broadcasts Audit Strip */}
-          {whatsappBroadcasts.length > 0 && (
+          {/* Recent Broadcasts Audit Strip (Scoped to Selected WABA `T-071`) */}
+          {accountBroadcasts.length > 0 && (
             <div className="pt-4 border-t border-border space-y-3">
               <h4 className="text-xs font-bold text-foreground">
-                Recent Broadcast Dispatches ({whatsappBroadcasts.length})
+                Recent Broadcast Dispatches on Selected Line (
+                {accountBroadcasts.length})
               </h4>
               <div className="space-y-2">
-                {whatsappBroadcasts.slice(0, 5).map((bc) => {
+                {accountBroadcasts.slice(0, 10).map((bc) => {
                   const deliveryRate =
                     bc.totalRecipients > 0
-                      ? Math.round((bc.deliveredCount / bc.totalRecipients) * 100)
+                      ? Math.round(
+                          (bc.deliveredCount / bc.totalRecipients) * 100
+                        )
                       : 0
 
                   return (
@@ -4689,7 +5401,7 @@ function BroadcastsAndOutreachTab({
                       className="rounded-lg border border-border bg-white p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                     >
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <strong className="text-foreground">{bc.name}</strong>
                           <Badge
                             variant="outline"
@@ -4700,10 +5412,14 @@ function BroadcastsAndOutreachTab({
                           <Badge
                             className={cn(
                               "text-[9px] capitalize",
-                              bc.status === "completed" && "bg-emerald-600 text-white",
-                              bc.status === "processing" && "bg-blue-600 text-white",
-                              bc.status === "scheduled" && "bg-amber-600 text-white",
-                              bc.status === "failed" && "bg-rose-600 text-white"
+                              bc.status === "completed" &&
+                                "bg-emerald-600 text-white",
+                              bc.status === "processing" &&
+                                "bg-blue-600 text-white",
+                              bc.status === "scheduled" &&
+                                "bg-amber-600 text-white",
+                              bc.status === "failed" &&
+                                "bg-rose-600 text-white"
                             )}
                           >
                             {bc.status}
@@ -4714,12 +5430,18 @@ function BroadcastsAndOutreachTab({
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-3 text-[11px] font-mono">
+                      <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums flex-wrap">
                         <span>Total: {bc.totalRecipients}</span>
-                        <span className="text-emerald-700">Sent: {bc.sentCount}</span>
-                        <span className="text-primary font-bold">Delivered: {deliveryRate}%</span>
+                        <span className="text-emerald-700">
+                          Sent: {bc.sentCount}
+                        </span>
+                        <span className="text-primary font-bold">
+                          Delivered: {deliveryRate}%
+                        </span>
                         {bc.failedCount > 0 && (
-                          <span className="text-rose-600">Failed: {bc.failedCount}</span>
+                          <span className="text-rose-600">
+                            Failed: {bc.failedCount}
+                          </span>
                         )}
                         <Button
                           type="button"
@@ -4741,35 +5463,68 @@ function BroadcastsAndOutreachTab({
         </CardContent>
       </Card>
 
-      {/* Spec 0019 (Slice 38): Broadcast Delivery Funnel & Recipients Dialog */}
+      {/* Broadcast Delivery Funnel & Recipients Dialog */}
       <WhatsappBroadcastDetailsDialog
         open={isDetailsDialogOpen}
         broadcast={selectedBroadcastDetails}
         recipients={broadcastRecipientsList}
         isLoading={isLoadingBroadcastDetails}
         onClose={() => setIsDetailsDialogOpen(false)}
-        onRetryFailed={handleRetryFailedRecipients}
+        onRetryFailed={isSuperAdmin ? handleRetryFailedRecipients : undefined}
         isRetrying={isRetryingBroadcast}
+        userRole={userRole}
       />
 
-      {/* 2. 14-Day VIP Outreach CRM Section (Cleanly reusing OutreachClient!) */}
+      {/* 2. 14-Day VIP Outreach CRM Section */}
       <div className="space-y-3">
-        <div className="flex flex-col gap-1 border-b border-border pb-3">
-          <div className="flex items-center gap-2">
-            <h2 className="font-display text-lg font-bold text-foreground">
-              1-on-1 VIP Personal Outreach CRM
-            </h2>
-            <Badge
-              variant="outline"
-              className="text-[10px] font-mono border-emerald-400 text-emerald-900 bg-emerald-50"
-            >
-              14-Day Safeguard Active
-            </Badge>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-lg font-bold text-foreground">
+                1-on-1 VIP Personal Outreach CRM
+              </h2>
+              <Badge
+                variant="outline"
+                className="text-[10px] font-mono border-emerald-400 text-emerald-900 bg-emerald-50"
+              >
+                14-Day Safeguard Active
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Personal high-touch relationship cultivation for prospective
+              pilgrims served from our {officeLocationLabel} headquarters. Every
+              personal package share triggers an automatic 14-day cooldown
+              timer, unlocking automatically upon inbound customer reply.
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Personal high-touch relationship cultivation for prospective pilgrims across Askari and DHA.
-            Every personal package share triggers an automatic 14-day cooldown timer, unlocking automatically upon inbound customer reply.
-          </p>
+
+          {totalContactsPages > 1 && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+              <span className="tabular-nums">
+                Contacts Page {contactsPage}/{totalContactsPages}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={contactsPage <= 1}
+                onClick={() => onContactsPageChange(contactsPage - 1)}
+                className="h-7 text-xs px-2"
+              >
+                <ChevronLeft className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={contactsPage >= totalContactsPages}
+                onClick={() => onContactsPageChange(contactsPage + 1)}
+                className="h-7 text-xs px-2"
+              >
+                <ChevronRight className="size-3.5" />
+              </Button>
+            </div>
+          )}
         </div>
 
         <OutreachClient

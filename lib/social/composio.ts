@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { env } from "@/lib/env"
+import { assertSafeSocialMediaUrl, fetchWithTimeout } from "./safe-media"
 import type {
   SocialPostPayload,
   SocialProviderId,
@@ -7,6 +8,7 @@ import type {
 } from "./types"
 
 const COMPOSIO_API_BASE_URL = "https://backend.composio.dev/api/v3"
+const COMPOSIO_TIMEOUT_MS = 25_000
 export const COMPOSIO_ADMIN_USER_ID = "al-ramlah-admin"
 
 // ==========================================
@@ -103,7 +105,7 @@ export interface ComposioAuthLinkResult {
 }
 
 function getComposioApiKey(): string {
-  const apiKey = env.COMPOSIO_API_KEY?.trim()
+  const apiKey = (process.env.COMPOSIO_API_KEY || env.COMPOSIO_API_KEY)?.trim()
   if (!apiKey) {
     throw new Error(
       "Missing COMPOSIO_API_KEY: Composio Managed OAuth requires a valid API key in environment variables."
@@ -126,12 +128,12 @@ function getComposioHeaders(): Record<string, string> {
 export function isComposioManagedSupported(provider: SocialProviderId): boolean {
   return (
     (provider === "instagram" || provider === "facebook") &&
-    Boolean(env.COMPOSIO_API_KEY?.trim())
+    Boolean((process.env.COMPOSIO_API_KEY || env.COMPOSIO_API_KEY)?.trim())
   )
 }
 
 /**
- * Executes a tool via Composio v3 REST endpoint with strict Zod validation.
+ * Executes a tool via Composio v3 REST endpoint with bounded timeout and strict Zod validation.
  */
 export async function executeComposioTool<T>(
   toolSlug: string,
@@ -148,11 +150,15 @@ export async function executeComposioTool<T>(
     bodyPayload.connected_account_id = connectedAccountId
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: getComposioHeaders(),
-    body: JSON.stringify(bodyPayload),
-  })
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: getComposioHeaders(),
+      body: JSON.stringify(bodyPayload),
+    },
+    COMPOSIO_TIMEOUT_MS
+  )
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => "")
@@ -162,7 +168,8 @@ export async function executeComposioTool<T>(
   }
 
   const json: unknown = await res.json()
-  const rawRecord = json && typeof json === "object" ? (json as Record<string, unknown>) : {}
+  const rawRecord =
+    json && typeof json === "object" ? (json as Record<string, unknown>) : {}
 
   if (rawRecord.successful === false) {
     const message =
@@ -172,7 +179,6 @@ export async function executeComposioTool<T>(
     throw new Error(`Composio tool error [${toolSlug}]: ${message}`)
   }
 
-  // Composio responses typically nest payloads under data.response_data or data
   const dataNode = rawRecord.data
   let unwrapped: unknown = dataNode
   if (dataNode && typeof dataNode === "object") {
@@ -195,10 +201,14 @@ export async function getComposioConnectedAccounts(
     COMPOSIO_ADMIN_USER_ID
   )}`
 
-  const res = await fetch(url, {
-    method: "GET",
-    headers: getComposioHeaders(),
-  })
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "GET",
+      headers: getComposioHeaders(),
+    },
+    COMPOSIO_TIMEOUT_MS
+  )
 
   if (!res.ok) {
     const errText = await res.text().catch(() => "")
@@ -238,18 +248,21 @@ export async function createComposioAuthLink(
   provider: "instagram" | "facebook",
   callbackUrl: string
 ): Promise<ComposioAuthLinkResult> {
-  // Step 1: Create tool router session
   const sessionUrl = `${COMPOSIO_API_BASE_URL}/tool_router/session`
-  const sessionRes = await fetch(sessionUrl, {
-    method: "POST",
-    headers: getComposioHeaders(),
-    body: JSON.stringify({
-      user_id: COMPOSIO_ADMIN_USER_ID,
-      toolkits: {
-        enable: [provider],
-      },
-    }),
-  })
+  const sessionRes = await fetchWithTimeout(
+    sessionUrl,
+    {
+      method: "POST",
+      headers: getComposioHeaders(),
+      body: JSON.stringify({
+        user_id: COMPOSIO_ADMIN_USER_ID,
+        toolkits: {
+          enable: [provider],
+        },
+      }),
+    },
+    COMPOSIO_TIMEOUT_MS
+  )
 
   if (!sessionRes.ok) {
     const errText = await sessionRes.text().catch(() => "")
@@ -261,19 +274,22 @@ export async function createComposioAuthLink(
   const sessionData = composioSessionSchema.parse(await sessionRes.json())
   const sessionId = sessionData.session_id
 
-  // Step 2: Request link redirect URL
   const linkUrl = `${COMPOSIO_API_BASE_URL}/tool_router/session/${encodeURIComponent(
     sessionId
   )}/link`
 
-  const linkRes = await fetch(linkUrl, {
-    method: "POST",
-    headers: getComposioHeaders(),
-    body: JSON.stringify({
-      toolkit: provider,
-      callback_url: callbackUrl,
-    }),
-  })
+  const linkRes = await fetchWithTimeout(
+    linkUrl,
+    {
+      method: "POST",
+      headers: getComposioHeaders(),
+      body: JSON.stringify({
+        toolkit: provider,
+        callback_url: callbackUrl,
+      }),
+    },
+    COMPOSIO_TIMEOUT_MS
+  )
 
   if (!linkRes.ok) {
     const errText = await linkRes.text().catch(() => "")
@@ -307,8 +323,11 @@ export async function resolveComposioAccountProfile(
 
     const userInfo = instagramUserInfoSchema.parse(rawResult)
     const externalAccountId = String(userInfo.id)
-    const handle = userInfo.username ? `@${userInfo.username.replace(/^@/, "")}` : undefined
-    const displayName = userInfo.name || userInfo.username || "Al Ramlah Instagram"
+    const handle = userInfo.username
+      ? `@${userInfo.username.replace(/^@/, "")}`
+      : undefined
+    const displayName =
+      userInfo.name || userInfo.username || "Al Ramlah Instagram"
 
     return {
       externalAccountId,
@@ -319,7 +338,6 @@ export async function resolveComposioAccountProfile(
     }
   }
 
-  // Provider: Facebook
   const rawPagesResult = await executeComposioTool<unknown>(
     "FACEBOOK_LIST_MANAGED_PAGES",
     { fields: "id,name,access_token,category,link,picture" },
@@ -333,11 +351,9 @@ export async function resolveComposioAccountProfile(
     )
   }
 
-  // Prefer page matching "Al Ramlah" if multiple pages exist
   const matchedPage =
-    pagesData.data.find((p) =>
-      p.name.toLowerCase().includes("al ramlah")
-    ) || pagesData.data[0]
+    pagesData.data.find((p) => p.name.toLowerCase().includes("al ramlah")) ||
+    pagesData.data[0]!
 
   return {
     externalAccountId: String(matchedPage.id),
@@ -350,7 +366,8 @@ export async function resolveComposioAccountProfile(
 }
 
 /**
- * Publishes a social post to Instagram or Facebook via Composio tool execution.
+ * Publishes a social post to Instagram or Facebook via Composio tool execution (`T-034`).
+ * Validates all media URLs against the Cloudflare R2 HTTPS allowlist before forwarding.
  */
 export async function publishViaComposio(
   provider: "instagram" | "facebook",
@@ -363,27 +380,35 @@ export async function publishViaComposio(
 ): Promise<SocialPublishResult> {
   const { externalAccountId, connectedAccountId, handle, payload } = params
 
+  for (const mediaItem of payload.media) {
+    if (mediaItem.url) {
+      await assertSafeSocialMediaUrl(mediaItem.url)
+    }
+  }
+
   if (provider === "instagram") {
     const firstMedia = payload.media[0]
     if (!firstMedia?.url) {
-      throw new Error("Instagram requires at least one image or video media URL to publish.")
+      throw new Error(
+        "Instagram requires at least one image or video media URL to publish."
+      )
     }
 
+    const safeMediaUrl = (await assertSafeSocialMediaUrl(firstMedia.url)).toString()
     const isVideo =
-      firstMedia.type === "video" || firstMedia.url.toLowerCase().endsWith(".mp4")
+      firstMedia.type === "video" || safeMediaUrl.toLowerCase().endsWith(".mp4")
 
-    // Step 1: Create IG User Media container
     const createArgs: Record<string, unknown> = {
       ig_user_id: externalAccountId,
       caption: payload.caption,
     }
 
     if (isVideo) {
-      createArgs.video_url = firstMedia.url
+      createArgs.video_url = safeMediaUrl
       createArgs.media_type = "REELS"
       createArgs.share_to_feed = true
     } else {
-      createArgs.image_url = firstMedia.url
+      createArgs.image_url = safeMediaUrl
     }
 
     const rawContainer = await executeComposioTool<unknown>(
@@ -397,13 +422,10 @@ export async function publishViaComposio(
 
     if (!creationId) {
       throw new Error(
-        `Failed to obtain creation container ID for Instagram post (response: ${JSON.stringify(
-          rawContainer
-        )})`
+        "Failed to obtain creation container ID for Instagram post via Composio."
       )
     }
 
-    // Step 2: Publish the media container
     const rawPublish = await executeComposioTool<unknown>(
       "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH",
       {
@@ -427,15 +449,14 @@ export async function publishViaComposio(
     }
   }
 
-  // Provider: Facebook Page
   const firstMedia = payload.media[0]
   if (firstMedia?.url && !firstMedia.url.toLowerCase().endsWith(".mp4")) {
-    // Photo post
+    const safeMediaUrl = (await assertSafeSocialMediaUrl(firstMedia.url)).toString()
     const rawPhoto = await executeComposioTool<unknown>(
       "FACEBOOK_CREATE_PHOTO_POST",
       {
         page_id: externalAccountId,
-        url: firstMedia.url,
+        url: safeMediaUrl,
         message: payload.caption,
         published: true,
       },
@@ -453,7 +474,6 @@ export async function publishViaComposio(
     }
   }
 
-  // Standard or text post
   const rawPost = await executeComposioTool<unknown>(
     "FACEBOOK_CREATE_POST",
     {

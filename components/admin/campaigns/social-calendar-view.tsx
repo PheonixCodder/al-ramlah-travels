@@ -8,14 +8,9 @@ import {
   ChevronRight,
   Clock,
   Plus,
-  Share2,
-  CheckCircle2,
   AlertCircle,
   Loader2,
-  ExternalLink,
-  Sparkles,
-  Smartphone,
-  Layers,
+  List,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -39,11 +34,31 @@ import {
   generateCalendarGridDays,
   generateWeekGridDays,
   parsePktSlotToUtc,
-  type CalendarDayCell,
 } from "@/lib/social/time-slots"
 import { rescheduleSocialPostAction } from "@/app/actions/social-scheduler"
 import type { ScheduledPostItem } from "@/components/admin/hubs/campaigns-hub-client"
 import type { SocialProviderId } from "@/lib/social/types"
+
+export type SocialCalendarViewMode = "month" | "week" | "agenda"
+
+/**
+ * Pure UTC calendar navigation helper that anchors to day 1 before shifting
+ * months so Jan 31 / Mar 31 never skips February (`T-089`).
+ */
+export function navigateCalendarDate(
+  current: Date,
+  direction: -1 | 1,
+  mode: SocialCalendarViewMode
+): Date {
+  const d = new Date(current.getTime())
+  if (mode === "month") {
+    d.setUTCDate(1)
+    d.setUTCMonth(d.getUTCMonth() + direction)
+  } else {
+    d.setUTCDate(d.getUTCDate() + direction * 7)
+  }
+  return d
+}
 
 interface SocialCalendarViewProps {
   scheduledPosts: ScheduledPostItem[]
@@ -66,7 +81,8 @@ export function SocialCalendarView({
   onSelectPost,
   onRefresh,
 }: SocialCalendarViewProps) {
-  const [viewMode, setViewMode] = React.useState<"month" | "week">("month")
+  const [viewMode, setViewMode] =
+    React.useState<SocialCalendarViewMode>("month")
   const [currentDate, setCurrentDate] = React.useState<Date>(() => new Date())
 
   // Reschedule dialog state
@@ -75,35 +91,20 @@ export function SocialCalendarView({
   const [newDateInput, setNewDateInput] = React.useState<string>("")
   const [newSlotInput, setNewSlotInput] = React.useState<string>("11:00")
   const [isRescheduling, setIsRescheduling] = React.useState<boolean>(false)
-  const [rescheduleError, setRescheduleError] = React.useState<string | null>(null)
+  const [rescheduleError, setRescheduleError] = React.useState<string | null>(
+    null
+  )
 
   // Current year & month for month view
   const currentYear = currentDate.getUTCFullYear()
   const currentMonth = currentDate.getUTCMonth() + 1 // 1-12
 
-  // Month navigation
   const handlePrev = () => {
-    setCurrentDate((prev) => {
-      const d = new Date(prev)
-      if (viewMode === "month") {
-        d.setUTCMonth(d.getUTCMonth() - 1)
-      } else {
-        d.setUTCDate(d.getUTCDate() - 7)
-      }
-      return d
-    })
+    setCurrentDate((prev) => navigateCalendarDate(prev, -1, viewMode))
   }
 
   const handleNext = () => {
-    setCurrentDate((prev) => {
-      const d = new Date(prev)
-      if (viewMode === "month") {
-        d.setUTCMonth(d.getUTCMonth() + 1)
-      } else {
-        d.setUTCDate(d.getUTCDate() + 7)
-      }
-      return d
-    })
+    setCurrentDate((prev) => navigateCalendarDate(prev, 1, viewMode))
   }
 
   const handleToday = () => {
@@ -118,13 +119,24 @@ export function SocialCalendarView({
     return generateWeekGridDays(currentDate)
   }, [viewMode, currentYear, currentMonth, currentDate])
 
+  // Agenda cells (current month active days or current 7-day week)
+  const agendaCells = React.useMemo(() => {
+    if (viewMode === "month") {
+      return dayCells.filter((c) => c.isCurrentMonth)
+    }
+    return generateWeekGridDays(currentDate)
+  }, [viewMode, dayCells, currentDate])
+
   // Bucket posts by PKT date key
   const postsByDate = React.useMemo(() => {
     return bucketPostsByPktDate(scheduledPosts)
   }, [scheduledPosts])
 
   // Reschedule handler
-  const handleOpenReschedule = (post: ScheduledPostItem, e: React.MouseEvent) => {
+  const handleOpenReschedule = (
+    post: ScheduledPostItem,
+    e: React.MouseEvent
+  ) => {
     e.stopPropagation()
     setReschedulingPost(post)
     const d = new Date(post.scheduledFor)
@@ -188,14 +200,137 @@ export function SocialCalendarView({
 
   const weekDayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
+  const renderAgendaList = (className?: string) => (
+    <div className={className}>
+      <div className="space-y-2.5">
+        {agendaCells.map((cell) => {
+          const postsForDay = postsByDate.get(cell.dateKey) || []
+          return (
+            <div
+              key={`agenda-${cell.dateKey}`}
+              className={`rounded-xl border p-3 space-y-2 ${
+                cell.isToday
+                  ? "border-[#0A3622] bg-[#0A3622]/[0.03] ring-1 ring-[#0A3622]/25"
+                  : "border-border bg-card"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-xs font-bold rounded-full size-6 flex items-center justify-center tabular-nums ${
+                      cell.isToday
+                        ? "bg-[#0A3622] text-white"
+                        : "bg-secondary text-foreground"
+                    }`}
+                  >
+                    {cell.dayNumber}
+                  </span>
+                  <span className="text-xs font-semibold text-foreground">
+                    {formatPktDate(cell.dateUtcStart, "short")}
+                  </span>
+                  {cell.isToday && (
+                    <Badge className="bg-[#0A3622] text-white text-[9px]">
+                      Today (PKT)
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1 flex-wrap">
+                  {DEFAULT_PKT_POSTING_SLOTS.map((slot) => {
+                    const hourNum = parseInt(slot.split(":")[0] || "11", 10)
+                    const label =
+                      hourNum === 11
+                        ? "11 AM"
+                        : hourNum === 16
+                        ? "4 PM"
+                        : "9 PM"
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() =>
+                          onSelectSlot && onSelectSlot(cell.dateKey, slot)
+                        }
+                        className="text-[10px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-[#C5A059]/15 hover:border-[#C5A059]/60 font-mono cursor-pointer inline-flex items-center gap-0.5"
+                      >
+                        <Plus className="size-2.5 text-[#C5A059]" />
+                        <span>{label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {postsForDay.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">
+                  No posts queued — tap a peak PKT slot above to schedule.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {postsForDay.map((post) => {
+                    const postTimePkt = formatPktTime12h(
+                      new Date(post.scheduledFor)
+                    )
+                    const targetProviders = Array.from(
+                      new Set(post.targets.map((t) => t.integration.provider))
+                    ) as SocialProviderId[]
+
+                    return (
+                      <div
+                        key={post.id}
+                        onClick={() => onSelectPost && onSelectPost(post)}
+                        className="rounded-lg border border-border bg-background p-2 flex items-center justify-between gap-2 text-xs cursor-pointer hover:border-[#C5A059]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono text-[11px] font-bold text-primary">
+                              {post.postAsset?.postCode || "POST"}
+                            </span>
+                            <span className="text-[10px] font-mono text-muted-foreground inline-flex items-center gap-0.5 tabular-nums">
+                              <Clock className="size-2.5" />
+                              {postTimePkt}
+                            </span>
+                            <span className="text-[11px]">
+                              {targetProviders
+                                .map((p) => PROVIDER_ICONS[p] || "📱")
+                                .join(" ")}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                            {post.caption}
+                          </p>
+                        </div>
+
+                        {(post.status === "scheduled" ||
+                          post.status === "draft") && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenReschedule(post, e)}
+                            className="text-[11px] text-primary hover:underline font-semibold shrink-0 cursor-pointer"
+                          >
+                            Move
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 min-w-0">
       {/* Calendar Header Controls */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-gradient-to-r from-[#0A3622]/5 via-background to-[#C5A059]/5 p-3.5 rounded-xl border border-border shadow-xs">
-        <div className="flex items-center gap-2">
-          <CalendarIcon className="size-5 text-[#C5A059]" />
-          <div>
-            <h3 className="font-display text-base font-bold text-foreground">
+        <div className="flex items-center gap-2 min-w-0">
+          <CalendarIcon className="size-5 text-[#C5A059] shrink-0" />
+          <div className="min-w-0">
+            <h3 className="font-display text-base font-bold text-foreground truncate">
               {headerLabel}
             </h3>
             <p className="text-[11px] text-muted-foreground">
@@ -212,6 +347,7 @@ export function SocialCalendarView({
               onClick={handlePrev}
               className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               title="Previous"
+              aria-label="Previous period"
             >
               <ChevronLeft className="size-4" />
             </button>
@@ -227,6 +363,7 @@ export function SocialCalendarView({
               onClick={handleNext}
               className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               title="Next"
+              aria-label="Next period"
             >
               <ChevronRight className="size-4" />
             </button>
@@ -234,6 +371,18 @@ export function SocialCalendarView({
 
           {/* View Toggle */}
           <div className="flex items-center bg-secondary p-0.5 rounded-lg border border-border">
+            <button
+              type="button"
+              onClick={() => setViewMode("agenda")}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer inline-flex items-center gap-1 ${
+                viewMode === "agenda"
+                  ? "bg-[#0A3622] text-white shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <List className="size-3" />
+              <span>Agenda</span>
+            </button>
             <button
               type="button"
               onClick={() => setViewMode("week")}
@@ -260,173 +409,193 @@ export function SocialCalendarView({
         </div>
       </div>
 
-      {/* Weekday Names Header */}
-      <div className="grid grid-cols-7 gap-1 text-center font-display text-xs font-bold text-muted-foreground py-1 border-b border-border/80">
-        {weekDayNames.map((name) => (
-          <div key={name}>{name}</div>
-        ))}
-      </div>
+      {viewMode === "agenda" ? (
+        renderAgendaList()
+      ) : (
+        <>
+          {/* Mobile Compact Agenda View at 320px/375px (< md) */}
+          {renderAgendaList("md:hidden")}
 
-      {/* Calendar Days Grid */}
-      <div
-        className={`grid grid-cols-7 gap-1.5 ${
-          viewMode === "week" ? "min-h-[460px]" : "min-h-[620px]"
-        }`}
-      >
-        {dayCells.map((cell) => {
-          const postsForDay = postsByDate.get(cell.dateKey) || []
-          const isDimmed = !cell.isCurrentMonth && viewMode === "month"
-
-          return (
-            <div
-              key={cell.dateKey}
-              className={`rounded-xl border flex flex-col p-2 transition-all ${
-                cell.isToday
-                  ? "border-[#0A3622] bg-[#0A3622]/[0.02] ring-1 ring-[#0A3622]/30"
-                  : isDimmed
-                  ? "border-border/40 bg-muted/20 opacity-60"
-                  : "border-border bg-card hover:border-[#C5A059]/40"
-              }`}
-            >
-              {/* Day Header */}
-              <div className="flex items-center justify-between pb-1.5 border-b border-border/40">
-                <span
-                  className={`text-xs font-bold rounded-full size-6 flex items-center justify-center ${
-                    cell.isToday
-                      ? "bg-[#0A3622] text-white shadow-xs"
-                      : "text-foreground"
-                  }`}
-                >
-                  {cell.dayNumber}
-                </span>
-
-                {postsForDay.length > 0 && (
-                  <Badge
-                    variant="outline"
-                    className="text-[9px] px-1.5 py-0 border-[#C5A059]/60 text-[#0A3622] font-mono"
-                  >
-                    {postsForDay.length} post{postsForDay.length > 1 ? "s" : ""}
-                  </Badge>
-                )}
+          {/* Desktop / Tablet 7-Column Calendar Grid with Horizontal Overflow Guard */}
+          <div className="hidden md:block overflow-x-auto pb-1">
+            <div className="min-w-[680px] space-y-2">
+              {/* Weekday Names Header */}
+              <div className="grid grid-cols-7 gap-1 text-center font-display text-xs font-bold text-muted-foreground py-1 border-b border-border/80">
+                {weekDayNames.map((name) => (
+                  <div key={name}>{name}</div>
+                ))}
               </div>
 
-              {/* Day Posts List */}
-              <div className="flex-1 overflow-y-auto space-y-1.5 py-1.5 min-h-[90px]">
-                {postsForDay.map((post) => {
-                  const postTimePkt = formatPktTime12h(
-                    new Date(post.scheduledFor)
-                  )
-                  const targetProviders = Array.from(
-                    new Set(post.targets.map((t) => t.integration.provider))
-                  ) as SocialProviderId[]
-
-                  const statusColor =
-                    post.status === "completed"
-                      ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30"
-                      : post.status === "publishing"
-                      ? "bg-amber-500/10 text-amber-700 border-amber-500/30 animate-pulse"
-                      : post.status === "failed"
-                      ? "bg-rose-500/10 text-rose-700 border-rose-500/30"
-                      : "bg-[#0A3622]/10 text-[#0A3622] border-[#0A3622]/30"
-
-                  const thumbnail =
-                    post.mediaUrls[0] || post.postAsset?.imageUrl || ""
+              {/* Calendar Days Grid */}
+              <div
+                className={`grid grid-cols-7 gap-1.5 ${
+                  viewMode === "week" ? "min-h-[460px]" : "min-h-[620px]"
+                }`}
+              >
+                {dayCells.map((cell) => {
+                  const postsForDay = postsByDate.get(cell.dateKey) || []
+                  const isDimmed = !cell.isCurrentMonth && viewMode === "month"
 
                   return (
                     <div
-                      key={post.id}
-                      onClick={() => onSelectPost && onSelectPost(post)}
-                      className={`group/card rounded-lg border p-1.5 text-left text-xs bg-background shadow-xs hover:shadow-md transition-all cursor-pointer ${statusColor}`}
+                      key={cell.dateKey}
+                      className={`rounded-xl border flex flex-col p-2 transition-all min-w-0 ${
+                        cell.isToday
+                          ? "border-[#0A3622] bg-[#0A3622]/[0.02] ring-1 ring-[#0A3622]/30"
+                          : isDimmed
+                          ? "border-border/40 bg-muted/20 opacity-60"
+                          : "border-border bg-card hover:border-[#C5A059]/40"
+                      }`}
                     >
-                      <div className="flex items-center gap-1.5">
-                        {thumbnail ? (
-                          <div className="relative size-7 shrink-0 rounded overflow-hidden bg-muted">
-                            <Image
-                              src={thumbnail}
-                              alt="thumb"
-                              fill
-                              sizes="28px"
-                              className="object-cover"
-                              unoptimized
-                            />
-                          </div>
-                        ) : (
-                          <div className="size-7 shrink-0 rounded bg-muted flex items-center justify-center text-[10px]">
-                            📸
-                          </div>
+                      {/* Day Header */}
+                      <div className="flex items-center justify-between pb-1.5 border-b border-border/40">
+                        <span
+                          className={`text-xs font-bold rounded-full size-6 flex items-center justify-center tabular-nums ${
+                            cell.isToday
+                              ? "bg-[#0A3622] text-white shadow-xs"
+                              : "text-foreground"
+                          }`}
+                        >
+                          {cell.dayNumber}
+                        </span>
+
+                        {postsForDay.length > 0 && (
+                          <Badge
+                            variant="outline"
+                            className="text-[9px] px-1.5 py-0 border-[#C5A059]/60 text-[#0A3622] font-mono tabular-nums"
+                          >
+                            {postsForDay.length} post
+                            {postsForDay.length > 1 ? "s" : ""}
+                          </Badge>
                         )}
+                      </div>
 
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono text-[10px] font-bold truncate">
-                              {post.postAsset?.postCode || "POST"}
-                            </span>
-                            <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-0.5">
-                              <Clock className="size-2.5" />
-                              {postTimePkt}
-                            </span>
-                          </div>
+                      {/* Day Posts List */}
+                      <div className="flex-1 overflow-y-auto space-y-1.5 py-1.5 min-h-[90px]">
+                        {postsForDay.map((post) => {
+                          const postTimePkt = formatPktTime12h(
+                            new Date(post.scheduledFor)
+                          )
+                          const targetProviders = Array.from(
+                            new Set(
+                              post.targets.map((t) => t.integration.provider)
+                            )
+                          ) as SocialProviderId[]
 
-                          <div className="flex items-center justify-between mt-0.5">
-                            <div className="flex items-center gap-0.5 text-[10px]">
-                              {targetProviders.map((p) => (
-                                <span key={p} title={p}>
-                                  {PROVIDER_ICONS[p] || "📱"}
-                                </span>
-                              ))}
+                          const statusColor =
+                            post.status === "completed"
+                              ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30"
+                              : post.status === "publishing"
+                              ? "bg-amber-500/10 text-amber-700 border-amber-500/30 animate-pulse"
+                              : post.status === "failed"
+                              ? "bg-rose-500/10 text-rose-700 border-rose-500/30"
+                              : "bg-[#0A3622]/10 text-[#0A3622] border-[#0A3622]/30"
+
+                          const thumbnail =
+                            post.mediaUrls[0] || post.postAsset?.imageUrl || ""
+
+                          return (
+                            <div
+                              key={post.id}
+                              onClick={() => onSelectPost && onSelectPost(post)}
+                              className={`group/card rounded-lg border p-1.5 text-left text-xs bg-background shadow-xs hover:shadow-md transition-all cursor-pointer ${statusColor}`}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                {thumbnail ? (
+                                  <div className="relative size-7 shrink-0 rounded overflow-hidden bg-muted">
+                                    <Image
+                                      src={thumbnail}
+                                      alt="thumb"
+                                      fill
+                                      sizes="28px"
+                                      className="object-cover"
+                                      unoptimized
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="size-7 shrink-0 rounded bg-muted flex items-center justify-center text-[10px]">
+                                    📸
+                                  </div>
+                                )}
+
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-mono text-[10px] font-bold truncate">
+                                      {post.postAsset?.postCode || "POST"}
+                                    </span>
+                                    <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-0.5 tabular-nums">
+                                      <Clock className="size-2.5" />
+                                      {postTimePkt}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center justify-between mt-0.5">
+                                    <div className="flex items-center gap-0.5 text-[10px]">
+                                      {targetProviders.map((p) => (
+                                        <span key={p} title={p}>
+                                          {PROVIDER_ICONS[p] || "📱"}
+                                        </span>
+                                      ))}
+                                    </div>
+
+                                    {(post.status === "scheduled" ||
+                                      post.status === "draft") && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) =>
+                                          handleOpenReschedule(post, e)
+                                        }
+                                        className="opacity-0 group-hover/card:opacity-100 text-[10px] text-primary hover:underline font-semibold"
+                                        title="Reschedule Post"
+                                      >
+                                        Move
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
+                          )
+                        })}
+                      </div>
 
-                            {(post.status === "scheduled" ||
-                              post.status === "draft") && (
-                              <button
-                                type="button"
-                                onClick={(e) => handleOpenReschedule(post, e)}
-                                className="opacity-0 group-hover/card:opacity-100 text-[10px] text-primary hover:underline font-semibold"
-                                title="Reschedule Post"
-                              >
-                                Move
-                              </button>
-                            )}
-                          </div>
-                        </div>
+                      {/* Peak Slot Buttons */}
+                      <div className="pt-1 border-t border-border/40 flex flex-wrap gap-1">
+                        {DEFAULT_PKT_POSTING_SLOTS.map((slot) => {
+                          const [h] = slot.split(":")
+                          const hourNum = parseInt(h || "11", 10)
+                          const label =
+                            hourNum === 11
+                              ? "11 AM"
+                              : hourNum === 16
+                              ? "4 PM"
+                              : "9 PM"
+
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() =>
+                                onSelectSlot &&
+                                onSelectSlot(cell.dateKey, slot)
+                              }
+                              className="text-[9px] px-1.5 py-0.5 rounded border border-border/60 text-muted-foreground hover:text-foreground hover:bg-[#C5A059]/15 hover:border-[#C5A059]/60 transition-all font-mono cursor-pointer flex items-center gap-0.5"
+                              title={`Queue new post on ${cell.dateKey} at ${slot} PKT`}
+                            >
+                              <Plus className="size-2 text-[#C5A059]" />
+                              <span>{label}</span>
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
                   )
                 })}
               </div>
-
-              {/* Peak Slot Buttons */}
-              <div className="pt-1 border-t border-border/40 flex flex-wrap gap-1">
-                {DEFAULT_PKT_POSTING_SLOTS.map((slot) => {
-                  const [h] = slot.split(":")
-                  const hourNum = parseInt(h, 10)
-                  const label =
-                    hourNum === 11
-                      ? "11 AM"
-                      : hourNum === 16
-                      ? "4 PM"
-                      : "9 PM"
-
-                  return (
-                    <button
-                      key={slot}
-                      type="button"
-                      onClick={() =>
-                        onSelectSlot && onSelectSlot(cell.dateKey, slot)
-                      }
-                      className="text-[9px] px-1.5 py-0.5 rounded border border-border/60 text-muted-foreground hover:text-foreground hover:bg-[#C5A059]/15 hover:border-[#C5A059]/60 transition-all font-mono cursor-pointer flex items-center gap-0.5"
-                      title={`Queue new post on ${cell.dateKey} at ${slot} PKT`}
-                    >
-                      <Plus className="size-2 text-[#C5A059]" />
-                      <span>{label}</span>
-                    </button>
-                  )
-                })}
-              </div>
             </div>
-          )
-        })}
-      </div>
+          </div>
+        </>
+      )}
 
       {/* Reschedule Modal */}
       {reschedulingPost && (
@@ -451,7 +620,10 @@ export function SocialCalendarView({
 
             <div className="space-y-4 py-3">
               <div className="space-y-1.5">
-                <Label htmlFor="reschedule-date" className="text-xs font-semibold">
+                <Label
+                  htmlFor="reschedule-date"
+                  className="text-xs font-semibold"
+                >
                   Date (PKT)
                 </Label>
                 <Input
@@ -490,7 +662,10 @@ export function SocialCalendarView({
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="reschedule-time" className="text-xs font-semibold">
+                <Label
+                  htmlFor="reschedule-time"
+                  className="text-xs font-semibold"
+                >
                   Or Custom Time (HH:mm)
                 </Label>
                 <Input

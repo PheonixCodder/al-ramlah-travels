@@ -5,9 +5,12 @@ import Link from "next/link"
 import NextImage, { type ImageProps } from "next/image"
 
 const Image = (
-  typeof NextImage === "function"
-    ? NextImage
-    : (NextImage as { default: React.ComponentType<ImageProps> }).default
+  typeof NextImage === "object" &&
+  NextImage !== null &&
+  "default" in NextImage &&
+  (NextImage as { default?: React.ComponentType<ImageProps> }).default
+    ? (NextImage as { default: React.ComponentType<ImageProps> }).default
+    : NextImage
 ) as React.ComponentType<ImageProps>
 import {
   Phone,

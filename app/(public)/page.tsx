@@ -27,23 +27,27 @@ export const revalidate = 300
 
 // T-057: Code-split below-the-fold interactive sections to reduce initial public JS payload
 const HajjInquirySection = dynamic(() =>
-  import("@/components/public/hajj-inquiry-section").then(
-    (mod) => mod.HajjInquirySection
-  )
+  import("@/components/public/hajj-inquiry-section").then((mod) => ({
+    default: mod.HajjInquirySection,
+  }))
 )
 
 const StatusTracker = dynamic(() =>
-  import("@/components/public/status-tracker").then((mod) => mod.StatusTracker)
+  import("@/components/public/status-tracker").then((mod) => ({
+    default: mod.StatusTracker,
+  }))
 )
 
 const MarketingSections = dynamic(() =>
-  import("@/components/public/marketing-sections").then(
-    (mod) => mod.MarketingSections
-  )
+  import("@/components/public/marketing-sections").then((mod) => ({
+    default: mod.MarketingSections,
+  }))
 )
 
 const ContactSection = dynamic(() =>
-  import("@/components/public/contact-section").then((mod) => mod.ContactSection)
+  import("@/components/public/contact-section").then((mod) => ({
+    default: mod.ContactSection,
+  }))
 )
 
 export default async function HomePage() {

@@ -5,9 +5,12 @@ import { useState, useEffect } from "react"
 import NextImage, { type ImageProps } from "next/image"
 
 const Image = (
-  typeof NextImage === "function"
-    ? NextImage
-    : (NextImage as { default: React.ComponentType<ImageProps> }).default
+  typeof NextImage === "object" &&
+  NextImage !== null &&
+  "default" in NextImage &&
+  (NextImage as { default?: React.ComponentType<ImageProps> }).default
+    ? (NextImage as { default: React.ComponentType<ImageProps> }).default
+    : NextImage
 ) as React.ComponentType<ImageProps>
 import Link from "next/link"
 import { Button } from "@/components/ui/button"

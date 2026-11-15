@@ -169,11 +169,11 @@ export function StatusBadge({
       {isOverdue && showSlaWarning && (
         <span
           title={`Quote is overdue SLA (more than ${effectiveSlaHours} ${effectiveSlaHours === 1 ? "hour" : "hours"} in pending queue)`}
-          className="inline-flex animate-pulse items-center gap-1 rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-800 tabular-nums shadow-2xs select-none motion-reduce:animate-none"
+          className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-900 tabular-nums shadow-2xs select-none"
         >
           <span
             aria-hidden="true"
-            className="size-1.5 shrink-0 rounded-full bg-red-600"
+            className="size-1.5 shrink-0 animate-pulse rounded-full bg-red-600 motion-reduce:animate-none"
           />
           <span className="font-mono tabular-nums">
             SLA Overdue ({effectiveSlaHours}h+)

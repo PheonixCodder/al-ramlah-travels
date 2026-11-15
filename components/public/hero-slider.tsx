@@ -249,10 +249,15 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
                   onClick={() => setCurrent(i)}
                   aria-label={`Go to slide ${i + 1}`}
                   aria-current={i === current ? "true" : undefined}
-                  className={`h-1.5 rounded-full transition-all ${
-                    i === current ? "w-6 bg-gold" : "w-2 bg-white/40"
-                  }`}
-                />
+                  className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-full px-0.5"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`block h-1.5 rounded-full transition-all ${
+                      i === current ? "w-6 bg-gold" : "w-2 bg-white/40"
+                    }`}
+                  />
+                </button>
               ))}
             </div>
             <button

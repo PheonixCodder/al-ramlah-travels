@@ -61,7 +61,7 @@ export default async function PublicVoucherPage({
           </div>
 
           <div className="space-y-2">
-            <span className="inline-block rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+            <span className="inline-block rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[#7A5C1E]">
               403 · Voucher Security Gate
             </span>
             <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#0A3622]">
@@ -163,7 +163,7 @@ export default async function PublicVoucherPage({
                 <path d={qrSpec.pathData} fill="#0A3622" />
               </svg>
               <div className="space-y-1 pr-1">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
                   Booking Reference
                 </span>
                 <span className="block font-mono text-base sm:text-lg font-black text-[#0A3622] tabular-nums">
@@ -210,7 +210,7 @@ export default async function PublicVoucherPage({
           {/* Pilgrim & Travel Overview */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-5">
             <div className="space-y-1">
-              <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+              <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#7A5C1E]">
                 <Users className="size-3.5 text-[#C5A059]" />
                 Lead Pilgrim &amp; Party
               </span>
@@ -229,7 +229,7 @@ export default async function PublicVoucherPage({
             </div>
 
             <div className="space-y-1">
-              <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+              <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#7A5C1E]">
                 <Calendar className="size-3.5 text-[#C5A059]" />
                 Kingdom Travel Window
               </span>
@@ -305,7 +305,7 @@ export default async function PublicVoucherPage({
                           {stay.city === "makkah" ? "Makkah" : "Madinah"}
                         </span>
                         {stay.starRating && (
-                          <span className="text-[11px] font-semibold text-[#8F6E2A]">
+                          <span className="text-[11px] font-semibold text-[#7A5C1E]">
                             {stay.starRating}-Star
                           </span>
                         )}
@@ -324,7 +324,7 @@ export default async function PublicVoucherPage({
                         {stay.checkInDate} &rarr; {stay.checkOutDate} ({stay.nights}{" "}
                         {stay.nights === 1 ? "Night" : "Nights"})
                       </p>
-                      <p className="text-[#8F6E2A] font-semibold capitalize">
+                      <p className="text-[#7A5C1E] font-semibold capitalize">
                         {stay.roomCategory} Allocation ·{" "}
                         {stay.mealPlan.replace("_", " ")}
                       </p>
@@ -352,7 +352,7 @@ export default async function PublicVoucherPage({
                       <span className="font-bold text-[#0A3622]">
                         Leg {seg.segmentOrder}: {seg.sectorLabel}
                       </span>
-                      <span className="rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-2 py-0.5 text-[10px] font-bold text-[#8F6E2A] uppercase">
+                      <span className="rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-2 py-0.5 text-[10px] font-bold text-[#7A5C1E] uppercase">
                         {seg.serviceType}
                       </span>
                     </div>

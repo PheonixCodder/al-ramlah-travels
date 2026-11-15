@@ -509,7 +509,7 @@ export function ContentClient({
                       <span
                         lang="ar"
                         dir="rtl"
-                        className="font-arabic text-xs text-gold font-medium block"
+                        className="font-arabic text-xs text-gold-text font-medium block"
                       >
                         {s.badge}
                       </span>
@@ -616,7 +616,7 @@ export function ContentClient({
             >
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1 text-gold">
+                  <div className="flex items-center gap-1 text-gold-text">
                     {Array.from({ length: t.rating }).map((_, i) => (
                       <Star key={i} className="size-3.5 fill-gold" />
                     ))}

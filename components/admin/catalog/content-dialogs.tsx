@@ -181,7 +181,7 @@ export function HeroSlideDialog({
               dir="rtl"
               value={badge}
               onChange={(e) => setBadge(e.target.value)}
-              className="font-arabic text-sm text-gold"
+              className="font-arabic text-sm text-gold-text"
             />
           </div>
 

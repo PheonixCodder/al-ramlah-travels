@@ -30,7 +30,7 @@ export default async function PrivacyPolicyPage() {
         <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-[#0A3622] hover:text-[#8F6E2A] transition-colors"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-[#0A3622] hover:text-[#7A5C1E] transition-colors"
           >
             <ArrowLeft className="size-4" />
             <span>Back to Home</span>
@@ -267,7 +267,7 @@ export default async function PrivacyPolicyPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-4 space-y-1">
-                  <span className="font-mono text-xs font-bold uppercase text-[#8F6E2A]">
+                  <span className="font-mono text-xs font-bold uppercase text-[#7A5C1E]">
                     60 Days Post-Return
                   </span>
                   <h3 className="font-bold text-[#0A3622] text-sm">
@@ -281,7 +281,7 @@ export default async function PrivacyPolicyPage() {
                 </div>
 
                 <div className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-4 space-y-1">
-                  <span className="font-mono text-xs font-bold uppercase text-[#8F6E2A]">
+                  <span className="font-mono text-xs font-bold uppercase text-[#7A5C1E]">
                     24 Months
                   </span>
                   <h3 className="font-bold text-[#0A3622] text-sm">
@@ -295,7 +295,7 @@ export default async function PrivacyPolicyPage() {
                 </div>
 
                 <div className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-4 space-y-1">
-                  <span className="font-mono text-xs font-bold uppercase text-[#8F6E2A]">
+                  <span className="font-mono text-xs font-bold uppercase text-[#7A5C1E]">
                     6 Years (Statutory)
                   </span>
                   <h3 className="font-bold text-[#0A3622] text-sm">

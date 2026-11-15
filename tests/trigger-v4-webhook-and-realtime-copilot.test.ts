@@ -1,8 +1,4 @@
-process.env.SKIP_ENV_VALIDATION = "1"
-process.env.DATABASE_URL = process.env.DATABASE_URL || "postgresql://user:pass@localhost:5432/alramlah"
-process.env.DATABASE_URL_POOLED = process.env.DATABASE_URL_POOLED || "postgresql://user:pass@localhost:5432/alramlah"
-process.env.BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET || "12345678901234567890123456789012"
-
+import crypto from "node:crypto"
 import { describe, it, afterEach, before, after } from "node:test"
 import assert from "node:assert/strict"
 import { eq, or, inArray, sql } from "drizzle-orm"
@@ -12,9 +8,11 @@ import {
   whatsappMessages,
 } from "../db/schema/whatsapp-crm"
 import {
+  socialIntegrations,
   scheduledPosts,
   scheduledPostTargets,
 } from "../db/schema/social-scheduler"
+import { encryptToken } from "../lib/social/crypto"
 
 import {
   processInboundWhatsappPayloadSchema,
@@ -26,6 +24,7 @@ import {
 import {
   dispatchInboundWhatsAppProcessing,
   normalizeDispatchOptions,
+  setTriggerDispatchTransportForTests,
   setTriggerSdkForTests,
 } from "../trigger/dispatch"
 
@@ -65,6 +64,7 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
 
   afterEach(() => {
     setTriggerSdkForTests(null)
+    setTriggerDispatchTransportForTests(null)
     if (originalKey === undefined) {
       delete process.env.TRIGGER_SECRET_KEY
     } else {
@@ -162,15 +162,15 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
   describe("AC-2: Zero-Timeout Webhook Decoupling (<150ms Response)", () => {
     it("dispatchInboundWhatsAppProcessing returns immediately without blocking on processing", async () => {
       process.env.TRIGGER_SECRET_KEY = "tr_prod_mock_key"
-      setTriggerSdkForTests({
-        tasks: {
-          trigger: (async () => ({ id: "run_wa_immediate_123" })) as never,
-        },
-        runs: {
-          poll: (async () => ({})) as never,
-          retrieve: (async () => ({})) as never,
-          cancel: (async () => ({})) as never,
-        },
+      setTriggerDispatchTransportForTests({
+        trigger: async () => ({ id: "run_wa_immediate_123" }),
+        triggerAndWait: async () => ({
+          ok: true,
+          id: "run_wa_immediate_123",
+          output: {},
+        }),
+        batchTrigger: async () => ({ runs: [] }),
+        createPublicToken: async () => "pub_tok_mock_123",
       })
 
       const startTime = Date.now()
@@ -191,8 +191,8 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
       assert.equal(dispatchResult.success, true)
       assert.equal(dispatchResult.runId, "run_wa_immediate_123")
       assert.equal(dispatchResult.mode, "cloud")
-      // Must complete well under 500ms (Meta requires webhook response within 3000ms)
-      assert.ok(durationMs < 500, `Dispatch took ${durationMs}ms, should be <500ms`)
+      // Must complete well under 150ms
+      assert.ok(durationMs < 150, `Dispatch took ${durationMs}ms, should be <150ms`)
     })
 
     it("dispatchInboundWhatsAppProcessing triggers cloud task when configured", async () => {
@@ -202,20 +202,24 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
       let triggeredTaskId: string | null = null
       let triggeredOptions: Record<string, unknown> | null = null
 
-      setTriggerSdkForTests({
-        tasks: {
-          trigger: (async (taskId: string, payload: unknown, options: any) => {
-            cloudTriggered = true
-            triggeredTaskId = taskId
-            triggeredOptions = options
-            return { id: "run_wa_inbound_cloud_123" }
-          }) as never,
+      setTriggerDispatchTransportForTests({
+        trigger: async (
+          taskId: string,
+          _payload: unknown,
+          options?: Record<string, unknown>
+        ) => {
+          cloudTriggered = true
+          triggeredTaskId = taskId
+          triggeredOptions = options ?? null
+          return { id: "run_wa_inbound_cloud_123" }
         },
-        runs: {
-          poll: (async () => ({})) as never,
-          retrieve: (async () => ({})) as never,
-          cancel: (async () => ({})) as never,
-        },
+        triggerAndWait: async () => ({
+          ok: true,
+          id: "run_wa_inbound_cloud_123",
+          output: {},
+        }),
+        batchTrigger: async () => ({ runs: [] }),
+        createPublicToken: async () => "pub_tok_mock_456",
       })
 
       const payload: ProcessInboundWhatsappPayload = {
@@ -235,7 +239,10 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
       assert.equal(res.mode, "cloud")
       assert.equal(res.runId, "run_wa_inbound_cloud_123")
       assert.ok(triggeredOptions)
-      assert.ok((triggeredOptions as any).tags.includes(`wa-msg:${SAMPLE_UUID_1}`))
+      const tags = Array.isArray(triggeredOptions.tags)
+        ? (triggeredOptions.tags as string[])
+        : []
+      assert.ok(tags.includes(`wa-msg:${SAMPLE_UUID_1}`))
     })
   })
 
@@ -263,9 +270,9 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
     it("normalizeDispatchOptions preserves existing idempotencyKey object with global scope", async () => {
       process.env.TRIGGER_SECRET_KEY = "tr_prod_live_scope_test"
 
-      const existingKey = { key: "custom-global-key", scope: "global" } as any
+      const existingKey = { key: "custom-global-key", scope: "global" as const }
       const normalized = await normalizeDispatchOptions({
-        idempotencyKey: existingKey,
+        idempotencyKey: existingKey as unknown as string,
       })
 
       assert.ok(normalized)
@@ -297,7 +304,10 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
       assert.ok(found)
       assert.equal(found.taskIdentifier, "quoting-copilot")
       assert.ok(found.tags.includes("copilot:wa:conv-123"))
-      assert.equal((found.metadata as any)?.stage, "running_domain_tools")
+      assert.equal(
+        (found.metadata as Record<string, unknown> | undefined)?.stage,
+        "running_domain_tools"
+      )
 
       // Query by non-matching tag returns empty
       const nonMatched = getLocalActiveRunsByTags(["copilot:wa:conv-999"])
@@ -310,28 +320,34 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
   // AC-5: Non-Blocking Realtime Copilot & Luxury PDF Action Validation
   // =========================================================================
   describe("AC-5: Non-Blocking Realtime Copilot & Luxury PDF Action Validation", () => {
-    it("waConversationCopilotInputSchema parses string or object conversationId", () => {
-      const fromString = waConversationCopilotInputSchema.parse("conv-123")
-      assert.equal(fromString.conversationId, "conv-123")
-
+    it("waConversationCopilotInputSchema parses object conversationId and rejects bare strings", () => {
+      const validUuid = "11111111-2222-4333-8444-555555555555"
       const fromObj = waConversationCopilotInputSchema.parse({
-        conversationId: "conv-456",
+        conversationId: validUuid,
         staffPromptHint: "Focus on 5-star quad sharing",
       })
-      assert.equal(fromObj.conversationId, "conv-456")
+      assert.equal(fromObj.conversationId, validUuid)
       assert.equal(fromObj.staffPromptHint, "Focus on 5-star quad sharing")
+
+      assert.equal(
+        waConversationCopilotInputSchema.safeParse("conv-123").success,
+        false
+      )
     })
 
-    it("applicationQuoteCopilotInputSchema parses string or object applicationId", () => {
-      const fromString = applicationQuoteCopilotInputSchema.parse("app-789")
-      assert.equal(fromString.applicationId, "app-789")
-
+    it("applicationQuoteCopilotInputSchema parses object applicationId and rejects bare strings", () => {
+      const validUuid = "22222222-3333-4444-8555-666666666666"
       const fromObj = applicationQuoteCopilotInputSchema.parse({
-        applicationId: "app-101",
+        applicationId: validUuid,
         staffPromptHint: "Include Makkah Clock Tower",
       })
-      assert.equal(fromObj.applicationId, "app-101")
+      assert.equal(fromObj.applicationId, validUuid)
       assert.equal(fromObj.staffPromptHint, "Include Makkah Clock Tower")
+
+      assert.equal(
+        applicationQuoteCopilotInputSchema.safeParse("app-789").success,
+        false
+      )
     })
   })
 
@@ -367,6 +383,8 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
   // AC-7: Native Marketing Bridge Routing
   // =========================================================================
   describe("AC-7: Native Marketing Bridge Routing", () => {
+    const tempIntegrationId = crypto.randomUUID()
+
     const cleanupTestRows = async () => {
       try {
         // Clean up test whatsapp messages & conversations
@@ -403,7 +421,7 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
           .where(
             or(
               eq(scheduledPosts.caption, "Exclusive Umrah Package 2026 #AlRamlah"),
-              sql`${scheduledPosts.mediaUrls}::text LIKE '%https://r2.alramlahtravels.com/flyers/post_101.jpg%'`
+              sql`${scheduledPosts.mediaUrls}::text LIKE '%https://assets.alramlahtravels.com/flyers/post_101.jpg%'`
             )
           )
 
@@ -416,6 +434,10 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
             .delete(scheduledPosts)
             .where(inArray(scheduledPosts.id, postIds))
         }
+
+        await db
+          .delete(socialIntegrations)
+          .where(eq(socialIntegrations.id, tempIntegrationId))
       } catch (err) {
         console.warn("[AC-7 Test Cleanup Warning]:", err)
       }
@@ -430,11 +452,24 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
     })
 
     it("dispatchViaSocialBridge routes to native postiz when active DB integration exists", async () => {
+      await db.insert(socialIntegrations).values({
+        id: tempIntegrationId,
+        provider: "instagram",
+        internalAccountId: `ig_bridge_${tempIntegrationId.slice(0, 8)}`,
+        name: "Official Instagram Bridge Test",
+        isActive: true,
+        status: "ACTIVE",
+        encryptedAccessToken: encryptToken("ig_bridge_token"),
+        metadata: {},
+      })
+
+      const futureIso = new Date(Date.now() + 24 * 3600 * 1000).toISOString()
       const input: SocialBridgeDispatchInput = {
         platform: "instagram",
         channelName: "Official Instagram",
         caption: "Exclusive Umrah Package 2026 #AlRamlah",
-        imageUrl: "https://r2.alramlahtravels.com/flyers/post_101.jpg",
+        imageUrl: "https://assets.alramlahtravels.com/flyers/post_101.jpg",
+        scheduledAt: futureIso,
       }
 
       const res = await dispatchViaSocialBridge(input)
@@ -443,21 +478,22 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
       assert.ok(res.statusMessage.includes("INSTAGRAM"))
     })
 
-    it("dispatchViaSocialBridge gracefully falls back to local_queue when no active DB integration exists", async () => {
+    it("dispatchViaSocialBridge reports honest dispatched: false with NO_ACTIVE_SOCIAL_INTEGRATION when no active DB integration exists", async () => {
       const input: SocialBridgeDispatchInput = {
         platform: "tiktok",
         channelName: "Official TikTok",
         caption: "Exclusive Umrah Package 2026 #AlRamlah",
-        imageUrl: "https://r2.alramlahtravels.com/flyers/post_101.jpg",
+        imageUrl: "https://assets.alramlahtravels.com/flyers/post_101.jpg",
       }
 
       const res = await dispatchViaSocialBridge(input)
-      assert.equal(res.dispatched, true)
+      assert.equal(res.dispatched, false)
       assert.equal(res.provider, "local_queue")
+      assert.equal(res.errorCode, "NO_ACTIVE_SOCIAL_INTEGRATION")
       assert.ok(res.statusMessage.includes("TIKTOK"))
     })
 
-    it("dispatchViaWhatsAppBridge falls back to local_queue and returns valid wa.me link for direct outreach", async () => {
+    it("dispatchViaWhatsAppBridge returns manual_assisted wa.me link when no active Cloud API account or 24h window is open", async () => {
       const input: WhatsAppBridgeDispatchInput = {
         mode: "direct_1on1",
         senderLine: "03274029701",
@@ -467,13 +503,13 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
       }
 
       const res = await dispatchViaWhatsAppBridge(input)
-      assert.equal(res.dispatched, true)
+      assert.equal(res.dispatched, false)
       assert.ok(res.whatsappClickUrl)
       assert.ok(res.whatsappClickUrl.startsWith("https://wa.me/923001234567"))
       assert.ok(res.whatsappClickUrl.includes("Assalam-o-Alaikum"))
     })
 
-    it("dispatchViaWhatsAppBridge handles group broadcast gracefully", async () => {
+    it("dispatchViaWhatsAppBridge hard-rejects @g.us group targets onto the Ban-Safe Manual Assisted Share Queue (OD-01)", async () => {
       const input: WhatsAppBridgeDispatchInput = {
         mode: "group",
         senderLine: "03274029701",
@@ -483,8 +519,10 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
       }
 
       const res = await dispatchViaWhatsAppBridge(input)
-      assert.equal(res.dispatched, true)
-      assert.ok(res.provider === "wacrm" || res.provider === "local_queue")
+      assert.equal(res.dispatched, false)
+      assert.equal(res.provider, "local_queue")
+      assert.equal(res.channelMode, "manual_assisted")
+      assert.equal(res.errorCode, "UNSUPPORTED_NON_1ON1_TARGET")
     })
   })
 
@@ -574,6 +612,16 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
         itemizedBullets: ["4x Umrah e-Visa", "7N Makkah Swissotel", "7N Madinah Pullman"],
       })
 
+      const emptyRateHints = calculateQuoteWorksheetHints({
+        adults: 4,
+        children: 0,
+        infants: 0,
+        visaRatePkr: 42000,
+        sarToPkrRate: 75,
+        hotelStays: [],
+        transportSegments: [],
+      })
+
       const appDraft = buildDeterministicApplicationQuoteCopilotDraft({
         applicationId: "app-test-456",
         referenceNumber: "ART-APP-786",
@@ -586,7 +634,7 @@ describe("Spec 0018 / Slice 37 — Trigger.dev v4 Async Webhook & Realtime Copil
         bedAndSeatCount: 4,
         totalKsaDays: 14,
         quoteBreakdown: {
-          rateHints: {} as any,
+          rateHints: emptyRateHints,
           worksheet,
           sarToPkrRate: 75,
           estimatedGrandTotalSar: 19800,

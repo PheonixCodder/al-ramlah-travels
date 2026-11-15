@@ -1,5 +1,6 @@
 import { Resend } from "resend"
 import { z } from "zod"
+import { isAuditLocalE2eMode } from "../env"
 import { logger } from "../logger"
 import { escapeAttr, escapeHtml } from "./html-escape"
 
@@ -87,7 +88,7 @@ export async function sendTransactionalEmail(
     resendApiKey === "re_your_api_key_here"
 
   if (isPlaceholderKey || process.env.NODE_ENV === "test") {
-    if (process.env.NODE_ENV === "production") {
+    if (process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()) {
       throw new Error(
         "RESEND_API_KEY must be configured with a live Resend API key in production."
       )

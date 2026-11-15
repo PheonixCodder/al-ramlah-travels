@@ -1,5 +1,6 @@
 import crypto from "node:crypto"
 import { NextResponse } from "next/server"
+import { isAuditLocalE2eMode } from "../env"
 import type { SocialProviderId } from "./types"
 
 const OAUTH_STATE_HKDF_SALT = Buffer.from(
@@ -43,7 +44,8 @@ export function resolveValidatedOAuthAppOrigin(
   requestOrigin?: string,
   sourceEnv: NodeJS.ProcessEnv = process.env
 ): string {
-  const isProd = sourceEnv.NODE_ENV === "production"
+  const isProd =
+    sourceEnv.NODE_ENV === "production" && !isAuditLocalE2eMode(sourceEnv)
   const rawConfigured = sourceEnv.NEXT_PUBLIC_APP_URL?.trim()
 
   if (isProd) {

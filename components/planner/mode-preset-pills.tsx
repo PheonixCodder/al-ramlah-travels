@@ -57,7 +57,7 @@ export function ModePresetPills() {
   return (
     <div className="w-full">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold tracking-wider text-[#8F6E2A] uppercase">
+        <span className="text-xs font-semibold tracking-wider text-[#7A5C1E] uppercase">
           Journey Mode Presets
         </span>
         <span className="text-xs text-[#686E65]">
@@ -88,7 +88,7 @@ export function ModePresetPills() {
                     "flex size-7 items-center justify-center rounded-lg transition-colors",
                     isActive
                       ? "bg-[#C5A059] text-[#0A3622]"
-                      : "bg-[#F5EFE6] text-[#8F6E2A] group-hover:bg-[#C5A059]/20"
+                      : "bg-[#F5EFE6] text-[#7A5C1E] group-hover:bg-[#C5A059]/20"
                   )}
                 >
                   <Icon className="size-4" />

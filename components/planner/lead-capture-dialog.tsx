@@ -135,7 +135,7 @@ export function LeadCaptureDialog({
 
             {/* Reference Number Box */}
             <div className="mt-4 flex w-full flex-col items-center justify-center rounded-xl border border-[#C5A059]/40 bg-[#FAF7F0] p-3.5">
-              <span className="text-[10px] font-semibold tracking-wider uppercase text-[#8F6E2A]">
+              <span className="text-[10px] font-semibold tracking-wider uppercase text-[#7A5C1E]">
                 Official Reference Code
               </span>
               <div className="flex items-center gap-2 mt-1">

@@ -1,5 +1,6 @@
-import { describe, it } from "node:test"
+import { describe, it, beforeEach, afterEach } from "node:test"
 import assert from "node:assert/strict"
+import { createMetaWhatsAppFake } from "./fakes/meta-whatsapp.fake"
 
 import {
   whatsappMessageTypeEnum,
@@ -53,6 +54,29 @@ import {
 
 import { extractPostRefCodes } from "../lib/whatsapp/post-ref-detector"
 
+const originalFetch = globalThis.fetch
+const TEST_META_TOKEN = "EAAG_audit_phase2_token"
+const metaFake = createMetaWhatsAppFake({
+  validAccessTokens: [TEST_META_TOKEN],
+})
+
+beforeEach(() => {
+  metaFake.reset()
+  metaFake.registerMediaFixture("media_passport_pdf_001", {
+    mimeType: "application/pdf",
+    bytes: Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n", "utf8"),
+  })
+  metaFake.registerMediaFixture("media_urdu_voice_ogg_002", {
+    mimeType: "audio/ogg",
+    bytes: Buffer.from("OggS\x00\x02\x00\x00", "utf8"),
+  })
+  globalThis.fetch = metaFake.fetchHandler
+})
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+})
+
 // ============================================================================
 // AC-1 & AC-7: Inbound Media Metadata, Binary Stream & R2 Key Formatting
 // ============================================================================
@@ -91,21 +115,21 @@ describe("AC-1 & AC-7: Inbound Pilgrim Media -> Cloudflare R2 Pipeline & Offline
     )
   })
 
-  it("resolves getWhatsAppMediaMetadata and downloadWhatsAppMediaBinary in offline mock mode", async () => {
+  it("resolves getWhatsAppMediaMetadata and downloadWhatsAppMediaBinary against local Meta Cloud API contract fake", async () => {
     assert.equal(getWhatsAppMediaMetadata, fetchWhatsAppMediaMetadata)
 
     await assert.rejects(
       () =>
         getWhatsAppMediaMetadata({
           mediaId: "   ",
-          accessToken: "mock_token_123",
+          accessToken: TEST_META_TOKEN,
         }),
       /requires a valid mediaId/
     )
 
     const metaPdf = await getWhatsAppMediaMetadata({
       mediaId: "media_passport_pdf_001",
-      accessToken: "mock_token_123",
+      accessToken: TEST_META_TOKEN,
     })
     assert.equal(metaPdf.id, "media_passport_pdf_001")
     assert.equal(metaPdf.mime_type, "application/pdf")
@@ -114,13 +138,13 @@ describe("AC-1 & AC-7: Inbound Pilgrim Media -> Cloudflare R2 Pipeline & Offline
 
     const metaVoice = await getWhatsAppMediaMetadata({
       mediaId: "media_urdu_voice_ogg_002",
-      accessToken: "sim_token_abc",
+      accessToken: TEST_META_TOKEN,
     })
     assert.equal(metaVoice.mime_type, "audio/ogg")
 
     const downloaded = await downloadWhatsAppMediaBinary({
       mediaId: "media_passport_pdf_001",
-      accessToken: "mock_token_123",
+      accessToken: TEST_META_TOKEN,
       expectedMimeType: "application/pdf",
     })
     assert.ok(Buffer.isBuffer(downloaded.buffer))
@@ -131,14 +155,19 @@ describe("AC-1 & AC-7: Inbound Pilgrim Media -> Cloudflare R2 Pipeline & Offline
     await assert.rejects(
       () =>
         downloadWhatsAppMediaBinary({
-          accessToken: "mock_token_123",
+          accessToken: TEST_META_TOKEN,
         }),
       /requires either mediaUrl or mediaId/
     )
   })
 
-  it("exports mirrorInboundWhatsAppMediaToR2 function with structured result contract", () => {
-    assert.equal(typeof mirrorInboundWhatsAppMediaToR2, "function")
+  it("mirrorInboundWhatsAppMediaToR2 returns structured failure result for missing messageId without throwing", async () => {
+    const missingRes = await mirrorInboundWhatsAppMediaToR2({
+      messageId: "00000000-0000-4000-8000-000000000099",
+    })
+    assert.equal(missingRes.success, false)
+    assert.equal(missingRes.media_status, "failed")
+    assert.ok(Boolean(missingRes.error))
   })
 })
 
@@ -180,7 +209,7 @@ describe("AC-2: Instant 3-Second ART-... Post Ref Auto-Responder Bot", () => {
 
     const replyBody = buildLuxuryAutoReplyBody(sampleCard)
     assert.ok(replyBody.includes("Assalam-o-Alaikum!"))
-    assert.ok(replyBody.includes("Al Ramlah Travels (Askari 10, Lahore)"))
+    assert.ok(replyBody.includes("Al Ramlah Travels (Askari 10, Lahore Cantt)"))
     assert.ok(replyBody.includes("`ART-AM-21D-01`"))
     assert.ok(replyBody.includes("21 Days Executive Ramadan Umrah Package"))
     assert.ok(replyBody.includes("Pullman Zamzam Makkah"))
@@ -268,14 +297,14 @@ describe("AC-2: Instant 3-Second ART-... Post Ref Auto-Responder Bot", () => {
 // ============================================================================
 
 describe("AC-3: markWhatsAppMessageAsRead Blue-Tick Receipts & Emoji Reactions", () => {
-  it("validates markWhatsAppMessageAsRead arguments and executes offline mock receipt", async () => {
+  it("validates markWhatsAppMessageAsRead arguments and sends Graph API receipt via contract fake", async () => {
     assert.equal(markWhatsAppMessageAsRead, markMessageAsRead)
 
     await assert.rejects(
       () =>
         markWhatsAppMessageAsRead({
           phoneNumberId: "1234567890",
-          accessToken: "mock_token_123",
+          accessToken: TEST_META_TOKEN,
           messageId: "   ",
         }),
       /requires a non-empty messageId/
@@ -283,7 +312,7 @@ describe("AC-3: markWhatsAppMessageAsRead Blue-Tick Receipts & Emoji Reactions",
 
     const res = await markWhatsAppMessageAsRead({
       phoneNumberId: "1234567890",
-      accessToken: "mock_token_123",
+      accessToken: TEST_META_TOKEN,
       messageId: "wamid.HBgMOTIzMDAxMjM0NTY3FQIAEhgg",
     })
     assert.deepEqual(res, { success: true })
@@ -295,14 +324,14 @@ describe("AC-3: markWhatsAppMessageAsRead Blue-Tick Receipts & Emoji Reactions",
     assert.equal(parsedSchema.conversationId, "aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee")
   })
 
-  it("validates sendWhatsAppReactionMessage arguments and executes offline mock reaction", async () => {
+  it("validates sendWhatsAppReactionMessage arguments and propagates real Graph API wamid / errors (zero wamid.sim_*)", async () => {
     assert.equal(sendWhatsAppReactionMessage, sendReactionMessage)
 
     await assert.rejects(
       () =>
         sendWhatsAppReactionMessage({
           phoneNumberId: "1234567890",
-          accessToken: "mock_token_123",
+          accessToken: TEST_META_TOKEN,
           to: "923001234567",
           messageId: "",
           emoji: "🕋",
@@ -312,12 +341,26 @@ describe("AC-3: markWhatsAppMessageAsRead Blue-Tick Receipts & Emoji Reactions",
 
     const reactionRes = await sendWhatsAppReactionMessage({
       phoneNumberId: "1234567890",
-      accessToken: "mock_token_123",
+      accessToken: TEST_META_TOKEN,
       to: "0300-1234567",
       messageId: "wamid.target_msg_1",
       emoji: "🤲",
     })
-    assert.ok(reactionRes.messageId.startsWith("wamid.sim_react_"))
+    assert.ok(reactionRes.messageId.startsWith("wamid.HBgM"))
+    assert.ok(!reactionRes.messageId.startsWith("wamid.sim_"))
+
+    // Verify expired/invalid token throws real MetaApiError instead of returning fake wamid.sim_* (T-030)
+    await assert.rejects(
+      () =>
+        sendWhatsAppReactionMessage({
+          phoneNumberId: "1234567890",
+          accessToken: "invalid_expired_token",
+          to: "923001234567",
+          messageId: "wamid.target_msg_1",
+          emoji: "🤲",
+        }),
+      /Invalid OAuth access token/
+    )
 
     const validReactionInput = sendWhatsappReactionSchema.parse({
       conversationId: "aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee",
@@ -337,21 +380,22 @@ describe("AC-4: Interactive Reply Buttons (1..3, <=20 chars) & List Menus (1..10
     // Valid 3-button dispatch
     const validRes = await sendInteractiveButtonsMessage({
       phoneNumberId: "1234567890",
-      accessToken: "mock_token_123",
+      accessToken: TEST_META_TOKEN,
       to: "03001234567",
       headerText: "Al Ramlah • ART-AM-21D-01",
       bodyText: "Select an action below:",
       footerText: "Al Ramlah Travels • Askari 10",
       buttons: buildAutoReplyButtons("ART-AM-21D-01"),
     })
-    assert.ok(validRes.messageId.startsWith("wamid.sim_btn_"))
+    assert.ok(validRes.messageId.startsWith("wamid.HBgM"))
+    assert.ok(!validRes.messageId.startsWith("wamid.sim_"))
 
     // Reject 0 buttons
     await assert.rejects(
       () =>
         sendInteractiveButtonsMessage({
           phoneNumberId: "1234567890",
-          accessToken: "mock_token_123",
+          accessToken: TEST_META_TOKEN,
           to: "923001234567",
           bodyText: "Choose option:",
           buttons: [],
@@ -364,7 +408,7 @@ describe("AC-4: Interactive Reply Buttons (1..3, <=20 chars) & List Menus (1..10
       () =>
         sendInteractiveButtonsMessage({
           phoneNumberId: "1234567890",
-          accessToken: "mock_token_123",
+          accessToken: TEST_META_TOKEN,
           to: "923001234567",
           bodyText: "Choose option:",
           buttons: [
@@ -382,7 +426,7 @@ describe("AC-4: Interactive Reply Buttons (1..3, <=20 chars) & List Menus (1..10
       () =>
         sendInteractiveButtonsMessage({
           phoneNumberId: "1234567890",
-          accessToken: "mock_token_123",
+          accessToken: TEST_META_TOKEN,
           to: "923001234567",
           bodyText: "Choose option:",
           buttons: [{ id: "b1", title: "This Button Title Is Way Too Long" }],
@@ -395,7 +439,7 @@ describe("AC-4: Interactive Reply Buttons (1..3, <=20 chars) & List Menus (1..10
       () =>
         sendInteractiveButtonsMessage({
           phoneNumberId: "1234567890",
-          accessToken: "mock_token_123",
+          accessToken: TEST_META_TOKEN,
           to: "923001234567",
           bodyText: "Choose option:",
           buttons: [
@@ -437,7 +481,7 @@ describe("AC-4: Interactive Reply Buttons (1..3, <=20 chars) & List Menus (1..10
   it("enforces 1..10 total rows across sections and <=24 char row titles in sendInteractiveListMessage", async () => {
     const validListRes = await sendInteractiveListMessage({
       phoneNumberId: "1234567890",
-      accessToken: "mock_token_123",
+      accessToken: TEST_META_TOKEN,
       to: "923001234567",
       headerText: "Umrah Departure Packages",
       bodyText: "Select your preferred room tier and departure window:",
@@ -454,14 +498,15 @@ describe("AC-4: Interactive Reply Buttons (1..3, <=20 chars) & List Menus (1..10
         },
       ],
     })
-    assert.ok(validListRes.messageId.startsWith("wamid.sim_list_"))
+    assert.ok(validListRes.messageId.startsWith("wamid.HBgM"))
+    assert.ok(!validListRes.messageId.startsWith("wamid.sim_"))
 
     // Reject row title > 24 characters
     await assert.rejects(
       () =>
         sendInteractiveListMessage({
           phoneNumberId: "1234567890",
-          accessToken: "mock_token_123",
+          accessToken: TEST_META_TOKEN,
           to: "923001234567",
           bodyText: "Select tier:",
           buttonText: "View Options",
@@ -489,7 +534,7 @@ describe("AC-4: Interactive Reply Buttons (1..3, <=20 chars) & List Menus (1..10
       () =>
         sendInteractiveListMessage({
           phoneNumberId: "1234567890",
-          accessToken: "mock_token_123",
+          accessToken: TEST_META_TOKEN,
           to: "923001234567",
           bodyText: "Select tier:",
           buttonText: "View Options",
@@ -596,12 +641,12 @@ describe("AC-5: Meta Template Creation, Deletion & message_template_status_updat
     assert.equal(validDelete.success, true)
   })
 
-  it("executes createMetaMessageTemplate and deleteMetaMessageTemplate in offline mock mode", async () => {
+  it("executes createMetaMessageTemplate and deleteMetaMessageTemplate via Graph API contract fake", async () => {
     await assert.rejects(
       () =>
         createMetaMessageTemplate({
           wabaId: "waba_12345",
-          accessToken: "mock_token_123",
+          accessToken: TEST_META_TOKEN,
           name: "Invalid-Template-Name!",
           language: "en_US",
           category: "MARKETING",
@@ -612,7 +657,7 @@ describe("AC-5: Meta Template Creation, Deletion & message_template_status_updat
 
     const created = await createMetaMessageTemplate({
       wabaId: "waba_12345",
-      accessToken: "mock_token_123",
+      accessToken: TEST_META_TOKEN,
       name: "umrah_visa_issued_notice",
       language: "en_US",
       category: "UTILITY",
@@ -620,13 +665,13 @@ describe("AC-5: Meta Template Creation, Deletion & message_template_status_updat
       bodyText: "Mubarak {{1}}! Your Saudi Umrah e-Visa has been issued.",
       footerText: "Al Ramlah Travels",
     })
-    assert.ok(created.id.startsWith("meta_tmpl_sim_"))
+    assert.ok(created.id.startsWith("tpl_"))
     assert.equal(created.status, "PENDING")
     assert.equal(created.category, "UTILITY")
 
     const deleted = await deleteMetaMessageTemplate({
       wabaId: "waba_12345",
-      accessToken: "mock_token_123",
+      accessToken: TEST_META_TOKEN,
       name: "umrah_visa_issued_notice",
     })
     assert.deepEqual(deleted, { success: true })
@@ -635,7 +680,7 @@ describe("AC-5: Meta Template Creation, Deletion & message_template_status_updat
       () =>
         deleteMetaMessageTemplate({
           wabaId: "waba_12345",
-          accessToken: "mock_token_123",
+          accessToken: TEST_META_TOKEN,
           name: "   ",
         }),
       /requires a template name/

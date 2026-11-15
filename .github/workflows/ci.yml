@@ -1,0 +1,241 @@
+name: Production Hardening CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "audit/**"
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Hermetic Security, DB, Test, Build & E2E Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: auditpass
+          POSTGRES_DB: alramlah_audit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d alramlah_audit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      CI: "true"
+      NODE_OPTIONS: "--max-old-space-size=4096"
+      DATABASE_URL: "postgresql://postgres:auditpass@127.0.0.1:5432/alramlah_audit"
+      DATABASE_URL_POOLED: "postgresql://postgres:auditpass@127.0.0.1:5432/alramlah_audit"
+      DATABASE_URL_UNPOOLED: "postgresql://postgres:auditpass@127.0.0.1:5432/alramlah_audit"
+      # Deterministic CI-only non-secret 64-hex AES-256-GCM test key
+      ENCRYPTION_KEY: "a3f19c4e7b2d80561e4a9c7b3f802d6e5a1c9f4b7d208e631a5f8c2d9b4e7013"
+      BETTER_AUTH_SECRET: "ci-hermetic-better-auth-test-secret-8f4c2e9a1b7d6035"
+      BETTER_AUTH_URL: "http://127.0.0.1:3123"
+      NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3123"
+      WHATSAPP_VERIFY_TOKEN: "ci-hermetic-whatsapp-verify-token"
+      WHATSAPP_MOCK_MODE: "true"
+      META_APP_ID: "ci-hermetic-meta-app-id"
+      META_APP_SECRET: "ci-hermetic-meta-app-secret"
+      GOTENBERG_API_URL: "http://127.0.0.1:3999"
+      GOTENBERG_API_KEY: "test-gotenberg-key"
+      HEALTHCHECK_BEARER_TOKEN: "ci-hermetic-healthcheck-token-9f8e7d6c"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: "Gate 1: Committed-secret & PII file guard"
+        run: |
+          node --input-type=module -e '
+            import { execFileSync } from "node:child_process";
+            import fs from "node:fs";
+
+            const tracked = execFileSync("git", ["ls-files"], { encoding: "utf8" })
+              .split(/\r?\n/)
+              .map((f) => f.trim())
+              .filter(Boolean);
+
+            const violations = [];
+            const allowedEnvFiles = new Set([
+              ".env.example",
+              ".env.audit",
+              "scripts/oracle-gotenberg/.env.example",
+            ]);
+
+            for (const file of tracked) {
+              const base = file.split("/").pop() ?? "";
+              if (
+                (base === ".env" || base.startsWith(".env.")) &&
+                !allowedEnvFiles.has(file) &&
+                !file.endsWith("/.env.example") &&
+                !file.endsWith("/.env.audit")
+              ) {
+                violations.push(`Forbidden tracked env file: ${file}`);
+              }
+              if (/\.(pem|key|p12|pfx)$/i.test(file) || /(^|\/)id_(rsa|ed25519)$/i.test(file)) {
+                violations.push(`Forbidden private key file: ${file}`);
+              }
+              if (
+                file.includes("zahoor-adil-rafi-quotation.pdf") ||
+                /^public\/uploads\/.*\.pdf$/i.test(file)
+              ) {
+                violations.push(`Forbidden client PII PDF in public/uploads: ${file}`);
+              }
+              if (file.startsWith("public/uploads/r2-local/")) {
+                violations.push(`Forbidden tracked local R2 artifact: ${file}`);
+              }
+              if (
+                fs.existsSync(file) &&
+                !file.startsWith("docs/audit/") &&
+                !file.startsWith("tests/") &&
+                !/\.(png|jpg|jpeg|webp|gif|ico|woff2?|ttf)$/i.test(file)
+              ) {
+                const stat = fs.statSync(file);
+                if (stat.isFile() && stat.size <= 2_000_000) {
+                  const content = fs.readFileSync(file, "utf8");
+                  if (/-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----/.test(content)) {
+                    violations.push(`Embedded PEM private key header detected in: ${file}`);
+                  }
+                }
+              }
+            }
+
+            if (violations.length > 0) {
+              console.error("Secret & PII guard failed:\n" + violations.map((v) => `  - ${v}`).join("\n"));
+              process.exit(1);
+            }
+            console.log(`Secret & PII guard passed (${tracked.length} tracked files scanned).`);
+          '
+
+      - name: "Gate 2: Install locked dependencies (npm ci)"
+        run: npm ci
+
+      - name: "Gate 3: Production dependency vulnerability audit"
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: "Gate 4: Apply Drizzle PostgreSQL migrations"
+        env:
+          NODE_ENV: "test"
+        run: npm run db:migrate
+
+      - name: "Gate 5: Verify back-to-back seed idempotency (2x db:seed)"
+        env:
+          NODE_ENV: "test"
+        run: |
+          npm run db:seed && npm run db:seed
+          node --input-type=module -e '
+            import pg from "pg";
+            const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+            await client.connect();
+            const { rows } = await client.query(
+              "SELECT tier, max_days, price_pkr FROM visa_rates ORDER BY tier ASC"
+            );
+            await client.end();
+            const shortRow = rows.find((r) => r.tier === "short_term");
+            const longRow = rows.find((r) => r.tier === "long_term");
+            if (!shortRow || Number(shortRow.price_pkr) !== 42500 || Number(shortRow.max_days) !== 30) {
+              throw new Error(`Unexpected short_term visa_rates after 2x seed: ${JSON.stringify(shortRow)}`);
+            }
+            if (!longRow || Number(longRow.price_pkr) !== 68000 || Number(longRow.max_days) !== 90) {
+              throw new Error(`Unexpected long_term visa_rates after 2x seed: ${JSON.stringify(longRow)}`);
+            }
+            console.log("Verified 2x seed idempotency:", rows);
+          '
+
+      - name: "Gate 6: Next.js route typegen & TypeScript strict check"
+        run: npx next typegen && npm run typecheck
+
+      - name: "Gate 7: ESLint check"
+        run: npm run lint
+
+      - name: "Gate 8: Hermetic unit, W3, legacy & real-Postgres integration suites"
+        env:
+          NODE_ENV: "test"
+        run: npm test
+
+      - name: "Gate 9: Production Next.js build & .nft.json trace leak audit"
+        run: |
+          npm run build
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import path from "node:path";
+
+            if (!fs.existsSync(".next/standalone/server.js")) {
+              throw new Error("Missing .next/standalone/server.js after npm run build");
+            }
+
+            function collectNftFiles(dir, acc = []) {
+              if (!fs.existsSync(dir)) return acc;
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  collectNftFiles(full, acc);
+                } else if (entry.isFile() && entry.name.endsWith(".nft.json")) {
+                  acc.push(full);
+                }
+              }
+              return acc;
+            }
+
+            const nftFiles = collectNftFiles(".next/server");
+            if (nftFiles.length === 0) {
+              throw new Error("No .nft.json files found under .next/server");
+            }
+
+            const leaks = [];
+            for (const nftPath of nftFiles) {
+              const parsed = JSON.parse(fs.readFileSync(nftPath, "utf8"));
+              const traced = Array.isArray(parsed.files) ? parsed.files : [];
+              for (const rel of traced) {
+                const norm = String(rel).replace(/\\/g, "/");
+                const base = norm.split("/").pop() ?? "";
+                if (base === ".env" || (base.startsWith(".env.") && base !== ".env.example")) {
+                  leaks.push(`${nftPath} -> ${norm}`);
+                }
+                if (norm.includes("public/uploads/")) {
+                  leaks.push(`${nftPath} -> ${norm}`);
+                }
+              }
+            }
+
+            if (leaks.length > 0) {
+              console.error("Detected forbidden .nft.json bundle traces:\n" + leaks.join("\n"));
+              process.exit(1);
+            }
+            console.log(`Verified ${nftFiles.length} .nft.json manifests with 0 .env or public/uploads leaks.`);
+          '
+
+      - name: "Gate 10: Playwright Chromium E2E & WCAG suite (J1-J22)"
+        run: npx playwright install --with-deps chromium && npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

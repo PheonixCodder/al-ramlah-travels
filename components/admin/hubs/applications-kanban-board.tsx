@@ -539,6 +539,7 @@ export function ApplicationsKanbanBoard({
 
       {/* DndContext & Board Columns */}
       <DndContext
+        id="desk-kanban-dnd"
         sensors={sensors}
         collisionDetection={closestCorners}
         accessibility={{ announcements }}
@@ -872,9 +873,9 @@ function KanbanCardItem({
           {isOverdue && (
             <span
               title={`Inquiry has exceeded ${slaHours}h quoting SLA (${hoursElapsed}h elapsed)`}
-              className="inline-flex animate-pulse items-center gap-1 rounded-full border border-red-300 bg-red-100 px-1.5 py-0 text-[10px] font-bold text-red-700 shadow-2xs select-none motion-reduce:animate-none"
+              className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-100 px-1.5 py-0 text-[10px] font-bold text-red-900 shadow-2xs select-none"
             >
-              <span className="size-1.5 shrink-0 rounded-full bg-red-600" />
+              <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-red-600 motion-reduce:animate-none" />
               <span>{hoursElapsed}h+</span>
             </span>
           )}

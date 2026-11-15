@@ -166,7 +166,7 @@ export function ExecutiveKpiCards({ data }: { data: ExecutiveKpiData }) {
               {data.overdueSlaCount > 0 && (
                 <Badge
                   variant="destructive"
-                  className="animate-pulse text-[10px] px-1.5 py-0 motion-reduce:animate-none"
+                  className="border-red-300 bg-red-100 text-red-900 text-[10px] px-1.5 py-0"
                 >
                   {data.overdueSlaCount} &gt; {slaHours}h SLA
                 </Badge>

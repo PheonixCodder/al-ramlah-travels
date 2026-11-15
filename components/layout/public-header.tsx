@@ -184,7 +184,7 @@ export function PublicHeader({
               <span className="font-display text-lg font-bold tracking-tight text-foreground transition-colors group-hover:text-primary sm:text-xl">
                 Al Ramlah Travels
               </span>
-              <ArabicText className="text-xs font-semibold tracking-wide text-gold">
+              <ArabicText className="text-xs font-semibold tracking-wide text-gold-text">
                 الرملة للسفر والسياحة
               </ArabicText>
             </div>
@@ -253,7 +253,7 @@ export function PublicHeader({
                             Al Ramlah Travels
                           </SheetTitle>
                           <SheetDescription>
-                            <ArabicText className="text-xs font-medium text-gold">
+                            <ArabicText className="text-xs font-medium text-gold-text">
                               الرملة للسفر والسياحة
                             </ArabicText>
                           </SheetDescription>
@@ -271,7 +271,7 @@ export function PublicHeader({
                           </span>
                         </span>
                         <ArabicText
-                          className="text-xs font-semibold text-gold"
+                          className="text-xs font-semibold text-gold-text"
                           suppressHydrationWarning
                         >
                           {prayerSchedule.nextPrayerArabic}

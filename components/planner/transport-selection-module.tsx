@@ -111,7 +111,7 @@ export function TransportSelectionModule() {
               Select your vehicle fleet and pickup schedule for each transfer leg
             </p>
           </div>
-          <span className="self-start sm:self-auto rounded-full bg-[#FAF7F0] border border-[#C5A059] px-3 py-1 text-[10px] font-bold text-[#8F6E2A]">
+          <span className="self-start sm:self-auto rounded-full bg-[#FAF7F0] border border-[#C5A059] px-3 py-1 text-[10px] font-bold text-[#7A5C1E]">
             {activeSegments.length}{" "}
             {presetMode === "transport_only" ? "Selected" : "Required"}{" "}
             Transfer{activeSegments.length === 1 ? "" : "s"}
@@ -312,7 +312,7 @@ export function TransportSelectionModule() {
                         <span className="text-xs sm:text-sm font-bold text-[#0A3622] truncate">
                           {v.name}
                         </span>
-                        <span className="rounded-full bg-white border border-[#E6DEC8] px-2 py-0.5 text-[10px] font-bold text-[#8F6E2A]">
+                        <span className="rounded-full bg-white border border-[#E6DEC8] px-2 py-0.5 text-[10px] font-bold text-[#7A5C1E]">
                           {categoryLabel}
                         </span>
                       </div>

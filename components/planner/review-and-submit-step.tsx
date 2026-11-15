@@ -277,7 +277,7 @@ export function ReviewAndSubmitStep() {
             <CheckCircle2 className="size-9" />
           </div>
 
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-[#7A5C1E]">
             Official Pilgrimage Dispatch
           </span>
           <h2 className="font-display text-2xl sm:text-3xl font-extrabold text-[#0A3622] mt-1">
@@ -289,7 +289,7 @@ export function ReviewAndSubmitStep() {
 
           {/* Reference Number Card */}
           <div className="mt-6 flex w-full max-w-md flex-col items-center justify-center rounded-2xl border border-[#C5A059]/50 bg-[#FAF7F0] p-5 shadow-xs">
-            <span className="text-[11px] font-bold tracking-wider uppercase text-[#8F6E2A]">
+            <span className="text-[11px] font-bold tracking-wider uppercase text-[#7A5C1E]">
               Official Reference Code
             </span>
             <div className="flex items-center gap-3 mt-1.5">
@@ -382,7 +382,7 @@ export function ReviewAndSubmitStep() {
       <div className="w-full rounded-2xl border border-[#E6DEC8] bg-white p-5 sm:p-6 shadow-xs">
         <div className="mb-4 flex items-center justify-between border-b border-[#E6DEC8]/60 pb-3">
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
               Final Verification
             </span>
             <h3 className="text-base sm:text-lg font-bold text-[#0A3622]">
@@ -395,7 +395,7 @@ export function ReviewAndSubmitStep() {
           <button
             type="button"
             onClick={() => goToStep("setup")}
-            className="flex items-center gap-1 rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-2.5 py-1 text-[11px] font-semibold text-[#8F6E2A] hover:bg-[#F5EFE6] transition-colors"
+            className="flex items-center gap-1 rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-2.5 py-1 text-[11px] font-semibold text-[#7A5C1E] hover:bg-[#F5EFE6] transition-colors"
           >
             <Pencil className="size-3" />
             <span>Edit Setup</span>
@@ -405,12 +405,12 @@ export function ReviewAndSubmitStep() {
         {/* Top 2-Column Overview Strip: Travel Window & Pilgrims */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
           <div className="flex items-center gap-3 rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] p-3.5">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white border border-[#C5A059]/40 text-[#8F6E2A]">
-              <Calendar className="size-5 text-[#8F6E2A]" />
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white border border-[#C5A059]/40 text-[#7A5C1E]">
+              <Calendar className="size-5 text-[#7A5C1E]" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A] tabular-nums">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E] tabular-nums">
                   Travel Window ({dates.totalKsaDays} Days in KSA)
                 </span>
                 {includeAirportRouting && (
@@ -429,12 +429,12 @@ export function ReviewAndSubmitStep() {
           </div>
 
           <div className="flex items-center gap-3 rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] p-3.5">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white border border-[#C5A059]/40 text-[#8F6E2A]">
-              <Users className="size-5 text-[#8F6E2A]" />
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white border border-[#C5A059]/40 text-[#7A5C1E]">
+              <Users className="size-5 text-[#7A5C1E]" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
                   Pilgrim Count
                 </span>
                 <span className="rounded-full bg-white border border-[#E6DEC8] px-2 py-0.5 text-[9px] font-bold text-[#0A3622] tabular-nums">
@@ -467,7 +467,7 @@ export function ReviewAndSubmitStep() {
                     <h4 className="text-xs font-bold text-[#1A1D1A]">
                       Umrah Visa Processing
                     </h4>
-                    <span className="rounded-full bg-white border border-[#E6DEC8] px-2 py-0.2 text-[9px] font-semibold text-[#8F6E2A]">
+                    <span className="rounded-full bg-white border border-[#E6DEC8] px-2 py-0.2 text-[9px] font-semibold text-[#7A5C1E]">
                       {dates.totalKsaDays <= 30 ? "Short-Term (≤30 Days)" : "Long-Term (>30 Days)"}
                     </span>
                   </div>
@@ -510,7 +510,7 @@ export function ReviewAndSubmitStep() {
                 <button
                   type="button"
                   onClick={() => goToStep("flights")}
-                  className="text-[11px] font-semibold text-[#8F6E2A] hover:underline flex items-center gap-1 shrink-0"
+                  className="text-[11px] font-semibold text-[#7A5C1E] hover:underline flex items-center gap-1 shrink-0"
                 >
                   <span>Edit</span>
                   <Pencil className="size-3" />
@@ -520,7 +520,7 @@ export function ReviewAndSubmitStep() {
                 <span className="rounded-full bg-white border border-[#E6DEC8] px-2.5 py-0.5 text-[10px] font-bold text-[#0A3622]">
                   {flights.routeType === "direct" ? "Direct Flight" : "1-Stop Flight"}
                 </span>
-                <span className="rounded-full bg-white border border-[#E6DEC8] px-2.5 py-0.5 text-[10px] font-bold text-[#8F6E2A]">
+                <span className="rounded-full bg-white border border-[#E6DEC8] px-2.5 py-0.5 text-[10px] font-bold text-[#7A5C1E]">
                   {flights.cabinClass === "business" ? "Business Class" : "Economy Class"}
                 </span>
                 <span className="rounded-full bg-white border border-[#E6DEC8] px-2.5 py-0.5 text-[10px] font-medium text-[#686E65]">
@@ -549,7 +549,7 @@ export function ReviewAndSubmitStep() {
                 <button
                   type="button"
                   onClick={() => goToStep("hotels")}
-                  className="text-[11px] font-semibold text-[#8F6E2A] hover:underline flex items-center gap-1 shrink-0"
+                  className="text-[11px] font-semibold text-[#7A5C1E] hover:underline flex items-center gap-1 shrink-0"
                 >
                   <span>Edit</span>
                   <Pencil className="size-3" />
@@ -567,7 +567,7 @@ export function ReviewAndSubmitStep() {
                       className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-[#1A1D1A] bg-white p-3 rounded-xl border border-[#E6DEC8]/80 shadow-2xs"
                     >
                       <div className="flex items-start gap-2.5">
-                        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 text-[10px] font-bold text-[#8F6E2A] mt-0.5 tabular-nums">
+                        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 text-[10px] font-bold text-[#7A5C1E] mt-0.5 tabular-nums">
                           {stay.stayOrder}
                         </span>
                         <div>
@@ -576,7 +576,7 @@ export function ReviewAndSubmitStep() {
                               {stay.city === "makkah" ? "Makkah" : "Madinah"}: {hotel?.name ?? (stay.city === "makkah" ? "Makkah Hotel" : "Madinah Hotel")}
                             </span>
                             {hotel?.starRating && (
-                              <span className="rounded-full bg-[#FAF7F0] border border-[#C5A059]/30 px-1.5 py-0.2 text-[9px] font-bold text-[#8F6E2A]">
+                              <span className="rounded-full bg-[#FAF7F0] border border-[#C5A059]/30 px-1.5 py-0.2 text-[9px] font-bold text-[#7A5C1E]">
                                 {hotel.starRating}-Star
                               </span>
                             )}
@@ -590,7 +590,7 @@ export function ReviewAndSubmitStep() {
                         <span className="text-[10px] font-semibold text-[#0A3622] bg-[#FAF7F0] border border-[#C5A059]/40 px-2 py-0.5 rounded-full">
                           {roomLabel}
                         </span>
-                        <span className="text-[10px] font-semibold text-[#8F6E2A] bg-white border border-[#E6DEC8] px-2 py-0.5 rounded-full capitalize">
+                        <span className="text-[10px] font-semibold text-[#7A5C1E] bg-white border border-[#E6DEC8] px-2 py-0.5 rounded-full capitalize">
                           {(stay.mealPlan ?? "room_only").replace("_", " ")}
                         </span>
                       </div>
@@ -620,7 +620,7 @@ export function ReviewAndSubmitStep() {
                 <button
                   type="button"
                   onClick={() => goToStep("transport")}
-                  className="text-[11px] font-semibold text-[#8F6E2A] hover:underline flex items-center gap-1 shrink-0"
+                  className="text-[11px] font-semibold text-[#7A5C1E] hover:underline flex items-center gap-1 shrink-0"
                 >
                   <span>Edit</span>
                   <Pencil className="size-3" />
@@ -639,7 +639,7 @@ export function ReviewAndSubmitStep() {
                       className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-[#1A1D1A] bg-white p-3 rounded-xl border border-[#E6DEC8]/80 shadow-2xs"
                     >
                       <div className="flex items-start gap-2.5">
-                        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 text-[10px] font-bold text-[#8F6E2A] mt-0.5 tabular-nums">
+                        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 text-[10px] font-bold text-[#7A5C1E] mt-0.5 tabular-nums">
                           {idx + 1}
                         </span>
                         <div>
@@ -653,14 +653,14 @@ export function ReviewAndSubmitStep() {
                               {veh?.name ?? "Private Vehicle"}
                             </span>
                             <span>•</span>
-                            <span className="text-[#8F6E2A] font-semibold">
+                            <span className="text-[#7A5C1E] font-semibold">
                               {isPrivate ? formatPickupTime(seg.pickupTime) : "Fixed Schedule"}
                             </span>
                           </div>
                         </div>
                       </div>
                       <div className="self-start sm:self-auto pl-7 sm:pl-0">
-                        <span className="rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-2 py-0.5 text-[10px] font-bold text-[#8F6E2A] uppercase">
+                        <span className="rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-2 py-0.5 text-[10px] font-bold text-[#7A5C1E] uppercase">
                           {isPrivate ? "Private Fleet" : "Shared Coach / Rail"}
                         </span>
                       </div>
@@ -690,7 +690,7 @@ export function ReviewAndSubmitStep() {
                 <button
                   type="button"
                   onClick={() => goToStep("ziyarat")}
-                  className="text-[11px] font-semibold text-[#8F6E2A] hover:underline flex items-center gap-1 shrink-0"
+                  className="text-[11px] font-semibold text-[#7A5C1E] hover:underline flex items-center gap-1 shrink-0"
                 >
                   <span>Edit</span>
                   <Pencil className="size-3" />
@@ -706,7 +706,7 @@ export function ReviewAndSubmitStep() {
                     >
                       <span className="size-1 rounded-full bg-[#C5A059]" />
                       <span>{place.name}</span>
-                      <span className="text-[9px] text-[#8F6E2A] font-semibold">
+                      <span className="text-[9px] text-[#7A5C1E] font-semibold">
                         ({place.city === "makkah" ? "Makkah" : "Madinah"})
                       </span>
                     </span>
@@ -723,7 +723,7 @@ export function ReviewAndSubmitStep() {
       {/* ========================================================= */}
       <div id="lead-contact-form" className="w-full rounded-2xl border border-[#C5A059] bg-white p-5 sm:p-6 shadow-md">
         <div className="mb-4">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
             Contact &amp; Submission
           </span>
           <h3 className="text-base sm:text-lg font-bold text-[#0A3622]">
@@ -974,7 +974,7 @@ export function ReviewAndSubmitStep() {
             <div className="rounded-xl border border-[#C5A059]/40 bg-[#FAF7F0] p-4 text-center">
               {isVisaOnly ? (
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
                     Guaranteed Fixed Total
                   </span>
                   <div className="font-mono text-2xl sm:text-3xl font-black text-[#0A3622] my-0.5 tabular-nums">

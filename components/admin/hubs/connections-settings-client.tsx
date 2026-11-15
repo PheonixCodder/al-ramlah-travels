@@ -1264,7 +1264,7 @@ export function ConnectionsSettingsClient({
       {/* Hub Header */}
       <div className="flex flex-col gap-2 border-b border-border/80 pb-5">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gold">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-gold-text">
             System Settings &amp; Technical Connections
           </span>
           <Badge
@@ -1309,7 +1309,7 @@ export function ConnectionsSettingsClient({
                 <Icon
                   className={cn(
                     "size-4 shrink-0 transition-colors",
-                    isActive ? "text-gold" : "text-muted-foreground"
+                    isActive ? "text-gold-text" : "text-muted-foreground"
                   )}
                 />
                 <span>{tab.label}</span>
@@ -1634,7 +1634,7 @@ export function ConnectionsSettingsClient({
                           >
                             <RefreshCw
                               className={cn(
-                                "size-3 text-gold",
+                                "size-3 text-gold-text",
                                 isRefreshingThis && "animate-spin"
                               )}
                             />
@@ -2045,7 +2045,7 @@ export function ConnectionsSettingsClient({
                     Meta Webhook Receiver &amp; Challenge Endpoint
                   </CardTitle>
                 </div>
-                <Badge variant="outline" className="text-[10px] font-mono border-gold/40 text-gold">
+                <Badge variant="outline" className="text-[10px] font-mono border-gold/40 text-gold-text">
                   wacrm Native Receiver
                 </Badge>
               </div>
@@ -2735,7 +2735,7 @@ export function ConnectionsSettingsClient({
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-xl bg-gold/15 border border-gold/40 text-gold">
+                    <div className="flex size-10 items-center justify-center rounded-xl bg-gold/15 border border-gold/40 text-gold-text">
                       <Server className="size-5" />
                     </div>
                     <div>
@@ -2798,7 +2798,7 @@ export function ConnectionsSettingsClient({
                 </div>
                 <Badge
                   variant="outline"
-                  className="text-[10px] font-bold border-gold/50 text-gold bg-gold/10"
+                  className="text-[10px] font-bold border-gold/50 text-gold-text bg-gold/10"
                 >
                   $0.00 / month forever
                 </Badge>

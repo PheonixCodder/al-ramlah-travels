@@ -1889,7 +1889,7 @@ export function StudioHubClient({
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 4K Posters &amp; Assets Vault
               </span>
-              <div className="text-xl font-bold font-mono text-gold mt-1">
+              <div className="text-xl font-bold font-mono text-gold-text mt-1">
                 {assetsList.length}
               </div>
             </Card>

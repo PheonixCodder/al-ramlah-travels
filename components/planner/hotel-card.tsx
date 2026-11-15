@@ -149,7 +149,7 @@ export function HotelCard({ hotel, isSelected, onSelect }: HotelCardProps) {
       <div className="flex flex-1 flex-col justify-between p-4">
         <div className="space-y-2.5">
           {/* Hotel Name */}
-          <h4 className="text-base font-bold text-[#0A3622] leading-snug group-hover:text-[#8F6E2A] transition-colors">
+          <h4 className="text-base font-bold text-[#0A3622] leading-snug group-hover:text-[#7A5C1E] transition-colors">
             {hotel.name}
           </h4>
 

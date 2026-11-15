@@ -239,7 +239,7 @@ export function MarketingSections({
           </div>
 
           <div className="md:col-span-2 rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-gold/15 text-gold border border-gold/30">
+            <div className="flex size-12 items-center justify-center rounded-2xl bg-gold/15 text-gold-text border border-gold/30">
               <FileCheck className="size-6" />
             </div>
             <h3 className="font-display text-2xl font-bold text-foreground">
@@ -291,7 +291,7 @@ export function MarketingSections({
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs flex flex-col gap-3">
-              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold block">
+              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold-text block">
                 01
               </span>
               <h3 className="font-display text-lg font-bold text-foreground">
@@ -303,7 +303,7 @@ export function MarketingSections({
             </div>
 
             <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs flex flex-col gap-3">
-              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold block">
+              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold-text block">
                 02
               </span>
               <h3 className="font-display text-lg font-bold text-foreground">
@@ -315,7 +315,7 @@ export function MarketingSections({
             </div>
 
             <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs flex flex-col gap-3">
-              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold block">
+              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold-text block">
                 03
               </span>
               <h3 className="font-display text-lg font-bold text-foreground">
@@ -327,7 +327,7 @@ export function MarketingSections({
             </div>
 
             <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs flex flex-col gap-3">
-              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold block">
+              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold-text block">
                 04
               </span>
               <h3 className="font-display text-lg font-bold text-foreground">
@@ -411,7 +411,7 @@ export function MarketingSections({
                   <h3 className="font-bold text-base text-foreground leading-snug">
                     {site.name}
                   </h3>
-                  <ArabicText className="text-sm text-gold font-medium block">
+                  <ArabicText className="text-sm text-gold-text font-medium block">
                     {site.arabicName}
                   </ArabicText>
                   <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
@@ -450,7 +450,7 @@ export function MarketingSections({
                 >
                   <div className="flex flex-col gap-3">
                     <div
-                      className="flex items-center gap-1 text-gold"
+                      className="flex items-center gap-1 text-gold-text"
                       aria-label={`${t.rating} out of 5 stars`}
                     >
                       {Array.from({

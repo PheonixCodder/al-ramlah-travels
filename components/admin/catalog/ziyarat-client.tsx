@@ -245,7 +245,7 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
                   <div
                     lang="ar"
                     dir="rtl"
-                    className="font-arabic text-sm text-gold font-medium"
+                    className="font-arabic text-sm text-gold-text font-medium"
                   >
                     {place.arabicName}
                   </div>

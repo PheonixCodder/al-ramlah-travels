@@ -507,7 +507,7 @@ export function ApplicationDossier({
                   {application.groupPackage?.tier && (
                     <Badge
                       variant="outline"
-                      className="border-gold/40 bg-gold/10 text-xs font-bold text-gold uppercase"
+                      className="border-gold/40 bg-gold/10 text-xs font-bold text-gold-text uppercase"
                     >
                       {application.groupPackage.tier.replace(/_/g, " ")} Tier
                     </Badge>
@@ -815,7 +815,7 @@ export function ApplicationDossier({
                     <span className="text-xs font-semibold text-foreground">
                       {place.name}
                     </span>
-                    <span className="font-arabic text-sm text-gold">
+                    <span className="font-arabic text-sm text-gold-text">
                       {place.arabicName}
                     </span>
                   </div>

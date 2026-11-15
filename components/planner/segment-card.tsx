@@ -180,7 +180,7 @@ export function SegmentCard({
               </button>
             </div>
           ) : (
-            <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#E6DEC8] bg-[#FAF7F0] px-2.5 py-1 text-[11px] font-semibold text-[#8F6E2A] self-start sm:self-auto">
+            <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#E6DEC8] bg-[#FAF7F0] px-2.5 py-1 text-[11px] font-semibold text-[#7A5C1E] self-start sm:self-auto">
               <Lock className="size-3 text-[#C5A059]" />
               Private Only
             </div>
@@ -212,7 +212,7 @@ export function SegmentCard({
 
           {/* Rail Eligible Badge */}
           {sector.supportsTrain && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-[#FAF7F0] border border-[#C5A059]/60 px-2 py-1 text-xs font-semibold text-[#8F6E2A]">
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#FAF7F0] border border-[#C5A059]/60 px-2 py-1 text-xs font-semibold text-[#7A5C1E]">
               <Sparkles className="size-3 text-[#C5A059]" />
               Haramain High-Speed Rail Eligible
             </span>
@@ -237,7 +237,7 @@ export function SegmentCard({
           <button
             type="button"
             onClick={() => onSwitchRoute(segment.segmentOrder, "MAK_BADR_MED")}
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[#C5A059] bg-white px-3 py-1.5 text-xs font-bold text-[#8F6E2A] hover:bg-[#FAF7F0] transition-colors shadow-2xs self-start sm:self-auto"
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[#C5A059] bg-white px-3 py-1.5 text-xs font-bold text-[#7A5C1E] hover:bg-[#FAF7F0] transition-colors shadow-2xs self-start sm:self-auto"
           >
             <Sparkles className="size-3 text-[#C5A059]" />
             Upgrade: Via Badr Detour
@@ -290,7 +290,7 @@ export function SegmentCard({
                 <button
                   type="button"
                   onClick={onEnableCustomPerLeg}
-                  className="ml-2 text-[11px] font-bold text-[#8F6E2A] hover:text-[#0A3622] whitespace-nowrap transition-colors"
+                  className="ml-2 text-[11px] font-bold text-[#7A5C1E] hover:text-[#0A3622] whitespace-nowrap transition-colors"
                 >
                   Change per leg
                 </button>
@@ -388,7 +388,7 @@ export function SegmentCard({
               </select>
             ) : (
               <div className="flex items-center gap-2 rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] p-2.5 text-xs text-[#686E65]">
-                <Lock className="size-3.5 text-[#8F6E2A] shrink-0" />
+                <Lock className="size-3.5 text-[#7A5C1E] shrink-0" />
                 <span>
                   <strong>Fixed Schedule:</strong> Departure schedule assigned by station operator.
                 </span>
@@ -454,7 +454,7 @@ export function SegmentCard({
               </select>
             ) : (
               <div className="flex items-center gap-2 rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] p-2.5 text-xs text-[#686E65]">
-                <Lock className="size-3.5 text-[#8F6E2A] shrink-0" />
+                <Lock className="size-3.5 text-[#7A5C1E] shrink-0" />
                 <span>
                   <strong>Fixed Schedule:</strong> Departure schedule assigned by station operator.
                 </span>

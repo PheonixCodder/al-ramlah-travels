@@ -1,5 +1,6 @@
 import crypto from "node:crypto"
 import { NextResponse, type NextRequest } from "next/server"
+import { isAuditLocalE2eMode } from "@/lib/env"
 import { uploadAssetToR2 } from "@/lib/storage/r2"
 import {
   enforceRouteAdminAuth,
@@ -92,7 +93,7 @@ async function readBoundedPayloadBuffer(
 
 async function handleLocalUpload(req: NextRequest): Promise<NextResponse> {
   // Hard-disabled in production (`T-014`): production uploads must use direct R2 presigned PUTs
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()) {
     return NextResponse.json(
       { success: false, error: "Not Found" },
       { status: 404 }

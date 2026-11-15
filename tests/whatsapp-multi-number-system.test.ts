@@ -1,4 +1,3 @@
-import "dotenv/config"
 import { describe, it, before, after } from "node:test"
 import assert from "node:assert/strict"
 import { eq } from "drizzle-orm"
@@ -30,7 +29,7 @@ const SAMPLE_UUID_1 = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 const SAMPLE_UUID_2 = "ffffffff-1111-4222-8333-444444444444"
 
 describe("Spec 0022 / Slice 41: Multi-Number WhatsApp System Architecture & Routing", () => {
-  // Ensure database cleanliness
+  // Clean up ONLY our isolated test slot — never touch seeded default/secondary rows!
   async function cleanupTestData() {
     try {
       await db
@@ -39,12 +38,6 @@ describe("Spec 0022 / Slice 41: Multi-Number WhatsApp System Architecture & Rout
       await db
         .delete(whatsappAccounts)
         .where(eq(whatsappAccounts.phoneNumberId, `linked-${TEST_SLOT_KEY}`))
-      await db
-        .delete(whatsappAccounts)
-        .where(eq(whatsappAccounts.phoneNumberId, "linked-default"))
-      await db
-        .delete(whatsappAccounts)
-        .where(eq(whatsappAccounts.phoneNumberId, "linked-secondary"))
     } catch {
       // non-fatal if tables don't have these rows
     }
@@ -134,8 +127,8 @@ describe("Spec 0022 / Slice 41: Multi-Number WhatsApp System Architecture & Rout
   // ==========================================================================
   // TC-3: Dynamic Slot Deletion & Account Cascade
   // ==========================================================================
-  describe("TC-3: Dynamic Slot Deletion & Account Cascade", () => {
-    it("successfully deletes any session slot and purges its linked whatsapp_accounts row", async () => {
+  describe("TC-3: Dynamic Slot Deletion & Account Soft-Deactivation (T-032)", () => {
+    it("deletes session slot while soft-deactivating linked whatsapp_accounts row to preserve CRM threads", async () => {
       // Slot was created in TC-2; ensure its associated whatsapp_accounts row exists
       await ensureLinkedWhatsappAccount(
         "923274029701",
@@ -155,13 +148,14 @@ describe("Spec 0022 / Slice 41: Multi-Number WhatsApp System Architecture & Rout
         .limit(1)
       assert.equal(remainingSession.length, 0, "Session slot should be purged")
 
-      // Verify linked whatsapp_accounts row is deleted
+      // Verify linked whatsapp_accounts row is soft-deactivated (preserving historical threads, T-032)
       const remainingAccount = await db
         .select()
         .from(whatsappAccounts)
         .where(eq(whatsappAccounts.phoneNumberId, `linked-${TEST_SLOT_KEY}`))
         .limit(1)
-      assert.equal(remainingAccount.length, 0, "Linked whatsapp account row should be purged")
+      assert.equal(remainingAccount.length, 1)
+      assert.equal(remainingAccount[0]?.isActive, false)
     })
   })
 
@@ -205,10 +199,10 @@ describe("Spec 0022 / Slice 41: Multi-Number WhatsApp System Architecture & Rout
       )
     })
 
-    it("normalizes phone numbers without @ to @s.whatsapp.net format", () => {
+    it("normalizes phone numbers without @ to E.164 @s.whatsapp.net format", () => {
       assert.equal(
         normalizeStatusJid("03214629700"),
-        "03214629700@s.whatsapp.net"
+        "923214629700@s.whatsapp.net"
       )
       assert.equal(
         normalizeStatusJid("+92 321 4629700"),

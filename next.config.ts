@@ -39,6 +39,17 @@ export function buildNextConfig(
   env: NodeJS.ProcessEnv = process.env
 ): NextConfig {
   const isProduction = env.NODE_ENV === "production"
+  const pooledDbCandidate = env.DATABASE_URL_POOLED || env.DATABASE_URL || ""
+  const isAuditLocal =
+    env.AUDIT_E2E_LOCAL === "1" &&
+    Boolean(
+      env.DATABASE_URL &&
+        (env.DATABASE_URL.includes("127.0.0.1") ||
+          env.DATABASE_URL.includes("localhost")) &&
+        (pooledDbCandidate.includes("127.0.0.1") ||
+          pooledDbCandidate.includes("localhost"))
+    )
+  const isStrictProduction = isProduction && !isAuditLocal
   const appUrlHost = getHost(env.NEXT_PUBLIC_APP_URL)
   const authUrlHost = getHost(env.BETTER_AUTH_URL)
   const r2PublicHostname = getHostname(env.R2_PUBLIC_URL)
@@ -53,7 +64,7 @@ export function buildNextConfig(
       )
   )
 
-  const serverActionOrigins = isProduction
+  const serverActionOrigins = isStrictProduction
     ? Array.from(new Set(prodOrigins))
     : Array.from(
         new Set(

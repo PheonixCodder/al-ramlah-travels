@@ -1,5 +1,3 @@
-process.env.SKIP_ENV_VALIDATION = "1"
-
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 import {
@@ -29,8 +27,9 @@ describe("Slice 36 · WaCRM Custom Keyword Auto-Reply Rules Engine & Greeting Se
         id: "rule-contains",
         name: "Location Inquiry",
         matchType: "CONTAINS",
-        keywords: ["askari 10", "chaklala", "office address"],
-        responseText: "Visit our Askari 10 / Chaklala Scheme 3 Rawalpindi office.",
+        keywords: ["askari 10", "airport road", "office address"],
+        responseText:
+          "Visit our Office No. 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt office.",
         priority: 80,
         cooldownMinutes: 30,
         isActive: true,
@@ -151,7 +150,7 @@ describe("Slice 36 · WaCRM Custom Keyword Auto-Reply Rules Engine & Greeting Se
         }))
 
       const locMatch = matchKeywordAutoReplyRule(
-        "Please share your Chaklala Scheme 3 pin",
+        "Please share your Askari 10 Lahore office pin",
         presetCandidates
       )
       assert.ok(locMatch)
@@ -241,7 +240,7 @@ describe("Slice 36 · WaCRM Custom Keyword Auto-Reply Rules Engine & Greeting Se
         welcomeGreetingEnabled: true,
         welcomeGreetingText: "Assalamu Alaikum! Welcome to Al Ramlah Travels.",
         awayGreetingEnabled: true,
-        awayGreetingText: "Our Rawalpindi office opens at 09:00 PKT.",
+        awayGreetingText: "Our Askari 10, Lahore Cantt office opens at 09:00 PKT.",
         businessHoursStart: "09:00",
         businessHoursEnd: "21:00",
       })

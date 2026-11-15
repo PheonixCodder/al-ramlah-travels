@@ -306,7 +306,7 @@ export function SocialCalendarView({
                           <button
                             type="button"
                             onClick={(e) => handleOpenReschedule(post, e)}
-                            className="text-[11px] text-primary hover:underline font-semibold shrink-0 cursor-pointer"
+                            className="inline-flex min-h-6 items-center text-[11px] text-primary hover:underline font-semibold shrink-0 cursor-pointer"
                           >
                             Move
                           </button>
@@ -443,7 +443,7 @@ export function SocialCalendarView({
                         cell.isToday
                           ? "border-[#0A3622] bg-[#0A3622]/[0.02] ring-1 ring-[#0A3622]/30"
                           : isDimmed
-                          ? "border-border/40 bg-muted/20 opacity-60"
+                          ? "border-border/40 bg-muted/30"
                           : "border-border bg-card hover:border-[#C5A059]/40"
                       }`}
                     >
@@ -560,7 +560,7 @@ export function SocialCalendarView({
                       </div>
 
                       {/* Peak Slot Buttons */}
-                      <div className="pt-1 border-t border-border/40 flex flex-wrap gap-1">
+                      <div className="pt-1 border-t border-border/40 flex flex-wrap gap-1.5">
                         {DEFAULT_PKT_POSTING_SLOTS.map((slot) => {
                           const [h] = slot.split(":")
                           const hourNum = parseInt(h || "11", 10)
@@ -579,10 +579,10 @@ export function SocialCalendarView({
                                 onSelectSlot &&
                                 onSelectSlot(cell.dateKey, slot)
                               }
-                              className="text-[9px] px-1.5 py-0.5 rounded border border-border/60 text-muted-foreground hover:text-foreground hover:bg-[#C5A059]/15 hover:border-[#C5A059]/60 transition-all font-mono cursor-pointer flex items-center gap-0.5"
+                              className="min-h-6 min-w-6 text-[10px] px-2 py-1 rounded border border-border/60 text-muted-foreground hover:text-foreground hover:bg-[#C5A059]/15 hover:border-[#C5A059]/60 transition-all font-mono cursor-pointer inline-flex items-center gap-0.5"
                               title={`Queue new post on ${cell.dateKey} at ${slot} PKT`}
                             >
-                              <Plus className="size-2 text-[#C5A059]" />
+                              <Plus className="size-2.5 text-gold-text" />
                               <span>{label}</span>
                             </button>
                           )

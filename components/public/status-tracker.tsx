@@ -175,7 +175,7 @@ export function StatusTracker({
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-white border border-[#C5A059] px-3 py-1 text-xs font-semibold text-[#8F6E2A] mb-2 shadow-xs">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-white border border-[#C5A059] px-3 py-1 text-xs font-semibold text-[#7A5C1E] mb-2 shadow-xs">
             <Search className="size-3 text-[#C5A059]" />
             <span>Self-Service Pilgrim Portal</span>
           </div>
@@ -272,7 +272,7 @@ export function StatusTracker({
                     <span className="font-mono tabular-nums text-lg font-extrabold text-[#0A3622]">
                       {app.referenceNumber}
                     </span>
-                    <span className="rounded-md bg-white border border-[#E6DEC8] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+                    <span className="rounded-md bg-white border border-[#E6DEC8] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
                       {app.presetMode.replace(/_/g, " ")}
                     </span>
                   </div>
@@ -328,7 +328,7 @@ export function StatusTracker({
 
               {/* Lifecycle Stepper */}
               <div className="mb-8">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A] mb-3">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E] mb-3">
                   Inquiry Lifecycle Progress
                 </span>
 
@@ -465,9 +465,9 @@ export function StatusTracker({
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-[#C5A059] bg-[#FAF7F0] p-4 sm:p-5 flex items-start gap-3">
-                      <Clock className="size-5 text-[#8F6E2A] shrink-0 mt-0.5" />
+                      <Clock className="size-5 text-[#7A5C1E] shrink-0 mt-0.5" />
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A] block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E] block">
                           Awaiting Deposit Verification
                         </span>
                         <h4 className="text-sm font-bold text-[#0A3622]">
@@ -496,7 +496,7 @@ export function StatusTracker({
                           Pre-Built Group Departure
                         </span>
                         {app.groupDeparture?.batchCode && (
-                          <span className="font-mono text-xs font-bold text-[#8F6E2A] bg-white border border-[#E6DEC8] px-2 py-0.5 rounded">
+                          <span className="font-mono text-xs font-bold text-[#7A5C1E] bg-white border border-[#E6DEC8] px-2 py-0.5 rounded">
                             Batch: {app.groupDeparture.batchCode}
                           </span>
                         )}
@@ -527,7 +527,7 @@ export function StatusTracker({
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-4">
                     {app.departureCity && (
                       <div className="rounded-xl border border-[#E6DEC8] bg-white p-3">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A] block mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E] block mb-1">
                           Departure Gateway
                         </span>
                         <span className="text-xs font-bold text-[#0A3622]">
@@ -538,7 +538,7 @@ export function StatusTracker({
                     )}
                     {app.preferredAirline && (
                       <div className="rounded-xl border border-[#E6DEC8] bg-white p-3">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A] block mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E] block mb-1">
                           Group Airline
                         </span>
                         <span className="text-xs font-bold text-[#0A3622]">
@@ -548,7 +548,7 @@ export function StatusTracker({
                     )}
                     {app.groupDeparture?.baggageAllowance && (
                       <div className="rounded-xl border border-[#E6DEC8] bg-white p-3">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A] block mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E] block mb-1">
                           Baggage Allowance
                         </span>
                         <span className="text-xs font-bold text-[#0A3622]">
@@ -601,7 +601,7 @@ export function StatusTracker({
                   {/* Gifted Inclusions */}
                   {app.groupPackage.giftedInclusions.length > 0 && (
                     <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A] block mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E] block mb-2">
                         Complimentary Gifted Inclusions
                       </span>
                       <div className="flex flex-wrap gap-1.5">
@@ -643,7 +643,7 @@ export function StatusTracker({
                                 ? ` (${stay.hotel.starRating}★)`
                                 : ""}
                             </span>
-                            <span className="text-[10px] text-[#8F6E2A] font-semibold tabular-nums">
+                            <span className="text-[10px] text-[#7A5C1E] font-semibold tabular-nums">
                               {stay.nights} Nights
                             </span>
                           </div>
@@ -662,7 +662,7 @@ export function StatusTracker({
                                 : `${stay.roomCategory} Room`}
                             </span>
                             {stay.mealPlan && (
-                              <span className="rounded bg-white border border-[#E6DEC8] px-1.5 py-0.5 text-[9px] font-bold text-[#8F6E2A] capitalize">
+                              <span className="rounded bg-white border border-[#E6DEC8] px-1.5 py-0.5 text-[9px] font-bold text-[#7A5C1E] capitalize">
                                 {stay.mealPlan.replace(/_/g, " ")}
                               </span>
                             )}
@@ -730,7 +730,7 @@ export function StatusTracker({
                           </p>
                         </div>
                         {seg.pickupTime && (
-                          <span className="font-mono tabular-nums text-[10px] font-bold text-[#8F6E2A]">
+                          <span className="font-mono tabular-nums text-[10px] font-bold text-[#7A5C1E]">
                             {seg.pickupTime}
                           </span>
                         )}
@@ -745,7 +745,7 @@ export function StatusTracker({
                 <div className="rounded-2xl border-2 border-[#C5A059] bg-white p-5 shadow-sm">
                   <div className="flex items-center justify-between mb-4 border-b border-[#E6DEC8] pb-3 gap-2 flex-wrap">
                     <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
                         Official Financial Quotation (v{quote.version})
                       </span>
                       <h4 className="text-base font-bold text-[#0A3622]">
@@ -770,7 +770,7 @@ export function StatusTracker({
                   <div className="overflow-x-auto mb-4">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-[#E6DEC8] text-left text-[11px] font-semibold text-[#8F6E2A] uppercase">
+                        <tr className="border-b border-[#E6DEC8] text-left text-[11px] font-semibold text-[#7A5C1E] uppercase">
                           <th className="py-2">Service Component</th>
                           <th className="py-2 text-right">Amount (PKR)</th>
                         </tr>
@@ -894,7 +894,7 @@ export function StatusTracker({
                     <div className="mb-4 rounded-xl border border-[#C5A059]/60 bg-[#FAF7F0] p-4 flex flex-col gap-3">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A] block">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E] block">
                             Online Pilgrim Confirmation
                           </span>
                           <p className="text-xs font-semibold text-[#0A3622]">
@@ -921,7 +921,7 @@ export function StatusTracker({
                             type="button"
                             disabled={isResponding}
                             onClick={() => setShowRevisionForm((prev) => !prev)}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-[#C5A059] bg-white px-3.5 py-2 text-xs font-bold text-[#8F6E2A] hover:bg-[#FAF7F0] disabled:opacity-50 transition-colors"
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-[#C5A059] bg-white px-3.5 py-2 text-xs font-bold text-[#7A5C1E] hover:bg-[#FAF7F0] disabled:opacity-50 transition-colors"
                           >
                             <RotateCcw className="size-3.5" />
                             <span>Request Revision</span>
@@ -957,7 +957,7 @@ export function StatusTracker({
                               type="button"
                               disabled={isResponding || revisionNotes.trim().length < 5}
                               onClick={() => handleQuoteDecision("request_revision")}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-[#8F6E2A] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#765A21] disabled:opacity-50"
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-[#7A5C1E] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#765A21] disabled:opacity-50"
                             >
                               {isResponding && (
                                 <Loader2 className="size-3 animate-spin" />
@@ -981,7 +981,7 @@ export function StatusTracker({
                           href={quote.quotationPdfUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 rounded-xl border border-[#C5A059] bg-[#FAF7F0] px-3.5 py-2 text-xs font-bold text-[#8F6E2A] hover:bg-white transition-colors"
+                          className="flex items-center gap-1.5 rounded-xl border border-[#C5A059] bg-[#FAF7F0] px-3.5 py-2 text-xs font-bold text-[#7A5C1E] hover:bg-white transition-colors"
                         >
                           <span>Download 3-Page Luxury PDF</span>
                           <ExternalLink className="size-3 text-[#C5A059]" />
@@ -1009,7 +1009,7 @@ export function StatusTracker({
                     <div className="rounded-2xl border-2 border-[#C5A059] bg-[#FAF7F0] p-5 shadow-sm">
                       <div className="flex items-center justify-between border-b border-[#E6DEC8] pb-3 mb-3">
                         <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
                             Direct Consular Rate
                           </span>
                           <h4 className="text-base font-bold text-[#0A3622]">
@@ -1028,7 +1028,7 @@ export function StatusTracker({
                           PKR {app.calculatedVisaTotalPkr.toLocaleString()}
                         </span>
                       </div>
-                      <p className="text-[11px] text-[#8F6E2A]">
+                      <p className="text-[11px] text-[#7A5C1E]">
                         Includes electronic Umrah visa processing with official Nusuk / Masar platform clearance and comprehensive health insurance.
                       </p>
                     </div>

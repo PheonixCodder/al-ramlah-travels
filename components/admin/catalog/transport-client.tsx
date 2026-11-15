@@ -468,7 +468,7 @@ export function TransportClient({
                   </div>
 
                   <div className="rounded-lg border border-border/80 bg-muted/20 p-2 text-xs flex items-center justify-between font-mono tabular-nums">
-                    <div className="flex items-center gap-1 text-gold font-sans font-semibold">
+                    <div className="flex items-center gap-1 text-gold-text font-sans font-semibold">
                       <Coins className="size-3.5" />
                       <span>Default Rate:</span>
                     </div>

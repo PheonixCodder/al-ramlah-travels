@@ -148,7 +148,7 @@ export function CitySequenceModule() {
               <PlaneTakeoff className="size-4" />
             </div>
             <div>
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8F6E2A]">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#7A5C1E]">
                 Entry Airport {startsInMakkah ? "(Makkah-First Locked)" : ""}
               </span>
               <div className="text-xs sm:text-sm font-bold text-[#0A3622]">
@@ -162,7 +162,7 @@ export function CitySequenceModule() {
               <PlaneLanding className="size-4" />
             </div>
             <div>
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8F6E2A]">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#7A5C1E]">
                 Exit Airport
               </span>
               <div className="text-xs sm:text-sm font-bold text-[#0A3622]">
@@ -179,7 +179,7 @@ export function CitySequenceModule() {
             className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-xl border border-[#C5A059]/60 bg-[#FAF7F0] p-3 text-xs"
           >
             <div className="flex items-start gap-2">
-              <Info className="size-4 text-[#8F6E2A] shrink-0 mt-0.5" />
+              <Info className="size-4 text-[#7A5C1E] shrink-0 mt-0.5" />
               <div className="text-[#1A1D1A] leading-relaxed">
                 <strong className="text-[#0A3622]">
                   Jeddah (JED) → Makkah Self-Transfer Notice:
@@ -233,7 +233,7 @@ export function CitySequenceModule() {
                         {stay.stayOrder}
                       </div>
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
                           Stay {stay.stayOrder}
                         </span>
                         <h5 className="text-xs font-bold text-[#0A3622]">
@@ -325,7 +325,7 @@ export function CitySequenceModule() {
               <Calendar className="size-3.5 text-[#C5A059]" />
               Travel Window
             </span>
-            <span className="inline-flex items-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-3 py-1 text-xs font-semibold text-[#8F6E2A] tabular-nums">
+            <span className="inline-flex items-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-3 py-1 text-xs font-semibold text-[#7A5C1E] tabular-nums">
               {dates.totalKsaDays} {dates.totalKsaDays === 1 ? "Day" : "Days"} Total
             </span>
           </div>

@@ -1,5 +1,4 @@
-import "dotenv/config"
-import { describe, it, afterEach } from "node:test"
+import { describe, it, beforeEach, afterEach } from "node:test"
 import assert from "node:assert/strict"
 import {
   isComposioManagedSupported,
@@ -20,9 +19,49 @@ import type { SocialPostPayload } from "../lib/social/types"
 
 describe("Composio Managed OAuth & Native OAuth Bridge", () => {
   const originalFetch = globalThis.fetch
+  const savedEnv = {
+    COMPOSIO_API_KEY: process.env.COMPOSIO_API_KEY,
+    TIKTOK_CLIENT_KEY: process.env.TIKTOK_CLIENT_KEY,
+    TIKTOK_CLIENT_SECRET: process.env.TIKTOK_CLIENT_SECRET,
+    TIKTOK_DIRECT_POST_APPROVED: process.env.TIKTOK_DIRECT_POST_APPROVED,
+    GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
+    GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+  }
+  const envMutable = env as Record<string, unknown>
+  const savedParsedEnv = {
+    COMPOSIO_API_KEY: envMutable.COMPOSIO_API_KEY,
+    TIKTOK_CLIENT_KEY: envMutable.TIKTOK_CLIENT_KEY,
+    TIKTOK_CLIENT_SECRET: envMutable.TIKTOK_CLIENT_SECRET,
+    GOOGLE_OAUTH_CLIENT_ID: envMutable.GOOGLE_OAUTH_CLIENT_ID,
+    GOOGLE_OAUTH_CLIENT_SECRET: envMutable.GOOGLE_OAUTH_CLIENT_SECRET,
+  }
+
+  beforeEach(() => {
+    process.env.COMPOSIO_API_KEY = "test_composio_key"
+    process.env.TIKTOK_CLIENT_KEY = "test_tiktok_client_key"
+    process.env.TIKTOK_CLIENT_SECRET = "test_tiktok_client_secret"
+    delete process.env.TIKTOK_DIRECT_POST_APPROVED
+    process.env.GOOGLE_OAUTH_CLIENT_ID = "test_google_client_id"
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET = "test_google_client_secret"
+    envMutable.COMPOSIO_API_KEY = "test_composio_key"
+    envMutable.TIKTOK_CLIENT_KEY = "test_tiktok_client_key"
+    envMutable.TIKTOK_CLIENT_SECRET = "test_tiktok_client_secret"
+    envMutable.GOOGLE_OAUTH_CLIENT_ID = "test_google_client_id"
+    envMutable.GOOGLE_OAUTH_CLIENT_SECRET = "test_google_client_secret"
+  })
 
   afterEach(() => {
     globalThis.fetch = originalFetch
+    for (const [key, val] of Object.entries(savedEnv)) {
+      if (val === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = val
+      }
+    }
+    for (const [key, val] of Object.entries(savedParsedEnv)) {
+      envMutable[key] = val
+    }
   })
 
   describe("isComposioManagedSupported", () => {
@@ -382,7 +421,9 @@ describe("Composio Managed OAuth & Native OAuth Bridge", () => {
       const result = youtubeProvider.validateSocialPost(payload)
       assert.equal(result.valid, false)
       assert.ok(
-        result.errors.some((e) => e.includes("must be an MP4 video file"))
+        result.errors.some((e) =>
+          e.includes("MP4, MOV, or WebM video file")
+        )
       )
     })
 
@@ -407,6 +448,7 @@ describe("Composio Managed OAuth & Native OAuth Bridge", () => {
 
   describe("TikTok Provider API Hardening & Content Posting v2", () => {
     it("publishes single photo with photo_cover_index 0, sliced title and description, and no duet/stitch", async () => {
+      process.env.TIKTOK_DIRECT_POST_APPROVED = "true"
       let capturedBody: Record<string, unknown> | undefined
       let capturedEndpoint: string | undefined
 
@@ -429,6 +471,18 @@ describe("Composio Managed OAuth & Native OAuth Bridge", () => {
           return new Response(
             JSON.stringify({
               data: { publish_id: "tt_pub_photo_123" },
+              error: { code: "ok", message: "" },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        }
+        if (urlStr.includes("/v2/post/publish/status/fetch/")) {
+          return new Response(
+            JSON.stringify({
+              data: {
+                status: "PUBLISH_COMPLETE",
+                publicly_available_post_id: ["743000111222333"],
+              },
               error: { code: "ok", message: "" },
             }),
             { status: 200, headers: { "Content-Type": "application/json" } }
@@ -459,10 +513,10 @@ describe("Composio Managed OAuth & Native OAuth Bridge", () => {
         idempotencyKey: "idem_123",
       })
 
-      assert.equal(result.externalPostId, "tt_pub_photo_123")
+      assert.equal(result.externalPostId, "743000111222333")
       assert.equal(
         result.publishedUrl,
-        "https://www.tiktok.com/@alramlahtravels/video/tt_pub_photo_123"
+        "https://www.tiktok.com/@alramlahtravels/video/743000111222333"
       )
       assert.ok(capturedEndpoint?.includes("/v2/post/publish/content/init/"))
       assert.ok(capturedBody)
@@ -480,7 +534,7 @@ describe("Composio Managed OAuth & Native OAuth Bridge", () => {
       const postInfo = capturedBody.post_info as Record<string, unknown>
       assert.equal(postInfo.privacy_level, "PUBLIC_TO_EVERYONE")
       assert.equal(postInfo.title, payload.caption.slice(0, 90))
-      assert.equal(postInfo.description, payload.caption.slice(0, 2000))
+      assert.equal(postInfo.description, payload.caption.slice(0, 2200))
       assert.equal(postInfo.disable_comment, false)
       assert.equal(postInfo.auto_add_music, true)
       assert.equal(postInfo.disable_duet, undefined)
@@ -682,7 +736,7 @@ describe("Composio Managed OAuth & Native OAuth Bridge", () => {
         caption: "Testing URL unverified error",
         media: [
           {
-            url: "https://unverified-domain.com/photo.jpg",
+            url: "https://pub-audit.r2.dev/photo.jpg",
             type: "image",
           },
         ],
@@ -699,17 +753,21 @@ describe("Composio Managed OAuth & Native OAuth Bridge", () => {
             idempotencyKey: "idem_unverified",
           })
         },
-        /TikTok media URL unverified \(url_ownership_unverified\): TikTok PULL_FROM_URL requires verifying the media URL prefix\/domain in TikTok Developer Portal -> Content Posting API -> URL properties/
+        /TikTok media URL unverified \(url_ownership_unverified\)/
       )
     })
 
-    it("falls back gracefully to PUBLIC_TO_EVERYONE if creator_info/query network request fails", async () => {
+    it("falls back safely to SELF_ONLY by default (OD-11) and PUBLIC_TO_EVERYONE only when TIKTOK_DIRECT_POST_APPROVED=true if creator_info/query fails", async () => {
       globalThis.fetch = async () => {
         throw new Error("Network timeout connecting to TikTok creator info")
       }
 
-      const privacy = await queryTikTokCreatorPrivacyLevel("act_broken_token")
-      assert.equal(privacy, "PUBLIC_TO_EVERYONE")
+      const defaultPrivacy = await queryTikTokCreatorPrivacyLevel("act_broken_token")
+      assert.equal(defaultPrivacy, "SELF_ONLY")
+
+      process.env.TIKTOK_DIRECT_POST_APPROVED = "true"
+      const approvedPrivacy = await queryTikTokCreatorPrivacyLevel("act_broken_token")
+      assert.equal(approvedPrivacy, "PUBLIC_TO_EVERYONE")
     })
 
     it("omits PKCE code_challenge and codeVerifier on https Web Redirect URIs (Login Kit for Web)", async () => {
@@ -906,12 +964,15 @@ describe("Composio Managed OAuth & Native OAuth Bridge", () => {
         return new Response("Not found", { status: 404 })
       }
 
-      const res = await gmbProvider.exchangeCodeForTokens(
-        "code_gmb_quota",
-        "https://alramlahtravels.com/callback"
+      await assert.rejects(
+        async () => {
+          await gmbProvider.exchangeCodeForTokens(
+            "code_gmb_quota",
+            "https://alramlahtravels.com/callback"
+          )
+        },
+        /pending Basic Access quota approval \(HTTP 429\)/
       )
-      assert.equal(res.metadata?.quotaPending, true)
-      assert.ok(res.handle?.includes("GBP Quota Pending"))
     })
 
     it("surfaces GMB location fetch error when location fetch fails", async () => {

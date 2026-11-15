@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@/*": ["./*"],
+      "cn": ["./lib/utils.ts"]
+    }
+  },
+  "include": [
+    "../../playwright.config.ts",
+    "./**/*.ts"
+  ],
+  "exclude": [
+    "../../node_modules"
+  ]
+}

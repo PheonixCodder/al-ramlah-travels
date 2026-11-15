@@ -7,11 +7,13 @@ import { eq } from "drizzle-orm"
 import { db, withTransaction } from "../db"
 import * as schema from "../db/schema"
 import { recordAuditLog } from "./audit-log"
+import { isAuditLocalE2eMode } from "./env"
 import { logger } from "./logger"
 import { sendPasswordResetEmail } from "./security/mailer"
 
 function buildTrustedOrigins(): string[] {
-  const isProduction = process.env.NODE_ENV === "production"
+  const isProduction =
+    process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()
   const configured = [
     process.env.NEXT_PUBLIC_APP_URL?.trim(),
     process.env.BETTER_AUTH_URL?.trim(),
@@ -127,7 +129,8 @@ export const auth = betterAuth({
     },
   },
   advanced: {
-    useSecureCookies: process.env.NODE_ENV === "production",
+    useSecureCookies:
+      process.env.NODE_ENV === "production" && !isAuditLocalE2eMode(),
     defaultCookieAttributes: {
       sameSite: "lax",
       httpOnly: true,

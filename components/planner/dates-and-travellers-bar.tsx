@@ -161,7 +161,7 @@ export function DatesAndTravellersBar() {
                 <Calendar className="size-3.5 text-[#C5A059]" />
                 KSA Travel Dates {pillars.visa ? "(Required for Visa Tier)" : ""}
               </span>
-              <span className="inline-flex items-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-3 py-1 text-xs font-semibold text-[#8F6E2A] tabular-nums">
+              <span className="inline-flex items-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-3 py-1 text-xs font-semibold text-[#7A5C1E] tabular-nums">
                 {totalKsaDays} {totalKsaDays === 1 ? "Day" : "Days"} Total
               </span>
             </div>

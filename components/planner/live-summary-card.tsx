@@ -126,7 +126,7 @@ export function LiveSummaryCard() {
         {/* Header */}
         <div className="mb-4 flex items-center justify-between border-b border-[#E6DEC8] pb-3">
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
               Live Itinerary Card
             </span>
             <h3 className="text-base font-bold text-[#0A3622]">
@@ -143,7 +143,7 @@ export function LiveSummaryCard() {
                         : "Custom Package"}
             </h3>
           </div>
-          <span className="flex size-7 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059] text-[#8F6E2A]">
+          <span className="flex size-7 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059] text-[#7A5C1E]">
             <Sparkles className="size-3.5" />
           </span>
         </div>
@@ -326,7 +326,7 @@ export function LiveSummaryCard() {
         <div className="mb-5 rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] p-4 text-center">
           {isVisaOnly ? (
             <div>
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8F6E2A]">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#7A5C1E]">
                 Guaranteed Fixed Total (PKR)
               </span>
               <div className="font-mono text-2xl sm:text-3xl font-extrabold text-[#0A3622] my-1 tabular-nums">

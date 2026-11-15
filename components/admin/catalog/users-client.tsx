@@ -312,7 +312,7 @@ export function UsersClient({
                         setNewPassword(createRandomPassword())
                         setShowNewPassword(true)
                       }}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-gold hover:underline cursor-pointer"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-gold-text hover:underline cursor-pointer"
                     >
                       <Sparkles className="size-3 text-gold" />
                       <span>Generate Strong Password</span>
@@ -576,7 +576,7 @@ export function UsersClient({
                     setResetPasswordVal(createRandomPassword())
                     setShowResetPassword(true)
                   }}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-gold hover:underline cursor-pointer"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-gold-text hover:underline cursor-pointer"
                 >
                   <Sparkles className="size-3 text-gold" />
                   <span>Generate</span>

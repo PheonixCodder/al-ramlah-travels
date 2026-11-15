@@ -22,6 +22,9 @@ const eslintConfig = defineConfig([
     ".agents/**",
     ".claude/**",
     "agent/**",
+    "playwright-report/**",
+    "test-results/**",
+    "wt-*/**",
   ]),
   {
     settings: {

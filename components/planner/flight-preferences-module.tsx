@@ -81,7 +81,7 @@ export function FlightPreferencesModule() {
                     Outbound Flight
                   </span>
                 </div>
-                <span className="text-[11px] font-medium text-[#8F6E2A]">
+                <span className="text-[11px] font-medium text-[#7A5C1E]">
                   {formatDisplayDate(dates.arrivalDate)}
                 </span>
               </div>
@@ -156,7 +156,7 @@ export function FlightPreferencesModule() {
                     Return Flight
                   </span>
                 </div>
-                <span className="text-[11px] font-medium text-[#8F6E2A]">
+                <span className="text-[11px] font-medium text-[#7A5C1E]">
                   {formatDisplayDate(dates.departureDate)}
                 </span>
               </div>
@@ -233,7 +233,7 @@ export function FlightPreferencesModule() {
               Choose your departure airport in Pakistan
             </p>
           </div>
-          <span className="text-[11px] font-medium text-[#8F6E2A]">
+          <span className="text-[11px] font-medium text-[#7A5C1E]">
             {departureCities.length} Cities
           </span>
         </div>
@@ -500,7 +500,7 @@ export function FlightPreferencesModule() {
             </p>
           </div>
           {flights.routeType === "direct" && (
-            <span className="text-[10px] font-medium text-[#8F6E2A]">
+            <span className="text-[10px] font-medium text-[#7A5C1E]">
               Showing {filteredAirlines.length} direct carrier
               {filteredAirlines.length === 1 ? "" : "s"}
             </span>
@@ -520,7 +520,7 @@ export function FlightPreferencesModule() {
             )}
           >
             <div className="flex w-full items-center justify-between mb-2">
-              <span className="inline-flex items-center rounded-md bg-[#FAF7F0] border border-[#C5A059]/50 px-2 py-0.5 text-[10px] font-bold text-[#8F6E2A] font-mono">
+              <span className="inline-flex items-center rounded-md bg-[#FAF7F0] border border-[#C5A059]/50 px-2 py-0.5 text-[10px] font-bold text-[#7A5C1E] font-mono">
                 BEST RATE
               </span>
               <div

@@ -25,7 +25,7 @@ export default async function TermsPage() {
         <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-[#0A3622] hover:text-[#8F6E2A] transition-colors"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-[#0A3622] hover:text-[#7A5C1E] transition-colors"
           >
             <ArrowLeft className="size-4" />
             <span>Back to Home</span>
@@ -152,7 +152,7 @@ export default async function TermsPage() {
                 during Ramadan, Last Ashra, and Hajj—are governed by our{" "}
                 <Link
                   href="/refund-policy"
-                  className="font-bold text-[#0A3622] underline hover:text-[#8F6E2A]"
+                  className="font-bold text-[#0A3622] underline hover:text-[#7A5C1E]"
                 >
                   Cancellation &amp; Refund Policy
                 </Link>

@@ -1,8 +1,11 @@
-import "dotenv/config"
+import crypto from "node:crypto"
 import { describe, it, afterEach } from "node:test"
 import assert from "node:assert/strict"
+import { eq, inArray } from "drizzle-orm"
 import { AbortTaskRunError } from "@trigger.dev/sdk"
 import { db } from "../db"
+import { applications, applicationQuotes } from "../db/schema"
+import { socialIntegrations } from "../db/schema/social-scheduler"
 import { decryptToken, encryptToken } from "../lib/social/crypto"
 import { SOCIAL_PROVIDERS } from "../lib/social/providers"
 import { MetaApiError } from "../lib/whatsapp/meta-api"
@@ -542,19 +545,36 @@ describe("Spec 0012 — Trigger.dev v4 Hardening, Queues, Metadata & Cron Schedu
   })
 
   // =========================================================================
-  // AC-7: Declarative Cron Schedules & Inline Runner Behavior
+  // AC-7: Declarative Cron Schedules & Inline Runner Behavior (Real PG Audit DB)
   // =========================================================================
   describe("AC-7: proactiveSocialTokenRefreshSchedule & slaOverdueQuoteMonitorSchedule", () => {
-    const originalDbSelect = db.select.bind(db)
-    const originalDbUpdate = db.update.bind(db)
     const originalIgRefresh = SOCIAL_PROVIDERS.instagram.refreshAccessToken
     const originalTiktokRefresh = SOCIAL_PROVIDERS.tiktok.refreshAccessToken
+    const createdIntegrationIds: string[] = []
+    const createdApplicationIds: string[] = []
 
-    afterEach(() => {
-      ;(db as unknown as { select: typeof db.select }).select = originalDbSelect
-      ;(db as unknown as { update: typeof db.update }).update = originalDbUpdate
+    afterEach(async () => {
       SOCIAL_PROVIDERS.instagram.refreshAccessToken = originalIgRefresh
       SOCIAL_PROVIDERS.tiktok.refreshAccessToken = originalTiktokRefresh
+
+      if (createdIntegrationIds.length > 0) {
+        await db
+          .delete(socialIntegrations)
+          .where(inArray(socialIntegrations.id, [...createdIntegrationIds]))
+        createdIntegrationIds.length = 0
+      }
+
+      if (createdApplicationIds.length > 0) {
+        await db
+          .delete(applicationQuotes)
+          .where(
+            inArray(applicationQuotes.applicationId, [...createdApplicationIds])
+          )
+        await db
+          .delete(applications)
+          .where(inArray(applications.id, [...createdApplicationIds]))
+        createdApplicationIds.length = 0
+      }
     })
 
     it("defines declarative schedules.task exports with canonical IDs", () => {
@@ -574,175 +594,217 @@ describe("Spec 0012 — Trigger.dev v4 Hardening, Queues, Metadata & Cron Schedu
     })
 
     it("runProactiveSocialTokenRefresh refreshes expiring tokens, re-encrypts via AES-256-GCM, and deactivates integrations on permanent OAuth errors", async () => {
-      const encryptedValidRefresh = encryptToken("rft_valid_ig_token")
-      const encryptedRevokedRefresh = encryptToken("rft_revoked_tiktok_token")
+      const igId = crypto.randomUUID()
+      const ttId = crypto.randomUUID()
+      createdIntegrationIds.push(igId, ttId)
 
-      const mockIntegrations = [
+      await db.insert(socialIntegrations).values([
         {
-          id: "int_ig_1",
+          id: igId,
           provider: "instagram",
-          name: "Al Ramlah Instagram",
+          internalAccountId: `ig_audit_${igId.slice(0, 8)}`,
+          name: "Al Ramlah Instagram Audit",
           isActive: true,
+          status: "ACTIVE",
           encryptedAccessToken: encryptToken("old_ig_access"),
-          encryptedRefreshToken: encryptedValidRefresh,
+          encryptedRefreshToken: encryptToken("rft_valid_ig_token"),
           tokenExpiresAt: new Date(Date.now() + 2 * 3600 * 1000),
           metadata: {},
         },
         {
-          id: "int_tt_2",
+          id: ttId,
           provider: "tiktok",
-          name: "Al Ramlah TikTok",
+          internalAccountId: `tt_audit_${ttId.slice(0, 8)}`,
+          name: "Al Ramlah TikTok Audit",
           isActive: true,
+          status: "ACTIVE",
           encryptedAccessToken: encryptToken("old_tt_access"),
-          encryptedRefreshToken: encryptedRevokedRefresh,
+          encryptedRefreshToken: encryptToken("rft_revoked_tiktok_token"),
           tokenExpiresAt: new Date(Date.now() + 4 * 3600 * 1000),
           metadata: { handle: "@alramlahtravels" },
         },
-      ]
-
-      const dbUpdates: Array<Record<string, unknown>> = []
-
-      ;(db as unknown as { select: unknown }).select = () => ({
-        from: () => ({
-          where: async () => mockIntegrations,
-        }),
-      })
-      ;(db as unknown as { update: unknown }).update = () => ({
-        set: (values: Record<string, unknown>) => ({
-          where: async () => {
-            dbUpdates.push(values)
-            return []
-          },
-        }),
-      })
+      ])
 
       SOCIAL_PROVIDERS.instagram.refreshAccessToken = async (
         refreshToken: string
       ) => {
-        assert.equal(refreshToken, "rft_valid_ig_token")
-        return {
-          accessToken: "new_ig_access_token_2026",
-          refreshToken: "new_ig_refresh_token_2026",
-          expiresIn: 5184000,
-          internalAccountId: "ig_acc_01",
-          name: "Al Ramlah Instagram",
-          scopes: ["instagram_basic", "instagram_content_publish"],
+        if (refreshToken === "rft_valid_ig_token") {
+          return {
+            accessToken: "new_ig_access_token_2026",
+            refreshToken: "new_ig_refresh_token_2026",
+            expiresIn: 5184000,
+            internalAccountId: `ig_audit_${igId.slice(0, 8)}`,
+            name: "Al Ramlah Instagram Audit",
+            scopes: ["instagram_basic", "instagram_content_publish"],
+          }
         }
+        return originalIgRefresh!(refreshToken)
       }
 
-      SOCIAL_PROVIDERS.tiktok.refreshAccessToken = async () => {
-        throw new Error(
-          "OAuthException 190: invalid_grant - Token has been expired or revoked"
-        )
+      SOCIAL_PROVIDERS.tiktok.refreshAccessToken = async (
+        refreshToken: string
+      ) => {
+        if (refreshToken === "rft_revoked_tiktok_token") {
+          throw new Error(
+            "OAuthException 190: invalid_grant - Token has been expired or revoked"
+          )
+        }
+        return originalTiktokRefresh!(refreshToken)
       }
 
       const summary = await runProactiveSocialTokenRefresh({ withinHours: 24 })
 
-      assert.equal(summary.scannedCount, 2)
-      assert.equal(summary.refreshedCount, 1)
-      assert.equal(summary.deactivatedCount, 1)
-      assert.equal(summary.transientErrorCount, 0)
-      assert.equal(dbUpdates.length, 2)
+      assert.ok(summary.scannedCount >= 2)
+      assert.ok(summary.refreshedCount >= 1)
+      assert.ok(summary.deactivatedCount >= 1)
 
-      // Verify first integration was refreshed and AES-256-GCM encrypted
-      const refreshedUpdate = dbUpdates[0]!
+      const [refreshedRow] = await db
+        .select()
+        .from(socialIntegrations)
+        .where(eq(socialIntegrations.id, igId))
+      assert.ok(refreshedRow)
       assert.equal(
-        decryptToken(refreshedUpdate.encryptedAccessToken as string),
+        decryptToken(refreshedRow.encryptedAccessToken),
         "new_ig_access_token_2026"
       )
       assert.equal(
-        decryptToken(refreshedUpdate.encryptedRefreshToken as string),
+        decryptToken(refreshedRow.encryptedRefreshToken!),
         "new_ig_refresh_token_2026"
       )
-      assert.equal(
-        (refreshedUpdate.metadata as Record<string, unknown>).reauthRequired,
-        false
-      )
+      assert.equal(refreshedRow.isActive, true)
 
-      // Verify second integration was deactivated with metadata.reauthRequired = true
-      const deactivatedUpdate = dbUpdates[1]!
-      assert.equal(deactivatedUpdate.isActive, false)
-      const deactMeta = deactivatedUpdate.metadata as Record<string, unknown>
-      assert.equal(deactMeta.reauthRequired, true)
-      assert.match(String(deactMeta.lastRefreshError), /invalid_grant/)
+      const [deactivatedRow] = await db
+        .select()
+        .from(socialIntegrations)
+        .where(eq(socialIntegrations.id, ttId))
+      assert.ok(deactivatedRow)
+      assert.equal(deactivatedRow.isActive, false)
+      assert.equal(deactivatedRow.status, "EXPIRED")
     })
 
-    it("runSlaOverdueQuoteMonitor flags unquoted pending_quote applications older than 24h idempotently and skips quoted leads", async () => {
+    it("runSlaOverdueQuoteMonitor stamps slaEscalatedAt idempotently on overdue unquoted dossiers without mutating specialRequests", async () => {
       const thirtyHoursAgo = new Date(Date.now() - 30 * 3600 * 1000)
+      const sixHoursAgo = new Date(Date.now() - 6 * 3600 * 1000)
+      const appUnflaggedId = crypto.randomUUID()
+      const appAlreadyFlaggedId = crypto.randomUUID()
+      const appAlreadyQuotedId = crypto.randomUUID()
+      createdApplicationIds.push(
+        appUnflaggedId,
+        appAlreadyFlaggedId,
+        appAlreadyQuotedId
+      )
 
-      const mockCandidateApps = [
+      const suffix = crypto.randomBytes(3).toString("hex").toUpperCase()
+      await db.insert(applications).values([
         {
-          id: "app_overdue_unflagged",
-          referenceNumber: "ART-2611-0001",
+          id: appUnflaggedId,
+          referenceNumber: `ART-SLA1-${suffix}`,
+          source: "custom_builder",
+          presetMode: "complete_umrah",
+          status: "pending_quote",
           customerName: "Tariq Mahmood",
           customerPhone: "+923001112233",
+          customerWhatsapp: "+923001112233",
           customerCity: "Lahore",
+          adults: 2,
+          children: 0,
+          infants: 0,
+          totalPassportCount: 2,
+          bedAndSeatCount: 2,
           specialRequests: "Wheelchair assistance for mother",
           quoteSentAt: null,
+          slaEscalatedAt: null,
           createdAt: thirtyHoursAgo,
+          updatedAt: thirtyHoursAgo,
         },
         {
-          id: "app_overdue_already_flagged",
-          referenceNumber: "ART-2611-0002",
+          id: appAlreadyFlaggedId,
+          referenceNumber: `ART-SLA2-${suffix}`,
+          source: "custom_builder",
+          presetMode: "complete_umrah",
+          status: "pending_quote",
           customerName: "Ayesha Siddiqui",
           customerPhone: "+923214445566",
+          customerWhatsapp: "+923214445566",
           customerCity: "Islamabad",
-          specialRequests: "[SLA-OVERDUE-24H] Escalated at 2026-11-06T12:00:00Z",
+          adults: 2,
+          children: 0,
+          infants: 0,
+          totalPassportCount: 2,
+          bedAndSeatCount: 2,
+          specialRequests: "Haram view requested",
           quoteSentAt: null,
+          slaEscalatedAt: sixHoursAgo,
           createdAt: thirtyHoursAgo,
+          updatedAt: sixHoursAgo,
         },
         {
-          id: "app_already_quoted",
-          referenceNumber: "ART-2611-0003",
+          id: appAlreadyQuotedId,
+          referenceNumber: `ART-SLA3-${suffix}`,
+          source: "custom_builder",
+          presetMode: "complete_umrah",
+          status: "pending_quote",
           customerName: "Zainab Khan",
           customerPhone: "+923337778899",
+          customerWhatsapp: "+923337778899",
           customerCity: "Karachi",
+          adults: 2,
+          children: 0,
+          infants: 0,
+          totalPassportCount: 2,
+          bedAndSeatCount: 2,
           specialRequests: null,
           quoteSentAt: null,
+          slaEscalatedAt: null,
           createdAt: thirtyHoursAgo,
+          updatedAt: thirtyHoursAgo,
         },
-      ]
+      ])
 
-      let selectCallIndex = 0
-      const updatedRecords: Array<Record<string, unknown>> = []
-
-      ;(db as unknown as { select: unknown }).select = () => ({
-        from: () => ({
-          where: async () => {
-            selectCallIndex++
-            if (selectCallIndex === 1) {
-              return mockCandidateApps
-            }
-            // Second select queries applicationQuotes
-            return [{ applicationId: "app_already_quoted" }]
-          },
-        }),
-      })
-      ;(db as unknown as { update: unknown }).update = () => ({
-        set: (values: Record<string, unknown>) => ({
-          where: async () => {
-            updatedRecords.push(values)
-            return []
-          },
-        }),
+      await db.insert(applicationQuotes).values({
+        applicationId: appAlreadyQuotedId,
+        version: 1,
+        visaTotalPkr: 90000,
+        flightsTotalPkr: 240000,
+        makkahHotelTotalPkr: 150000,
+        madinahHotelTotalPkr: 120000,
+        transportTotalPkr: 50000,
+        ziyaratTotalPkr: 25000,
+        discountPkr: 0,
+        grandTotalPkr: 675000,
+        quotedAt: sixHoursAgo,
       })
 
-      const summary = await runSlaOverdueQuoteMonitor({ slaHours: 24 })
+      const summary = await runSlaOverdueQuoteMonitor({
+        slaHours: 24,
+        applicationIdsFilter: [
+          appUnflaggedId,
+          appAlreadyFlaggedId,
+          appAlreadyQuotedId,
+        ],
+        sendEmailAlerts: false,
+      })
 
       assert.equal(summary.slaHours, 24)
       assert.equal(summary.overdueCount, 2)
       assert.equal(summary.newlyFlaggedCount, 1)
-      assert.equal(updatedRecords.length, 1)
-      assert.match(
-        String(updatedRecords[0]!.specialRequests),
-        /\[SLA-OVERDUE-24H\]/
+
+      const [updatedUnflagged] = await db
+        .select()
+        .from(applications)
+        .where(eq(applications.id, appUnflaggedId))
+      assert.ok(updatedUnflagged?.slaEscalatedAt instanceof Date)
+      // Pilgrim-visible specialRequests MUST remain untouched (T-074 / A00-010)
+      assert.equal(
+        updatedUnflagged.specialRequests,
+        "Wheelchair assistance for mother"
       )
 
       const unflaggedItem = summary.overdueApplications.find(
-        (a) => a.id === "app_overdue_unflagged"
+        (a) => a.id === appUnflaggedId
       )
       const alreadyFlaggedItem = summary.overdueApplications.find(
-        (a) => a.id === "app_overdue_already_flagged"
+        (a) => a.id === appAlreadyFlaggedId
       )
       assert.equal(unflaggedItem?.newlyFlagged, true)
       assert.equal(alreadyFlaggedItem?.newlyFlagged, false)

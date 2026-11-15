@@ -267,7 +267,7 @@ export function CatalogHubClient({
       {/* Hub Header */}
       <div className="flex flex-col gap-2 border-b border-border/80 pb-5">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gold">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-gold-text">
             Hub 4 • Operations &amp; Dynamic Inventory
           </span>
           <Badge
@@ -313,7 +313,7 @@ export function CatalogHubClient({
                 <Icon
                   className={cn(
                     "size-4 shrink-0 transition-colors",
-                    isActive ? "text-gold" : "text-muted-foreground"
+                    isActive ? "text-gold-text" : "text-muted-foreground"
                   )}
                 />
                 <span>{tab.label}</span>
@@ -669,7 +669,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
               {/* Card Header */}
               <div className="flex items-start justify-between gap-2 border-b border-border/60 pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="flex size-9 items-center justify-center rounded-lg bg-gold/10 border border-gold/30 text-gold font-bold font-mono text-sm">
+                  <div className="flex size-9 items-center justify-center rounded-lg bg-gold/10 border border-gold/30 text-gold-text font-bold font-mono text-sm">
                     {s.codePrefix}
                   </div>
                   <div>
@@ -717,7 +717,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
 
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Default Margin:</span>
-                  <span className="font-mono font-bold text-gold text-xs">
+                  <span className="font-mono font-bold text-gold-text text-xs">
                     PKR {s.defaultCommissionPkr.toLocaleString()} / pax
                   </span>
                 </div>

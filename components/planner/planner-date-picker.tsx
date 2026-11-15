@@ -139,7 +139,7 @@ export function PlannerDatePicker({
           }}
           autoFocus
           classNames={{
-            today: "rounded-md bg-[#FAF7F0] font-bold text-[#8F6E2A] border border-[#E6DEC8]",
+            today: "rounded-md bg-[#FAF7F0] font-bold text-[#7A5C1E] border border-[#E6DEC8]",
           }}
         />
       </PopoverContent>
@@ -157,7 +157,7 @@ export function PlannerDatePicker({
             {label}
           </label>
           {badgeText && !disabled && (
-            <span className="text-[9px] font-bold text-[#8F6E2A] bg-[#FAF7F0] px-1.5 py-0.5 rounded border border-[#E6DEC8]">
+            <span className="text-[9px] font-bold text-[#7A5C1E] bg-[#FAF7F0] px-1.5 py-0.5 rounded border border-[#E6DEC8]">
               {badgeText}
             </span>
           )}

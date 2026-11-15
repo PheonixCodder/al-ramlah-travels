@@ -7,10 +7,7 @@ import {
   socialIntegrationStatusEnum,
   socialPostFormatEnum,
 } from "../db/schema/social-scheduler"
-import {
-  buildDeterministicMockAnalytics,
-  fetchSocialTargetAnalytics,
-} from "../lib/social/analytics"
+import { fetchSocialTargetAnalytics } from "../lib/social/analytics"
 import { decryptToken, encryptToken } from "../lib/social/crypto"
 import { buildArtFirstCommentPlug } from "../lib/social/first-comment"
 import {
@@ -39,9 +36,15 @@ import {
 } from "../lib/validations/social-scheduler"
 
 const originalFetch = globalThis.fetch
+const originalGbpApproved = process.env.GBP_API_APPROVED
 
 afterEach(() => {
   globalThis.fetch = originalFetch
+  if (originalGbpApproved === undefined) {
+    delete process.env.GBP_API_APPROVED
+  } else {
+    process.env.GBP_API_APPROVED = originalGbpApproved
+  }
 })
 
 describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Proactive Token Refresh, Reels/Stories, First-Comment Plug & Analytics", () => {
@@ -314,7 +317,7 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
         id: "post_fb_reel",
         caption: "Ramadan Umrah Reel #Umrah",
         postFormat: "REEL",
-        media: [{ url: "https://cdn.example.com/reel.mp4", type: "video" }],
+        media: [{ url: "https://pub-audit.r2.dev/reel.mp4", type: "video" }],
       })
       assert.equal(validReel.valid, true)
 
@@ -322,7 +325,7 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
         id: "post_fb_reel_bad",
         caption: "Image on Reel format",
         postFormat: "REEL",
-        media: [{ url: "https://cdn.example.com/poster.jpg", type: "image" }],
+        media: [{ url: "https://pub-audit.r2.dev/poster.jpg", type: "image" }],
       })
       assert.equal(invalidReelImage.valid, false)
       assert.ok(
@@ -361,9 +364,14 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
           headers: init?.headers,
         })
 
-        if (url === "https://cdn.example.com/umrah-reel.mp4") {
-          return new Response(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), {
+        if (url === "https://pub-audit.r2.dev/umrah-reel.mp4") {
+          const bytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])
+          return new Response(bytes, {
             status: 200,
+            headers: {
+              "Content-Type": "video/mp4",
+              "Content-Length": String(bytes.byteLength),
+            },
           })
         }
         if (
@@ -412,7 +420,7 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
           caption: "15-Day Executive Umrah Spotlight",
           postFormat: "REEL",
           media: [
-            { url: "https://cdn.example.com/umrah-reel.mp4", type: "video" },
+            { url: "https://pub-audit.r2.dev/umrah-reel.mp4", type: "video" },
           ],
         },
         idempotencyKey: "idem_reel_1",
@@ -461,7 +469,7 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
           caption: "24h Flash Umrah Offer",
           postFormat: "STORY",
           media: [
-            { url: "https://cdn.example.com/story.jpg", type: "image" },
+            { url: "https://pub-audit.r2.dev/story.jpg", type: "image" },
           ],
         },
         idempotencyKey: "idem_story_1",
@@ -506,6 +514,11 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
         const url = String(input)
         if (url.endsWith("/ig_user_77/media")) {
           return new Response(JSON.stringify({ id: "container_901" }), {
+            status: 200,
+          })
+        }
+        if (url.includes("/container_901?")) {
+          return new Response(JSON.stringify({ status_code: "FINISHED" }), {
             status: 200,
           })
         }
@@ -561,7 +574,7 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
           caption: targetCaption,
           postFormat: "REEL",
           media: [
-            { url: "https://cdn.example.com/umrah-reel.mp4", type: "video" },
+            { url: "https://pub-audit.r2.dev/umrah-reel.mp4", type: "video" },
           ],
         },
         idempotencyKey: "idem_ig_recover_1",
@@ -721,10 +734,10 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
   })
 
   // ==========================================
-  // AC-5: Core 5 Social Post Analytics Sync
+  // AC-5: Core 5 Social Post Analytics Sync (Honest Telemetry — T-036)
   // ==========================================
-  describe("AC-5: buildDeterministicMockAnalytics & fetchSocialTargetAnalytics across Core 5 providers", () => {
-    it("produces deterministic, non-NaN metrics for all Core 5 providers in buildDeterministicMockAnalytics", () => {
+  describe("AC-5: Honest unavailable null telemetry & fetchSocialTargetAnalytics across Core 5 providers", () => {
+    it("returns null (unavailable — zero fabricated metrics) when token is simulated/missing or upstream API fails", async () => {
       const providers: SocialProviderId[] = [
         "instagram",
         "facebook",
@@ -734,33 +747,27 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
       ]
 
       for (const provider of providers) {
-        const first = buildDeterministicMockAnalytics(
+        const mockTokenResult = await fetchSocialTargetAnalytics({
           provider,
-          "ext_post_12345"
-        )
-        const second = buildDeterministicMockAnalytics(
-          provider,
-          "ext_post_12345"
-        )
-
-        assert.equal(first.impressions, second.impressions)
-        assert.equal(first.likes, second.likes)
-        assert.equal(first.comments, second.comments)
-        assert.equal(first.shares, second.shares)
-        assert.equal(first.clicks, second.clicks)
-
-        assert.ok(
-          Number.isFinite(first.impressions) && first.impressions >= 420
-        )
-        assert.ok(Number.isFinite(first.likes) && first.likes >= 18)
-        assert.ok(Number.isFinite(first.comments) && first.comments >= 3)
-        assert.ok(Number.isFinite(first.shares) && first.shares >= 2)
-        assert.ok(Number.isFinite(first.clicks) && first.clicks >= 9)
-        assert.ok(!Number.isNaN(Date.parse(first.lastSyncedAt)))
+          accessToken: "mock_unverified_token",
+          externalPostId: "ext_post_12345",
+        })
+        assert.equal(mockTokenResult, null)
       }
+
+      globalThis.fetch = (async () =>
+        new Response("Upstream unavailable", { status: 503 })) as typeof fetch
+
+      const failedLive = await fetchSocialTargetAnalytics({
+        provider: "instagram",
+        accessToken: "live_ig_token_abc",
+        externalPostId: "ig_post_1",
+      })
+      assert.equal(failedLive, null)
     })
 
     it("fetches and normalizes live analytics across Instagram, Facebook, YouTube, TikTok, and GMB", async () => {
+      process.env.GBP_API_APPROVED = "true"
       globalThis.fetch = (async (input: RequestInfo | URL) => {
         const url = String(input)
 
@@ -775,7 +782,7 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
           return new Response(
             JSON.stringify({
               data: [
-                { name: "impressions", values: [{ value: 3850 }] },
+                { name: "views", values: [{ value: 3850 }] },
                 { name: "shares", values: [{ value: 44 }] },
                 { name: "saved", values: [{ value: 61 }] },
               ],
@@ -821,14 +828,14 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
           )
         }
 
-        // TikTok video query
+        // TikTok video query (numeric video_id required per T-070)
         if (url.includes("open.tiktokapis.com/v2/video/query/")) {
           return new Response(
             JSON.stringify({
               data: {
                 videos: [
                   {
-                    id: "tt_vid_1",
+                    id: "743009988776655",
                     view_count: 12900,
                     like_count: 870,
                     comment_count: 65,
@@ -841,20 +848,32 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
           )
         }
 
-        // GMB localPosts:reportInsights
-        if (url.includes("mybusiness.googleapis.com/v4/")) {
+        // Business Profile Performance API v1 (migrated off sunset legacy v4, T-035)
+        if (
+          url.includes(
+            "businessprofileperformance.googleapis.com/v1/locations/"
+          )
+        ) {
           return new Response(
             JSON.stringify({
-              localPostMetrics: [
+              multiDailyMetricTimeSeries: [
                 {
-                  metricValues: [
+                  dailyMetricTimeSeries: [
                     {
-                      metric: "LOCAL_POST_VIEWS_SEARCH",
-                      totalValue: { value: "640" },
+                      dailyMetric: "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
+                      timeSeries: { datedValues: [{ value: "400" }] },
                     },
                     {
-                      metric: "LOCAL_POST_ACTIONS_CALL_TO_ACTION",
-                      totalValue: { value: "39" },
+                      dailyMetric: "BUSINESS_IMPRESSIONS_MOBILE_MAPS",
+                      timeSeries: { datedValues: [{ value: "240" }] },
+                    },
+                    {
+                      dailyMetric: "WEBSITE_CLICKS",
+                      timeSeries: { datedValues: [{ value: "29" }] },
+                    },
+                    {
+                      dailyMetric: "CALL_CLICKS",
+                      timeSeries: { datedValues: [{ value: "10" }] },
                     },
                   ],
                 },
@@ -872,6 +891,7 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
         accessToken: "live_ig_token_abc",
         externalPostId: "ig_post_1",
       })
+      assert.ok(igMetrics)
       assert.equal(igMetrics.impressions, 3850)
       assert.equal(igMetrics.likes, 142)
       assert.equal(igMetrics.comments, 27)
@@ -883,6 +903,7 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
         accessToken: "live_fb_token_abc",
         externalPostId: "fb_post_1",
       })
+      assert.ok(fbMetrics)
       assert.equal(fbMetrics.impressions, 2100)
       assert.equal(fbMetrics.likes, 95)
       assert.equal(fbMetrics.comments, 14)
@@ -894,16 +915,18 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
         accessToken: "live_yt_token_abc",
         externalPostId: "yt_vid_1",
       })
+      assert.ok(ytMetrics)
       assert.equal(ytMetrics.impressions, 5400)
       assert.equal(ytMetrics.likes, 310)
       assert.equal(ytMetrics.comments, 48)
-      assert.equal(ytMetrics.clicks, 22)
+      assert.equal(ytMetrics.clicks, 0)
 
       const ttMetrics = await fetchSocialTargetAnalytics({
         provider: "tiktok",
         accessToken: "live_tt_token_abc",
-        externalPostId: "tt_vid_1",
+        externalPostId: "743009988776655",
       })
+      assert.ok(ttMetrics)
       assert.equal(ttMetrics.impressions, 12900)
       assert.equal(ttMetrics.likes, 870)
       assert.equal(ttMetrics.comments, 65)
@@ -915,6 +938,7 @@ describe("Slice 33 (Spec 0014): Postiz Phase 2 — Multi-Page OAuth Selector, Pr
         externalPostId: "accounts/1/locations/2/localPosts/3",
         internalAccountId: "accounts/1/locations/2",
       })
+      assert.ok(gmbMetrics)
       assert.equal(gmbMetrics.impressions, 640)
       assert.equal(gmbMetrics.clicks, 39)
 

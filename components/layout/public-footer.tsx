@@ -159,7 +159,7 @@ export function PublicFooter({
                     href={social.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-full border border-gold/30 bg-primary-foreground/10 px-3 py-1 text-xs font-medium text-primary-foreground/90 transition-colors hover:border-gold hover:text-gold"
+                    className="inline-flex min-h-6 items-center gap-1 rounded-full border border-gold/30 bg-primary-foreground/10 px-3 py-1 text-xs font-medium text-primary-foreground/90 transition-colors hover:border-gold hover:text-gold"
                   >
                     <span>{social.label}</span>
                     <ExternalLink className="size-3 shrink-0" />
@@ -174,11 +174,11 @@ export function PublicFooter({
             <h3 className="font-display text-sm font-semibold tracking-wide text-gold uppercase">
               Curated Journeys
             </h3>
-            <ul className="flex flex-col gap-2.5 text-sm text-primary-foreground/80">
+            <ul className="flex flex-col gap-2 text-sm text-primary-foreground/80">
               <li>
                 <Link
                   href="/#journey-builder"
-                  className="group inline-flex items-center gap-1 transition-colors hover:text-gold"
+                  className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
                 >
                   <span>Custom Umrah Builder</span>
                   <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -187,7 +187,7 @@ export function PublicFooter({
               <li>
                 <Link
                   href="/#group-packages"
-                  className="group inline-flex items-center gap-1 transition-colors hover:text-gold"
+                  className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
                 >
                   <span>VIP Executive Packages</span>
                   <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -196,7 +196,7 @@ export function PublicFooter({
               <li>
                 <Link
                   href="/#group-packages"
-                  className="group inline-flex items-center gap-1 transition-colors hover:text-gold"
+                  className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
                 >
                   <span>Family Comfort Umrah</span>
                   <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -205,7 +205,7 @@ export function PublicFooter({
               <li>
                 <Link
                   href="/#hajj-inquiry"
-                  className="group inline-flex items-center gap-1 transition-colors hover:text-gold"
+                  className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
                 >
                   <span>Hajj 2027 Pre-Registration</span>
                   <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -214,7 +214,7 @@ export function PublicFooter({
               <li>
                 <Link
                   href="/#ziyarat"
-                  className="group inline-flex items-center gap-1 transition-colors hover:text-gold"
+                  className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
                 >
                   <span>Historical Ziyarat Tours</span>
                   <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -228,11 +228,11 @@ export function PublicFooter({
             <h3 className="font-display text-sm font-semibold tracking-wide text-gold uppercase">
               Pilgrim Services
             </h3>
-            <ul className="flex flex-col gap-2.5 text-sm text-primary-foreground/80">
+            <ul className="flex flex-col gap-2 text-sm text-primary-foreground/80">
               <li>
                 <Link
                   href="/#track-status"
-                  className="transition-colors hover:text-gold"
+                  className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold"
                 >
                   Live Application Tracker
                 </Link>
@@ -240,7 +240,7 @@ export function PublicFooter({
               <li>
                 <Link
                   href="/#journey-builder"
-                  className="transition-colors hover:text-gold"
+                  className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold"
                 >
                   Instant Visa Quoting
                 </Link>
@@ -248,7 +248,7 @@ export function PublicFooter({
               <li>
                 <Link
                   href="/#journey-builder"
-                  className="transition-colors hover:text-gold"
+                  className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold"
                 >
                   Makkah Clock Tower Hotels
                 </Link>
@@ -256,7 +256,7 @@ export function PublicFooter({
               <li>
                 <Link
                   href="/#journey-builder"
-                  className="transition-colors hover:text-gold"
+                  className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold"
                 >
                   Madinah Markaziah Stays
                 </Link>
@@ -264,7 +264,7 @@ export function PublicFooter({
               <li>
                 <Link
                   href="/#contact"
-                  className="transition-colors hover:text-gold"
+                  className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold"
                 >
                   Askari 10 Executive Desk
                 </Link>
@@ -272,7 +272,7 @@ export function PublicFooter({
               <li>
                 <Link
                   href="/admin"
-                  className="pt-1 text-xs text-primary-foreground/50 transition-colors hover:text-gold"
+                  className="inline-flex min-h-6 items-center py-0.5 text-xs text-primary-foreground/75 transition-colors hover:text-gold"
                 >
                   Staff Operations Portal
                 </Link>
@@ -285,11 +285,11 @@ export function PublicFooter({
             <h3 className="font-display text-sm font-semibold tracking-wide text-gold uppercase">
               Pilgrim Concierge
             </h3>
-            <div className="flex flex-col gap-2.5 text-sm text-primary-foreground/80">
-              <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-2 text-sm text-primary-foreground/80">
+              <div className="flex flex-col gap-1.5">
                 <a
                   href={telHref}
-                  className="flex items-center gap-2 transition-colors hover:text-gold"
+                  className="inline-flex min-h-6 items-center gap-2 py-0.5 transition-colors hover:text-gold"
                 >
                   <Phone className="size-4 shrink-0 text-gold" />
                   <span className="font-mono tabular-nums">{agencyPhone}</span>
@@ -297,7 +297,7 @@ export function PublicFooter({
                 {secondaryPhone && (
                   <a
                     href={secTelHref}
-                    className="flex items-center gap-2 pl-6 text-xs text-primary-foreground/75 transition-colors hover:text-gold"
+                    className="inline-flex min-h-6 items-center gap-2 py-0.5 pl-6 text-xs text-primary-foreground/80 transition-colors hover:text-gold"
                   >
                     <span className="font-mono tabular-nums">{secondaryPhone}</span>
                   </a>
@@ -307,14 +307,14 @@ export function PublicFooter({
                 href={waHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 transition-colors hover:text-gold"
+                className="inline-flex min-h-6 items-center gap-2 py-0.5 transition-colors hover:text-gold"
               >
                 <MessageCircle className="size-4 shrink-0 text-emerald-400" />
                 <span>WhatsApp: {whatsappNumber} (24/7 Desk)</span>
               </a>
               <a
                 href={`mailto:${supportEmail}`}
-                className="flex items-center gap-2 transition-colors hover:text-gold"
+                className="inline-flex min-h-6 items-center gap-2 py-0.5 transition-colors hover:text-gold"
               >
                 <Mail className="size-4 shrink-0 text-gold" />
                 <span>{supportEmail}</span>
@@ -323,12 +323,12 @@ export function PublicFooter({
                 href="https://www.alramlahtravels.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 text-xs transition-colors hover:text-gold"
+                className="inline-flex min-h-6 items-center gap-2 py-0.5 text-xs transition-colors hover:text-gold"
               >
                 <Compass className="size-4 shrink-0 text-gold" />
                 <span>www.alramlahtravels.com</span>
               </a>
-              <div className="flex items-start gap-2 pt-1 text-xs text-primary-foreground/70">
+              <div className="flex items-start gap-2 pt-1 text-xs text-primary-foreground/75">
                 <MapPin className="mt-0.5 size-4 shrink-0 text-gold" />
                 <span>{officeAddress}</span>
               </div>
@@ -373,7 +373,7 @@ export function PublicFooter({
         </div>
 
         {/* Bottom Bar: Copyright & Canonical Legal Routes */}
-        <div className="flex flex-col items-center justify-between gap-4 pt-6 text-xs text-primary-foreground/65 sm:flex-row">
+        <div className="flex flex-col items-center justify-between gap-4 pt-6 text-xs text-primary-foreground/75 sm:flex-row">
           <div>
             &copy; {currentYear} {resolvedLegalName}. All rights reserved.
           </div>
@@ -383,21 +383,21 @@ export function PublicFooter({
           >
             <Link
               href="/privacy"
-              className="transition-colors hover:text-gold focus-visible:underline focus-visible:outline-none"
+              className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold focus-visible:underline focus-visible:outline-none"
             >
               Privacy Policy
             </Link>
             <span aria-hidden="true">·</span>
             <Link
               href="/terms"
-              className="transition-colors hover:text-gold focus-visible:underline focus-visible:outline-none"
+              className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold focus-visible:underline focus-visible:outline-none"
             >
               Terms of Service
             </Link>
             <span aria-hidden="true">·</span>
             <Link
               href="/refund-policy"
-              className="transition-colors hover:text-gold focus-visible:underline focus-visible:outline-none"
+              className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold focus-visible:underline focus-visible:outline-none"
             >
               Refund &amp; Cancellation Policy
             </Link>

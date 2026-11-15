@@ -38,7 +38,7 @@ function CustomJourneyWizardLayout() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="mb-6 sm:mb-8 text-center sm:text-left">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F0] border border-[#C5A059] px-3 py-1 text-xs font-semibold text-[#8F6E2A] mb-2 shadow-xs">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F0] border border-[#C5A059] px-3 py-1 text-xs font-semibold text-[#7A5C1E] mb-2 shadow-xs">
             <span>Sacred Itinerary Architect</span>
           </div>
           <h2 className="font-display text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#0A3622] tracking-tight">

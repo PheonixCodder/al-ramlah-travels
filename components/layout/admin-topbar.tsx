@@ -224,14 +224,16 @@ export function AdminTopbar({
         <button
           type="button"
           onClick={handleOpenCommandPalette}
-          aria-label="Search Post Ref codes, PKR prices, hotels, or jump to operational hubs"
           className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gold/40 bg-background/80 px-2 py-1.5 text-xs font-medium text-foreground transition-all hover:border-gold hover:bg-gold/10 hover:shadow-2xs focus-visible:ring-2 focus-visible:ring-ring sm:px-3"
           title="Search Post Ref codes, PKR prices, hotels, or jump to operational hubs (⌘K or Ctrl+K)"
         >
           <Search aria-hidden="true" className="size-3.5 shrink-0 text-gold-text" />
           <span className="hidden sm:inline">Search Post Ref / Price</span>
           <span className="text-[11px] sm:hidden">Search</span>
-          <kbd className="pointer-events-none hidden h-4.5 items-center gap-0.5 rounded border border-gold/30 bg-gold/10 px-1.5 font-mono text-[10px] font-bold text-gold-foreground select-none sm:inline-flex">
+          <kbd
+            aria-hidden="true"
+            className="pointer-events-none hidden h-4.5 items-center gap-0.5 rounded border border-gold/30 bg-gold/10 px-1.5 font-mono text-[10px] font-bold text-gold-foreground select-none sm:inline-flex"
+          >
             ⌘K
           </kbd>
         </button>
@@ -336,7 +338,6 @@ export function AdminTopbar({
               <Button
                 variant="ghost"
                 size="sm"
-                aria-label={`Account menu for ${displayName}`}
                 className="cursor-pointer gap-2 px-1.5 hover:bg-secondary"
               />
             }
@@ -354,7 +355,8 @@ export function AdminTopbar({
                 {formattedRole}
               </span>
             </div>
-            <ChevronDown className="hidden size-3.5 text-muted-foreground md:inline-block" />
+            <span className="sr-only">account menu</span>
+            <ChevronDown aria-hidden="true" className="hidden size-3.5 text-muted-foreground md:inline-block" />
           </DropdownMenuTrigger>
 
           <DropdownMenuContent align="end" className="w-56 bg-card">

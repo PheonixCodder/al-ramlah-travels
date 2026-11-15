@@ -1,8 +1,3 @@
-process.env.SKIP_ENV_VALIDATION = "1"
-process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/alramlah"
-process.env.DATABASE_URL_POOLED = "postgresql://user:pass@localhost:5432/alramlah"
-process.env.BETTER_AUTH_SECRET = "12345678901234567890123456789012"
-
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 
@@ -61,7 +56,10 @@ describe("Spec 0019 / Slice 38: Template Variables, Interpolation & CSV Parser",
     it("returns empty array for templates without dynamic variables or empty string", () => {
       assert.deepEqual(extractTemplatePlaceholders("Fixed static text"), [])
       assert.deepEqual(extractTemplatePlaceholders(""), [])
-      assert.deepEqual(extractTemplatePlaceholders(null as any), [])
+      assert.deepEqual(
+        extractTemplatePlaceholders(null as unknown as string),
+        []
+      )
     })
   })
 
@@ -234,12 +232,16 @@ describe("Spec 0019 / Slice 38: Guided Multi-Step Umrah Intake Flow Engine", () 
 
     it("resolves party size and adult counts from buttons and text", () => {
       const couple = resolvePilgrimSelection("", "intake_p_couple")
-      assert.equal(couple?.label, "1-2 Adults (Couple)")
+      assert.equal(couple?.label, "2 Adults (Couple)")
       assert.equal(couple?.adults, 2)
 
-      const family = resolvePilgrimSelection("We are a family of 4")
+      const family = resolvePilgrimSelection("We are a family")
       assert.equal(family?.label, "Family 3-5 Persons")
       assert.equal(family?.adults, 4)
+
+      const explicitFour = resolvePilgrimSelection("4 pilgrims")
+      assert.equal(explicitFour?.label, "4 Pilgrims")
+      assert.equal(explicitFour?.adults, 4)
 
       const group = resolvePilgrimSelection("", "intake_p_group")
       assert.equal(group?.label, "Group 6+ Persons")
@@ -305,9 +307,9 @@ describe("Spec 0019 / Slice 38: Guided Multi-Step Umrah Intake Flow Engine", () 
   })
 
   describe("generateReferenceNumber()", () => {
-    it("generates reference number matching the ART-WA-YYYYMMDD-XXXX contract", () => {
+    it("generates reference number matching the ART-WA-YYYYMMDD-XXXXXXXX CSPRNG contract", () => {
       const ref = generateReferenceNumber()
-      assert.match(ref, /^ART-WA-\d{8}-[A-F0-9]{4}$/)
+      assert.match(ref, /^ART-WA-\d{8}-[A-F0-9]{8}$/)
     })
   })
 })

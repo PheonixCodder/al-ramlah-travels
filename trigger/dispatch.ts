@@ -8,6 +8,7 @@ import {
   type Task,
   type TriggerOptions,
 } from "@trigger.dev/sdk"
+import { isAuditLocalE2eMode } from "@/lib/env"
 import {
   processInboundWhatsappPayloadSchema,
   type ProcessInboundWhatsappPayload,
@@ -85,7 +86,7 @@ export class TriggerDispatchConfigurationError extends Error {
 }
 
 function isProductionRuntime(): boolean {
-  return process.env.NODE_ENV === "production"
+  return process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()
 }
 
 function getTriggerSecretKey(): string | undefined {

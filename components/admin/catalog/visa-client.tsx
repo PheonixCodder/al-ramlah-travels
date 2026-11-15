@@ -235,7 +235,7 @@ export function VisaClient({
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-gold/15 text-gold border border-gold/30">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-gold/15 text-gold-text border border-gold/30">
               <ArrowLeftRight className="size-4" />
             </span>
             <div>

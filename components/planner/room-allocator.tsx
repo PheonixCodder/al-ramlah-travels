@@ -133,14 +133,14 @@ export function RoomAllocator({
               </p>
             </div>
 
-            <span className="inline-flex items-center gap-1 rounded-full bg-[#FAF7F0] border border-[#C5A059] px-3 py-1 text-[11px] font-bold text-[#8F6E2A] self-start sm:self-auto shrink-0">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#FAF7F0] border border-[#C5A059] px-3 py-1 text-[11px] font-bold text-[#7A5C1E] self-start sm:self-auto shrink-0">
               <Sparkles className="size-3 text-[#C5A059]" />
               Live Rate — Confirmed upon submission
             </span>
           </div>
 
           {(travellers.children > 0 || travellers.infants > 0) && (
-            <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#FAF7F0] border border-[#E6DEC8] p-2.5 text-[11px] text-[#8F6E2A] leading-relaxed">
+            <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#FAF7F0] border border-[#E6DEC8] p-2.5 text-[11px] text-[#7A5C1E] leading-relaxed">
               <span className="font-bold shrink-0">Note for Families:</span>
               <span>
                 You are travelling with{" "}

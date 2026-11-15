@@ -3,7 +3,7 @@ import { cookies } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { recordAuditLog } from "@/lib/audit-log"
 import { requireSuperAdmin } from "@/lib/auth-guard"
-import { env } from "@/lib/env"
+import { env, isAuditLocalE2eMode } from "@/lib/env"
 import { logger } from "@/lib/logger"
 import {
   createComposioAuthLink,
@@ -109,7 +109,8 @@ export async function GET(
 
   const provider = parsedProvider.data as SocialProviderId
   const cookieStore = await cookies()
-  const isProduction = process.env.NODE_ENV === "production"
+  const isProduction =
+    process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()
 
   try {
     const signedState = createSignedOAuthState({

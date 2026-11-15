@@ -11,6 +11,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import { NodeHttpHandler } from "@smithy/node-http-handler"
 import sharp from "sharp"
+import { isAuditLocalE2eMode } from "@/lib/env"
 
 export interface UploadAssetResult {
   key: string
@@ -202,7 +203,8 @@ interface ResolvedR2Env {
 }
 
 function resolveR2Env(options: { requirePublicUrl: boolean }): ResolvedR2Env {
-  const isProd = process.env.NODE_ENV === "production"
+  const isProd =
+    process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()
   const accountId = process.env.R2_ACCOUNT_ID?.trim() ?? ""
   const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim() ?? ""
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim() ?? ""
@@ -248,7 +250,7 @@ export function hasR2CredentialsConfigured(): boolean {
 
 function getLocalFallbackRootDir(isPrivate: boolean): string {
   // Never write private PII files or test artifacts into `public/uploads/`
-  if (isPrivate || process.env.NODE_ENV === "test") {
+  if (isPrivate || process.env.NODE_ENV === "test" || isAuditLocalE2eMode()) {
     return path.join(os.tmpdir(), "alramlah-r2-local")
   }
   return path.join(process.cwd(), "public", "uploads", "r2-local")
@@ -450,7 +452,7 @@ export async function readLocalFallbackObject(rawKey: string): Promise<{
   buffer: Buffer
   contentType: string
 } | null> {
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()) {
     throw new Error("Local fallback object reads are disabled in production.")
   }
 

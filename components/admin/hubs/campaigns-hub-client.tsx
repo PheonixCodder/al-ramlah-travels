@@ -748,7 +748,7 @@ export function CampaignsHubClient({
       {/* Hub Header */}
       <div className="flex flex-col gap-2 border-b border-border/80 pb-5">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#C5A059]">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-gold-text">
             Campaigns &amp; Multi-Channel Marketing
           </span>
           <Badge
@@ -1975,6 +1975,7 @@ function SocialCalendarTab({
                     </span>
                   </Label>
                   <select
+                    aria-label="Select 4K Poster or Spotlight Asset"
                     value={selectedAssetId}
                     onChange={(e) => setSelectedAssetId(e.target.value)}
                     className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs font-mono"
@@ -2191,6 +2192,7 @@ function SocialCalendarTab({
                   <div className="relative rounded-xl border border-dashed border-[#C5A059]/50 bg-[#C5A059]/5 p-3 text-center transition-all hover:bg-[#C5A059]/10 mt-2">
                     <input
                       type="file"
+                      aria-label="Upload campaign media file"
                       accept="image/*,video/mp4,video/quicktime"
                       onChange={handleFileUpload}
                       disabled={isUploadingR2}
@@ -2317,7 +2319,7 @@ function SocialCalendarTab({
                               type="button"
                               disabled={isGeneratingFirstComment}
                               onClick={handleGenerateFirstComment}
-                              className="text-[10px] font-semibold text-primary hover:underline cursor-pointer"
+                              className="inline-flex min-h-6 items-center px-1 text-[10px] font-semibold text-primary hover:underline cursor-pointer"
                             >
                               {isGeneratingFirstComment
                                 ? "Generating..."
@@ -2458,7 +2460,7 @@ function SocialCalendarTab({
                           })
                           setSelectedTargetIds(eligible.map((i) => i.id))
                         }}
-                        className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                        className="inline-flex min-h-6 items-center px-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
                       >
                         Select Eligible
                       </button>
@@ -2466,7 +2468,7 @@ function SocialCalendarTab({
                       <button
                         type="button"
                         onClick={() => setSelectedTargetIds([])}
-                        className="text-[11px] font-medium text-muted-foreground hover:underline cursor-pointer"
+                        className="inline-flex min-h-6 items-center px-1 text-[11px] font-medium text-muted-foreground hover:underline cursor-pointer"
                       >
                         Clear
                       </button>
@@ -2527,7 +2529,7 @@ function SocialCalendarTab({
                               "flex items-center justify-between rounded-lg border p-2.5 text-xs transition-all",
                               canSelect
                                 ? "cursor-pointer hover:border-[#C5A059]"
-                                : "opacity-60 bg-muted/40 cursor-not-allowed",
+                                : "bg-muted/40 cursor-not-allowed",
                               isSelected
                                 ? "border-primary bg-primary/5 ring-1 ring-primary"
                                 : "border-border bg-white"
@@ -2571,6 +2573,7 @@ function SocialCalendarTab({
                             </div>
                             <input
                               type="checkbox"
+                              aria-label={`Select ${integration.name}`}
                               disabled={!canSelect}
                               checked={Boolean(isSelected)}
                               onChange={() => {}}
@@ -2615,6 +2618,7 @@ function SocialCalendarTab({
                           Who Can View This Post (Required)
                         </Label>
                         <select
+                          aria-label="Who Can View This Post"
                           value={tiktokPrivacyLevel}
                           onChange={(e) =>
                             setTiktokPrivacyLevel(
@@ -2758,6 +2762,7 @@ function SocialCalendarTab({
                         Google Business CTA Button
                       </Label>
                       <select
+                        aria-label="Google Business CTA Button"
                         value={gmbCallToActionType}
                         onChange={(e) =>
                           setGmbCallToActionType(
@@ -2824,6 +2829,7 @@ function SocialCalendarTab({
                       Step 2: Paired Follow-Up Sheet
                     </Label>
                     <select
+                      aria-label="Step 2 Paired Follow-Up Sheet"
                       value={followUpAssetId}
                       onChange={(e) => setFollowUpAssetId(e.target.value)}
                       className="flex h-8 w-full rounded-md border border-input bg-white px-2 text-xs font-mono"

@@ -33,6 +33,36 @@ function isLocalhostOrLoopbackUrl(urlStr: string): boolean {
   }
 }
 
+/**
+ * Hermetic local Playwright E2E mode (`GA-08` / `Spec 0024` §6).
+ * Strictly gated on BOTH `DATABASE_URL` and `DATABASE_URL_POOLED` resolving to
+ * loopback (`127.0.0.1` / `localhost` / `::1`) so it can NEVER activate against
+ * `neon.tech` or any remote production database.
+ */
+export function isAuditLocalE2eMode(
+  sourceEnv: NodeJS.ProcessEnv = process.env
+): boolean {
+  if (sourceEnv.AUDIT_E2E_LOCAL !== "1") {
+    return false
+  }
+  const dbUrl = sourceEnv.DATABASE_URL?.trim() ?? ""
+  const pooledUrl = sourceEnv.DATABASE_URL_POOLED?.trim() || dbUrl
+  if (!dbUrl || !pooledUrl) {
+    return false
+  }
+  try {
+    const p1 = new URL(dbUrl)
+    const p2 = new URL(pooledUrl)
+    const allowedLoopbacks = new Set(["127.0.0.1", "localhost", "::1"])
+    return (
+      allowedLoopbacks.has(p1.hostname.toLowerCase()) &&
+      allowedLoopbacks.has(p2.hostname.toLowerCase())
+    )
+  } catch {
+    return false
+  }
+}
+
 function isPlaceholderSecret(value: string): boolean {
   const trimmed = value.trim()
   if (KNOWN_PLACEHOLDER_PATTERNS.some((re) => re.test(trimmed))) {
@@ -74,6 +104,7 @@ const rawEnvSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
+  AUDIT_E2E_LOCAL: z.string().optional(),
 
   // Cloudflare R2 Object Storage
   R2_ACCOUNT_ID: z.string().optional(),
@@ -214,7 +245,11 @@ export function parseEnv(
     data.BETTER_AUTH_URL ||
     (isProduction ? appUrl : "http://localhost:3000")
 
-  if (isProduction && !isBuildPhase) {
+  if (
+    isProduction &&
+    !isBuildPhase &&
+    !isAuditLocalE2eMode(sourceEnv)
+  ) {
     const prodErrors: string[] = []
 
     if (!appUrl || !appUrl.startsWith("https://") || isLocalhostOrLoopbackUrl(appUrl)) {

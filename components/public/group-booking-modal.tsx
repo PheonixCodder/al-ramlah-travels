@@ -294,7 +294,7 @@ export function GroupBookingModal({
             </div>
 
             <div className="mx-auto max-w-sm w-full rounded-xl border border-gold/40 bg-gold/5 p-4 flex flex-col gap-2">
-              <span className="text-xs uppercase font-semibold text-gold tracking-wider">
+              <span className="text-xs uppercase font-semibold text-gold-text tracking-wider">
                 Booking Reference Code
               </span>
               <div className="font-mono tabular-nums text-2xl font-extrabold text-foreground tracking-tight">

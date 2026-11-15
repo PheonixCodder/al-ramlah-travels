@@ -229,6 +229,7 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
             />
           </div>
           <select
+            aria-label="Filter hotels by star rating"
             value={selectedRating}
             onChange={(e) => setSelectedRating(e.target.value)}
             className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-foreground shadow-xs"
@@ -265,7 +266,7 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                 className={`flex flex-col justify-between overflow-hidden rounded-xl border bg-card shadow-xs transition-all hover:shadow-md ${
                   hotel.isActive
                     ? "border-border hover:border-gold/60"
-                    : "border-border/60 opacity-60 bg-muted/20"
+                    : "border-border/60 bg-muted/30"
                 }`}
               >
                 <div>
@@ -291,7 +292,7 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                         {hotel.city}
                       </Badge>
                       {hotel.isFeatured && (
-                        <Badge className="bg-gold text-white font-semibold text-[10px] border border-amber-300">
+                        <Badge className="bg-gold text-emerald-950 font-semibold text-[10px] border border-amber-300">
                           Featured
                         </Badge>
                       )}
@@ -361,7 +362,7 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
 
                     <div className="rounded-lg border border-border/80 bg-muted/20 p-2.5 text-xs space-y-1.5">
                       <div className="flex items-center justify-between text-[11px] font-semibold text-foreground border-b border-border/50 pb-1">
-                        <span className="flex items-center gap-1 text-gold">
+                        <span className="flex items-center gap-1 text-gold-text">
                           <Coins className="size-3" />
                           Rates (SAR / Night)
                         </span>

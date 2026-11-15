@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { isAuditLocalE2eMode } from "@/lib/env"
 
 function buildContentSecurityPolicy(isDev: boolean): string {
   const scriptSrc = isDev
@@ -62,7 +63,8 @@ function applySecurityHeaders(
   pathname: string,
   requestId: string
 ): NextResponse {
-  const isDev = process.env.NODE_ENV === "development"
+  const isDev =
+    process.env.NODE_ENV === "development" || isAuditLocalE2eMode()
 
   response.headers.set("Content-Security-Policy", buildContentSecurityPolicy(isDev))
   response.headers.set(

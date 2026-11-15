@@ -1,0 +1,719 @@
+{
+  "total_routes": 29,
+  "orphan_contextual_routes": [
+    "/admin/login",
+    "/admin",
+    "/admin/campaigns",
+    "/admin/catalog",
+    "/admin/content",
+    "/admin/desk",
+    "/admin/distribution",
+    "/admin/flights",
+    "/admin/groups",
+    "/admin/hotels",
+    "/admin/messages",
+    "/admin/outreach",
+    "/admin/post-lookup",
+    "/admin/settings",
+    "/admin/social",
+    "/admin/studio",
+    "/admin/supplier-flyers",
+    "/admin/transport",
+    "/admin/users",
+    "/admin/visa",
+    "/admin/ziyarat"
+  ],
+  "shared_navigation_targets": [
+    "/",
+    "/admin",
+    "/admin/applications",
+    "/admin/campaigns",
+    "/admin/settings",
+    "/privacy",
+    "/refund-policy",
+    "/terms"
+  ],
+  "weak_anchor_texts": [],
+  "recommended_internal_links": [
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/supplier-flyers",
+      "matched_terms": [
+        "admin",
+        "flyers",
+        "supplier"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 1.05
+    },
+    {
+      "source_route": "/admin/studio",
+      "target_route": "/admin/supplier-flyers",
+      "matched_terms": [
+        "admin",
+        "flyers",
+        "supplier"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 1.05
+    },
+    {
+      "source_route": "/admin/login",
+      "target_route": "/admin/content",
+      "matched_terms": [
+        "admin",
+        "content"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/login",
+      "target_route": "/admin/post-lookup",
+      "matched_terms": [
+        "admin",
+        "post"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/applications",
+      "target_route": "/admin/desk",
+      "matched_terms": [
+        "admin",
+        "desk"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/applications/[id]",
+      "target_route": "/admin/supplier-flyers",
+      "matched_terms": [
+        "admin",
+        "supplier"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/applications/[id]",
+      "target_route": "/admin/hotels",
+      "matched_terms": [
+        "admin",
+        "hotels"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/applications/[id]",
+      "target_route": "/admin/settings",
+      "matched_terms": [
+        "admin",
+        "settings"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/applications/[id]/voucher",
+      "target_route": "/admin/ziyarat",
+      "matched_terms": [
+        "admin",
+        "ziyarat"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/applications/[id]/voucher",
+      "target_route": "/admin/visa",
+      "matched_terms": [
+        "admin",
+        "visa"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/studio",
+      "matched_terms": [
+        "admin",
+        "studio"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/social",
+      "matched_terms": [
+        "admin",
+        "social"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/post-lookup",
+      "matched_terms": [
+        "admin",
+        "post"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/settings",
+      "matched_terms": [
+        "admin",
+        "settings"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/outreach",
+      "matched_terms": [
+        "admin",
+        "outreach"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/distribution",
+      "matched_terms": [
+        "admin",
+        "distribution"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/catalog",
+      "target_route": "/admin/supplier-flyers",
+      "matched_terms": [
+        "admin",
+        "supplier"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/catalog",
+      "target_route": "/admin/hotels",
+      "matched_terms": [
+        "admin",
+        "hotels"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/catalog",
+      "target_route": "/admin/visa",
+      "matched_terms": [
+        "admin",
+        "visa"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/content",
+      "target_route": "/admin/catalog",
+      "matched_terms": [
+        "admin",
+        "catalog"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/desk",
+      "target_route": "/admin/supplier-flyers",
+      "matched_terms": [
+        "admin",
+        "supplier"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/desk",
+      "target_route": "/admin/studio",
+      "matched_terms": [
+        "admin",
+        "studio"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/desk",
+      "target_route": "/admin/catalog",
+      "matched_terms": [
+        "admin",
+        "catalog"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/desk",
+      "target_route": "/admin/settings",
+      "matched_terms": [
+        "admin",
+        "settings"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/desk",
+      "target_route": "/admin/messages",
+      "matched_terms": [
+        "admin",
+        "messages"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/distribution",
+      "target_route": "/admin/campaigns",
+      "matched_terms": [
+        "admin",
+        "campaigns"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/flights",
+      "target_route": "/admin/catalog",
+      "matched_terms": [
+        "admin",
+        "catalog"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/groups",
+      "target_route": "/admin/studio",
+      "matched_terms": [
+        "admin",
+        "studio"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/hotels",
+      "target_route": "/admin/catalog",
+      "matched_terms": [
+        "admin",
+        "catalog"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/messages",
+      "target_route": "/admin/catalog",
+      "matched_terms": [
+        "admin",
+        "catalog"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/outreach",
+      "target_route": "/admin/campaigns",
+      "matched_terms": [
+        "admin",
+        "campaigns"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/post-lookup",
+      "target_route": "/admin/desk",
+      "matched_terms": [
+        "admin",
+        "desk"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/settings",
+      "target_route": "/admin/social",
+      "matched_terms": [
+        "admin",
+        "social"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/settings",
+      "target_route": "/admin/catalog",
+      "matched_terms": [
+        "admin",
+        "catalog"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/settings",
+      "target_route": "/admin/users",
+      "matched_terms": [
+        "admin",
+        "users"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/social",
+      "target_route": "/admin/campaigns",
+      "matched_terms": [
+        "admin",
+        "campaigns"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/studio",
+      "target_route": "/admin/groups",
+      "matched_terms": [
+        "admin",
+        "groups"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/studio",
+      "target_route": "/admin/hotels",
+      "matched_terms": [
+        "admin",
+        "hotels"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/studio",
+      "target_route": "/admin/catalog",
+      "matched_terms": [
+        "admin",
+        "catalog"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/supplier-flyers",
+      "target_route": "/admin/studio",
+      "matched_terms": [
+        "admin",
+        "studio"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/transport",
+      "target_route": "/admin/catalog",
+      "matched_terms": [
+        "admin",
+        "catalog"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/users",
+      "target_route": "/admin/settings",
+      "matched_terms": [
+        "admin",
+        "settings"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/visa",
+      "target_route": "/admin/catalog",
+      "matched_terms": [
+        "admin",
+        "catalog"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/admin/ziyarat",
+      "target_route": "/admin/catalog",
+      "matched_terms": [
+        "admin",
+        "catalog"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.8
+    },
+    {
+      "source_route": "/",
+      "target_route": "/admin/hotels",
+      "matched_terms": [
+        "hotels"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.55
+    },
+    {
+      "source_route": "/privacy",
+      "target_route": "/admin/supplier-flyers",
+      "matched_terms": [
+        "supplier"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.55
+    },
+    {
+      "source_route": "/privacy",
+      "target_route": "/admin/desk",
+      "matched_terms": [
+        "desk"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.55
+    },
+    {
+      "source_route": "/privacy",
+      "target_route": "/admin/content",
+      "matched_terms": [
+        "content"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.55
+    },
+    {
+      "source_route": "/privacy",
+      "target_route": "/admin/post-lookup",
+      "matched_terms": [
+        "post"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.55
+    },
+    {
+      "source_route": "/privacy",
+      "target_route": "/admin/transport",
+      "matched_terms": [
+        "transport"
+      ],
+      "is_orphan_target": true,
+      "is_money_page_target": false,
+      "priority_score": 0.55
+    }
+  ],
+  "jev_api_status": "completed",
+  "jev_decisions": [
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/supplier-flyers",
+      "jev_response": {
+        "model": "typesafe/jev-1.14-20261014",
+        "answers": {
+          "should_link": {
+            "type": "noul",
+            "noul": 0.62
+          }
+        },
+        "usage": {
+          "input_tokens": 477,
+          "output_tokens": 21,
+          "cost": 2.0034e-05,
+          "is_byok": false,
+          "cost_details": {
+            "upstream_inference_cost": 2.0034e-05,
+            "upstream_inference_prompt_cost": 2.0034e-05,
+            "upstream_inference_completions_cost": 0
+          }
+        },
+        "id": "gen-dec-1794761326-SafulDuruPLWSqbpMS5q",
+        "provider": "TypeSafe"
+      }
+    },
+    {
+      "source_route": "/admin/studio",
+      "target_route": "/admin/supplier-flyers",
+      "jev_response": {
+        "model": "typesafe/jev-1.14-20261014",
+        "answers": {
+          "should_link": {
+            "type": "noul",
+            "noul": 0.68
+          }
+        },
+        "usage": {
+          "input_tokens": 458,
+          "output_tokens": 21,
+          "cost": 1.9236e-05,
+          "is_byok": false,
+          "cost_details": {
+            "upstream_inference_cost": 1.9236e-05,
+            "upstream_inference_prompt_cost": 1.9236e-05,
+            "upstream_inference_completions_cost": 0
+          }
+        },
+        "id": "gen-dec-1794761327-GsUmg10SgREaMG0txEjM",
+        "provider": "TypeSafe"
+      }
+    },
+    {
+      "source_route": "/admin/login",
+      "target_route": "/admin/content",
+      "jev_response": {
+        "model": "typesafe/jev-1.14-20261014",
+        "answers": {
+          "should_link": {
+            "type": "noul",
+            "noul": 0.45
+          }
+        },
+        "usage": {
+          "input_tokens": 454,
+          "output_tokens": 21,
+          "cost": 1.9068e-05,
+          "is_byok": false,
+          "cost_details": {
+            "upstream_inference_cost": 1.9068e-05,
+            "upstream_inference_prompt_cost": 1.9068e-05,
+            "upstream_inference_completions_cost": 0
+          }
+        },
+        "id": "gen-dec-1794761328-5auaxTeMAaed97dHFa0J",
+        "provider": "TypeSafe"
+      }
+    },
+    {
+      "source_route": "/admin/login",
+      "target_route": "/admin/post-lookup",
+      "jev_response": {
+        "model": "typesafe/jev-1.14-20261014",
+        "answers": {
+          "should_link": {
+            "type": "noul",
+            "noul": 0.35
+          }
+        },
+        "usage": {
+          "input_tokens": 457,
+          "output_tokens": 21,
+          "cost": 1.9194e-05,
+          "is_byok": false,
+          "cost_details": {
+            "upstream_inference_cost": 1.9194e-05,
+            "upstream_inference_prompt_cost": 1.9194e-05,
+            "upstream_inference_completions_cost": 0
+          }
+        },
+        "id": "gen-dec-1794761329-sOWEX45EjvhGYtw54weL",
+        "provider": "TypeSafe"
+      }
+    },
+    {
+      "source_route": "/admin/applications",
+      "target_route": "/admin/desk",
+      "jev_response": {
+        "model": "typesafe/jev-1.14-20261014",
+        "answers": {
+          "should_link": {
+            "type": "noul",
+            "noul": 0.59
+          }
+        },
+        "usage": {
+          "input_tokens": 456,
+          "output_tokens": 21,
+          "cost": 1.9152e-05,
+          "is_byok": false,
+          "cost_details": {
+            "upstream_inference_cost": 1.9152e-05,
+            "upstream_inference_prompt_cost": 1.9152e-05,
+            "upstream_inference_completions_cost": 0
+          }
+        },
+        "id": "gen-dec-1794761330-L3HrgkAxBUjHhhM1CkAs",
+        "provider": "TypeSafe"
+      }
+    }
+  ],
+  "jev_full_crawler_command": "uv run \"C:\\Users\\ubaid\\.gemini\\config\\skills\\nextjs-business-seo-geo-auditor\\scripts\\jev_internal_links\\scripts\\run.py\" https://yourdomain.com"
+}

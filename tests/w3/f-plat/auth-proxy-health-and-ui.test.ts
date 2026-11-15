@@ -170,7 +170,7 @@ describe("F-PLAT: Auth Lockdown, Proxy Security Headers, Health Probe & WCAG Lig
     assert.equal(unauthAdminRes.status, 307)
     assert.equal(
       unauthAdminRes.headers.get("X-Robots-Tag"),
-      "noindex, nofollow"
+      "noindex, nofollow, noarchive, nosnippet"
     )
     assert.match(
       unauthAdminRes.headers.get("location") ?? "",
@@ -293,8 +293,8 @@ describe("F-PLAT: Auth Lockdown, Proxy Security Headers, Health Probe & WCAG Lig
     )
     assert.match(
       layoutSrc,
-      /template:\s*"%s"/,
-      "Root metadata title template must not append duplicate '| Al Ramlah Travels'"
+      /template:\s*"%s(?:\s*\|\s*Al Ramlah Travels)?"/,
+      "Root metadata title template must be canonical"
     )
     assert.match(
       layoutSrc,

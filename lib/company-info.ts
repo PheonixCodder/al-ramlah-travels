@@ -1,3 +1,5 @@
+import { BRAND_SOCIAL_URLS } from "@/lib/constants/brand"
+
 export interface AgencySettingsInput {
   agencyName?: string | null
   legalEntityName?: string | null
@@ -74,7 +76,7 @@ export interface ResolvedCompanyInfo extends CompanyInfo {
 }
 
 export const DEFAULT_OFFICE_ADDRESS =
-  "Office No. 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt"
+  "Office No. 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt, Pakistan"
 
 export const DEFAULT_WHATSAPP_INQUIRY_MESSAGE =
   "Assalam o Alaikum, I would like to inquire about Al Ramlah Travels pilgrimage packages."
@@ -106,6 +108,36 @@ export function normalizeWhatsappNumber(phone: string): string {
   }
 
   return digits
+}
+
+/**
+ * Normalizes any Pakistani or international phone string into a clickable RFC 3966 E.164 `tel:+...` URI.
+ */
+export function toTelHref(phone: string | null | undefined): string {
+  const normalized = normalizeWhatsappNumber(phone ?? "") || "923274029701"
+  return `tel:+${normalized}`
+}
+
+/**
+ * Formats Pakistani phone numbers in consistent international `+92 XXX XXXXXXX` display format.
+ */
+export function formatPkPhoneDisplay(phone: string | null | undefined): string {
+  const trimmed = (phone ?? "").trim()
+  const normalized = normalizeWhatsappNumber(trimmed)
+  if (!normalized) {
+    return "+92 327 4029701"
+  }
+  if (normalized.startsWith("92") && normalized.length === 12) {
+    const mobilePrefix = normalized.slice(2, 5)
+    const subscriber = normalized.slice(5)
+    return `+92 ${mobilePrefix} ${subscriber}`
+  }
+  if (normalized.startsWith("92") && normalized.length === 11) {
+    const areaCode = normalized.slice(2, 4)
+    const subscriber = normalized.slice(4)
+    return `+92 ${areaCode} ${subscriber}`
+  }
+  return `+${normalized}`
 }
 
 export function buildWhatsappUrl(
@@ -148,10 +180,10 @@ export const DEFAULT_COMPANY_INFO: ResolvedCompanyInfo = {
   officialIban: null,
   iban: null,
   ibanVerified: false,
-  facebookUrl: null,
-  instagramUrl: null,
-  youtubeUrl: null,
-  tiktokUrl: null,
+  facebookUrl: BRAND_SOCIAL_URLS.facebook,
+  instagramUrl: BRAND_SOCIAL_URLS.instagram,
+  youtubeUrl: BRAND_SOCIAL_URLS.youtube,
+  tiktokUrl: BRAND_SOCIAL_URLS.tiktok,
 }
 
 function cleanOptionalText(value: string | null | undefined): string | null {
@@ -201,12 +233,20 @@ export function getCompanyInfo(
     cleanOptionalText(dbSettings?.officialIban) ??
     cleanOptionalText(dbSettings?.iban)
   const officialIban = rawIban
-  const facebookUrl = cleanOptionalText(dbSettings?.facebookUrl)
-  const instagramUrl = cleanOptionalText(dbSettings?.instagramUrl)
-  const youtubeUrl = cleanOptionalText(dbSettings?.youtubeUrl)
-  const tiktokUrl = cleanOptionalText(dbSettings?.tiktokUrl)
+  const facebookUrl =
+    cleanOptionalText(dbSettings?.facebookUrl) ?? DEFAULT_COMPANY_INFO.facebookUrl
+  const instagramUrl =
+    cleanOptionalText(dbSettings?.instagramUrl) ?? DEFAULT_COMPANY_INFO.instagramUrl
+  const youtubeUrl =
+    cleanOptionalText(dbSettings?.youtubeUrl) ?? DEFAULT_COMPANY_INFO.youtubeUrl
+  const tiktokUrl =
+    cleanOptionalText(dbSettings?.tiktokUrl) ?? DEFAULT_COMPANY_INFO.tiktokUrl
 
-  const hotlineDisplay = [primaryWhatsapp, secondaryPhone]
+  const primaryDisplay = formatPkPhoneDisplay(primaryWhatsapp)
+  const secondaryDisplay = secondaryPhone
+    ? formatPkPhoneDisplay(secondaryPhone)
+    : ""
+  const hotlineDisplay = [primaryDisplay, secondaryDisplay]
     .filter(Boolean)
     .join(" · ")
 
@@ -247,4 +287,12 @@ export function getCompanyInfo(
     youtubeUrl,
     tiktokUrl,
   }
+}
+
+export async function getCachedCompanyInfo(): Promise<ResolvedCompanyInfo> {
+  if (typeof window !== "undefined") {
+    return DEFAULT_COMPANY_INFO
+  }
+  const loader = await import("@/lib/seo/company-info-loader")
+  return loader.getCachedCompanyInfo()
 }

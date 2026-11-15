@@ -145,13 +145,25 @@ export function buildNextConfig(
     turbopack: {
       resolveAlias: {
         cn: "./lib/utils.ts",
+        "@/lib/seo/company-info-loader": {
+          browser: "./lib/seo/company-info-loader.browser.ts",
+          default: "./lib/seo/company-info-loader.ts",
+        },
       },
     },
-    webpack: (config) => {
+    webpack: (config, context) => {
       config.resolve = config.resolve || {}
       config.resolve.alias = {
         ...(config.resolve.alias || {}),
         cn: path.resolve(process.cwd(), "lib/utils.ts"),
+        ...(!context.isServer
+          ? {
+              "@/lib/seo/company-info-loader": path.resolve(
+                process.cwd(),
+                "lib/seo/company-info-loader.browser.ts"
+              ),
+            }
+          : {}),
       }
       return config
     },
@@ -181,6 +193,7 @@ export function buildNextConfig(
           ],
         }),
     experimental: {
+      authInterrupts: true,
       optimizePackageImports: [
         "lucide-react",
         "recharts",
@@ -200,6 +213,22 @@ export function buildNextConfig(
     },
     async redirects() {
       return [
+        {
+          source: "/:path*",
+          has: [
+            {
+              type: "host",
+              value: "www.alramlahtravels.com",
+            },
+          ],
+          destination: "https://alramlahtravels.com/:path*",
+          permanent: true,
+        },
+        {
+          source: "/admin/social",
+          destination: "/admin/campaigns?tab=social",
+          permanent: true,
+        },
         {
           source: "/admin/hotels",
           destination: "/admin/catalog?tab=hotels",

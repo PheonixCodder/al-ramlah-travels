@@ -39,6 +39,8 @@ import {
   renderAndUploadMultiPackagePoster,
 } from "@/lib/posters/render-multi-package-poster"
 import { renderAndUploadSinglePackagePoster } from "@/lib/posters/render-single-package-poster"
+import { revalidatePublicSeoPaths } from "@/lib/seo/revalidate-public"
+import { buildSemanticPackageSlug } from "@/lib/seo/slugs"
 import { assertSafeExternalUrl } from "@/lib/security/ssrf-guard"
 import { optimizePosterForSocialToR2, uploadBufferToR2 } from "@/lib/storage/r2"
 import {
@@ -1343,7 +1345,12 @@ async function syncFlyerCardToGroupPackagesTx(
     flyer: typeof schema.supplierFlyers.$inferSelect
     supplier: typeof schema.suppliers.$inferSelect
   }
-): Promise<{ groupPackageId: string; groupDepartureId: string; batchCode: string }> {
+): Promise<{
+  groupPackageId: string
+  groupDepartureId: string
+  batchCode: string
+  slug: string
+}> {
   // T-063: Block publishing unapproved B2B draft extractions or archived flyers
   if (pkg.flyer.status === "draft_extracted") {
     throw new Error(
@@ -1386,10 +1393,12 @@ async function syncFlyerCardToGroupPackagesTx(
 
   const makkahNightsNum = parseInt(pkg.makkahNights.replace(/\D/g, ""), 10) || 10
   const madinahNightsNum = parseInt(pkg.madinahNights.replace(/\D/g, ""), 10) || 5
-  const slug = `${pkg.postCode.toLowerCase()}-${pkg.makkahHotelName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")}`.slice(0, 120)
+  const slug = buildSemanticPackageSlug({
+    durationDays: pkg.flyer.durationDays,
+    departureCityCode: pkg.flyer.departureCityCode,
+    makkahHotelName: pkg.makkahHotelName,
+    postCode: pkg.postCode,
+  })
 
   const referenceRate =
     pkg.retailQuadPkr > 0
@@ -1577,6 +1586,7 @@ async function syncFlyerCardToGroupPackagesTx(
     groupPackageId: groupPkg.id,
     groupDepartureId: groupDep.id,
     batchCode: groupDep.batchCode,
+    slug: groupPkg.slug,
   }
 }
 
@@ -1606,12 +1616,16 @@ export async function publishFlyerCardToPublicGroupPackages(
       return syncFlyerCardToGroupPackagesTx(tx, pkg)
     })
 
-    revalidatePath("/admin/studio")
-    revalidatePath("/admin")
-    revalidatePath("/")
-    revalidatePath("/groups")
-    revalidatePath("/admin/groups")
-    revalidatePath("/admin/supplier-flyers")
+    try {
+      revalidatePath("/admin/studio")
+      revalidatePath("/admin")
+      revalidatePath("/groups")
+      revalidatePath("/admin/groups")
+      revalidatePath("/admin/supplier-flyers")
+    } catch {
+      // Safe outside Next.js incremental cache runtime
+    }
+    revalidatePublicSeoPaths([result.slug])
 
     return {
       success: true,
@@ -1668,6 +1682,7 @@ export async function publishAllFlyerCardsToPublicGroupPackagesAction(rawInput: 
         cardId: string
         groupPackageId: string
         groupDepartureId: string | null
+        slug: string
       }> = []
 
       for (const card of flyer.packages) {
@@ -1680,18 +1695,23 @@ export async function publishAllFlyerCardsToPublicGroupPackagesAction(rawInput: 
           cardId: card.id,
           groupPackageId: synced.groupPackageId,
           groupDepartureId: synced.groupDepartureId,
+          slug: synced.slug,
         })
       }
 
       return syncedList
     })
 
-    revalidatePath("/admin/studio")
-    revalidatePath("/admin")
-    revalidatePath("/")
-    revalidatePath("/groups")
-    revalidatePath("/admin/groups")
-    revalidatePath("/admin/supplier-flyers")
+    try {
+      revalidatePath("/admin/studio")
+      revalidatePath("/admin")
+      revalidatePath("/groups")
+      revalidatePath("/admin/groups")
+      revalidatePath("/admin/supplier-flyers")
+    } catch {
+      // Safe outside Next.js incremental cache runtime
+    }
+    revalidatePublicSeoPaths(updatedCards.map((c) => c.slug))
 
     return {
       success: true,
@@ -1761,9 +1781,13 @@ export async function unpublishFlyerCardFromPublicAction(
       )
     })
 
-    revalidatePath("/admin/studio")
-    revalidatePath("/")
-    revalidatePath("/groups")
+    try {
+      revalidatePath("/admin/studio")
+      revalidatePath("/groups")
+    } catch {
+      // Safe outside Next.js incremental cache runtime
+    }
+    revalidatePublicSeoPaths()
     return { success: true }
   } catch (err: unknown) {
     return {
@@ -3466,12 +3490,16 @@ export async function updateExtractedFlyerCardAction(rawInput: unknown) {
       return savedCard
     })
 
-    revalidatePath("/admin/studio")
-    revalidatePath("/admin/supplier-flyers")
-    revalidatePath("/admin/campaigns")
-    revalidatePath("/")
-    revalidatePath("/groups")
-    revalidatePath("/admin/groups")
+    try {
+      revalidatePath("/admin/studio")
+      revalidatePath("/admin/supplier-flyers")
+      revalidatePath("/admin/campaigns")
+      revalidatePath("/groups")
+      revalidatePath("/admin/groups")
+    } catch {
+      // Safe outside Next.js incremental cache runtime
+    }
+    revalidatePublicSeoPaths()
 
     return { success: true, package: updatedCard }
   } catch (err: unknown) {

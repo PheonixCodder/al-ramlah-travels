@@ -80,8 +80,21 @@ function applySecurityHeaders(
   )
   response.headers.set("x-request-id", requestId)
 
-  if (pathname.startsWith("/admin") || pathname.startsWith("/api")) {
-    response.headers.set("X-Robots-Tag", "noindex, nofollow")
+  const isPrivateEdgeSurface =
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/") ||
+    pathname === "/api" ||
+    pathname.startsWith("/api/") ||
+    pathname === "/voucher" ||
+    pathname.startsWith("/voucher/") ||
+    pathname === "/quote" ||
+    pathname.startsWith("/quote/")
+
+  if (isPrivateEdgeSurface) {
+    response.headers.set(
+      "X-Robots-Tag",
+      "noindex, nofollow, noarchive, nosnippet"
+    )
   }
 
   return response

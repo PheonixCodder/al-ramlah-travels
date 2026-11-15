@@ -30,8 +30,8 @@ export const BRAND_SECONDARY_PHONE_DIGITS = "923190462638"
 
 export const BRAND_HOTLINE_DISPLAY = "+92 327 4029701 · +92 319 0462638"
 export const BRAND_SUPPORT_EMAIL = "alramlahtravels@gmail.com"
-export const BRAND_WEBSITE_URL = "https://www.alramlahtravels.com"
-export const BRAND_WEBSITE_DOMAIN = "www.alramlahtravels.com"
+export const BRAND_WEBSITE_URL = "https://alramlahtravels.com"
+export const BRAND_WEBSITE_DOMAIN = "alramlahtravels.com"
 
 export const BRAND_MAPS_EMBED_URL =
   "https://maps.google.com/?q=Sector+C+Askari+10+Airport+Road+Lahore+Cantt"

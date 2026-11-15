@@ -12,13 +12,15 @@ export interface ArabicTextProps extends React.HTMLAttributes<HTMLSpanElement> {
 export function ArabicText({
   children,
   className,
+  style,
   ...props
 }: ArabicTextProps) {
   return (
     <span
       lang="ar"
       dir="rtl"
-      className={cn("font-arabic", className)}
+      style={{ unicodeBidi: "isolate", ...style }}
+      className={cn("font-arabic inline-block [unicode-bidi:isolate]", className)}
       {...props}
     >
       {children}

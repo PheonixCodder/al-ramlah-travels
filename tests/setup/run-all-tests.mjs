@@ -161,7 +161,7 @@ const nodeExitCode = nodeTestRun.status ?? 1
 
 console.log(
   `\n================================================================================\n` +
-    `[2/2] Running Vitest Runner (Hermetic): tests/unit/** + tests/integration/**\n` +
+    `[2/2] Running Vitest Runner (Hermetic): tests/unit/** + tests/integration/** + tests/w6/**\n` +
     `================================================================================`
 )
 
@@ -182,7 +182,7 @@ console.log(
   `\n================================================================================\n` +
     `[SUMMARY] Hermetic Test Suite Summary\n` +
     `  - Node Runner (${legacyFiles.length} legacy + ${w3Files.length} W3 files): ${nodeExitCode === 0 ? "PASS" : `FAIL (exit ${nodeExitCode})`}\n` +
-    `  - Vitest Runner (unit + integration): ${vitestExitCode === 0 ? "PASS" : `FAIL (exit ${vitestExitCode})`}\n` +
+    `  - Vitest Runner (unit + integration + w6): ${vitestExitCode === 0 ? "PASS" : `FAIL (exit ${vitestExitCode})`}\n` +
     `================================================================================\n`
 )
 

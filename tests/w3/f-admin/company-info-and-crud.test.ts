@@ -201,7 +201,7 @@ describe("F-ADMIN T-077, OD-09e & OD-10: CompanyInfo Lahore HQ SSoT, Hajj 2027/G
   it("T-077a: DEFAULT_COMPANY_INFO & buildWhatsappUrl enforce verified Askari 10 Lahore HQ and E.164 wa.me links", () => {
     assert.equal(
       DEFAULT_COMPANY_INFO.officeAddress,
-      "Office No. 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt"
+      "Office No. 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt, Pakistan"
     )
     assert.equal(DEFAULT_COMPANY_INFO.primaryWhatsapp, "+92 327 4029701")
     assert.equal(DEFAULT_COMPANY_INFO.secondaryPhone, "+92 319 0462638")

@@ -208,6 +208,15 @@ export const applications = pgTable(
       onDelete: "set null",
     }),
 
+    // Web SEO, GEO & Paid Campaign First-Touch Attribution (Nullable / Additive)
+    utmSource: varchar("utm_source", { length: 120 }),
+    utmMedium: varchar("utm_medium", { length: 120 }),
+    utmCampaign: varchar("utm_campaign", { length: 160 }),
+    utmContent: varchar("utm_content", { length: 160 }),
+    utmTerm: varchar("utm_term", { length: 160 }),
+    landingPage: text("landing_page"),
+    httpReferrer: text("http_referrer"),
+
     // Ziyarat Selection
     ziyaratScope: ziyaratScopeEnum("ziyarat_scope"),
     ziyaratVehicleId: uuid("ziyarat_vehicle_id").references(() => vehicles.id),
@@ -238,6 +247,10 @@ export const applications = pgTable(
     index("idx_app_status_created").on(table.status, table.createdAt),
     index("idx_app_created").on(table.createdAt),
     index("idx_app_assigned_staff").on(table.assignedStaffUserId),
+    index("idx_applications_utm_source_campaign").on(
+      table.utmSource,
+      table.utmCampaign
+    ),
     check(
       "chk_applications_traveller_invariants",
       sql`${table.adults} >= 1 AND ${table.children} >= 0 AND ${table.infants} >= 0 AND ${table.totalPassportCount} = (${table.adults} + ${table.children} + ${table.infants}) AND ${table.bedAndSeatCount} = (${table.adults} + ${table.children}) AND (${table.ksaArrivalDate} IS NULL OR ${table.ksaDepartureDate} IS NULL OR ${table.ksaDepartureDate} >= ${table.ksaArrivalDate})`

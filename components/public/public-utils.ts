@@ -367,3 +367,19 @@ export function computeHaramainPrayerTimes(
     },
   }
 }
+
+/**
+ * Deterministic SSR/Client hydration-safe Pakistani Rupee (`PKR`) formatter (`SEO-001`, `S08-004`).
+ * Avoids `Number.prototype.toLocaleString()` ICU locale variances between Node.js and browsers.
+ */
+export function formatPkr(amount: number): string {
+  if (!Number.isFinite(amount)) {
+    return "PKR 0"
+  }
+  const rounded = Math.round(amount)
+  const sign = rounded < 0 ? "-" : ""
+  const grouped = Math.abs(rounded)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+  return `${sign}PKR ${grouped}`
+}

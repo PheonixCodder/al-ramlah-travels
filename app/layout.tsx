@@ -7,6 +7,7 @@ import {
 } from "next/font/google"
 import "./globals.css"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { CANONICAL_ORIGIN, getCanonicalSiteUrl } from "@/lib/seo/metadata"
 import { cn } from "@/lib/utils"
 
 const fontSans = Plus_Jakarta_Sans({
@@ -28,6 +29,7 @@ const fontMono = JetBrains_Mono({
   variable: "--font-mono",
   weight: ["400", "500", "600"],
   display: "swap",
+  preload: false,
 })
 
 const fontArabic = Amiri({
@@ -35,37 +37,51 @@ const fontArabic = Amiri({
   variable: "--font-arabic",
   weight: ["400", "700"],
   display: "swap",
+  preload: false,
 })
 
+const ROOT_DEFAULT_TITLE =
+  "Umrah Packages Pakistan & Hajj 2027 | Al Ramlah Travels"
+const ROOT_DEFAULT_DESCRIPTION =
+  "Book verified Umrah packages from Lahore, Karachi & Islamabad, Saudi e-visas, Haramain courtyard hotels & Hajj 2027 pre-registration by Al Ramlah Travels."
+
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-  ),
+  metadataBase: getCanonicalSiteUrl(),
   title: {
-    default: "Al Ramlah Travels — Bespoke Umrah, Hajj & Haramain Journeys",
-    template: "%s",
+    default: ROOT_DEFAULT_TITLE,
+    template: "%s | Al Ramlah Travels",
   },
-  description:
-    "Where Purpose Meets Excellence — Hajj 2027, Custom Umrah Packages, Flights, Haramain Hotels & Ground Transport by Al Ramlah Travels.",
-  keywords: [
-    "Umrah Packages Pakistan",
-    "Bespoke Umrah",
-    "Luxury Umrah Lahore Karachi Islamabad",
-    "Hajj 2027",
-    "Makkah Clock Tower Hotels",
-    "Madinah Oberoi Hotels",
-    "Al Ramlah Travels",
-    "Custom Umrah Calculator",
-  ],
+  description: ROOT_DEFAULT_DESCRIPTION,
+  alternates: {
+    canonical: CANONICAL_ORIGIN,
+  },
   icons: {
     icon: "/favicon.ico",
     apple: "/logo.jpg",
   },
   openGraph: {
-    title: "Al Ramlah Travels — Bespoke Umrah, Hajj & Haramain Journeys",
-    description:
-      "Where Purpose Meets Excellence — Hajj 2027, Custom Umrah Packages, Flights, Haramain Hotels & Ground Transport by Al Ramlah Travels.",
-    images: ["/logo.jpg"],
+    type: "website",
+    locale: "en_PK",
+    siteName: "Al Ramlah Travels",
+    url: CANONICAL_ORIGIN,
+    title: ROOT_DEFAULT_TITLE,
+    description: ROOT_DEFAULT_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: ROOT_DEFAULT_TITLE,
+    description: ROOT_DEFAULT_DESCRIPTION,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-snippet": -1,
+      "max-image-preview": "large",
+      "max-video-preview": -1,
+    },
   },
 }
 

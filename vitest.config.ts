@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": ROOT_DIR,
+      cn: path.resolve(ROOT_DIR, "lib/utils.ts"),
     },
   },
   test: {
@@ -16,6 +17,8 @@ export default defineConfig({
     include: [
       "tests/unit/**/*.test.ts",
       "tests/integration/**/*.test.ts",
+      "tests/w6/**/*.test.ts",
+      "tests/w6/**/*.test.tsx",
     ],
     exclude: [
       "node_modules/**",

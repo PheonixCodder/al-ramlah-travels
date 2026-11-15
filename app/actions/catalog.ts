@@ -55,6 +55,7 @@ import {
   evaluateSystemConfigHealth,
   type ConfigHealthSnapshot,
 } from "@/components/admin/settings/config-health"
+import { revalidatePublicSeoPaths } from "@/lib/seo/revalidate-public"
 
 // ==========================================
 // SHARED VALIDATION, PG ERROR UNWRAPPING & REVALIDATION HELPERS
@@ -229,6 +230,7 @@ function safeRevalidatePaths(paths: string[]): void {
       }
     }
   }
+  revalidatePublicSeoPaths()
 }
 
 async function resolveAuditClientIp(): Promise<string | null> {

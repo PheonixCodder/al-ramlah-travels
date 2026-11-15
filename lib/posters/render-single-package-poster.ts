@@ -1,15 +1,19 @@
+import { db } from "@/db"
+import { getCompanyInfo, type CompanyInfo } from "@/lib/company-info"
+import { escapeAttr, escapeHtml } from "@/lib/security/html-escape"
+import { optimizePosterForSocialToR2, uploadAssetToR2 } from "../storage/r2"
 import {
   getAirlineBadgeHtml,
-  getCompanyLogoBase64,
+  getCompanyLogoDataUri,
 } from "./chromium-cdp"
 import { renderHtmlViaGotenberg } from "./gotenberg"
-import { optimizePosterForSocialToR2, uploadAssetToR2 } from "../storage/r2"
 
 export interface SinglePackageSpotlightInput {
-  cardNumber: string
+  cardNumber?: string
   postRefCode?: string
   postCode?: string
-  daysTitle: string
+  daysTitle?: string
+  durationDays?: number
   routePill: string
   airlineName: string
   airlineIataCode?: string | null
@@ -37,236 +41,321 @@ export interface SinglePackageSpotlightInput {
   mealPlanLabel?: string | null
   inclusions?: string[]
   giftedItems?: string[]
-  sharingPricePkr: number
-  quadPricePkr: number
-  triplePricePkr: number
-  doublePricePkr: number
+  giftedInclusions?: string[]
+  sharingPricePkr?: number
+  quadPricePkr?: number
+  triplePricePkr?: number
+  doublePricePkr?: number
+  retailSharingPkr?: number
+  retailQuadPkr?: number
+  retailTriplePkr?: number
+  retailDoublePkr?: number
+  companyInfo?: CompanyInfo
 }
 
+function formatPkr(val: number | undefined): string {
+  if (typeof val !== "number" || !Number.isFinite(val) || val <= 0) {
+    return "On Request"
+  }
+  return Math.round(val).toLocaleString("en-PK")
+}
+
+function normalizeDistance(raw: string): string {
+  return raw.trim().replace(/^\(([^()]+)\)$/, "$1").trim()
+}
+
+function formatNightsBadge(rawNights: string): string {
+  const cleaned = rawNights.trim().toUpperCase()
+  const numericOnly = /^(\d+)\s*N(?:IGHTS?)?$/.exec(cleaned)
+  if (numericOnly) {
+    return `${escapeHtml(numericOnly[1]!)} NIGHTS`
+  }
+  if (cleaned.includes("NIGHT")) {
+    return escapeHtml(cleaned)
+  }
+  return `${escapeHtml(cleaned)} NIGHTS`
+}
+
+function sanitizeHttpsOrDataLogoUrl(
+  rawUrl: string | null | undefined
+): string | null {
+  if (!rawUrl) return null
+  const trimmed = rawUrl.trim()
+  if (trimmed.startsWith("data:image/")) return trimmed
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol === "https:") return parsed.toString()
+  } catch {
+    return null
+  }
+  return null
+}
+
+function normalizeLogoSrc(logoOverride?: string): string {
+  if (!logoOverride) return ""
+  const trimmed = logoOverride.trim()
+  if (!trimmed) return ""
+  if (trimmed.startsWith("data:image/") || trimmed.startsWith("https://")) {
+    return trimmed
+  }
+  return `data:image/png;base64,${trimmed}`
+}
+
+async function resolveLiveCompanyInfo(override?: CompanyInfo): Promise<CompanyInfo> {
+  if (override) return override
+  try {
+    const row = await db.query.agencySettings.findFirst()
+    return getCompanyInfo(row)
+  } catch {
+    return getCompanyInfo(null)
+  }
+}
+
+/**
+ * Builds the luxury Al Ramlah Single-Package Spotlight Poster HTML.
+ * Wraps EVERY interpolated field in `escapeHtml()` / `escapeAttr()` (`T-025`),
+ * injects strict CSP `<meta>`, formats `0`-tiers as `"On Request"` (`OD-09b`),
+ * omits unstated baggage instead of fabricating `"23KG OUTBOUND"` (`T-087`),
+ * and pulls dynamic agency branding from `getCompanyInfo()` (`T-087`).
+ */
 export function buildSinglePackageSpotlightHtml(
   pkg: SinglePackageSpotlightInput,
-  companyLogoB64: string
+  companyLogoB64?: string
 ): string {
-  const effectivePostRefCode = pkg.postRefCode || pkg.postCode || "ART-SPOT-01"
-  const airlineHtml = getAirlineBadgeHtml(
-    pkg.airlineName,
-    pkg.airlineIataCode,
-    pkg.airlineLogoDataUri
+  const effectivePostRefCode = escapeHtml(
+    pkg.postRefCode || pkg.postCode || "ART-SPOT-01"
   )
+  const logoSrc = normalizeLogoSrc(companyLogoB64)
+  const company = pkg.companyInfo ?? getCompanyInfo(null)
+
+  const daysHeading = pkg.daysTitle?.trim()
+    ? escapeHtml(pkg.daysTitle.trim())
+    : `${Math.max(1, Math.round(pkg.durationDays || 15))} DAYS`
+
+  const safeAirlineLogo = sanitizeHttpsOrDataLogoUrl(
+    pkg.airlineLogoDataUri ?? pkg.airlineLogoUrl
+  )
+  const airlineHtml = safeAirlineLogo
+    ? `<img src="${escapeAttr(safeAirlineLogo)}" alt="${escapeAttr(pkg.airlineName)}" style="max-height:58px;max-width:200px;object-fit:contain;" />`
+    : getAirlineBadgeHtml(pkg.airlineName, pkg.airlineIataCode, null)
+
   const routePillHtml = pkg.routePill.includes("|")
     ? pkg.routePill
         .split("|")
-        .map((s) => s.trim())
+        .map((s) => escapeHtml(s.trim()))
         .join(" <span class='sep'>|</span> ")
-    : pkg.routePill
+    : escapeHtml(pkg.routePill)
 
-  const rawInclusions = pkg.inclusions || pkg.giftedItems
-  const defaultInclusions =
+  const rawInclusions =
+    pkg.inclusions ?? pkg.giftedItems ?? pkg.giftedInclusions
+  const effectiveInclusions =
     rawInclusions && rawInclusions.length > 0
-      ? rawInclusions.slice(0, 4)
+      ? rawInclusions.slice(0, 6)
       : [
           "Official Umrah Visa & Insurance",
           "Complete Ground Transport",
-          "Gifted Taif & Makkah Ziyarat",
-          "Gifted Madinah Ziyarat",
+          "Haramain Hotel Reservations",
+          "24/7 Concierge Assistance",
         ]
 
-  const inclusionsHtml = defaultInclusions
+  const inclusionsHtml = effectiveInclusions
     .map(
       (inc) =>
-        `<div class="inc-pill"><span class="inc-check">✦</span><span>${inc}</span></div>`
+        `<div class="inc-pill"><span class="inc-check">&#10022;</span><span>${escapeHtml(inc)}</span></div>`
     )
     .join("")
 
-  const pSh = pkg.sharingPricePkr.toLocaleString()
-  const pQd = pkg.quadPricePkr.toLocaleString()
-  const pTr = pkg.triplePricePkr.toLocaleString()
-  const pDb = pkg.doublePricePkr.toLocaleString()
-  const baggage =
-    pkg.baggageText ||
-    (pkg.outboundBaggage && pkg.inboundBaggage
-      ? `${pkg.outboundBaggage} OUT • ${pkg.inboundBaggage} IN`
-      : "23KG OUTBOUND • 46KG RETURN")
+  const shVal = pkg.sharingPricePkr ?? pkg.retailSharingPkr ?? 0
+  const qdVal = pkg.quadPricePkr ?? pkg.retailQuadPkr ?? 0
+  const trVal = pkg.triplePricePkr ?? pkg.retailTriplePkr ?? 0
+  const dbVal = pkg.doublePricePkr ?? pkg.retailDoublePkr ?? 0
+
+  const baggageParts = pkg.baggageText?.trim()
+    ? [escapeHtml(pkg.baggageText.trim())]
+    : [
+        pkg.outboundBaggage?.trim()
+          ? `OUTBOUND: ${escapeHtml(pkg.outboundBaggage.trim())}`
+          : "",
+        pkg.inboundBaggage?.trim()
+          ? `RETURN: ${escapeHtml(pkg.inboundBaggage.trim())}`
+          : "",
+      ].filter(Boolean)
+
+  const makDist = normalizeDistance(pkg.makkahDistanceLabel)
+  const madDist = normalizeDistance(pkg.madinahDistanceLabel)
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src data: https://fonts.gstatic.com;" />
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     @page { size: 1080px 1520px; margin: 0; }
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; }
-    html, body { width: 1080px; height: 1520px; overflow: hidden; font-family: 'Inter', 'Noto Sans', sans-serif; background: #FDFBF6; color: #14232E; }
-    .poster { position: relative; width: 1080px; height: 1520px; padding: 38px 44px 34px 44px; display: flex; flex-direction: column; justify-content: space-between; background: #FDFBF6; }
-    .bg-svg { position: absolute; inset: 0; width: 1080px; height: 1520px; z-index: 0; pointer-events: none; }
-    .poster > :not(.bg-svg) { position: relative; z-index: 1; }
-
-    .top-bar { display: flex; justify-content: space-between; align-items: center; background: #0C2633; border: 2px solid #C9A25B; border-radius: 14px; padding: 14px 24px; box-shadow: 0 8px 20px rgba(12, 38, 51, 0.16); }
-    .brand-left { display: flex; align-items: center; gap: 14px; }
-    .brand-logo { width: 64px; height: auto; display: block; }
-    .brand-name { font-family: 'Caladea', 'Noto Serif', Georgia, serif; font-size: 24px; font-weight: 700; letter-spacing: 2.5px; color: #F5EFE1; line-height: 1.1; }
-    .brand-sub { font-size: 10.5px; letter-spacing: 5.5px; color: #C9A25B; margin-top: 3px; font-weight: 600; }
-    .brand-center { text-align: center; }
-    .tagline-main { font-family: 'Caladea', 'Noto Serif', Georgia, serif; font-style: italic; font-size: 15px; color: #E2C58A; }
-    .tagline-services { font-size: 10px; letter-spacing: 1.8px; color: #F5EFE1; text-transform: uppercase; margin-top: 4px; }
-    .airline-badge { background: #FDFBF6; border: 2px solid #C9A25B; border-radius: 10px; padding: 6px 16px; display: flex; align-items: center; justify-content: center; min-width: 185px; height: 58px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18); }
-    .airline-badge svg { height: 44px; width: auto; display: block; }
-    .airline-img { max-height: 44px; max-width: 170px; width: auto; height: auto; object-fit: contain; display: block; }
-
-    .hero-block { text-align: center; margin: 10px 0 6px 0; }
-    .meta-row { display: flex; justify-content: center; align-items: center; gap: 14px; margin-bottom: 6px; }
-    .ref-badge { background: #F5EFE1; border: 1.5px solid #C9A25B; color: #0C2633; font-size: 13px; font-weight: 800; letter-spacing: 1.8px; padding: 5px 16px; border-radius: 999px; }
-    .days-title { font-size: 36px; font-weight: 900; color: #9A7433; letter-spacing: 3px; line-height: 1.05; }
-    .main-title { font-size: 64px; font-weight: 900; color: #0C2633; letter-spacing: 2.5px; line-height: 1.02; margin: 2px 0 12px 0; }
-    .route-pill-row { display: flex; justify-content: center; align-items: center; gap: 16px; }
-    .route-pill { display: inline-block; background: #0C2633; color: #F5EFE1; border: 2px solid #C9A25B; padding: 8px 36px; border-radius: 999px; font-size: 23px; font-weight: 800; letter-spacing: 3px; box-shadow: 0 4px 12px rgba(12, 38, 51, 0.14); }
-    .route-pill .sep { color: #C9A25B; margin: 0 10px; }
-
-    .starting-banner { background: linear-gradient(135deg, #0C2633 0%, #163B4D 100%); border: 2.5px solid #C9A25B; border-radius: 16px; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 24px rgba(12, 38, 51, 0.14); }
-    .sb-left { display: flex; align-items: center; gap: 16px; }
-    .pkg-num-circle { width: 58px; height: 58px; border-radius: 14px; background: #FDFBF6; border: 2px solid #C9A25B; color: #0C2633; font-size: 28px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
-    .sb-titles { display: flex; flex-direction: column; }
-    .sb-eyebrow { font-size: 13px; font-weight: 800; letter-spacing: 2.5px; color: #E2C58A; text-transform: uppercase; }
-    .sb-headline { font-family: 'Caladea', 'Noto Serif', Georgia, serif; font-size: 26px; font-weight: 700; color: #FFFFFF; margin-top: 2px; }
-    .sb-right { text-align: right; }
-    .sb-price-lbl { font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #E2C58A; text-transform: uppercase; }
-    .sb-price-val { font-size: 44px; font-weight: 900; color: #FFFFFF; font-variant-numeric: tabular-nums; letter-spacing: 0.5px; line-height: 1.05; }
-    .sb-price-val small { font-size: 20px; color: #C9A25B; font-weight: 800; margin-right: 6px; }
-
-    .section-card { background: #FFFFFF; border: 2px solid #DFD2B5; border-radius: 16px; padding: 20px 26px; box-shadow: 0 6px 18px rgba(12, 38, 51, 0.08); }
-    .sec-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1.5px solid #EAE0C8; margin-bottom: 14px; }
-    .sec-title-wrap { display: flex; align-items: center; gap: 12px; }
-    .sec-icon { width: 38px; height: 38px; border-radius: 9px; background: #0C2633; border: 1.5px solid #C9A25B; color: #E2C58A; display: flex; align-items: center; justify-content: center; font-size: 20px; }
-    .sec-title { font-size: 18px; font-weight: 900; color: #0C2633; letter-spacing: 1.5px; text-transform: uppercase; }
-    .baggage-pill { background: #F5EFE1; border: 1.5px solid #C9A25B; color: #0C2633; font-size: 12px; font-weight: 800; letter-spacing: 1.2px; padding: 5px 14px; border-radius: 8px; }
+    html, body {
+      width: 1080px;
+      height: 1520px;
+      overflow: hidden;
+      font-family: 'Plus Jakarta Sans', 'Segoe UI', Arial, sans-serif;
+      background: #052219;
+      color: #FDFBF6;
+    }
+    .canvas {
+      width: 1080px;
+      height: 1520px;
+      padding: 40px 44px 34px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background:
+        radial-gradient(circle at 50% 10%, rgba(201, 162, 77, 0.25) 0%, transparent 52%),
+        linear-gradient(180deg, #093527 0%, #051F16 64%, #03130E 100%);
+      border: 3px solid rgba(201, 162, 77, 0.6);
+    }
+    .top-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 18px; border-bottom: 1.5px solid rgba(201, 162, 77, 0.42);
+    }
+    .brand { display: flex; align-items: center; gap: 16px; }
+    .logo-box {
+      width: 74px; height: 74px; border-radius: 16px;
+      background: #FDFBF6; padding: 6px;
+      display: flex; align-items: center; justify-content: center;
+      border: 2px solid #C9A24D;
+    }
+    .logo-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .brand-name { font-size: 26px; font-weight: 800; color: #F5E6B8; text-transform: uppercase; letter-spacing: 0.7px; }
+    .brand-tag { font-size: 12px; color: #D8CFC0; letter-spacing: 1.4px; text-transform: uppercase; margin-top: 3px; }
+    .airline-pill {
+      background: #FDFBF6; border-radius: 14px; padding: 8px 18px;
+      border: 1.5px solid #C9A24D; min-height: 58px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .hero { text-align: center; padding: 14px 0; }
+    .ref-pill {
+      display: inline-block; padding: 5px 16px; border-radius: 999px;
+      background: rgba(201, 162, 77, 0.16); border: 1px solid rgba(201, 162, 77, 0.55);
+      color: #F5E6B8; font-size: 12px; font-weight: 700; letter-spacing: 1px;
+    }
+    .hero-title {
+      margin-top: 10px; font-size: 44px; font-weight: 800;
+      color: #FDFBF6; letter-spacing: 1px; text-transform: uppercase;
+    }
+    .route-pill {
+      margin-top: 8px; display: inline-block; padding: 7px 24px; border-radius: 999px;
+      background: linear-gradient(90deg, #B88B2E, #E5C469, #B88B2E);
+      color: #052017; font-weight: 800; font-size: 15px; letter-spacing: 0.8px;
+    }
+    .flight-card {
+      background: #FDFBF6; color: #0B2A1E; border-radius: 16px;
+      padding: 18px 22px; border: 2px solid #D8C390;
+    }
+    .sec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .sec-title { font-size: 14px; font-weight: 800; color: #7C5E1E; text-transform: uppercase; letter-spacing: 0.8px; }
+    .baggage-pill {
+      background: #083325; color: #F5E6B8; border-radius: 999px;
+      padding: 4px 14px; font-size: 11px; font-weight: 700;
+    }
     .flight-rows { display: flex; flex-direction: column; gap: 10px; }
-    .flight-leg { display: grid; grid-template-columns: 130px 120px 130px 1fr 130px 130px; align-items: center; background: #FDFBF6; border: 1.5px solid #EAE0C8; border-radius: 12px; padding: 12px 18px; font-variant-numeric: tabular-nums; }
-    .leg-tag { background: #0C2633; color: #E2C58A; font-size: 11.5px; font-weight: 800; letter-spacing: 1.2px; padding: 5px 10px; border-radius: 6px; text-align: center; width: fit-content; text-transform: uppercase; }
-    .leg-fl { font-size: 20px; font-weight: 900; color: #0C2633; }
-    .leg-dt { font-size: 18px; font-weight: 800; color: #9A7433; }
-    .leg-rt { font-size: 20px; font-weight: 900; color: #14232E; letter-spacing: 1px; }
-    .leg-tm { font-size: 17px; font-weight: 800; color: #14232E; text-align: right; }
-    .leg-tm span { display: block; font-size: 10px; font-weight: 700; color: #5E6B73; letter-spacing: 1px; text-transform: uppercase; }
-
-    .hotels-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .hotel-card { background: #FFFFFF; border: 2px solid #DFD2B5; border-radius: 16px; overflow: hidden; box-shadow: 0 6px 18px rgba(12, 38, 51, 0.08); display: flex; flex-direction: column; justify-content: space-between; }
-    .hc-top { background: #0C2633; border-bottom: 2px solid #C9A25B; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; }
-    .hc-city { font-size: 17px; font-weight: 900; color: #E2C58A; letter-spacing: 2px; text-transform: uppercase; }
-    .hc-nights { background: #C9A25B; color: #0C2633; font-size: 14px; font-weight: 900; padding: 4px 12px; border-radius: 999px; letter-spacing: 1px; }
-    .hc-body { padding: 22px 22px; display: flex; flex-direction: column; gap: 12px; }
-    .hc-name { font-size: 25px; font-weight: 900; color: #0C2633; line-height: 1.2; text-transform: uppercase; min-height: 60px; display: flex; align-items: center; }
-    .hc-dist { display: inline-flex; align-items: center; gap: 8px; background: #F5EFE1; border: 1.5px solid #DFD2B5; color: #9A7433; font-size: 14px; font-weight: 800; padding: 7px 14px; border-radius: 8px; width: fit-content; letter-spacing: 0.6px; text-transform: uppercase; }
-
-    .inc-card { background: #FFFFFF; border: 2px solid #DFD2B5; border-radius: 14px; padding: 14px 22px; box-shadow: 0 5px 15px rgba(12, 38, 51, 0.06); }
-    .inc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-    .inc-pill { background: #FDFBF6; border: 1.5px solid #EAE0C8; border-radius: 10px; padding: 10px 12px; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; color: #0C2633; line-height: 1.25; }
-    .inc-check { color: #9A7433; font-size: 16px; font-weight: 900; flex-shrink: 0; }
-
-    .price-matrix { background: #0C2633; border: 2.5px solid #C9A25B; border-radius: 16px; padding: 18px 16px; display: grid; grid-template-columns: repeat(4, 1fr); box-shadow: 0 10px 24px rgba(12, 38, 51, 0.16); }
-    .pm-col { text-align: center; border-right: 1.5px solid rgba(201, 162, 91, 0.4); padding: 4px 10px; }
-    .pm-col:last-child { border-right: none; }
-    .pm-lbl { font-size: 14px; font-weight: 800; color: #E2C58A; letter-spacing: 2px; margin-bottom: 6px; text-transform: uppercase; }
-    .pm-sub { font-size: 10.5px; font-weight: 600; color: #C9A25B; margin-bottom: 4px; letter-spacing: 0.8px; text-transform: uppercase; }
-    .pm-val { font-size: 34px; font-weight: 900; color: #FFFFFF; font-variant-numeric: tabular-nums; letter-spacing: 0.3px; }
-
-    .footer-bar { background: #0C2633; border: 2px solid #C9A25B; border-radius: 12px; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; color: #F5EFE1; box-shadow: 0 6px 16px rgba(12, 38, 51, 0.14); }
-    .f-item { display: flex; flex-direction: column; gap: 2px; }
-    .f-label { font-size: 9.5px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #C9A25B; }
-    .f-val { font-size: 13.5px; font-weight: 700; color: #FFFFFF; }
+    .flight-leg {
+      display: grid; grid-template-columns: 92px 96px 104px 130px 1fr 1fr;
+      align-items: center; gap: 10px; padding: 10px 14px;
+      background: #F5F0E4; border-radius: 10px; font-weight: 700; font-size: 14px;
+    }
+    .leg-tag {
+      background: #083325; color: #F5E6B8; border-radius: 6px;
+      padding: 4px 8px; font-size: 11px; text-align: center; text-transform: uppercase;
+    }
+    .leg-tm span { display: block; font-size: 9.5px; color: #6B7872; text-transform: uppercase; }
+    .hotels-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .hotel-card {
+      background: #FDFBF6; color: #0B2A1E; border-radius: 16px;
+      padding: 18px 20px; border: 2px solid #D8C390;
+    }
+    .hc-top {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 10px; border-bottom: 1px dashed #D8C9AA;
+    }
+    .hc-city { font-size: 13px; font-weight: 800; color: #7C5E1E; text-transform: uppercase; }
+    .hc-nights {
+      background: #083325; color: #F5E6B8; padding: 4px 12px;
+      border-radius: 999px; font-size: 11.5px; font-weight: 800;
+    }
+    .hc-name { margin-top: 12px; font-size: 20px; font-weight: 800; color: #07261B; line-height: 1.25; }
+    .hc-dist { margin-top: 6px; font-size: 13px; font-weight: 700; color: #3D5B4E; }
+    .inc-card {
+      background: rgba(253, 251, 246, 0.08);
+      border: 1px solid rgba(201, 162, 77, 0.4);
+      border-radius: 14px; padding: 14px 18px;
+    }
+    .inc-grid { display: flex; flex-wrap: wrap; gap: 10px 18px; justify-content: center; }
+    .inc-pill { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; color: #F7EFE0; }
+    .inc-check { color: #E5C469; }
+    .price-matrix { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .pm-col {
+      background: #FDFBF6; color: #08291D; border-radius: 14px;
+      padding: 14px 12px; text-align: center; border: 2px solid #D8C390;
+    }
+    .pm-lbl { font-size: 13px; font-weight: 800; color: #7C5E1E; text-transform: uppercase; }
+    .pm-sub { font-size: 10.5px; font-weight: 600; color: #5D7068; margin-top: 2px; }
+    .pm-val { margin-top: 8px; font-size: 22px; font-weight: 800; color: #06251A; }
+    .footer-bar {
+      padding-top: 14px; border-top: 1.5px solid rgba(201, 162, 77, 0.42);
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px;
+    }
+    .f-label { display: block; font-size: 9.5px; text-transform: uppercase; letter-spacing: 1px; color: #D4B059; font-weight: 700; }
+    .f-val { font-weight: 700; color: #FDFBF6; }
   </style>
 </head>
 <body>
-  <div class="poster">
-    <svg class="bg-svg" viewBox="0 0 1080 1520" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <pattern id="islamic-lattice" width="120" height="120" patternUnits="userSpaceOnUse">
-          <polygon points="0,-18 18,0 0,18 -18,0" fill="none" stroke="#F0E7D4" stroke-width="1.8"/>
-          <polygon points="120,-18 138,0 120,18 102,0" fill="none" stroke="#F0E7D4" stroke-width="1.8"/>
-          <polygon points="0,102 18,120 0,138 -18,120" fill="none" stroke="#F0E7D4" stroke-width="1.8"/>
-          <polygon points="120,102 138,120 120,138 102,120" fill="none" stroke="#F0E7D4" stroke-width="1.8"/>
-          <polygon points="60,42 78,60 60,78 42,60" fill="none" stroke="#F0E7D4" stroke-width="1.8"/>
-          <polygon points="60,52 68,60 60,68 52,60" fill="none" stroke="#F0E7D4" stroke-width="1"/>
-          <polygon points="46,42 50,46 46,50 42,46" fill="none" stroke="#F0E7D4" stroke-width="1"/>
-          <polygon points="74,42 78,46 74,50 70,46" fill="none" stroke="#F0E7D4" stroke-width="1"/>
-          <polygon points="46,70 50,74 46,78 42,74" fill="none" stroke="#F0E7D4" stroke-width="1"/>
-          <polygon points="74,70 78,74 74,78 70,74" fill="none" stroke="#F0E7D4" stroke-width="1"/>
-        </pattern>
-      </defs>
-      <rect width="1080" height="1520" fill="#FDFBF6"/>
-      <rect width="1080" height="1520" fill="url(#islamic-lattice)"/>
-      <rect x="16" y="16" width="1048" height="1488" fill="none" stroke="#C9A25B" stroke-width="2.2"/>
-      <rect x="22" y="22" width="1036" height="1476" fill="none" stroke="#E3D8BF" stroke-width="1"/>
-      <polygon points="16,8 24,16 16,24 8,16" fill="#C9A25B"/>
-      <polygon points="1064,8 1072,16 1064,24 1056,16" fill="#C9A25B"/>
-      <polygon points="16,1496 24,1504 16,1512 8,1504" fill="#C9A25B"/>
-      <polygon points="1064,1496 1072,1504 1064,1512 1056,1504" fill="#C9A25B"/>
-    </svg>
-
+  <div class="canvas">
     <div class="top-bar">
-      <div class="brand-left">
-        <img class="brand-logo" src="data:image/png;base64,${companyLogoB64}" alt="Al Ramlah Travels">
+      <div class="brand">
+        ${
+          logoSrc
+            ? `<div class="logo-box"><img src="${escapeAttr(logoSrc)}" alt="${escapeAttr(company.agencyName)}" /></div>`
+            : `<div class="logo-box"><span style="font-weight:900;color:#083325;font-size:22px;">ART</span></div>`
+        }
         <div>
-          <div class="brand-name">AL RAMLAH</div>
-          <div class="brand-sub">T R A V E L S</div>
+          <div class="brand-name">${escapeHtml(company.agencyName)}</div>
+          <div class="brand-tag">${escapeHtml(company.tagline)}</div>
         </div>
       </div>
-      <div class="brand-center">
-        <div class="tagline-main">Where Purpose Meets Excellence</div>
-        <div class="tagline-services">Hajj • Umrah • Flights • Hotels • Tours</div>
-      </div>
-      <div class="airline-badge">
-        ${airlineHtml}
-      </div>
+      <div class="airline-pill">${airlineHtml}</div>
     </div>
 
-    <div class="hero-block">
-      <div class="meta-row">
-        <span class="days-title">${pkg.daysTitle}</span>
-        <span class="ref-badge">POST REF: ${effectivePostRefCode}</span>
-      </div>
-      <div class="main-title">UMRAH PACKAGE</div>
-      <div class="route-pill-row">
-        <div class="route-pill">${routePillHtml}</div>
-      </div>
+    <div class="hero">
+      <div class="ref-pill">POST REF: ${effectivePostRefCode}${pkg.cardNumber ? ` &bull; CARD #${escapeHtml(pkg.cardNumber)}` : ""}</div>
+      <div class="hero-title">${daysHeading} UMRAH PACKAGE</div>
+      <div class="route-pill">${routePillHtml}</div>
     </div>
 
-    <div class="starting-banner">
-      <div class="sb-left">
-        <div class="pkg-num-circle">${pkg.cardNumber}</div>
-        <div class="sb-titles">
-          <span class="sb-eyebrow">Featured Spotlight Package</span>
-          <span class="sb-headline">All-Inclusive Flights, Visa, Hotels &amp; Transfers</span>
-        </div>
-      </div>
-      <div class="sb-right">
-        <div class="sb-price-lbl">Starting From (Sharing)</div>
-        <div class="sb-price-val"><small>PKR</small>${pSh}</div>
-      </div>
-    </div>
-
-    <div class="section-card">
-      <div class="sec-header">
-        <div class="sec-title-wrap">
-          <div class="sec-icon">✈</div>
-          <div class="sec-title">Confirmed Return Flight Schedule</div>
-        </div>
-        <div class="baggage-pill">${baggage}</div>
+    <div class="flight-card">
+      <div class="sec-head">
+        <div class="sec-title">Confirmed Flight Schedule</div>
+        ${
+          baggageParts.length > 0
+            ? `<div class="baggage-pill">${baggageParts.join(" &bull; ")}</div>`
+            : ""
+        }
       </div>
       <div class="flight-rows">
         <div class="flight-leg">
           <span class="leg-tag">Outbound</span>
-          <span class="leg-fl">${pkg.outboundFlightNo}</span>
-          <span class="leg-dt">${pkg.outboundDateLabel}</span>
-          <span class="leg-rt">${pkg.outboundRoute}</span>
-          <div class="leg-tm"><span>Departure</span>${pkg.outboundDepTime}</div>
-          <div class="leg-tm"><span>Arrival</span>${pkg.outboundArrTime}</div>
+          <span>${escapeHtml(pkg.outboundFlightNo)}</span>
+          <span>${escapeHtml(pkg.outboundDateLabel)}</span>
+          <span>${escapeHtml(pkg.outboundRoute)}</span>
+          <div class="leg-tm"><span>Departure</span>${escapeHtml(pkg.outboundDepTime)}</div>
+          <div class="leg-tm"><span>Arrival</span>${escapeHtml(pkg.outboundArrTime)}</div>
         </div>
         <div class="flight-leg">
           <span class="leg-tag">Return</span>
-          <span class="leg-fl">${pkg.returnFlightNo}</span>
-          <span class="leg-dt">${pkg.returnDateLabel}</span>
-          <span class="leg-rt">${pkg.returnRoute}</span>
-          <div class="leg-tm"><span>Departure</span>${pkg.returnDepTime}</div>
-          <div class="leg-tm"><span>Arrival</span>${pkg.returnArrTime}</div>
+          <span>${escapeHtml(pkg.returnFlightNo)}</span>
+          <span>${escapeHtml(pkg.returnDateLabel)}</span>
+          <span>${escapeHtml(pkg.returnRoute)}</span>
+          <div class="leg-tm"><span>Departure</span>${escapeHtml(pkg.returnDepTime)}</div>
+          <div class="leg-tm"><span>Arrival</span>${escapeHtml(pkg.returnArrTime)}</div>
         </div>
       </div>
     </div>
@@ -274,67 +363,57 @@ export function buildSinglePackageSpotlightHtml(
     <div class="hotels-grid">
       <div class="hotel-card">
         <div class="hc-top">
-          <span class="hc-city">🕋 Makkah Hotel</span>
-          <span class="hc-nights">${pkg.makkahNights} NIGHTS</span>
+          <span class="hc-city">Makkah Hotel</span>
+          <span class="hc-nights">${formatNightsBadge(pkg.makkahNights)}</span>
         </div>
-        <div class="hc-body">
-          <div class="hc-name">${pkg.makkahHotelName}</div>
-          <div class="hc-dist">📍 ${pkg.makkahDistanceLabel}</div>
-        </div>
+        <div class="hc-name">${escapeHtml(pkg.makkahHotelName)}</div>
+        <div class="hc-dist">${escapeHtml(makDist)}${pkg.mealPlanLabel ? ` &bull; ${escapeHtml(pkg.mealPlanLabel)}` : ""}</div>
       </div>
       <div class="hotel-card">
         <div class="hc-top">
-          <span class="hc-city">🕌 Madinah Hotel</span>
-          <span class="hc-nights">${pkg.madinahNights} NIGHTS</span>
+          <span class="hc-city">Madinah Hotel</span>
+          <span class="hc-nights">${formatNightsBadge(pkg.madinahNights)}</span>
         </div>
-        <div class="hc-body">
-          <div class="hc-name">${pkg.madinahHotelName}</div>
-          <div class="hc-dist">📍 ${pkg.madinahDistanceLabel}</div>
-        </div>
+        <div class="hc-name">${escapeHtml(pkg.madinahHotelName)}</div>
+        <div class="hc-dist">${escapeHtml(madDist)}${pkg.mealPlanLabel ? ` &bull; ${escapeHtml(pkg.mealPlanLabel)}` : ""}</div>
       </div>
     </div>
 
     <div class="inc-card">
-      <div class="inc-grid">
-        ${inclusionsHtml}
-      </div>
+      <div class="inc-grid">${inclusionsHtml}</div>
     </div>
 
     <div class="price-matrix">
       <div class="pm-col">
         <div class="pm-lbl">Sharing</div>
         <div class="pm-sub">Per Person</div>
-        <div class="pm-val">${pSh}</div>
+        <div class="pm-val">${escapeHtml(formatPkr(shVal))}</div>
       </div>
       <div class="pm-col">
         <div class="pm-lbl">Quad</div>
         <div class="pm-sub">4 Bed Room</div>
-        <div class="pm-val">${pQd}</div>
+        <div class="pm-val">${escapeHtml(formatPkr(qdVal))}</div>
       </div>
       <div class="pm-col">
         <div class="pm-lbl">Triple</div>
         <div class="pm-sub">3 Bed Room</div>
-        <div class="pm-val">${pTr}</div>
+        <div class="pm-val">${escapeHtml(formatPkr(trVal))}</div>
       </div>
       <div class="pm-col">
         <div class="pm-lbl">Double</div>
         <div class="pm-sub">2 Bed Room</div>
-        <div class="pm-val">${pDb}</div>
+        <div class="pm-val">${escapeHtml(formatPkr(dbVal))}</div>
       </div>
     </div>
 
     <div class="footer-bar">
-      <div class="f-item">
+      <div>
         <span class="f-label">Call / WhatsApp</span>
-        <span class="f-val">03274029701 · 03190462638</span>
+        <span class="f-val">${escapeHtml(company.hotlineDisplay)}</span>
       </div>
-      <div class="f-item" style="text-align: center;">
-        <span class="f-label">Website</span>
-        <span class="f-val">www.alramlahtravels.com</span>
-      </div>
-      <div class="f-item" style="text-align: right;">
+      <div style="text-align:right;">
         <span class="f-label">Office Address</span>
-        <span class="f-val">Office no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt</span>
+        <span class="f-val">${escapeHtml(company.officeAddress)}</span>
       </div>
     </div>
   </div>
@@ -342,44 +421,54 @@ export function buildSinglePackageSpotlightHtml(
 </html>`
 }
 
+export const buildSinglePackagePosterHtml = buildSinglePackageSpotlightHtml
+export const renderSinglePackagePosterHtml = buildSinglePackageSpotlightHtml
+
 export async function renderAndUploadSinglePackagePoster(
   pkg: SinglePackageSpotlightInput
 ): Promise<{ pngUrl: string; pdfUrl: string; socialJpegUrl?: string }> {
-  const companyLogoB64 = await getCompanyLogoBase64()
-  const html = buildSinglePackageSpotlightHtml(pkg, companyLogoB64)
+  const [companyLogoDataUri, companyInfo] = await Promise.all([
+    getCompanyLogoDataUri(),
+    resolveLiveCompanyInfo(pkg.companyInfo),
+  ])
+
+  const html = buildSinglePackageSpotlightHtml(
+    {
+      ...pkg,
+      companyInfo,
+    },
+    companyLogoDataUri
+  )
+
   const { pngBuffer, pdfBuffer } = await renderHtmlViaGotenberg({
     html,
     width: 1080,
     height: 1520,
-    deviceScaleFactor: 3,
+    deviceScaleFactor: 2,
     capturePng: true,
     capturePdf: true,
   })
 
-  const effectiveRef = (pkg.postRefCode || pkg.postCode || "art-spot-01").toLowerCase()
+  if (!pngBuffer || !pdfBuffer) {
+    throw new Error("Gotenberg did not return PNG and PDF buffers for single spotlight poster")
+  }
+
+  const effectiveRef = (pkg.postRefCode || pkg.postCode || "art-spot-01")
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, "-")
   const baseKey = `posters/spotlights/${effectiveRef}`
-  const pngUpload = await uploadAssetToR2(
-    `${baseKey}_4k.png`,
-    pngBuffer!,
-    "image/png"
-  )
-  const pdfUpload = await uploadAssetToR2(
-    `${baseKey}_vector.pdf`,
-    pdfBuffer!,
-    "application/pdf"
-  )
+
+  const [pngUpload, pdfUpload] = await Promise.all([
+    uploadAssetToR2(`${baseKey}_4k.png`, pngBuffer, "image/png"),
+    uploadAssetToR2(`${baseKey}_vector.pdf`, pdfBuffer, "application/pdf"),
+  ])
 
   let socialJpegUrl: string | undefined
-  if (pngBuffer) {
-    try {
-      const socialRes = await optimizePosterForSocialToR2(pngBuffer, baseKey)
-      socialJpegUrl = socialRes.socialJpegUrl
-    } catch (optErr) {
-      console.warn(
-        "[Social Optimizer] Failed to generate social JPEG for single spotlight:",
-        optErr
-      )
-    }
+  try {
+    const socialRes = await optimizePosterForSocialToR2(pngBuffer, baseKey)
+    socialJpegUrl = socialRes.socialJpegUrl
+  } catch {
+    // Non-fatal fallback if sharp optimization fails on synthetic buffer
   }
 
   return {

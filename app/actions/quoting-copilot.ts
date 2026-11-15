@@ -7,11 +7,13 @@ import { requireAdmin } from "@/lib/auth-guard"
 import {
   waConversationCopilotInputSchema,
   applicationQuoteCopilotInputSchema,
+  generateApplicationQuoteCopilotDraft,
   type ApplicationQuoteCopilotGenerationOutput,
   type ApplicationQuoteCopilotResult,
   type WaCopilotDraftResult,
   type WaCopilotGenerationOutput,
 } from "@/lib/ai/quoting-copilot"
+import { logger } from "@/lib/logger"
 import {
   isTriggerCloudConfigured,
   triggerByIdAndAwaitOrInline,
@@ -21,11 +23,6 @@ import {
   type QuotingCopilotTaskPayload,
   type QuotingCopilotTaskResult,
 } from "@/trigger/quoting-copilot.task"
-
-// ==========================================
-// 1. INPUT VALIDATION SCHEMAS & TYPES
-// (Schemas imported from @/lib/ai/quoting-copilot to satisfy Next.js 16 "use server" async function only rule)
-// ==========================================
 
 export type GenerateWaConversationCopilotActionInput =
   | z.infer<typeof waConversationCopilotInputSchema>
@@ -45,6 +42,7 @@ export type GenerateWaConversationCopilotActionResult =
       runMode: "cloud" | "inline"
       runId?: string
       requiresHumanApproval: true
+      requiresHumanConfirmation: true
     }
   | {
       success: false
@@ -61,6 +59,7 @@ export type GenerateApplicationQuoteCopilotActionResult =
       runMode: "cloud" | "inline"
       runId?: string
       requiresHumanApproval: true
+      requiresHumanConfirmation: true
     }
   | {
       success: false
@@ -71,14 +70,11 @@ async function requireStaffSession() {
   return requireAdmin()
 }
 
-// ==========================================
-// 2. AUTHENTICATED SERVER ACTIONS (AC-3)
-// ==========================================
-
 /**
  * Server Action: Generates a Human-in-the-Loop bilingual WhatsApp reply draft
- * and package recommendation for an active `whatsapp_conversations` thread.
- * Never sends a message or mutates `whatsapp_messages`.
+ * and package recommendation for an active `whatsapp_conversations` thread (`T-028`).
+ * Strictly read-only: NEVER sends a message or mutates `whatsapp_messages`, and always
+ * enforces `requiresHumanConfirmation: true` (`OD-06`).
  */
 export async function generateWaConversationCopilotDraftAction(
   rawInput: GenerateWaConversationCopilotActionInput,
@@ -129,14 +125,23 @@ export async function generateWaConversationCopilotDraftAction(
       return {
         success: false,
         error:
-          dispatchRes.error ||
-          "Failed to generate WhatsApp copilot draft.",
+          dispatchRes.error || "Failed to generate WhatsApp copilot draft.",
       }
     }
 
     const output = dispatchRes.output
-    const draft = output.waDraft ?? (output.draft as WaCopilotDraftResult)
-    const data = output.data as WaCopilotGenerationOutput
+    const rawDraft = output.waDraft ?? (output.draft as WaCopilotDraftResult)
+    const draft: WaCopilotDraftResult = {
+      ...rawDraft,
+      requiresHumanApproval: true,
+      requiresHumanConfirmation: true,
+    }
+    const rawData = output.data as WaCopilotGenerationOutput
+    const data: WaCopilotGenerationOutput = {
+      ...rawData,
+      ...draft,
+      draft,
+    }
 
     return {
       success: true,
@@ -147,6 +152,7 @@ export async function generateWaConversationCopilotDraftAction(
       runMode: dispatchRes.mode,
       runId: dispatchRes.runId,
       requiresHumanApproval: true,
+      requiresHumanConfirmation: true,
     }
   } catch (err: unknown) {
     const message =
@@ -162,8 +168,9 @@ export async function generateWaConversationCopilotDraftAction(
 
 /**
  * Server Action: Generates a Human-in-the-Loop itemized SAR/PKR Quote Worksheet
- * pre-fill, executive summary, and bilingual customer message draft for an application.
- * Never mutates `application_quotes` or changes application status.
+ * pre-fill, executive summary, and bilingual customer message draft for an application (`T-028`).
+ * Strictly read-only: NEVER mutates `application_quotes` or changes application status,
+ * and enforces `requiresHumanConfirmation: true` (`OD-06`).
  */
 export async function generateApplicationQuoteCopilotDraftAction(
   rawInput: GenerateApplicationQuoteCopilotActionInput,
@@ -179,8 +186,7 @@ export async function generateApplicationQuoteCopilotDraftAction(
         }
       : rawInput
 
-  const parsed =
-    applicationQuoteCopilotInputSchema.safeParse(normalizedInput)
+  const parsed = applicationQuoteCopilotInputSchema.safeParse(normalizedInput)
   if (!parsed.success) {
     const details = parsed.error.issues
       .map((i) => `${i.path.join(".")}: ${i.message}`)
@@ -191,14 +197,43 @@ export async function generateApplicationQuoteCopilotDraftAction(
     }
   }
 
-  const payload: QuotingCopilotTaskPayload = {
-    mode: "application_quote",
-    applicationId: parsed.data.applicationId,
-    staffPromptHint: parsed.data.staffPromptHint,
-    allowOfflineFallbackOnly: parsed.data.allowOfflineFallbackOnly,
-  }
-
   try {
+    // When an explicit human-entered discount or margin floor is supplied, run directly through
+    // the deterministic pricing engine so human-only overrides are preserved accurately.
+    if (
+      parsed.data.authorizedHumanDiscountPkr !== undefined ||
+      parsed.data.minimumMarginFloorPkr !== undefined
+    ) {
+      const appOut = await generateApplicationQuoteCopilotDraft(parsed.data)
+      const draft: ApplicationQuoteCopilotResult = {
+        ...appOut.draft,
+        requiresHumanApproval: true,
+        requiresHumanConfirmation: true,
+      }
+      const data: ApplicationQuoteCopilotGenerationOutput = {
+        ...appOut,
+        ...draft,
+        draft,
+      }
+      return {
+        success: true,
+        data,
+        draft,
+        modelUsed: appOut.modelUsed,
+        executionMode: appOut.executionMode,
+        runMode: "inline",
+        requiresHumanApproval: true,
+        requiresHumanConfirmation: true,
+      }
+    }
+
+    const payload: QuotingCopilotTaskPayload = {
+      mode: "application_quote",
+      applicationId: parsed.data.applicationId,
+      staffPromptHint: parsed.data.staffPromptHint,
+      allowOfflineFallbackOnly: parsed.data.allowOfflineFallbackOnly,
+    }
+
     const dispatchRes = await triggerByIdAndAwaitOrInline<
       QuotingCopilotTaskPayload,
       QuotingCopilotTaskResult
@@ -221,10 +256,20 @@ export async function generateApplicationQuoteCopilotDraftAction(
     }
 
     const output = dispatchRes.output
-    const draft =
+    const rawDraft =
       output.applicationDraft ??
       (output.draft as ApplicationQuoteCopilotResult)
-    const data = output.data as ApplicationQuoteCopilotGenerationOutput
+    const draft: ApplicationQuoteCopilotResult = {
+      ...rawDraft,
+      requiresHumanApproval: true,
+      requiresHumanConfirmation: true,
+    }
+    const rawData = output.data as ApplicationQuoteCopilotGenerationOutput
+    const data: ApplicationQuoteCopilotGenerationOutput = {
+      ...rawData,
+      ...draft,
+      draft,
+    }
 
     return {
       success: true,
@@ -235,6 +280,7 @@ export async function generateApplicationQuoteCopilotDraftAction(
       runMode: dispatchRes.mode,
       runId: dispatchRes.runId,
       requiresHumanApproval: true,
+      requiresHumanConfirmation: true,
     }
   } catch (err: unknown) {
     const message =
@@ -250,9 +296,6 @@ export async function generateApplicationQuoteCopilotDraftAction(
 
 /**
  * Server Action: Non-blocking initiation of WhatsApp Quoting Copilot.
- * When Trigger.dev Cloud is configured, immediately triggers the background task,
- * mints a scoped public access token, and returns `{ success: true, mode: "cloud", runId, publicAccessToken }`
- * without blocking on runs.poll(), allowing browser UI to render live 4-stage progress via useRealtimeRun.
  */
 export async function startWhatsappCopilotRunAction(
   rawInput: GenerateWaConversationCopilotActionInput,
@@ -263,6 +306,8 @@ export async function startWhatsappCopilotRunAction(
   runId: string
   publicAccessToken?: string
   inlineOutput?: GenerateWaConversationCopilotActionResult
+  requiresHumanApproval: true
+  requiresHumanConfirmation: true
   error?: string
 }> {
   await requireStaffSession()
@@ -283,6 +328,8 @@ export async function startWhatsappCopilotRunAction(
       success: false,
       mode: "inline",
       runId: "",
+      requiresHumanApproval: true,
+      requiresHumanConfirmation: true,
       error: `Validation error: ${details}`,
     }
   }
@@ -310,25 +357,37 @@ export async function startWhatsappCopilotRunAction(
         mode: "cloud",
         runId: handle.id,
         publicAccessToken,
+        requiresHumanApproval: true,
+        requiresHumanConfirmation: true,
       }
     } catch (err) {
-      console.warn(
-        "[Copilot Cloud Dispatch Warning] Falling back to inline:",
-        err
-      )
+      logger.warn("copilot_wa_cloud_dispatch_fallback", {
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 
-  // Local/inline execution fallback
   const inlineResult = await runQuotingCopilotInline(payload)
-  const draft =
+  const rawDraft =
     inlineResult.waDraft ?? (inlineResult.draft as WaCopilotDraftResult)
-  const data = inlineResult.data as WaCopilotGenerationOutput
+  const draft: WaCopilotDraftResult = {
+    ...rawDraft,
+    requiresHumanApproval: true,
+    requiresHumanConfirmation: true,
+  }
+  const rawData = inlineResult.data as WaCopilotGenerationOutput
+  const data: WaCopilotGenerationOutput = {
+    ...rawData,
+    ...draft,
+    draft,
+  }
 
   return {
     success: true,
     mode: "inline",
     runId: `inline_copilot_${Date.now()}`,
+    requiresHumanApproval: true,
+    requiresHumanConfirmation: true,
     inlineOutput: {
       success: true,
       data,
@@ -337,15 +396,15 @@ export async function startWhatsappCopilotRunAction(
       executionMode: inlineResult.executionMode,
       runMode: "inline",
       requiresHumanApproval: true,
+      requiresHumanConfirmation: true,
     },
   }
 }
 
 /**
- * Server Action: Non-blocking initiation of Application Quote Copilot.
- * When Trigger.dev Cloud is configured, immediately triggers the background task,
- * mints a scoped public access token, and returns `{ success: true, mode: "cloud", runId, publicAccessToken }`
- * without blocking on runs.poll().
+ * Server Action: Non-blocking initiation of Application Quote Copilot (`T-028`, `T-063`).
+ * Routes through durable Trigger.dev Cloud (`quoting-copilot` task) when configured,
+ * falling back cleanly to inline execution in offline/local environments.
  */
 export async function startApplicationCopilotRunAction(
   rawInput: GenerateApplicationQuoteCopilotActionInput,
@@ -356,6 +415,8 @@ export async function startApplicationCopilotRunAction(
   runId: string
   publicAccessToken?: string
   inlineOutput?: GenerateApplicationQuoteCopilotActionResult
+  requiresHumanApproval: true
+  requiresHumanConfirmation: true
   error?: string
 }> {
   await requireStaffSession()
@@ -376,6 +437,8 @@ export async function startApplicationCopilotRunAction(
       success: false,
       mode: "inline",
       runId: "",
+      requiresHumanApproval: true,
+      requiresHumanConfirmation: true,
       error: `Validation error: ${details}`,
     }
   }
@@ -387,32 +450,61 @@ export async function startApplicationCopilotRunAction(
     allowOfflineFallbackOnly: parsed.data.allowOfflineFallbackOnly,
   }
 
-  // Execute directly inline so clicking Generate Estimate returns real SAR/PKR breakdown immediately in 2–4s
-  const inlineResult = await runQuotingCopilotInline(payload)
-  const draft =
-    inlineResult.applicationDraft ??
-    (inlineResult.draft as ApplicationQuoteCopilotResult)
-  const data = inlineResult.data as ApplicationQuoteCopilotGenerationOutput
+  if (
+    isTriggerCloudConfigured() &&
+    parsed.data.authorizedHumanDiscountPkr === undefined &&
+    parsed.data.minimumMarginFloorPkr === undefined
+  ) {
+    try {
+      const handle = await tasks.trigger("quoting-copilot", payload, {
+        tags: [`copilot:app:${parsed.data.applicationId}`],
+      })
+
+      const publicAccessToken = await triggerAuth.createPublicToken({
+        scopes: { read: { runs: [handle.id] } },
+        expirationTime: "1h",
+      })
+
+      return {
+        success: true,
+        mode: "cloud",
+        runId: handle.id,
+        publicAccessToken,
+        requiresHumanApproval: true,
+        requiresHumanConfirmation: true,
+      }
+    } catch (err) {
+      logger.warn("copilot_application_cloud_dispatch_fallback", {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  const res = await generateApplicationQuoteCopilotDraftAction(parsed.data)
+  if (!res.success) {
+    return {
+      success: false,
+      mode: "inline",
+      runId: "",
+      requiresHumanApproval: true,
+      requiresHumanConfirmation: true,
+      error: res.error,
+    }
+  }
 
   return {
     success: true,
     mode: "inline",
     runId: `inline_copilot_${Date.now()}`,
-    inlineOutput: {
-      success: true,
-      data,
-      draft,
-      modelUsed: inlineResult.modelUsed,
-      executionMode: inlineResult.executionMode,
-      runMode: "inline",
-      requiresHumanApproval: true,
-    },
+    requiresHumanApproval: true,
+    requiresHumanConfirmation: true,
+    inlineOutput: res,
   }
 }
 
-/**
- * Convenience alias for triggering application quoting copilot directly inline.
- */
+export const generateWaCopilotDraftAction =
+  generateWaConversationCopilotDraftAction
+
 export async function triggerQuotingCopilotAction(
   applicationId: string,
   staffPromptHint?: string

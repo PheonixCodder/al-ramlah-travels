@@ -42,9 +42,11 @@ export default async function AdminStudioPage({
   ] = await Promise.all([
     db.query.suppliers.findMany({
       orderBy: (table, { asc }) => [asc(table.name)],
+      limit: 100,
     }),
     db.query.supplierFlyers.findMany({
       orderBy: (table, { desc }) => [desc(table.createdAt)],
+      limit: 50,
       with: {
         supplier: true,
         packages: {
@@ -54,6 +56,7 @@ export default async function AdminStudioPage({
     }),
     db.query.postAssets.findMany({
       orderBy: (table, { desc }) => [desc(table.createdAt)],
+      limit: 100,
       with: {
         supplier: true,
         flyer: true,
@@ -62,6 +65,7 @@ export default async function AdminStudioPage({
     }),
     db.query.groupPackages.findMany({
       orderBy: (table, { asc }) => [asc(table.sortOrder), asc(table.createdAt)],
+      limit: 100,
       with: {
         airline: true,
         makkahHotel: true,

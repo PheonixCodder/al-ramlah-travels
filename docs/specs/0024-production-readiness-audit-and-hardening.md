@@ -1,15 +1,17 @@
 # 0024. Production Readiness Audit & End-to-End Platform Hardening (Phase A)
 
-- **Status**: In Progress (Wave 3 Complete — 97/97 Canonical T-IDs & 383/383 Raw Findings Resolved across W3A → W3B → W3C; Ready for Wave 4 Independent Gate A Verification)
+- **Status**: Complete — Gate A Certified (2026-11-15 — 97/97 Canonical T-IDs & 383/383 Raw Findings Verified Closed across GA-01..GA-08; 692/692 Unit/W3/Integration Tests & 21/21 Playwright J1–J22 E2E Green)
 - **Slice**: Slice 43 (Feature #47)
 - **Workflow Tier**: Beta (`/architect` → `/develop` → `/check verify` → `/test` → `/sync`)
-- **Date**: 2026-11-14
+- **Date**: 2026-11-14 (Gate A Certified: 2026-11-15)
 - **Companion Artifacts**:
   - Kickoff Charter: `docs/audit/SWARM_PROMPT.md`
   - Wave 0 Baseline & Inventory: `docs/audit/w0-env-baseline.md`, `docs/audit/00-ground-truth.md`, `docs/audit/01-feature-parity.md`
   - Wave 1 Specialist Audits (`28` reports): `docs/audit/findings/A00.md` .. `A26.md` + `A02-authz-matrix.md`
   - Wave 2 Triage, Ownership & Decisions: `docs/audit/02-ownership.md`, `docs/audit/02-triage.md`, `docs/audit/OWNER_DECISIONS.md`
-  - Phase B Follow-On (Blocked on Gate A): `Spec 0025 — Public Site SEO Readiness` (Slice 44 / Feature #48)
+  - Wave 3 Remediation & Runbooks: `docs/audit/03-fix-log.md`, `docs/audit/runbooks/RB-01..10`
+  - Wave 4 Verification & Gate A Sign-Off: `docs/audit/verification/V01.md` .. `V05.md`, `docs/audit/04-verification.md`, `docs/audit/PRODUCTION_READINESS.md`
+  - Phase B Follow-On (Unblocked by Gate A): `Spec 0025 — Public Site SEO Readiness` (Slice 44 / Feature #48)
 
 ---
 

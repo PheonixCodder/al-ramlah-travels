@@ -60,8 +60,8 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 44 | Native WhatsApp Linked-Device engine: QR/Pairing Code session, auto-sync real WhatsApp groups & chats, automated paced group/status posting & fake seed purge | Slice 40 | done |
 | 45 | Multi-Number WhatsApp System: multi-session Linked Device switcher, per-number group/status & chat attribution, multi-line auto-posting & inbox line filter | Slice 41 | done |
 | 46 | Production-Ready De-Clutter & Dynamic Data Overhaul: purge all demo seeds/presets, 100% dynamic WhatsApp phone linking, simplified Settings/Campaigns/Inbox UI & dynamic public/admin pages | Slice 42 | done |
-| 47 | Spec 0024 — Production Readiness Audit & Hardening | Slice 43 | in-progress |
-| 48 | Spec 0025 — Public Site SEO Readiness (Blocked on Gate A) | Slice 44 | planned (after Gate A) |
+| 47 | Spec 0024 — Production Readiness Audit & Hardening | Slice 43 | done |
+| 48 | Spec 0025 — Public Site SEO Readiness (Gate A Passed — Ready) | Slice 44 | planned |
 
 ## Foundations
 
@@ -677,28 +677,28 @@ spec [0023](docs/specs/0023-production-declutter-and-dynamic-overhaul.md) · cod
 
 ## Slice 43: Spec 0024 — Production Readiness Audit & Hardening
 
-### 47. Slice 43 · Spec 0024 — Production Readiness Audit & Hardening · Beta · in-progress
+### 47. Slice 43 · Spec 0024 — Production Readiness Audit & Hardening · Beta · done
 
 Remediate all `P0` (`96`) and `P1` (`179`) production-readiness gaps uncovered across the 28-report Wave 0–1 forensic audit (`docs/audit/00-ground-truth.md`, `01-feature-parity.md`, `02-triage.md`, `OWNER_DECISIONS.md`) through the conflict-free 12-Fixer Wave 3 build plan (`docs/audit/02-ownership.md`: `W3A → W3B → W3C`) and certify 100% of Gate A (§9.4) criteria across real disposable PostgreSQL 16, local HTTP contract fakes, and Playwright `J1`–`J22` browser journeys.
 **Done when:** `100%` of `P0`/`P1` findings in `docs/audit/02-triage.md` are resolved with red→green tests logged in `docs/audit/03-fix-log.md`, `npm audit --omit=dev` has `0` Critical/High CVEs, fresh `db:migrate` + `2× db:seed` pass with zero schema drift, the 158-action AuthZ auto-runner and all 22 Playwright E2E journeys (`J1`–`J22`) pass on Desktop & Mobile, `.github/workflows/ci.yml` and `docs/audit/runbooks/RB-01..10.md` are in place, and Wave 4 (`V01`–`V06`) signs off `docs/audit/PRODUCTION_READINESS.md` (Gate A).
 spec [0024](docs/specs/0024-production-readiness-audit-and-hardening.md) · audit & ownership in `docs/audit/`
 
 - [x] Design it (spec): `/architect Production Readiness Audit & Hardening`
-- [ ] Build it: `/develop Production Readiness Audit & Hardening`
-  - [ ] Milestone 1 (`W3A` — `F-PLAT`): Serialized platform foundation — `next@16.4.6+` CVE upgrade, `Dockerfile` `node:22-alpine` + `HEALTHCHECK`, fail-closed `lib/env.ts`, CSP/security headers, dual HTTP + transactional `Pool` `db/index.ts`, reconciled `drizzle/` migrations + `2×` idempotent `db/seed.ts`, `disableSignUp` + live `isActive` RBAC revocation, DB `rate_limit_buckets`, immutable `audit_logs`, zero-PII `lib/logger.ts`, `/api/health`, and locked light-mode WCAG tokens
-  - [ ] Milestone 2 (`W3B` Core — `F-DOM`, `F-INFRA`, `F-PUB`, `F-DESK`): 9 business invariants, unified E.164/JID phone SSoT, committed client PDF purge & `logo-icon.png` compression, public/private R2 split + `/api/media/*` proxy, Gotenberg v8 `/screenshot/html` fix & CDP prod block, Journey Builder/Group seat race/Hajj/Status Tracker hardening, SQL Dashboard KPIs, Quote state machine, escaped `<1 MB` Quotation PDF, gated Voucher & `Cmd+K` fixes
-  - [ ] Milestone 3 (`W3B` Omnichannel & Admin — `F-STUDIO`, `F-WA`, `F-SOCIAL`, `F-JOBS`, `F-ADMIN`, `F-UX`): Escaped 4K poster HTML & Mode A/B margin integrity, deterministic AI Copilot math + ZDR, retry-safe WA webhook + global `"STOP"`/`do_not_contact` + 24h window + `OD-01` Baileys topology, Core 5 OAuth/Page-token refresh/IG container poll/GBP v1 + zero fake analytics, Trigger v4 prod guard + `rethrowAsTaskError` + SLA cron fix, FK-safe Catalog/CMS `revalidatePath` + `/admin/settings?tab=health` + fixed legacy redirects, and WCAG 2.2 AA Admin Shell
-  - [ ] Milestone 4 (`W3C` — `F-QA`): `vitest.config.ts` (`assertAuditSafeEnvironment` + `disableNetConnect`), 5 strict contract fakes (`tests/fakes/*`), real-PG `tests/integration/*` (158-action AuthZ auto-runner + concurrency + migrations), Playwright `tests/e2e/j01..j22.spec.ts`, `.github/workflows/ci.yml`, and 10 ops runbooks (`docs/audit/runbooks/RB-01..10.md`)
-- [ ] Verify it: `/check verify Production Readiness Audit & Hardening` (`docs/audit/04-verification.md` & `docs/audit/PRODUCTION_READINESS.md`)
-- [ ] Test it: `/test Production Readiness Audit & Hardening` (`tests/unit/`, `tests/integration/`, `tests/e2e/`)
+- [x] Build it: `/develop Production Readiness Audit & Hardening`
+  - [x] Milestone 1 (`W3A` — `F-PLAT`): Serialized platform foundation — `next@16.4.6+` CVE upgrade, `Dockerfile` `node:22-alpine` + `HEALTHCHECK`, fail-closed `lib/env.ts`, CSP/security headers, dual HTTP + transactional `Pool` `db/index.ts`, reconciled `drizzle/` migrations + `2×` idempotent `db/seed.ts`, `disableSignUp` + live `isActive` RBAC revocation, DB `rate_limit_buckets`, immutable `audit_logs`, zero-PII `lib/logger.ts`, `/api/health`, and locked light-mode WCAG tokens
+  - [x] Milestone 2 (`W3B` Core — `F-DOM`, `F-INFRA`, `F-PUB`, `F-DESK`): 9 business invariants, unified E.164/JID phone SSoT, committed client PDF purge & `logo-icon.png` compression, public/private R2 split + `/api/media/*` proxy, Gotenberg v8 `/screenshot/html` fix & CDP prod block, Journey Builder/Group seat race/Hajj/Status Tracker hardening, SQL Dashboard KPIs, Quote state machine, escaped `<1 MB` Quotation PDF, gated Voucher & `Cmd+K` fixes
+  - [x] Milestone 3 (`W3B` Omnichannel & Admin — `F-STUDIO`, `F-WA`, `F-SOCIAL`, `F-JOBS`, `F-ADMIN`, `F-UX`): Escaped 4K poster HTML & Mode A/B margin integrity, deterministic AI Copilot math + ZDR, retry-safe WA webhook + global `"STOP"`/`do_not_contact` + 24h window + `OD-01` Baileys topology, Core 5 OAuth/Page-token refresh/IG container poll/GBP v1 + zero fake analytics, Trigger v4 prod guard + `rethrowAsTaskError` + SLA cron fix, FK-safe Catalog/CMS `revalidatePath` + `/admin/settings?tab=health` + fixed legacy redirects, and WCAG 2.2 AA Admin Shell
+  - [x] Milestone 4 (`W3C` — `F-QA`): `vitest.config.ts` (`assertAuditSafeEnvironment` + `disableNetConnect`), 5 strict contract fakes (`tests/fakes/*`), real-PG `tests/integration/*` (158-action AuthZ auto-runner + concurrency + migrations), Playwright `tests/e2e/j01..j22.spec.ts`, `.github/workflows/ci.yml`, and 10 ops runbooks (`docs/audit/runbooks/RB-01..10.md`)
+- [x] Verify it: `/check verify Production Readiness Audit & Hardening` (`docs/audit/04-verification.md` & `docs/audit/PRODUCTION_READINESS.md`)
+- [x] Test it: `/test Production Readiness Audit & Hardening` (`tests/unit/`, `tests/integration/`, `tests/e2e/`)
 
-## Slice 44: Spec 0025 — Public Site SEO Readiness (Blocked on Gate A)
+## Slice 44: Spec 0025 — Public Site SEO Readiness (Gate A Passed — Ready)
 
-### 48. Slice 44 · Spec 0025 — Public Site SEO Readiness · Beta · planned (after Gate A) · needs a decision
+### 48. Slice 44 · Spec 0025 — Public Site SEO Readiness · Beta · planned · needs a decision
 
 Execute Phase B (`SWARM_PROMPT.md` §10: Auditors `S01`–`S16` → Fixers `F-SEO-*` → Gate B) **strictly after Slice 43 (`Spec 0024`) passes Gate A**: ship `app/robots.ts` and `app/sitemap.ts`, crawlable programmatic commercial & informational routes (`/umrah-packages/[slug]`, `/umrah-packages/from-[city]`, `/hajj-2027`, `/umrah-visa`, `/hotels/[city]`, `/ziyarat/[city]`, `/faq`, `/about`, `/contact`, `/refund-policy`), truthful entity-consistent JSON-LD (`TravelAgency`, `Product`/`Offer` only where real prices exist, `FAQPage`, `BreadcrumbList`), dynamic OpenGraph/Twitter social cards, Core Web Vitals & ISR/cache optimization on `/`, canonical Lahore NAP alignment, and end-to-end UTM lead attribution.
-**Done when:** Gate A (`docs/audit/PRODUCTION_READINESS.md`) is signed off, `Spec 0025 — SEO Readiness (Blocked on Gate A)` (`docs/specs/0025-public-site-seo-readiness.md`) is authored from `docs/audit/seo/findings/S01..S16.md`, all Phase B routes/metadata/schemas ship without regressing Gate A, and Gate B passes in `docs/audit/FINAL_REPORT.md`.
-spec `0025` *(placeholder: `docs/specs/0025-public-site-seo-readiness.md` — blocked until Gate A passes)*
+**Done when:** Gate A (`docs/audit/PRODUCTION_READINESS.md`) is signed off, `Spec 0025 — SEO Readiness` (`docs/specs/0025-public-site-seo-readiness.md`) is authored from `docs/audit/seo/findings/S01..S16.md`, all Phase B routes/metadata/schemas ship without regressing Gate A, and Gate B passes in `docs/audit/FINAL_REPORT.md`.
+spec `0025` *(placeholder: `docs/specs/0025-public-site-seo-readiness.md` — unblocked by Gate A certification)*
 
 - [ ] Design it (spec): `/architect Public Site SEO Readiness`
 

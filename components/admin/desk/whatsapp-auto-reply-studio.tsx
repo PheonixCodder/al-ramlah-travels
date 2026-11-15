@@ -1,33 +1,39 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import * as React from "react"
 import {
   Bot,
-  Sparkles,
-  Plus,
-  Trash2,
-  Edit3,
   Check,
-  X,
-  Zap,
   Clock,
+  Edit3,
+  FileText,
   MessageSquare,
+  Plus,
   Search,
+  ShieldCheck,
+  Sparkles,
   ToggleLeft,
   ToggleRight,
-  FileText,
-  ShieldCheck,
-  ChevronRight,
-  Layers,
+  Trash2,
+  X,
+  Zap,
 } from "lucide-react"
 import {
-  upsertWhatsappAutoReplyRuleAction,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   deleteWhatsappAutoReplyRuleAction,
+  deleteWhatsappQuickReplyAction,
   toggleWhatsappAutoReplyRuleAction,
   updateWhatsappGreetingSettingsAction,
+  upsertWhatsappAutoReplyRuleAction,
   upsertWhatsappQuickReplyAction,
-  deleteWhatsappQuickReplyAction,
 } from "@/app/actions/whatsapp-crm"
+import { isSafeAutoReplyRegex } from "@/lib/whatsapp/safe-regex"
 
 export type AutoReplyMatchType = "CONTAINS" | "EXACT" | "STARTS_WITH" | "REGEX"
 
@@ -73,7 +79,7 @@ export interface AccountBotAndGreetingSettings {
   businessHoursEnd: string
 }
 
-interface WhatsappAutoReplyStudioProps {
+export interface WhatsappAutoReplyStudioProps {
   open: boolean
   onClose: () => void
   accountId?: string
@@ -86,11 +92,17 @@ interface WhatsappAutoReplyStudioProps {
 }
 
 const DEFAULT_WELCOME_PREVIEW =
-  "Assalamu Alaikum! 🕋 Welcome to *Al Ramlah Travels* (Chaklala Scheme 3 / Askari 10, Rawalpindi).\n\nHow may our Hajj & Umrah concierge assist you today? Reply with a package code (e.g. *ART-UMR-01*), or type *location*, *documents*, *hajj*, or *bank* for instant details."
+  "Assalam-o-Alaikum! 🕋 Welcome to *Al Ramlah Travels* (Office No. 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt).\n\nHow may our Hajj & Umrah concierge (+92 327 4029701 · +92 319 0462638) assist you today? Reply with a package code (e.g. *ART-UMR-01*), or type *location*, *documents*, *hajj*, or *bank* for instant details. Reply *STOP* anytime to opt out."
 
 const DEFAULT_AWAY_PREVIEW =
-  "Assalamu Alaikum! 🌙 Thank you for messaging *Al Ramlah Travels*. Our Rawalpindi desk is currently outside PKT business hours, but our specialist will respond first thing in the morning Insha'Allah.\n\nFor instant answers now, reply with *location*, *documents*, *hajj*, or a package code like *ART-UMR-01*."
+  "Assalam-o-Alaikum! 🌙 Thank you for messaging *Al Ramlah Travels (Askari 10, Lahore Cantt)*. Our Lahore desk is currently outside PKT business hours, but our specialist will respond first thing in the morning Insha'Allah.\n\nFor instant answers now, reply with *location*, *documents*, *hajj*, or a package code like *ART-UMR-01*, or reply *STOP* to opt out."
 
+const STOP_OPTOUT_PREVIEW_RE =
+  /^(?:stop|unsubscribe|opt\s*out|cancel\s+messages|remove\s+me|ruko|band\s*karo)$/i
+
+const ART_POST_CODE_PREVIEW_RE = /\bART-[A-Z0-9]{2,8}(?:-[A-Z0-9]{1,8})+\b/i
+
+export { WhatsappAutoReplyStudio as WhatsAppAutoReplyStudio }
 
 export function WhatsappAutoReplyStudio({
   open,
@@ -103,53 +115,69 @@ export function WhatsappAutoReplyStudio({
   initialSettings,
   onSettingsChange,
 }: WhatsappAutoReplyStudioProps) {
-  const [activeTab, setActiveTab] = useState<"rules" | "greetings" | "quick_replies">("rules")
-  const [statusBanner, setStatusBanner] = useState<{
+  const [activeTab, setActiveTab] = React.useState<
+    "rules" | "greetings" | "quick_replies"
+  >("rules")
+  const [statusBanner, setStatusBanner] = React.useState<{
     type: "success" | "error"
     message: string
   } | null>(null)
+
+  // Tab 1: Keyword Rules state
+  const [rules, setRules] = React.useState<AutoReplyRuleItem[]>(initialRules)
+  const [simulatorInput, setSimulatorInput] = React.useState("")
+  const [isRuleEditorOpen, setIsRuleEditorOpen] = React.useState(false)
+  const [editingRuleId, setEditingRuleId] = React.useState<string | null>(null)
+  const [ruleName, setRuleName] = React.useState("")
+  const [ruleMatchType, setRuleMatchType] =
+    React.useState<AutoReplyMatchType>("CONTAINS")
+  const [ruleKeywordsInput, setRuleKeywordsInput] = React.useState("")
+  const [ruleResponseText, setRuleResponseText] = React.useState("")
+  const [ruleMediaUrl, setRuleMediaUrl] = React.useState("")
+  const [ruleMediaFilename, setRuleMediaFilename] = React.useState("")
+  const [rulePriority, setRulePriority] = React.useState(50)
+  const [ruleCooldownMinutes, setRuleCooldownMinutes] = React.useState(30)
+  const [ruleButtons, setRuleButtons] = React.useState<
+    Array<{ id: string; title: string }>
+  >([])
+  const [isSavingRule, setIsSavingRule] = React.useState(false)
+
+  // Tab 2: Greeting & Bot Settings state
+  const [settings, setSettings] =
+    React.useState<AccountBotAndGreetingSettings>({
+      ...initialSettings,
+      welcomeGreetingText:
+        initialSettings.welcomeGreetingText || DEFAULT_WELCOME_PREVIEW,
+      awayGreetingText:
+        initialSettings.awayGreetingText || DEFAULT_AWAY_PREVIEW,
+      businessHoursStart: initialSettings.businessHoursStart || "09:00",
+      businessHoursEnd: initialSettings.businessHoursEnd || "21:00",
+    })
+  const [isSavingSettings, setIsSavingSettings] = React.useState(false)
+
+  // Tab 3: Quick Replies state
+  const [quickReplies, setQuickReplies] =
+    React.useState<QuickReplyItem[]>(initialQuickReplies)
+  const [qrSearch, setQrSearch] = React.useState("")
+  const [editingQrId, setEditingQrId] = React.useState<string | null>(null)
+  const [qrShortcut, setQrShortcut] = React.useState("")
+  const [qrTitle, setQrTitle] = React.useState("")
+  const [qrCategory, setQrCategory] = React.useState("general")
+  const [qrBodyText, setQrBodyText] = React.useState("")
+  const [isSavingQr, setIsSavingQr] = React.useState(false)
+
+  React.useEffect(() => {
+    setRules(initialRules)
+  }, [initialRules])
+
+  React.useEffect(() => {
+    setQuickReplies(initialQuickReplies)
+  }, [initialQuickReplies])
 
   const toast = {
     success: (message: string) => setStatusBanner({ type: "success", message }),
     error: (message: string) => setStatusBanner({ type: "error", message }),
   }
-
-  // Tab 1: Keyword Rules state
-  const [rules, setRules] = useState<AutoReplyRuleItem[]>(initialRules)
-  const [isRuleEditorOpen, setIsRuleEditorOpen] = useState(false)
-  const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
-  const [ruleName, setRuleName] = useState("")
-  const [ruleMatchType, setRuleMatchType] = useState<AutoReplyMatchType>("CONTAINS")
-  const [ruleKeywordsInput, setRuleKeywordsInput] = useState("")
-  const [ruleResponseText, setRuleResponseText] = useState("")
-  const [ruleMediaUrl, setRuleMediaUrl] = useState("")
-  const [ruleMediaFilename, setRuleMediaFilename] = useState("")
-  const [rulePriority, setRulePriority] = useState(50)
-  const [ruleCooldownMinutes, setRuleCooldownMinutes] = useState(30)
-  const [ruleButtons, setRuleButtons] = useState<Array<{ id: string; title: string }>>([])
-  const [isSavingRule, setIsSavingRule] = useState(false)
-
-  // Tab 2: Greeting & Bot Settings state
-  const [settings, setSettings] = useState<AccountBotAndGreetingSettings>({
-    ...initialSettings,
-    welcomeGreetingText: initialSettings.welcomeGreetingText || DEFAULT_WELCOME_PREVIEW,
-    awayGreetingText: initialSettings.awayGreetingText || DEFAULT_AWAY_PREVIEW,
-    businessHoursStart: initialSettings.businessHoursStart || "09:00",
-    businessHoursEnd: initialSettings.businessHoursEnd || "21:00",
-  })
-  const [isSavingSettings, setIsSavingSettings] = useState(false)
-
-  // Tab 3: Quick Replies state
-  const [quickReplies, setQuickReplies] = useState<QuickReplyItem[]>(initialQuickReplies)
-  const [qrSearch, setQrSearch] = useState("")
-  const [editingQrId, setEditingQrId] = useState<string | null>(null)
-  const [qrShortcut, setQrShortcut] = useState("")
-  const [qrTitle, setQrTitle] = useState("")
-  const [qrCategory, setQrCategory] = useState("general")
-  const [qrBodyText, setQrBodyText] = useState("")
-  const [isSavingQr, setIsSavingQr] = useState(false)
-
-  if (!open) return null
 
   const syncRules = (next: AutoReplyRuleItem[]) => {
     setRules(next)
@@ -160,6 +188,77 @@ export function WhatsappAutoReplyStudio({
     setQuickReplies(next)
     onQuickRepliesChange(next)
   }
+
+  const simulatorOutcome = (() => {
+    const sample = simulatorInput.trim()
+    if (!sample) return null
+
+    if (STOP_OPTOUT_PREVIEW_RE.test(sample)) {
+      return {
+        tier: "Priority 0 · Compliance STOP Opt-Out",
+        summary:
+          "Sets do_not_contact = true on conversation + VIP lead, sends single opt-out confirmation, and silences future automation.",
+      }
+    }
+
+    const postMatch = sample.match(ART_POST_CODE_PREVIEW_RE)
+    if (postMatch) {
+      return {
+        tier: "Priority 1 · ART-... Package Bot",
+        summary: `Resolves package code ${postMatch[0].toUpperCase()} and dispatches itemized PKR hospitality card + luxury PDF.`,
+      }
+    }
+
+    const orderedActive = [...rules]
+      .filter((r) => r.isActive)
+      .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
+
+    const lower = sample.toLowerCase()
+    for (const rule of orderedActive) {
+      for (const rawKw of rule.keywords || []) {
+        const kw = rawKw.trim()
+        if (!kw) continue
+        let matched = false
+        if (rule.matchType === "EXACT") {
+          matched = lower === kw.toLowerCase()
+        } else if (rule.matchType === "STARTS_WITH") {
+          matched = lower.startsWith(kw.toLowerCase())
+        } else if (rule.matchType === "REGEX") {
+          if (isSafeAutoReplyRegex(kw)) {
+            matched = new RegExp(kw, "i").test(sample)
+          }
+        } else {
+          matched = lower.includes(kw.toLowerCase())
+        }
+        if (matched) {
+          return {
+            tier: `Priority 2 · Keyword Rule "${rule.name}" (${rule.matchType})`,
+            summary: rule.responseText,
+          }
+        }
+      }
+    }
+
+    return {
+      tier: "Priority 3 · PKT Greeting / Human Consultant Queue",
+      summary: settings.welcomeGreetingEnabled
+        ? "Triggers first-contact Welcome or PKT After-Hours Away greeting (if outside Askari 10 Lahore business hours)."
+        : "No bot rule matched — routes cleanly to live Askari 10 Lahore consultant inbox.",
+    }
+  })()
+
+  const filteredQuickReplies = React.useMemo(() => {
+    return quickReplies.filter((q) => {
+      if (!qrSearch.trim()) return true
+      const term = qrSearch.toLowerCase()
+      return (
+        q.shortcut.toLowerCase().includes(term) ||
+        q.title.toLowerCase().includes(term) ||
+        q.category.toLowerCase().includes(term) ||
+        q.bodyText.toLowerCase().includes(term)
+      )
+    })
+  }, [quickReplies, qrSearch])
 
   const openNewRuleEditor = () => {
     setEditingRuleId(null)
@@ -202,6 +301,17 @@ export function WhatsappAutoReplyStudio({
     if (parsedKeywords.length === 0) {
       toast.error("Please provide at least one trigger keyword.")
       return
+    }
+    if (ruleMatchType === "REGEX") {
+      const unsafePattern = parsedKeywords.find(
+        (pattern) => !isSafeAutoReplyRegex(pattern)
+      )
+      if (unsafePattern) {
+        toast.error(
+          `Unsafe or invalid REGEX pattern "${unsafePattern}". Nested quantifiers, backreferences, and >120 char patterns are blocked.`
+        )
+        return
+      }
     }
     if (!ruleResponseText.trim()) {
       toast.error("Please provide the auto-reply response text.")
@@ -247,7 +357,9 @@ export function WhatsappAutoReplyStudio({
         [...updatedList].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
       )
       setIsRuleEditorOpen(false)
-      toast.success(editingRuleId ? "Auto-reply rule updated" : "Auto-reply rule created")
+      toast.success(
+        editingRuleId ? "Auto-reply rule updated" : "Auto-reply rule created"
+      )
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save rule")
     } finally {
@@ -291,7 +403,8 @@ export function WhatsappAutoReplyStudio({
       const res = await updateWhatsappGreetingSettingsAction({
         accountId: settings.id || accountId,
         autoReplyEnabled: settings.autoReplyEnabled,
-        autoReplyCooldownMinutes: Number(settings.autoReplyCooldownMinutes) || 60,
+        autoReplyCooldownMinutes:
+          Number(settings.autoReplyCooldownMinutes) || 60,
         welcomeGreetingEnabled: settings.welcomeGreetingEnabled,
         welcomeGreetingText: settings.welcomeGreetingText,
         awayGreetingEnabled: settings.awayGreetingEnabled,
@@ -311,7 +424,8 @@ export function WhatsappAutoReplyStudio({
         autoReplyEnabled: res.account.autoReplyEnabled,
         autoReplyCooldownMinutes: res.account.autoReplyCooldownMinutes,
         welcomeGreetingEnabled: res.account.welcomeGreetingEnabled,
-        welcomeGreetingText: res.account.welcomeGreetingText || DEFAULT_WELCOME_PREVIEW,
+        welcomeGreetingText:
+          res.account.welcomeGreetingText || DEFAULT_WELCOME_PREVIEW,
         awayGreetingEnabled: res.account.awayGreetingEnabled,
         awayGreetingText: res.account.awayGreetingText || DEFAULT_AWAY_PREVIEW,
         businessHoursStart: res.account.businessHoursStart || "09:00",
@@ -321,7 +435,9 @@ export function WhatsappAutoReplyStudio({
       onSettingsChange(nextSettings)
       toast.success("Bot & Greeting settings saved")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update settings")
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update settings"
+      )
     } finally {
       setIsSavingSettings(false)
     }
@@ -362,7 +478,9 @@ export function WhatsappAutoReplyStudio({
       })
 
       if (!res.success || !res.quickReply) {
-        toast.error((res as { error?: string }).error || "Could not save quick reply")
+        toast.error(
+          (res as { error?: string }).error || "Could not save quick reply"
+        )
         return
       }
 
@@ -373,9 +491,13 @@ export function WhatsappAutoReplyStudio({
 
       syncQuickReplies(nextList)
       resetQuickReplyForm()
-      toast.success(editingQrId ? "Quick reply updated" : "Quick reply created")
+      toast.success(
+        editingQrId ? "Quick reply updated" : "Quick reply created"
+      )
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save quick reply")
+      toast.error(
+        err instanceof Error ? err.message : "Failed to save quick reply"
+      )
     } finally {
       setIsSavingQr(false)
     }
@@ -390,67 +512,73 @@ export function WhatsappAutoReplyStudio({
         toast.success("Quick reply deleted")
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to delete quick reply")
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete quick reply"
+      )
     }
   }
 
-  const filteredQuickReplies = quickReplies.filter((q) => {
-    if (!qrSearch.trim()) return true
-    const term = qrSearch.toLowerCase()
-    return (
-      q.shortcut.toLowerCase().includes(term) ||
-      q.title.toLowerCase().includes(term) ||
-      q.category.toLowerCase().includes(term) ||
-      q.bodyText.toLowerCase().includes(term)
-    )
-  })
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[#C5A059]/30 bg-[#07110E] text-[#F4F0E8] shadow-2xl">
-        {/* Studio Header */}
-        <div className="flex items-center justify-between border-b border-white/10 bg-[#0A1713] px-6 py-4">
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose()
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        className="flex max-h-[90vh] w-full max-w-5xl sm:max-w-5xl flex-col overflow-hidden rounded-2xl border border-[#C5A059]/40 bg-card p-0 gap-0 text-foreground shadow-2xl"
+      >
+        {/* Haramain Luxury Studio Header */}
+        <div className="flex items-center justify-between border-b border-[#C5A059]/30 bg-[#0A3622] px-6 py-4 text-[#FAF8F5]">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#C5A059]/40 bg-[#C5A059]/15 text-[#C5A059]">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#C5A059]/50 bg-[#C5A059]/15 text-[#C5A059]">
               <Bot className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="font-serif text-lg font-semibold text-[#F4F0E8]">
+                <DialogTitle className="font-serif text-lg font-semibold text-[#FAF8F5]">
                   WhatsApp Auto-Replies &amp; Quick Shortcuts
-                </h2>
-                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-emerald-300 uppercase">
+                </DialogTitle>
+                <span className="rounded-full border border-[#C5A059]/40 bg-[#C5A059]/15 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-[#E6C77B] uppercase">
                   3-Priority Pipeline
                 </span>
               </div>
-              <p className="text-xs text-white/55">
-                Priority 1: Package Bot · Priority 2: Custom Keyword Rules · Priority 3: PKT Away &amp; First-Contact Welcome
-              </p>
+              <DialogDescription className="text-xs text-[#FAF8F5]/75">
+                STOP Compliance Guard · Priority 1: ART-... Package Bot ·
+                Priority 2: Account-Scoped Keyword Rules · Priority 3: PKT
+                Greetings
+              </DialogDescription>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-white/10 bg-white/5 p-2 text-white/60 transition hover:bg-white/10 hover:text-white"
+          <DialogClose
+            render={
+              <button
+                type="button"
+                aria-label="Close Auto-Replies Studio"
+                className="rounded-lg border border-[#FAF8F5]/20 bg-[#FAF8F5]/10 p-2 text-[#FAF8F5]/80 transition hover:bg-[#FAF8F5]/20 hover:text-white"
+              />
+            }
           >
             <X className="h-4 w-4" />
-          </button>
+          </DialogClose>
         </div>
 
         {statusBanner && (
           <div
+            role="status"
             className={`flex items-center justify-between border-b px-6 py-2 text-xs font-medium ${
               statusBanner.type === "success"
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                : "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                ? "border-emerald-600/25 bg-emerald-50 text-emerald-900"
+                : "border-rose-600/25 bg-rose-50 text-rose-900"
             }`}
           >
             <span>{statusBanner.message}</span>
             <button
               type="button"
               onClick={() => setStatusBanner(null)}
-              className="text-[11px] opacity-70 hover:opacity-100"
+              className="text-[11px] font-semibold underline opacity-80 hover:opacity-100"
             >
               Dismiss
             </button>
@@ -458,14 +586,20 @@ export function WhatsappAutoReplyStudio({
         )}
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-2 border-b border-white/10 bg-[#091410] px-6 pt-3">
+        <div
+          role="tablist"
+          aria-label="WhatsApp Auto-Reply Studio Sections"
+          className="flex items-center gap-2 border-b border-border bg-[#FAF8F5] px-6 pt-3"
+        >
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "rules"}
             onClick={() => setActiveTab("rules")}
             className={`flex items-center gap-2 border-b-2 px-4 pb-3 text-xs font-semibold transition ${
               activeTab === "rules"
-                ? "border-[#C5A059] text-[#C5A059]"
-                : "border-transparent text-white/55 hover:text-white"
+                ? "border-[#0A3622] text-[#0A3622]"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             <Zap className="h-3.5 w-3.5" />
@@ -474,24 +608,28 @@ export function WhatsappAutoReplyStudio({
 
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "greetings"}
             onClick={() => setActiveTab("greetings")}
             className={`flex items-center gap-2 border-b-2 px-4 pb-3 text-xs font-semibold transition ${
               activeTab === "greetings"
-                ? "border-[#C5A059] text-[#C5A059]"
-                : "border-transparent text-white/55 hover:text-white"
+                ? "border-[#0A3622] text-[#0A3622]"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             <Clock className="h-3.5 w-3.5" />
-            Greeting & Bot Setup
+            Greeting &amp; Bot Setup
           </button>
 
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "quick_replies"}
             onClick={() => setActiveTab("quick_replies")}
             className={`flex items-center gap-2 border-b-2 px-4 pb-3 text-xs font-semibold transition ${
               activeTab === "quick_replies"
-                ? "border-[#C5A059] text-[#C5A059]"
-                : "border-transparent text-white/55 hover:text-white"
+                ? "border-[#0A3622] text-[#0A3622]"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             <MessageSquare className="h-3.5 w-3.5" />
@@ -506,37 +644,73 @@ export function WhatsappAutoReplyStudio({
           {/* ========================================== */}
           {activeTab === "rules" && (
             <div className="space-y-6">
-              {/* Top Action Bar */}
-              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#0C1C17] p-4">
-                <div>
-                  <h3 className="text-xs font-semibold text-[#F4F0E8]">
-                    Keyword Auto-Reply Rules
-                  </h3>
-                  <p className="mt-1 text-[11px] text-white/55">
-                    Automatically answer frequent pilgrim inquiries with custom responses, media, and interactive buttons.
-                  </p>
+              {/* Top Action Bar + Live Pipeline Simulator */}
+              <div className="grid gap-4 rounded-xl border border-border bg-[#FAF8F5] p-4 lg:grid-cols-12">
+                <div className="flex flex-col justify-between gap-3 lg:col-span-5">
+                  <div>
+                    <h3 className="text-xs font-semibold text-foreground">
+                      Account-Scoped Keyword Auto-Reply Rules
+                    </h3>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Answer frequent pilgrim inquiries for your Askari 10
+                      Lahore Cantt WABA line with verified details, PDFs, and
+                      interactive buttons.
+                    </p>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={openNewRuleEditor}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A3622] px-3.5 py-2 text-xs font-semibold text-[#FAF8F5] transition hover:bg-[#0d472d]"
+                    >
+                      <Plus className="h-3.5 w-3.5 text-[#C5A059]" />
+                      New Keyword Rule
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={openNewRuleEditor}
-                  className="flex items-center gap-1.5 rounded-lg bg-[#C5A059] px-3.5 py-2 text-xs font-semibold text-[#06100D] transition hover:bg-[#d4b26c] cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  New Keyword Rule
-                </button>
+
+                <div className="rounded-lg border border-[#C5A059]/35 bg-white p-3 lg:col-span-7">
+                  <label
+                    htmlFor="auto-reply-live-simulator"
+                    className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#0A3622]"
+                  >
+                    <Sparkles className="h-3.5 w-3.5 text-[#C5A059]" />
+                    Live 3-Priority Inbound Simulator
+                  </label>
+                  <input
+                    id="auto-reply-live-simulator"
+                    type="text"
+                    value={simulatorInput}
+                    onChange={(e) => setSimulatorInput(e.target.value)}
+                    placeholder="Test a message: e.g. STOP, ART-UMR-01, location, documents, bank..."
+                    className="w-full rounded-md border border-border bg-[#FAF8F5] px-3 py-1.5 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
+                  />
+                  {simulatorOutcome && (
+                    <div className="mt-2 rounded-md border border-emerald-700/20 bg-emerald-50/60 px-2.5 py-2 text-[11px] text-emerald-950">
+                      <div className="font-semibold">
+                        {simulatorOutcome.tier}
+                      </div>
+                      <div className="mt-0.5 line-clamp-2 text-emerald-900/80">
+                        {simulatorOutcome.summary}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Rule Editor Drawer / Form */}
+              {/* Rule Editor Form */}
               {isRuleEditorOpen && (
-                <div className="rounded-xl border border-[#C5A059]/40 bg-[#0D1F1A] p-5 shadow-lg">
-                  <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
-                    <h3 className="font-serif text-sm font-semibold text-[#C5A059]">
-                      {editingRuleId ? "Edit Keyword Auto-Reply Rule" : "Create Keyword Auto-Reply Rule"}
+                <div className="rounded-xl border border-[#C5A059]/50 bg-[#FAF8F5] p-5 shadow-md">
+                  <div className="mb-4 flex items-center justify-between border-b border-border pb-3">
+                    <h3 className="font-serif text-sm font-semibold text-[#0A3622]">
+                      {editingRuleId
+                        ? "Edit Keyword Auto-Reply Rule"
+                        : "Create Keyword Auto-Reply Rule"}
                     </h3>
                     <button
                       type="button"
                       onClick={() => setIsRuleEditorOpen(false)}
-                      className="text-xs text-white/50 hover:text-white"
+                      className="text-xs font-medium text-muted-foreground hover:text-foreground"
                     >
                       Cancel
                     </button>
@@ -544,20 +718,20 @@ export function WhatsappAutoReplyStudio({
 
                   <div className="grid gap-4 md:grid-cols-12">
                     <div className="md:col-span-5">
-                      <label className="mb-1 block text-[11px] font-medium text-white/70">
+                      <label className="mb-1 block text-[11px] font-semibold text-foreground">
                         Rule Name
                       </label>
                       <input
                         type="text"
                         value={ruleName}
                         onChange={(e) => setRuleName(e.target.value)}
-                        placeholder="e.g. Office Location & Askari 10 Pin"
-                        className="w-full rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                        placeholder="e.g. Office Location & Askari 10 Lahore Pin"
+                        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                       />
                     </div>
 
                     <div className="md:col-span-3">
-                      <label className="mb-1 block text-[11px] font-medium text-white/70">
+                      <label className="mb-1 block text-[11px] font-semibold text-foreground">
                         Match Strategy
                       </label>
                       <select
@@ -565,17 +739,19 @@ export function WhatsappAutoReplyStudio({
                         onChange={(e) =>
                           setRuleMatchType(e.target.value as AutoReplyMatchType)
                         }
-                        className="w-full rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                       >
                         <option value="CONTAINS">CONTAINS (Substring)</option>
                         <option value="EXACT">EXACT (Full Message)</option>
                         <option value="STARTS_WITH">STARTS_WITH (Prefix)</option>
-                        <option value="REGEX">REGEX (Pattern &le; 120 chars)</option>
+                        <option value="REGEX">
+                          REGEX (Safe Pattern &le; 120 chars)
+                        </option>
                       </select>
                     </div>
 
                     <div className="md:col-span-2">
-                      <label className="mb-1 block text-[11px] font-medium text-white/70">
+                      <label className="mb-1 block text-[11px] font-semibold text-foreground">
                         Priority (0-1000)
                       </label>
                       <input
@@ -584,12 +760,12 @@ export function WhatsappAutoReplyStudio({
                         max={1000}
                         value={rulePriority}
                         onChange={(e) => setRulePriority(Number(e.target.value))}
-                        className="w-full rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                       />
                     </div>
 
                     <div className="md:col-span-2">
-                      <label className="mb-1 block text-[11px] font-medium text-white/70">
+                      <label className="mb-1 block text-[11px] font-semibold text-foreground">
                         Cooldown (mins)
                       </label>
                       <input
@@ -600,51 +776,51 @@ export function WhatsappAutoReplyStudio({
                         onChange={(e) =>
                           setRuleCooldownMinutes(Number(e.target.value))
                         }
-                        className="w-full rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                       />
                     </div>
 
                     <div className="md:col-span-12">
-                      <label className="mb-1 block text-[11px] font-medium text-white/70">
+                      <label className="mb-1 block text-[11px] font-semibold text-foreground">
                         Trigger Keywords (comma-separated, case-insensitive)
                       </label>
                       <input
                         type="text"
                         value={ruleKeywordsInput}
                         onChange={(e) => setRuleKeywordsInput(e.target.value)}
-                        placeholder="location, address, office, askari, chaklala, map"
-                        className="w-full rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                        placeholder="location, address, office, askari 10, lahore cantt, airport road, map"
+                        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                       />
                     </div>
 
                     <div className="md:col-span-12">
-                      <label className="mb-1 block text-[11px] font-medium text-white/70">
+                      <label className="mb-1 block text-[11px] font-semibold text-foreground">
                         WhatsApp Auto-Reply Message Body
                       </label>
                       <textarea
                         rows={4}
                         value={ruleResponseText}
                         onChange={(e) => setRuleResponseText(e.target.value)}
-                        placeholder="Assalamu Alaikum! Here are the requested details..."
-                        className="w-full rounded-lg border border-white/10 bg-black/35 p-3 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                        placeholder="Assalam-o-Alaikum! Visit our Askari 10 Sector C Lahore Cantt office..."
+                        className="w-full rounded-lg border border-border bg-white p-3 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                       />
                     </div>
 
                     <div className="md:col-span-6">
-                      <label className="mb-1 block text-[11px] font-medium text-white/70">
-                        Optional PDF / Brochure URL (R2 or HTTPS)
+                      <label className="mb-1 block text-[11px] font-semibold text-foreground">
+                        Optional PDF / Brochure URL (HTTPS)
                       </label>
                       <input
                         type="url"
                         value={ruleMediaUrl}
                         onChange={(e) => setRuleMediaUrl(e.target.value)}
                         placeholder="https://..."
-                        className="w-full rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                       />
                     </div>
 
                     <div className="md:col-span-6">
-                      <label className="mb-1 block text-[11px] font-medium text-white/70">
+                      <label className="mb-1 block text-[11px] font-semibold text-foreground">
                         Optional Document Filename
                       </label>
                       <input
@@ -652,16 +828,17 @@ export function WhatsappAutoReplyStudio({
                         value={ruleMediaFilename}
                         onChange={(e) => setRuleMediaFilename(e.target.value)}
                         placeholder="Al-Ramlah-Umrah-Checklist.pdf"
-                        className="w-full rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                       />
                     </div>
 
                     {/* Interactive Quick-Reply Buttons (max 3) */}
                     <div className="md:col-span-12">
                       <div className="mb-2 flex items-center justify-between">
-                        <label className="text-[11px] font-medium text-white/70">
-                          Optional Interactive Reply Buttons (up to 3 buttons, max 20 chars each)
-                        </label>
+                        <span className="text-[11px] font-semibold text-foreground">
+                          Interactive Reply Buttons (Optional, max 3 · 20 chars
+                          each)
+                        </span>
                         {ruleButtons.length < 3 && (
                           <button
                             type="button"
@@ -669,24 +846,22 @@ export function WhatsappAutoReplyStudio({
                               setRuleButtons([
                                 ...ruleButtons,
                                 {
-                                  id: `rule_btn_${ruleButtons.length + 1}`,
+                                  id: `btn_${ruleButtons.length + 1}`,
                                   title: "",
                                 },
                               ])
                             }
-                            className="flex items-center gap-1 text-[11px] font-medium text-[#C5A059] hover:underline"
+                            className="inline-flex items-center gap-1 rounded border border-[#0A3622]/30 bg-white px-2 py-1 text-[11px] font-semibold text-[#0A3622] hover:bg-muted"
                           >
                             <Plus className="h-3 w-3" /> Add Button
                           </button>
                         )}
                       </div>
+
                       {ruleButtons.length > 0 && (
                         <div className="grid gap-2 sm:grid-cols-3">
                           {ruleButtons.map((btn, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-black/30 p-2"
-                            >
+                            <div key={idx} className="flex items-center gap-1.5">
                               <input
                                 type="text"
                                 maxLength={20}
@@ -694,13 +869,13 @@ export function WhatsappAutoReplyStudio({
                                 onChange={(e) => {
                                   const next = [...ruleButtons]
                                   next[idx] = {
-                                    ...next[idx],
+                                    ...next[idx]!,
                                     title: e.target.value,
                                   }
                                   setRuleButtons(next)
                                 }}
-                                placeholder={`Button ${idx + 1} title`}
-                                className="w-full bg-transparent text-xs text-white focus:outline-none"
+                                placeholder={`Button ${idx + 1} label`}
+                                className="w-full rounded-lg border border-border bg-white px-2.5 py-1.5 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                               />
                               <button
                                 type="button"
@@ -709,7 +884,8 @@ export function WhatsappAutoReplyStudio({
                                     ruleButtons.filter((_, i) => i !== idx)
                                   )
                                 }
-                                className="text-white/40 hover:text-rose-400"
+                                aria-label={`Remove interactive button ${idx + 1}`}
+                                className="rounded p-1 text-muted-foreground hover:bg-rose-50 hover:text-rose-700"
                               >
                                 <X className="h-3.5 w-3.5" />
                               </button>
@@ -724,7 +900,7 @@ export function WhatsappAutoReplyStudio({
                     <button
                       type="button"
                       onClick={() => setIsRuleEditorOpen(false)}
-                      className="rounded-lg border border-white/10 px-4 py-2 text-xs text-white/70 hover:bg-white/5"
+                      className="rounded-lg border border-border bg-white px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
                     >
                       Cancel
                     </button>
@@ -732,9 +908,9 @@ export function WhatsappAutoReplyStudio({
                       type="button"
                       onClick={handleSaveRule}
                       disabled={isSavingRule}
-                      className="flex items-center gap-1.5 rounded-lg bg-[#C5A059] px-4 py-2 text-xs font-semibold text-[#06100D] hover:bg-[#d4b26c] disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A3622] px-4 py-2 text-xs font-semibold text-[#FAF8F5] hover:bg-[#0d472d] disabled:opacity-50"
                     >
-                      <Check className="h-3.5 w-3.5" />
+                      <Check className="h-3.5 w-3.5 text-[#C5A059]" />
                       {isSavingRule ? "Saving..." : "Save Rule"}
                     </button>
                   </div>
@@ -743,13 +919,15 @@ export function WhatsappAutoReplyStudio({
 
               {/* Rules List */}
               {rules.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-white/15 bg-black/20 p-10 text-center">
-                  <Bot className="mx-auto h-8 w-8 text-[#C5A059]/60" />
-                  <h4 className="mt-2 font-serif text-sm font-semibold text-white">
+                <div className="rounded-xl border border-dashed border-border bg-[#FAF8F5] p-10 text-center">
+                  <Bot className="mx-auto h-8 w-8 text-[#C5A059]" />
+                  <h4 className="mt-2 font-serif text-sm font-semibold text-foreground">
                     No Custom Keyword Auto-Reply Rules Yet
                   </h4>
-                  <p className="mx-auto mt-1 max-w-md text-xs text-white/50">
-                    Load the 4 pre-built Al Ramlah Travels keyword rules (Office Location, Umrah Documents, Hajj 2027 Maktab Guide, Bank Details) or create a custom rule.
+                  <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
+                    Create an account-scoped rule for Askari 10 Lahore Cantt
+                    directions, Umrah visa checklists, Hajj 2027 Maktab A/B/C
+                    tiers, or verified corporate payment instructions.
                   </p>
                 </div>
               ) : (
@@ -759,34 +937,33 @@ export function WhatsappAutoReplyStudio({
                       key={rule.id}
                       className={`rounded-xl border p-4 transition ${
                         rule.isActive
-                          ? "border-white/10 bg-[#0B1914]"
-                          : "border-white/5 bg-black/20 opacity-60"
+                          ? "border-border bg-white shadow-2xs"
+                          : "border-border/60 bg-muted/40 opacity-70"
                       }`}
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="space-y-1.5">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-md border border-[#C5A059]/35 bg-[#C5A059]/10 px-2 py-0.5 text-[10px] font-semibold text-[#C5A059]">
+                            <span className="rounded-md border border-[#C5A059]/40 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-[#8A6928]">
                               Priority {rule.priority}
                             </span>
-                            <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                            <span className="rounded-md border border-[#0A3622]/25 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-[#0A3622]">
                               {rule.matchType}
                             </span>
-                            <h4 className="text-sm font-semibold text-[#F4F0E8]">
+                            <h4 className="text-sm font-semibold text-foreground">
                               {rule.name}
                             </h4>
-                            <span className="text-[11px] text-white/45">
+                            <span className="text-[11px] text-muted-foreground">
                               · Cooldown {rule.cooldownMinutes}m · Triggered{" "}
                               {rule.triggerCount ?? 0}x
                             </span>
                           </div>
 
-                          {/* Keyword Chips */}
                           <div className="flex flex-wrap gap-1.5">
                             {(rule.keywords || []).map((kw, idx) => (
                               <span
                                 key={idx}
-                                className="rounded border border-white/10 bg-black/35 px-2 py-0.5 font-mono text-[11px] text-white/80"
+                                className="rounded border border-border bg-[#FAF8F5] px-2 py-0.5 font-mono text-[11px] text-foreground"
                               >
                                 {kw}
                               </span>
@@ -798,18 +975,22 @@ export function WhatsappAutoReplyStudio({
                           <button
                             type="button"
                             onClick={() => handleToggleRule(rule)}
-                            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/10"
+                            className="flex items-center gap-1 rounded-lg border border-border bg-[#FAF8F5] px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
                             title={rule.isActive ? "Pause rule" : "Activate rule"}
                           >
                             {rule.isActive ? (
                               <>
-                                <ToggleRight className="h-4 w-4 text-emerald-400" />
-                                <span className="text-[11px] text-emerald-300">Active</span>
+                                <ToggleRight className="h-4 w-4 text-emerald-700" />
+                                <span className="text-[11px] text-emerald-800">
+                                  Active
+                                </span>
                               </>
                             ) : (
                               <>
-                                <ToggleLeft className="h-4 w-4 text-white/40" />
-                                <span className="text-[11px] text-white/50">Paused</span>
+                                <ToggleLeft className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-[11px] text-muted-foreground">
+                                  Paused
+                                </span>
                               </>
                             )}
                           </button>
@@ -817,8 +998,8 @@ export function WhatsappAutoReplyStudio({
                           <button
                             type="button"
                             onClick={() => openEditRuleEditor(rule)}
-                            className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
-                            title="Edit Rule"
+                            aria-label={`Edit rule ${rule.name}`}
+                            className="rounded-lg border border-border bg-[#FAF8F5] p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                           >
                             <Edit3 className="h-3.5 w-3.5" />
                           </button>
@@ -826,23 +1007,24 @@ export function WhatsappAutoReplyStudio({
                           <button
                             type="button"
                             onClick={() => handleDeleteRule(rule.id)}
-                            className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-white/60 hover:border-rose-500/40 hover:bg-rose-500/15 hover:text-rose-300"
-                            title="Delete Rule"
+                            aria-label={`Delete rule ${rule.name}`}
+                            className="rounded-lg border border-border bg-[#FAF8F5] p-1.5 text-muted-foreground hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       </div>
 
-                      <p className="mt-3 line-clamp-3 whitespace-pre-line rounded-lg border border-white/5 bg-black/25 p-3 text-xs text-white/75">
+                      <p className="mt-3 line-clamp-3 whitespace-pre-line rounded-lg border border-border/70 bg-[#FAF8F5] p-3 text-xs text-foreground/85">
                         {rule.responseText}
                       </p>
 
-                      {((rule.interactiveButtons && rule.interactiveButtons.length > 0) ||
+                      {((rule.interactiveButtons &&
+                        rule.interactiveButtons.length > 0) ||
                         rule.mediaUrl) && (
                         <div className="mt-2.5 flex flex-wrap items-center gap-2">
                           {rule.mediaUrl && (
-                            <span className="flex items-center gap-1 rounded border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-300">
+                            <span className="flex items-center gap-1 rounded border border-sky-300 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-900">
                               <FileText className="h-3 w-3" />
                               PDF Attachment: {rule.mediaFilename || "Document"}
                             </span>
@@ -850,7 +1032,7 @@ export function WhatsappAutoReplyStudio({
                           {rule.interactiveButtons?.map((btn, i) => (
                             <span
                               key={i}
-                              className="rounded border border-[#C5A059]/30 bg-[#C5A059]/10 px-2 py-0.5 text-[10px] text-[#C5A059]"
+                              className="rounded border border-[#C5A059]/40 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-[#0A3622]"
                             >
                               [Button] {btn.title}
                             </span>
@@ -865,89 +1047,21 @@ export function WhatsappAutoReplyStudio({
           )}
 
           {/* ========================================== */}
-          {/* TAB 2: GREETING & BOT SETUP                */}
+          {/* TAB 2: GREETING & BOT CONFIGURATION        */}
           {/* ========================================== */}
           {activeTab === "greetings" && (
-            <div className="space-y-6">
-              {/* Priority 1: Master Auto-Responder & ART-... Package Bot */}
-              <div className="rounded-xl border border-[#C5A059]/30 bg-[#0B1914] p-5">
+            <div className="space-y-5">
+              {/* Master Auto-Reply Switch */}
+              <div className="rounded-xl border border-border bg-[#FAF8F5] p-5">
                 <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded bg-[#C5A059]/20 px-2 py-0.5 text-[10px] font-semibold text-[#C5A059]">
-                        PRIORITY 1 · MASTER SWITCH
-                      </span>
-                      <h3 className="font-serif text-sm font-semibold text-[#F4F0E8]">
-                        Master WaCRM Auto-Responder & ART-... Package Code Bot
-                      </h3>
-                    </div>
-                    <p className="text-xs text-white/60">
-                      When enabled, the webhook automatically responds to detected <code className="text-[#C5A059]">ART-...</code> campaign codes, custom keyword rules, and greetings.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-white/60">
-                        ART-... Cooldown (mins):
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={10080}
-                        value={settings.autoReplyCooldownMinutes}
-                        onChange={(e) =>
-                          setSettings({
-                            ...settings,
-                            autoReplyCooldownMinutes: Number(e.target.value),
-                          })
-                        }
-                        className="w-20 rounded-lg border border-white/15 bg-black/40 px-2.5 py-1.5 text-xs text-white"
-                      />
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSettings({
-                          ...settings,
-                          autoReplyEnabled: !settings.autoReplyEnabled,
-                        })
-                      }
-                      className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
-                        settings.autoReplyEnabled
-                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                          : "bg-white/5 text-white/50 border border-white/10"
-                      }`}
-                    >
-                      {settings.autoReplyEnabled ? (
-                        <>
-                          <ToggleRight className="h-4 w-4" /> Bot Enabled
-                        </>
-                      ) : (
-                        <>
-                          <ToggleLeft className="h-4 w-4" /> Bot Disabled
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Priority 3A: First-Contact Welcome Greeting */}
-              <div className="rounded-xl border border-white/10 bg-[#0B1914] p-5">
-                <div className="mb-3 flex items-center justify-between">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                        FIRST CONTACT GREETING
-                      </span>
-                      <h3 className="font-serif text-sm font-semibold text-[#F4F0E8]">
-                        New Pilgrim Welcome Message
-                      </h3>
-                    </div>
-                    <p className="mt-0.5 text-xs text-white/55">
-                      Sent once when a pilgrim messages Al Ramlah Travels for the very first time and no package code or keyword rule matches.
+                    <h3 className="font-serif text-sm font-semibold text-foreground">
+                      Master 3-Priority Auto-Responder Engine
+                    </h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Controls ART-... package cards, guided Umrah intake, and
+                      keyword rules (STOP opt-out compliance remains active at
+                      all times).
                     </p>
                   </div>
 
@@ -956,13 +1070,79 @@ export function WhatsappAutoReplyStudio({
                     onClick={() =>
                       setSettings({
                         ...settings,
-                        welcomeGreetingEnabled: !settings.welcomeGreetingEnabled,
+                        autoReplyEnabled: !settings.autoReplyEnabled,
+                      })
+                    }
+                    className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
+                      settings.autoReplyEnabled
+                        ? "bg-[#0A3622] text-[#FAF8F5]"
+                        : "border border-border bg-white text-muted-foreground"
+                    }`}
+                  >
+                    {settings.autoReplyEnabled ? (
+                      <>
+                        <ToggleRight className="h-4 w-4 text-[#C5A059]" />{" "}
+                        Auto-Responder Active
+                      </>
+                    ) : (
+                      <>
+                        <ToggleLeft className="h-4 w-4" /> Auto-Responder Paused
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="mt-4 max-w-xs">
+                  <label className="mb-1 block text-[11px] font-semibold text-foreground">
+                    Package Code Cooldown Window (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10080}
+                    value={settings.autoReplyCooldownMinutes}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        autoReplyCooldownMinutes: Number(e.target.value),
+                      })
+                    }
+                    className="w-full rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Priority 3A: First-Contact Welcome Greeting */}
+              <div className="rounded-xl border border-border bg-white p-5">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-900 uppercase">
+                        First Contact
+                      </span>
+                      <h3 className="font-serif text-sm font-semibold text-foreground">
+                        First-Message Welcome Greeting
+                      </h3>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Sent once on a pilgrim&apos;s very first inbound message
+                      when no ART-... code or keyword rule matches.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSettings({
+                        ...settings,
+                        welcomeGreetingEnabled:
+                          !settings.welcomeGreetingEnabled,
                       })
                     }
                     className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       settings.welcomeGreetingEnabled
-                        ? "border border-emerald-500/40 bg-emerald-500/20 text-emerald-300"
-                        : "border border-white/10 bg-white/5 text-white/50"
+                        ? "border border-emerald-600/30 bg-emerald-50 text-emerald-900"
+                        : "border border-border bg-[#FAF8F5] text-muted-foreground"
                     }`}
                   >
                     {settings.welcomeGreetingEnabled ? (
@@ -986,24 +1166,26 @@ export function WhatsappAutoReplyStudio({
                       welcomeGreetingText: e.target.value,
                     })
                   }
-                  className="w-full rounded-lg border border-white/10 bg-black/35 p-3 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-[#FAF8F5] p-3 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                 />
               </div>
 
               {/* Priority 3B: After-Hours PKT Away Greeting */}
-              <div className="rounded-xl border border-white/10 bg-[#0B1914] p-5">
+              <div className="rounded-xl border border-border bg-white p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-                        PKT (ASIA/KARACHI) AFTER-HOURS
+                      <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900 uppercase">
+                        PKT (Asia/Karachi) After-Hours
                       </span>
-                      <h3 className="font-serif text-sm font-semibold text-[#F4F0E8]">
+                      <h3 className="font-serif text-sm font-semibold text-foreground">
                         After-Hours Away Auto-Reply (12h Cooldown)
                       </h3>
                     </div>
-                    <p className="mt-0.5 text-xs text-white/55">
-                      Automatically replies outside your Rawalpindi office hours (Asia/Karachi timezone) when no ART-... code or keyword rule matches.
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Automatically replies outside your Askari 10 Lahore Cantt
+                      office hours (Asia/Karachi timezone) when no ART-... code
+                      or keyword rule matches.
                     </p>
                   </div>
 
@@ -1017,8 +1199,8 @@ export function WhatsappAutoReplyStudio({
                     }
                     className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       settings.awayGreetingEnabled
-                        ? "border border-amber-500/40 bg-amber-500/20 text-amber-300"
-                        : "border border-white/10 bg-white/5 text-white/50"
+                        ? "border border-amber-600/30 bg-amber-50 text-amber-900"
+                        : "border border-border bg-[#FAF8F5] text-muted-foreground"
                     }`}
                   >
                     {settings.awayGreetingEnabled ? (
@@ -1035,7 +1217,7 @@ export function WhatsappAutoReplyStudio({
 
                 <div className="mb-3 grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-[11px] font-medium text-white/70">
+                    <label className="mb-1 block text-[11px] font-semibold text-foreground">
                       PKT Business Hours Start (24h HH:MM)
                     </label>
                     <input
@@ -1047,12 +1229,12 @@ export function WhatsappAutoReplyStudio({
                           businessHoursStart: e.target.value,
                         })
                       }
-                      className="w-full rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-[#FAF8F5] px-3 py-2 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                     />
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-[11px] font-medium text-white/70">
+                    <label className="mb-1 block text-[11px] font-semibold text-foreground">
                       PKT Business Hours End (24h HH:MM)
                     </label>
                     <input
@@ -1064,7 +1246,7 @@ export function WhatsappAutoReplyStudio({
                           businessHoursEnd: e.target.value,
                         })
                       }
-                      className="w-full rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-[#FAF8F5] px-3 py-2 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                     />
                   </div>
                 </div>
@@ -1078,7 +1260,7 @@ export function WhatsappAutoReplyStudio({
                       awayGreetingText: e.target.value,
                     })
                   }
-                  className="w-full rounded-lg border border-white/10 bg-black/35 p-3 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-[#FAF8F5] p-3 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                 />
               </div>
 
@@ -1087,9 +1269,9 @@ export function WhatsappAutoReplyStudio({
                   type="button"
                   onClick={handleSaveSettings}
                   disabled={isSavingSettings}
-                  className="flex items-center gap-2 rounded-xl bg-[#C5A059] px-5 py-2.5 text-xs font-semibold text-[#06100D] transition hover:bg-[#d4b26c] disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#0A3622] px-5 py-2.5 text-xs font-semibold text-[#FAF8F5] transition hover:bg-[#0d472d] disabled:opacity-50"
                 >
-                  <ShieldCheck className="h-4 w-4" />
+                  <ShieldCheck className="h-4 w-4 text-[#C5A059]" />
                   {isSavingSettings
                     ? "Saving Greeting & Bot Settings..."
                     : "Save Greeting & Bot Configuration"}
@@ -1103,17 +1285,18 @@ export function WhatsappAutoReplyStudio({
           {/* ========================================== */}
           {activeTab === "quick_replies" && (
             <div className="grid gap-6 lg:grid-cols-12">
-              {/* Left Column: Create / Edit Quick Reply Form */}
-              <div className="rounded-xl border border-[#C5A059]/30 bg-[#0B1914] p-5 lg:col-span-5">
+              <div className="rounded-xl border border-[#C5A059]/40 bg-[#FAF8F5] p-5 lg:col-span-5">
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="font-serif text-sm font-semibold text-[#C5A059]">
-                    {editingQrId ? "Edit Quick Reply (/shortcut)" : "New Quick Reply (/shortcut)"}
+                  <h3 className="font-serif text-sm font-semibold text-[#0A3622]">
+                    {editingQrId
+                      ? "Edit Quick Reply (/shortcut)"
+                      : "New Quick Reply (/shortcut)"}
                   </h3>
                   {editingQrId && (
                     <button
                       type="button"
                       onClick={resetQuickReplyForm}
-                      className="text-xs text-white/50 hover:text-white"
+                      className="text-xs font-medium text-muted-foreground hover:text-foreground"
                     >
                       Clear
                     </button>
@@ -1122,11 +1305,14 @@ export function WhatsappAutoReplyStudio({
 
                 <div className="space-y-3">
                   <div>
-                    <label className="mb-1 block text-[11px] font-medium text-white/70">
-                      Slash Shortcut (type <code className="text-[#C5A059]">/</code> in chat composer)
+                    <label className="mb-1 block text-[11px] font-semibold text-foreground">
+                      Slash Shortcut (type{" "}
+                      <code className="text-[#0A3622]">/</code> in chat composer)
                     </label>
-                    <div className="flex items-center rounded-lg border border-white/10 bg-black/35 px-3 py-2">
-                      <span className="mr-1 font-mono text-xs text-[#C5A059]">/</span>
+                    <div className="flex items-center rounded-lg border border-border bg-white px-3 py-2">
+                      <span className="mr-1 font-mono text-xs font-bold text-[#0A3622]">
+                        /
+                      </span>
                       <input
                         type="text"
                         value={qrShortcut}
@@ -1134,14 +1320,14 @@ export function WhatsappAutoReplyStudio({
                           setQrShortcut(e.target.value.replace(/^\/+/, ""))
                         }
                         placeholder="docs, bank, location, welcome"
-                        className="w-full bg-transparent font-mono text-xs text-white focus:outline-none"
+                        className="w-full bg-transparent font-mono text-xs text-foreground focus:outline-none"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="mb-1 block text-[11px] font-medium text-white/70">
+                      <label className="mb-1 block text-[11px] font-semibold text-foreground">
                         Title
                       </label>
                       <input
@@ -1149,12 +1335,12 @@ export function WhatsappAutoReplyStudio({
                         value={qrTitle}
                         onChange={(e) => setQrTitle(e.target.value)}
                         placeholder="Umrah Visa Checklist"
-                        className="w-full rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                       />
                     </div>
 
                     <div>
-                      <label className="mb-1 block text-[11px] font-medium text-white/70">
+                      <label className="mb-1 block text-[11px] font-semibold text-foreground">
                         Category
                       </label>
                       <input
@@ -1162,21 +1348,21 @@ export function WhatsappAutoReplyStudio({
                         value={qrCategory}
                         onChange={(e) => setQrCategory(e.target.value)}
                         placeholder="documents / payment / general"
-                        className="w-full rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-[11px] font-medium text-white/70">
+                    <label className="mb-1 block text-[11px] font-semibold text-foreground">
                       Message Body
                     </label>
                     <textarea
                       rows={5}
                       value={qrBodyText}
                       onChange={(e) => setQrBodyText(e.target.value)}
-                      placeholder="Enter the canned response text inserted when an agent selects this /shortcut..."
-                      className="w-full rounded-lg border border-white/10 bg-black/35 p-3 text-xs text-white focus:border-[#C5A059] focus:outline-none"
+                      placeholder="Enter the canned response text inserted when a consultant selects this /shortcut..."
+                      className="w-full rounded-lg border border-border bg-white p-3 text-xs text-foreground focus:border-[#0A3622] focus:outline-none"
                     />
                   </div>
 
@@ -1184,9 +1370,9 @@ export function WhatsappAutoReplyStudio({
                     type="button"
                     onClick={handleSaveQuickReply}
                     disabled={isSavingQr}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#C5A059] py-2.5 text-xs font-semibold text-[#06100D] transition hover:bg-[#d4b26c] disabled:opacity-50"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#0A3622] py-2.5 text-xs font-semibold text-[#FAF8F5] transition hover:bg-[#0d472d] disabled:opacity-50"
                   >
-                    <Check className="h-3.5 w-3.5" />
+                    <Check className="h-3.5 w-3.5 text-[#C5A059]" />
                     {isSavingQr
                       ? "Saving..."
                       : editingQrId
@@ -1196,39 +1382,42 @@ export function WhatsappAutoReplyStudio({
                 </div>
               </div>
 
-              {/* Right Column: Quick Replies List */}
               <div className="space-y-3 lg:col-span-7">
-                <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
-                  <Search className="h-3.5 w-3.5 text-white/40" />
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
+                  <Search className="h-3.5 w-3.5 text-muted-foreground" />
                   <input
                     type="text"
                     value={qrSearch}
                     onChange={(e) => setQrSearch(e.target.value)}
                     placeholder="Filter quick replies by /shortcut, title, or text..."
-                    className="w-full bg-transparent text-xs text-white focus:outline-none"
+                    className="w-full bg-transparent text-xs text-foreground focus:outline-none"
                   />
                 </div>
 
                 {filteredQuickReplies.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-white/15 bg-black/20 p-8 text-center text-xs text-white/50">
-                    No quick replies match your search. Create a <code className="text-[#C5A059]">/shortcut</code> on the left to speed up agent responses.
+                  <div className="rounded-xl border border-dashed border-border bg-[#FAF8F5] p-8 text-center text-xs text-muted-foreground">
+                    No quick replies match your search. Create a{" "}
+                    <code className="font-semibold text-[#0A3622]">
+                      /shortcut
+                    </code>{" "}
+                    on the left to speed up consultant responses.
                   </div>
                 ) : (
                   <div className="max-h-[420px] space-y-2.5 overflow-y-auto pr-1">
                     {filteredQuickReplies.map((qr) => (
                       <div
                         key={qr.id}
-                        className="rounded-xl border border-white/10 bg-[#0B1914] p-3.5 transition hover:border-[#C5A059]/30"
+                        className="rounded-xl border border-border bg-white p-3.5 transition hover:border-[#C5A059]/50"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded border border-[#C5A059]/40 bg-[#C5A059]/15 px-2 py-0.5 font-mono text-xs font-semibold text-[#C5A059]">
+                            <span className="rounded border border-[#0A3622]/30 bg-emerald-50 px-2 py-0.5 font-mono text-xs font-semibold text-[#0A3622]">
                               /{qr.shortcut}
                             </span>
-                            <span className="text-xs font-semibold text-[#F4F0E8]">
+                            <span className="text-xs font-semibold text-foreground">
                               {qr.title}
                             </span>
-                            <span className="rounded bg-white/5 px-2 py-0.5 text-[10px] text-white/50 uppercase">
+                            <span className="rounded bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground uppercase">
                               {qr.category}
                             </span>
                           </div>
@@ -1237,23 +1426,23 @@ export function WhatsappAutoReplyStudio({
                             <button
                               type="button"
                               onClick={() => startEditQuickReply(qr)}
-                              className="rounded border border-white/10 bg-white/5 p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
-                              title="Edit Quick Reply"
+                              aria-label={`Edit quick reply ${qr.shortcut}`}
+                              className="rounded border border-border bg-[#FAF8F5] p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                             >
                               <Edit3 className="h-3 w-3" />
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteQuickReply(qr.id)}
-                              className="rounded border border-white/10 bg-white/5 p-1.5 text-white/60 hover:border-rose-500/40 hover:bg-rose-500/15 hover:text-rose-300"
-                              title="Delete Quick Reply"
+                              aria-label={`Delete quick reply ${qr.shortcut}`}
+                              className="rounded border border-border bg-[#FAF8F5] p-1.5 text-muted-foreground hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
                             >
                               <Trash2 className="h-3 w-3" />
                             </button>
                           </div>
                         </div>
 
-                        <p className="mt-2 line-clamp-2 whitespace-pre-line text-xs text-white/65">
+                        <p className="mt-2 line-clamp-2 whitespace-pre-line text-xs text-muted-foreground">
                           {qr.bodyText}
                         </p>
                       </div>
@@ -1264,7 +1453,7 @@ export function WhatsappAutoReplyStudio({
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

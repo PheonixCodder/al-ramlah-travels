@@ -2,10 +2,12 @@
 
 import * as React from "react"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
+import Image from "next/image"
 import Link from "next/link"
 import {
   Inbox,
   Kanban,
+  Layers,
   Table as TableIcon,
   Search,
   X,
@@ -90,11 +92,16 @@ import {
   assignWhatsappConversationAgentAction,
   addWhatsappConversationInternalNoteAction,
 } from "@/app/actions/whatsapp-crm"
-import { getLinkedDeviceStatusAction } from "@/app/actions/whatsapp-linked-device"
 import {
   extractTemplatePlaceholders,
   interpolateTemplateVariables,
 } from "@/lib/whatsapp/template-variables"
+import {
+  isDocumentVisibilityActive,
+  mergePolledConversations,
+  resolveDeskRouteState,
+  shouldAutoScrollThreadOnUpdate,
+} from "@/lib/whatsapp/desk-tabs"
 import type { WhatsappInternalNote } from "@/db/schema/whatsapp-crm"
 import {
   generateWaConversationCopilotDraftAction,
@@ -113,6 +120,7 @@ import {
   WhatsappAutoReplyStudio,
   type AutoReplyRuleItem,
 } from "@/components/admin/desk/whatsapp-auto-reply-studio"
+import { MetaTemplateBuilderModal } from "@/components/admin/desk/meta-template-builder-modal"
 import { formatWhatsAppPhone } from "@/lib/phone"
 import { cn } from "@/lib/utils"
 
@@ -217,6 +225,9 @@ export interface WhatsAppConversationRecord {
   unreadCount: number
   isPinned: boolean
   isArchived: boolean
+  doNotContact?: boolean | null
+  coexistenceMode?: boolean | null
+  botMuted?: boolean | null
   assignedUserId?: string | null
   internalNotes?: WhatsappInternalNote[] | null
   intakeFlowState?: {
@@ -333,6 +344,13 @@ export type DeskApplicationItem = ApplicationRowItem & {
 
 export type DeskTabKey = "pipeline" | "inbox" | "web_messages"
 
+export interface DeskStaffMember {
+  id: string
+  name: string
+  email: string
+  role: string
+}
+
 export interface DeskHubClientProps {
   initialTab?: string
   applications: DeskApplicationItem[]
@@ -344,11 +362,15 @@ export interface DeskHubClientProps {
   whatsappAutoReplyRules?: AutoReplyRuleItem[]
   flyerPackages: FlyerPackageRecord[]
   contactMessages: ContactMessageData[]
+  staffMembers?: DeskStaffMember[]
+  currentUserId?: string
+  currentUserRole?: string
 }
 
 const QUICK_REACTION_EMOJIS = ["👍", "❤️", "🤲", "✅", "🌟"]
 
 export function DeskHubClient({
+  initialTab,
   applications,
   slaHours = 24,
   whatsappAccounts: initialAccounts,
@@ -358,19 +380,21 @@ export function DeskHubClient({
   whatsappAutoReplyRules: initialAutoReplyRules = [],
   flyerPackages,
   contactMessages,
+  staffMembers = [],
+  currentUserId,
+  currentUserRole,
 }: DeskHubClientProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  // Tab State: URL-synced (?tab=pipeline|inbox|web_messages)
+  // Tab State: URL-synced (?tab=inbox|kanban|pipeline|auto-replies|templates|web_messages|messages)
   const tabFromUrl = searchParams.get("tab")
-  const activeTab: DeskTabKey =
-    tabFromUrl === "inbox"
-      ? "inbox"
-      : tabFromUrl === "web_messages" || tabFromUrl === "messages"
-        ? "web_messages"
-        : "pipeline"
+  const resolvedRoute = React.useMemo(
+    () => resolveDeskRouteState(tabFromUrl || initialTab),
+    [tabFromUrl, initialTab]
+  )
+  const activeTab: DeskTabKey = resolvedRoute.activeTab
 
   const switchTab = (tab: DeskTabKey) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -388,16 +412,23 @@ export function DeskHubClient({
     }
   }, [searchParams])
 
-  // Accounts, Conversations, Quick Replies & Auto-Reply Rules state
+  // Accounts, Conversations, Templates, Quick Replies & Auto-Reply Rules state
   const [accounts, setAccounts] =
     React.useState<WhatsAppAccountRecord[]>(initialAccounts)
   const [conversations, setConversations] =
     React.useState<WhatsAppConversationRecord[]>(initialConversations)
+  const [templatesList, setTemplatesList] =
+    React.useState<WhatsAppTemplateRecord[]>(whatsappTemplates)
   const [quickRepliesList, setQuickRepliesList] =
     React.useState<WhatsAppQuickReplyRecord[]>(whatsappQuickReplies)
   const [autoReplyRules, setAutoReplyRules] =
     React.useState<AutoReplyRuleItem[]>(initialAutoReplyRules)
-  const [autoReplyStudioOpen, setAutoReplyStudioOpen] = React.useState(false)
+  const [autoReplyStudioOpen, setAutoReplyStudioOpen] = React.useState(
+    resolvedRoute.initialModal === "auto-replies"
+  )
+  const [templateStudioOpen, setTemplateStudioOpen] = React.useState(
+    resolvedRoute.initialModal === "templates"
+  )
 
   // Count Badges
   const pendingCount = React.useMemo(
@@ -418,7 +449,7 @@ export function DeskHubClient({
   // ==========================================
   const [pipelineViewMode, setPipelineViewMode] = React.useState<
     "kanban" | "table"
-  >("kanban")
+  >(resolvedRoute.pipelineView)
   const [searchQuery, setSearchQuery] = React.useState("")
   const [sourceFilter, setSourceFilter] = React.useState<string>("all")
 
@@ -552,7 +583,6 @@ export function DeskHubClient({
   const [phoneLineFilter, setPhoneLineFilter] = React.useState<string>("all")
   const [isLiveSyncEnabled, setIsLiveSyncEnabled] = React.useState(true)
   const [inboxSearch, setInboxSearch] = React.useState("")
-  const [isLinkedDeviceActive, setIsLinkedDeviceActive] = React.useState(false)
 
   // Distinct phone lines present across accounts and conversations
   const phoneLineFilters = React.useMemo(() => {
@@ -601,14 +631,6 @@ export function DeskHubClient({
 
     return list
   }, [conversations])
-
-  React.useEffect(() => {
-    getLinkedDeviceStatusAction().then((res) => {
-      if (res.success && res.isConnected) {
-        setIsLinkedDeviceActive(true)
-      }
-    }).catch(() => {})
-  }, [])
 
   // Active selected conversation
   const activeConversation = React.useMemo(() => {
@@ -731,36 +753,45 @@ export function DeskHubClient({
     }
   }
 
-  // Spec 0019 (Slice 38): Visibility-aware 4-second live inbox auto-refresh polling
+  // T-068 & T-088 (OD-07): Single-flight, 100% read-only, visibility-paused 4-second live inbox polling
+  const pollInFlightRef = React.useRef(false)
+
   React.useEffect(() => {
     if (!isLiveSyncEnabled || activeTab !== "inbox") return
 
-    const intervalId = setInterval(async () => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+    const runReadOnlyPollTick = async () => {
+      if (
+        typeof document !== "undefined" &&
+        !isDocumentVisibilityActive(document.visibilityState)
+      ) {
         return
       }
+      if (pollInFlightRef.current) return
+      pollInFlightRef.current = true
 
       try {
         const convRes = await listWhatsappConversationsAction({ limit: 50 })
         if (convRes.success && convRes.conversations) {
           setConversations((prev) => {
-            const nextList = convRes.conversations as unknown as WhatsAppConversationRecord[]
-            return nextList.map((c) => {
-              const existing = prev.find((p) => p.id === c.id)
-              return {
-                ...c,
-                messages: existing?.messages ?? c.messages,
-              }
-            })
+            const nextList =
+              convRes.conversations as unknown as WhatsAppConversationRecord[]
+            return mergePolledConversations(prev, nextList)
           })
         }
 
         if (activeConversationId) {
-          const msgRes = await getConversationMessagesAction(activeConversationId, 50)
+          const msgRes = await getConversationMessagesAction(
+            activeConversationId,
+            50
+          )
           if (msgRes.success && msgRes.messages) {
             setActiveMessages((prev) => {
-              const prevSummary = prev.map((m) => `${m.id}-${m.status}-${m.mediaUrl}`).join(",")
-              const nextSummary = msgRes.messages.map((m) => `${m.id}-${m.status}-${m.mediaUrl}`).join(",")
+              const prevSummary = prev
+                .map((m) => `${m.id}-${m.status}-${m.mediaUrl}`)
+                .join(",")
+              const nextSummary = msgRes.messages
+                .map((m) => `${m.id}-${m.status}-${m.mediaUrl}`)
+                .join(",")
               if (prevSummary !== nextSummary) {
                 return msgRes.messages as WhatsAppMessageRecord[]
               }
@@ -770,10 +801,37 @@ export function DeskHubClient({
         }
       } catch (err) {
         console.debug("[whatsapp-poll] Background poll tick error:", err)
+      } finally {
+        pollInFlightRef.current = false
       }
+    }
+
+    const intervalId = setInterval(() => {
+      void runReadOnlyPollTick()
     }, 4000)
 
-    return () => clearInterval(intervalId)
+    const handleVisibilityChange = () => {
+      if (
+        typeof document !== "undefined" &&
+        isDocumentVisibilityActive(document.visibilityState)
+      ) {
+        void runReadOnlyPollTick()
+      }
+    }
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange)
+    }
+
+    return () => {
+      clearInterval(intervalId)
+      if (typeof document !== "undefined") {
+        document.removeEventListener(
+          "visibilitychange",
+          handleVisibilityChange
+        )
+      }
+    }
   }, [isLiveSyncEnabled, activeTab, activeConversationId])
 
   // Spec 0019: Pin, Archive, Agent Assignment, Internal Notes handlers
@@ -929,11 +987,36 @@ export function DeskHubClient({
     }
   }
 
-  // Scroll to bottom of message thread
+  // Scroll-position preserving message thread scroll (T-088)
+  const messagesScrollContainerRef = React.useRef<HTMLDivElement>(null)
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
+  const prevScrollConversationIdRef = React.useRef<string | null>(null)
+  const forceScrollToBottomRef = React.useRef(false)
+
   React.useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [activeMessages])
+    const container = messagesScrollContainerRef.current
+    const currentConvId = activeConversation?.id ?? null
+    const conversationChanged =
+      prevScrollConversationIdRef.current !== currentConvId
+    prevScrollConversationIdRef.current = currentConvId
+
+    const shouldScroll = container
+      ? shouldAutoScrollThreadOnUpdate({
+          conversationChanged,
+          forceScrollToBottom: forceScrollToBottomRef.current,
+          scrollHeight: container.scrollHeight,
+          scrollTop: container.scrollTop,
+          clientHeight: container.clientHeight,
+        })
+      : conversationChanged || forceScrollToBottomRef.current
+
+    forceScrollToBottomRef.current = false
+    if (shouldScroll) {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: conversationChanged ? "auto" : "smooth",
+      })
+    }
+  }, [activeMessages, activeConversation?.id])
 
   // 24-hour service window calculation for active conversation
   const active24hState = React.useMemo(() => {
@@ -1079,9 +1162,13 @@ export function DeskHubClient({
     setWaCopilotDraft(null)
   }
 
-  // Template selector state (outside 24h window)
+  // Template selector state (outside 24h window — strictly APPROVED Meta templates, T-067 & OD-01)
+  const approvedTemplatesList = React.useMemo(
+    () => templatesList.filter((t) => t.status === "APPROVED"),
+    [templatesList]
+  )
   const [selectedTemplateName, setSelectedTemplateName] = React.useState<string>(
-    whatsappTemplates[0]?.name ?? ""
+    approvedTemplatesList[0]?.name ?? whatsappTemplates[0]?.name ?? ""
   )
   const [templateVariableValues, setTemplateVariableValues] = React.useState<
     Record<string, string>
@@ -1090,10 +1177,11 @@ export function DeskHubClient({
 
   const selectedTemplate = React.useMemo(() => {
     return (
-      whatsappTemplates.find((t) => t.name === selectedTemplateName) ??
-      whatsappTemplates[0]
+      approvedTemplatesList.find((t) => t.name === selectedTemplateName) ??
+      approvedTemplatesList[0] ??
+      null
     )
-  }, [whatsappTemplates, selectedTemplateName])
+  }, [approvedTemplatesList, selectedTemplateName])
 
   const templatePlaceholders = React.useMemo(() => {
     return extractTemplatePlaceholders(selectedTemplate?.bodyText || "")
@@ -1103,8 +1191,9 @@ export function DeskHubClient({
   const handleSendReply = async () => {
     if (!activeConversation) return
     setComposerError(null)
+    forceScrollToBottomRef.current = true
 
-    if (active24hState.isInside || isLinkedDeviceActive) {
+    if (active24hState.isInside) {
       if (!composerText.trim()) return
       setIsSendingMessage(true)
 
@@ -1754,6 +1843,21 @@ export function DeskHubClient({
             <Button
               type="button"
               size="sm"
+              variant="outline"
+              onClick={() => setTemplateStudioOpen(true)}
+              className="border border-[#C5A059]/60 bg-card text-[#0A3622] hover:bg-[#FAF8F5] font-semibold shadow-2xs gap-1.5 h-9"
+              title="Open Official Meta WhatsApp HSM Template Studio (Create, Sync & Manage Templates)"
+            >
+              <Layers className="size-3.5 text-[#C5A059]" />
+              <span>Meta Templates</span>
+              <span className="ml-0.5 rounded-full bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 text-[10px] font-mono text-emerald-900">
+                {approvedTemplatesList.length}
+              </span>
+            </Button>
+
+            <Button
+              type="button"
+              size="sm"
               onClick={() => setAutoReplyStudioOpen(true)}
               className="border border-[#C5A059]/60 bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-semibold shadow-2xs gap-1.5 h-9"
               title="Open WaCRM Keyword Auto-Reply Rules Engine, Greeting & Business Hours Setup, and Quick-Reply Manager"
@@ -1894,7 +1998,7 @@ export function DeskHubClient({
                     className={cn(
                       "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold transition-all border cursor-pointer",
                       isLiveSyncEnabled
-                        ? "border-emerald-500/30 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                        ? "border-emerald-500/30 bg-emerald-50 text-emerald-700"
                         : "border-border bg-secondary text-muted-foreground"
                     )}
                     title={
@@ -1962,7 +2066,7 @@ export function DeskHubClient({
                 >
                   <Inbox className="size-3" />
                   <span>All</span>
-                  <span className="rounded-full bg-black/10 dark:bg-white/10 px-1.5 py-0.1 text-[9px]">
+                  <span className="rounded-full bg-black/10 px-1.5 py-0.1 text-[9px]">
                     {activeConversationsCount}
                   </span>
                 </button>
@@ -1980,7 +2084,7 @@ export function DeskHubClient({
                   )}
                 >
                   <span>Unread</span>
-                  <span className="rounded-full bg-black/10 dark:bg-white/10 px-1.5 py-0.1 text-[9px]">
+                  <span className="rounded-full bg-black/10 px-1.5 py-0.1 text-[9px]">
                     {unreadConversationsCount}
                   </span>
                 </button>
@@ -2280,17 +2384,25 @@ export function DeskHubClient({
                     <div className="flex items-center gap-1 rounded-lg border border-border/80 bg-card px-2 py-0.5 text-xs">
                       <UserCheck className="size-3 text-muted-foreground shrink-0" />
                       <select
+                        aria-label="Assign consultant to conversation"
                         value={activeConversation.assignedUserId || ""}
                         disabled={isAssigningAgent}
                         onChange={(e) => handleAssignAgent(e.target.value || null)}
                         className="bg-transparent text-[11px] font-medium text-foreground focus:outline-none cursor-pointer"
-                        title="Assign team agent to this pilgrim conversation"
+                        title="Assign active consultant to this pilgrim conversation"
                       >
                         <option value="">Unassigned</option>
-                        <option value="staff_me">Assign to Me</option>
-                        <option value="agent_hamza">Agent: Hamza</option>
-                        <option value="agent_bilal">Agent: Bilal</option>
-                        <option value="agent_dedicated_ai">Dedicated AI Agent</option>
+                        {currentUserId &&
+                          !staffMembers.some((m) => m.id === currentUserId) && (
+                            <option value={currentUserId}>Assign to Me</option>
+                          )}
+                        {staffMembers.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.id === currentUserId
+                              ? `Assign to Me (${member.name})`
+                              : `${member.name} (${member.role === "super_admin" ? "Super Admin" : "Consultant"})`}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -2304,7 +2416,7 @@ export function DeskHubClient({
                       className={cn(
                         "text-[11px] gap-1 px-2 font-medium transition-all cursor-pointer",
                         activeConversation.isPinned
-                          ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300"
+                          ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
                           : "text-muted-foreground hover:text-foreground"
                       )}
                       title={
@@ -2338,7 +2450,7 @@ export function DeskHubClient({
                       className={cn(
                         "text-[11px] gap-1 px-2 font-medium transition-all cursor-pointer",
                         activeConversation.isArchived
-                          ? "border-slate-300 bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200"
+                          ? "border-slate-300 bg-slate-100 text-slate-800"
                           : "text-muted-foreground hover:text-foreground"
                       )}
                       title={
@@ -2416,11 +2528,6 @@ export function DeskHubClient({
                           {active24hState.remainingHours}h{" "}
                           {active24hState.remainingMinutes}m
                         </span>
-                      </span>
-                    ) : isLinkedDeviceActive ? (
-                      <span className="flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-950">
-                        <Smartphone className="size-3 text-[#C5A059]" />
-                        <span>Linked Device Active — Direct Replies Enabled (No Template Required)</span>
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
@@ -2603,7 +2710,10 @@ export function DeskHubClient({
                 )}
 
                 {/* Messages Stream */}
-                <div className="flex flex-1 flex-col gap-3 p-4 overflow-y-auto max-h-[500px] bg-secondary/15">
+                <div
+                  ref={messagesScrollContainerRef}
+                  className="flex flex-1 flex-col gap-3 p-4 overflow-y-auto max-h-[500px] bg-secondary/15"
+                >
                   {isLoadingMessages ? (
                     <div className="flex flex-1 items-center justify-center py-12 text-muted-foreground">
                       <Loader2 className="size-6 animate-spin" />
@@ -2686,10 +2796,12 @@ export function DeskHubClient({
                                 rel="noopener noreferrer"
                                 className="block"
                               >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
+                                <Image
                                   src={msg.mediaUrl}
                                   alt={msg.mediaFilename || "WhatsApp image"}
+                                  width={480}
+                                  height={320}
+                                  unoptimized
                                   className="max-h-56 w-full object-cover transition-transform hover:scale-[1.02]"
                                 />
                               </a>
@@ -3012,14 +3124,8 @@ export function DeskHubClient({
 
                 {/* Message Composer Area (Text, Interactive Reply Buttons, Interactive List Menus, or Template) */}
                 <div className="border-t border-border p-3.5 bg-card">
-                  {active24hState.isInside || isLinkedDeviceActive ? (
+                  {active24hState.isInside ? (
                     <div className="flex flex-col gap-2.5">
-                      {!active24hState.isInside && isLinkedDeviceActive && (
-                        <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-300 px-3 py-1.5 text-xs text-amber-950 font-medium">
-                          <Smartphone className="size-3.5 text-[#C5A059] shrink-0" />
-                          <span>⚡ Outside Meta 24h Window: Direct reply enabled via Linked Device SIM. No template required!</span>
-                        </div>
-                      )}
                       {/* Composer Mode Switcher (Spec 0013 AC-4, AC-6) */}
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1 rounded-lg bg-secondary p-0.5 text-[11px]">
@@ -3354,30 +3460,48 @@ export function DeskHubClient({
                       </div>
 
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-[11px] font-medium text-muted-foreground">
-                          Select Approved Message Template:
-                        </label>
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-medium text-muted-foreground">
+                            Select Approved Message Template:
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setTemplateStudioOpen(true)}
+                            className="text-[11px] font-semibold text-[#0A3622] hover:underline"
+                          >
+                            + Create / Sync Meta Template
+                          </button>
+                        </div>
                         <select
-                          value={selectedTemplateName}
+                          value={selectedTemplate?.name || selectedTemplateName}
                           onChange={(e) =>
                             setSelectedTemplateName(e.target.value)
                           }
                           className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                         >
-                          {whatsappTemplates.map((t) => (
-                            <option key={t.id} value={t.name}>
-                              {t.name} ({t.language}) - {t.category}
+                          {approvedTemplatesList.length === 0 ? (
+                            <option value="">
+                              No APPROVED Meta templates — click Create / Sync
                             </option>
-                          ))}
+                          ) : (
+                            approvedTemplatesList.map((t) => (
+                              <option key={t.id} value={t.name}>
+                                {t.name} ({t.language}) - {t.category}
+                              </option>
+                            ))
+                          )}
                         </select>
                       </div>
 
-                      {/* Optional Header Media URL (if template supports IMAGE / DOCUMENT header) */}
-                      {(selectedTemplate?.headerType === "IMAGE" ||
-                        selectedTemplate?.headerType === "DOCUMENT") && (
+                      {/* Optional Header Media URL (if template supports IMAGE / DOCUMENT / VIDEO header) */}
+                      {["IMAGE", "DOCUMENT", "VIDEO"].includes(
+                        (selectedTemplate?.headerType || "").toUpperCase()
+                      ) && (
                         <div className="flex flex-col gap-1">
                           <label className="text-[11px] font-medium text-muted-foreground">
-                            Header Media URL ({selectedTemplate.headerType}):
+                            Header Media URL (
+                            {(selectedTemplate?.headerType || "").toUpperCase()}
+                            ):
                           </label>
                           <Input
                             placeholder="https://..."
@@ -4155,6 +4279,28 @@ export function DeskHubClient({
             )
           )
         }}
+      />
+
+      {/* ==========================================
+          MODAL: Official Meta WhatsApp Template Builder & Sync Studio (T-067)
+          ========================================== */}
+      <MetaTemplateBuilderModal
+        open={templateStudioOpen}
+        onClose={() => setTemplateStudioOpen(false)}
+        accounts={accounts.map((acc) => ({
+          id: acc.id,
+          name: acc.name,
+          displayPhoneNumber: acc.displayPhoneNumber,
+          wabaId: acc.wabaId,
+        }))}
+        activeAccountId={activeAccount?.id}
+        templates={templatesList}
+        onTemplatesChange={(updatedTemplates) =>
+          setTemplatesList(updatedTemplates as WhatsAppTemplateRecord[])
+        }
+        canManageTemplates={
+          !currentUserRole || currentUserRole === "super_admin"
+        }
       />
     </div>
   )

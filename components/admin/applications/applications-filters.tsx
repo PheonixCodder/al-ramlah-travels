@@ -11,6 +11,7 @@ interface ApplicationsFiltersProps {
   currentStatus?: string
   currentSource?: string
   currentFilter?: string
+  slaOverdueHours?: number
   countsByStatus: Record<string, number>
 }
 
@@ -18,6 +19,7 @@ const STATUS_TABS = [
   { key: "all", label: "All Inquiries" },
   { key: "pending_quote", label: "Pending Quote" },
   { key: "quoted", label: "Quoted" },
+  { key: "revision_requested", label: "Revision Req." },
   { key: "approved", label: "Approved" },
   { key: "rejected", label: "Rejected" },
   { key: "cancelled", label: "Cancelled" },
@@ -35,6 +37,7 @@ export function ApplicationsFilters({
   currentStatus = "all",
   currentSource = "all",
   currentFilter,
+  slaOverdueHours = 24,
   countsByStatus,
 }: ApplicationsFiltersProps) {
   const router = useRouter()
@@ -145,7 +148,7 @@ export function ApplicationsFilters({
       {(currentFilter === "overdue" || searchParams.get("filter") === "overdue") && (
         <div className="flex items-center gap-2">
           <div className="inline-flex items-center gap-2 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-800 shadow-2xs">
-            <span>Filtered by: SLA Overdue (&gt;24h)</span>
+            <span>Filtered by: SLA Overdue (&gt;{slaOverdueHours}h)</span>
             <button
               type="button"
               onClick={() => updateFilters({ filter: "" })}

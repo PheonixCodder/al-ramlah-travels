@@ -14,11 +14,14 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge, TabularPrice } from "@/components/layout/status-badge"
 import type { ApplicationRowItem } from "@/components/admin/applications/applications-table"
+import { formatPktDateTimeLabel } from "./overview-metrics"
 
 export function RecentApplicationsTable({
   applications,
+  slaOverdueHours,
 }: {
   applications: ApplicationRowItem[]
+  slaOverdueHours?: number
 }) {
   return (
     <div className="flex flex-col rounded-xl border border-border bg-card shadow-xs">
@@ -28,7 +31,7 @@ export function RecentApplicationsTable({
             Recent Inquiry Feed
           </h3>
           <p className="text-xs text-muted-foreground">
-            Latest customer inquiries submitted across public and partner channels
+            Latest pilgrim dossiers submitted across public and WhatsApp channels
           </p>
         </div>
         <Button
@@ -47,13 +50,27 @@ export function RecentApplicationsTable({
         <Table>
           <TableHeader className="bg-secondary/40">
             <TableRow>
-              <TableHead className="text-xs font-semibold text-foreground">Reference</TableHead>
-              <TableHead className="text-xs font-semibold text-foreground">Pilgrim</TableHead>
-              <TableHead className="text-xs font-semibold text-foreground">Source</TableHead>
-              <TableHead className="text-xs font-semibold text-foreground">Pilgrims</TableHead>
-              <TableHead className="text-xs font-semibold text-foreground">Status</TableHead>
-              <TableHead className="text-right text-xs font-semibold text-foreground">Amount</TableHead>
-              <TableHead className="w-[80px] text-right text-xs font-semibold text-foreground">Worksheet</TableHead>
+              <TableHead className="text-xs font-semibold text-foreground">
+                Reference
+              </TableHead>
+              <TableHead className="text-xs font-semibold text-foreground">
+                Pilgrim
+              </TableHead>
+              <TableHead className="text-xs font-semibold text-foreground">
+                Source
+              </TableHead>
+              <TableHead className="text-xs font-semibold text-foreground">
+                Pilgrims
+              </TableHead>
+              <TableHead className="text-xs font-semibold text-foreground">
+                Status
+              </TableHead>
+              <TableHead className="text-right text-xs font-semibold text-foreground">
+                Amount
+              </TableHead>
+              <TableHead className="w-[80px] text-right text-xs font-semibold text-foreground">
+                Worksheet
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -61,22 +78,35 @@ export function RecentApplicationsTable({
               const latestQuote = app.quotes?.[0]
               const total =
                 latestQuote?.grandTotalPkr || app.calculatedVisaTotalPkr || 0
+              const isWhatsAppIntake = app.referenceNumber
+                .toUpperCase()
+                .startsWith("ART-WA-")
 
               return (
-                <TableRow key={app.id} className="hover:bg-muted/40 transition-colors">
+                <TableRow
+                  key={app.id}
+                  className="hover:bg-muted/40 transition-colors"
+                >
                   <TableCell className="font-mono text-xs font-bold text-primary">
                     <Link
                       href={`/admin/applications/${app.id}`}
+                      title={formatPktDateTimeLabel(app.createdAt)}
                       className="hover:underline"
                     >
                       {app.referenceNumber}
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <span className="text-xs font-semibold text-foreground block">
+                    <span
+                      dir="auto"
+                      className="text-xs font-semibold text-foreground block"
+                    >
                       {app.customerName}
                     </span>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span
+                      dir="auto"
+                      className="text-[10px] text-muted-foreground"
+                    >
                       {app.customerCity}
                     </span>
                   </TableCell>
@@ -85,16 +115,22 @@ export function RecentApplicationsTable({
                       variant="outline"
                       className="border-border bg-secondary text-[10px] font-medium capitalize"
                     >
-                      {app.source.replace(/_/g, " ")}
+                      {isWhatsAppIntake
+                        ? "WA Intake"
+                        : app.source.replace(/_/g, " ")}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    <span className="font-mono">{app.totalPassportCount}</span> Pax
+                    <span className="font-mono tabular-nums">
+                      {app.totalPassportCount}
+                    </span>{" "}
+                    Pax
                   </TableCell>
                   <TableCell>
                     <StatusBadge
                       status={app.status}
                       createdAt={app.createdAt}
+                      slaOverdueHours={slaOverdueHours}
                       showSlaWarning={true}
                     />
                   </TableCell>
@@ -109,6 +145,7 @@ export function RecentApplicationsTable({
                     <Button
                       variant="ghost"
                       size="icon-sm"
+                      aria-label={`Open quoting worksheet for ${app.referenceNumber}`}
                       render={<Link href={`/admin/applications/${app.id}`} />}
                       nativeButton={false}
                       className="hover:text-primary"

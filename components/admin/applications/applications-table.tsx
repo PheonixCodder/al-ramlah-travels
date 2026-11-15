@@ -31,7 +31,13 @@ export interface ApplicationRowItem {
   id: string
   referenceNumber: string
   source: "custom_builder" | "group_booking" | "hajj_inquiry"
-  status: "pending_quote" | "quoted" | "approved" | "rejected" | "cancelled"
+  status:
+    | "pending_quote"
+    | "quoted"
+    | "revision_requested"
+    | "approved"
+    | "rejected"
+    | "cancelled"
   presetMode: string
   customerName: string
   customerPhone: string
@@ -327,6 +333,11 @@ export function ApplicationsTable({
                         {latestQuote.paymentStatus === "paid_in_full" && (
                           <span className="text-[10px] font-semibold text-emerald-700">
                             Paid Full
+                          </span>
+                        )}
+                        {latestQuote.paymentStatus === "deposit_paid" && (
+                          <span className="text-[10px] font-semibold text-sky-700">
+                            Deposit Verified
                           </span>
                         )}
                         {latestQuote.paymentStatus === "partially_paid" && (

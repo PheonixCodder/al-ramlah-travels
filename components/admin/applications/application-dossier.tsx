@@ -82,7 +82,13 @@ export interface ApplicationDossierProps {
     id: string
     referenceNumber: string
     source: "custom_builder" | "group_booking" | "hajj_inquiry"
-    status: "pending_quote" | "quoted" | "approved" | "rejected" | "cancelled"
+    status:
+      | "pending_quote"
+      | "quoted"
+      | "revision_requested"
+      | "approved"
+      | "rejected"
+      | "cancelled"
     presetMode: string
     customerName: string
     customerPhone: string
@@ -90,6 +96,9 @@ export interface ApplicationDossierProps {
     customerCity: string
     customerEmail?: string | null
     specialRequests?: string | null
+    revisionNotesCustomer?: string | null
+    hajjConsultationType?: string | null
+    hajjInquiryJson?: Record<string, unknown> | null
     adults: number
     children: number
     infants: number
@@ -200,7 +209,9 @@ export function ApplicationDossier({
             {new Date(application.createdAt).toLocaleString("en-PK", {
               dateStyle: "medium",
               timeStyle: "short",
-            })}
+              timeZone: "Asia/Karachi",
+            })}{" "}
+            PKT
           </span>
         </div>
 
@@ -285,16 +296,56 @@ export function ApplicationDossier({
             )}
           </div>
 
+          {application.revisionNotesCustomer && (
+            <div className="rounded-lg border border-sky-300 bg-sky-50/80 p-3 text-xs">
+              <span className="font-semibold text-sky-950 block mb-1">
+                Pilgrim Revision Request Notes:
+              </span>
+              <p className="text-sky-900 whitespace-pre-wrap" dir="auto">
+                {application.revisionNotesCustomer}
+              </p>
+            </div>
+          )}
+
           {application.specialRequests && (
             <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-xs">
               <span className="font-semibold text-amber-900 block mb-1">
                 Pilgrim Notes / Special Requests:
               </span>
-              <p className="text-amber-800 whitespace-pre-wrap">
+              <p className="text-amber-800 whitespace-pre-wrap" dir="auto">
                 {application.specialRequests}
               </p>
             </div>
           )}
+
+          {application.source === "hajj_inquiry" &&
+            (application.hajjConsultationType || application.hajjInquiryJson) && (
+              <div className="rounded-lg border border-gold/40 bg-gold/10 p-3 text-xs space-y-1.5">
+                <span className="font-semibold text-foreground block">
+                  Hajj 2027 Consultation Preferences:
+                </span>
+                {application.hajjConsultationType && (
+                  <p className="text-foreground">
+                    <span className="text-muted-foreground">Consultation Tier:</span>{" "}
+                    <strong className="capitalize">
+                      {application.hajjConsultationType.replace(/_/g, " ")}
+                    </strong>
+                  </p>
+                )}
+                {application.hajjInquiryJson &&
+                  Object.entries(application.hajjInquiryJson).map(
+                    ([key, val]) =>
+                      val !== null && val !== undefined && String(val).trim() ? (
+                        <p key={key} className="text-muted-foreground">
+                          <span className="capitalize">
+                            {key.replace(/([A-Z])/g, " $1").replace(/_/g, " ")}:
+                          </span>{" "}
+                          <strong className="text-foreground">{String(val)}</strong>
+                        </p>
+                      ) : null
+                  )}
+              </div>
+            )}
         </CardContent>
       </Card>
 

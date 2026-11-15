@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto"
 import {
+  auth,
   idempotencyKeys,
   runs as defaultRuns,
   tasks as defaultTasks,
@@ -7,15 +9,18 @@ import {
   type TriggerOptions,
 } from "@trigger.dev/sdk"
 import {
-  recordLocalRunTags,
-  setLocalRunProgressSnapshot,
-  withLocalRunProgressScope,
-} from "./metadata"
-import {
   processInboundWhatsappPayloadSchema,
   type ProcessInboundWhatsappPayload,
   type ProcessInboundWhatsappResult,
-} from "./process-inbound-whatsapp.task"
+} from "@/lib/trigger/inbound-whatsapp-schema"
+import {
+  recordLocalRunTags,
+  setLocalRunProgressSnapshot,
+  withLocalRunProgressScope,
+  type TaskProgressScope,
+} from "./metadata"
+
+export type ExecutionMode = "cloud" | "inline"
 
 type TasksSdkSlice = {
   trigger: typeof defaultTasks.trigger
@@ -31,42 +36,115 @@ export function setTriggerSdkForTests(
     tasks?: TasksSdkSlice
     runs?: Pick<typeof defaultRuns, "poll" | "retrieve" | "cancel">
   } | null
-) {
+): void {
   sdkTasks = overrides?.tasks ?? defaultTasks
   sdkRuns = overrides?.runs ?? defaultRuns
 }
 
-/**
- * Returns the configured Trigger.dev secret key if present.
- */
-function getTriggerSecretKey(): string | undefined {
-  const key = process.env.TRIGGER_SECRET_KEY
-  return key && key.trim().length > 0 ? key.trim() : undefined
+export interface TriggerDispatchTransport {
+  trigger: (
+    taskId: string,
+    payload: unknown,
+    options?: Record<string, unknown>
+  ) => Promise<{ id: string }>
+  triggerAndWait: (
+    taskId: string,
+    payload: unknown,
+    options?: Record<string, unknown>
+  ) => Promise<
+    | { ok: true; id: string; output: unknown }
+    | { ok: false; id: string; error: unknown }
+  >
+  batchTrigger: (
+    taskId: string,
+    items: Array<{ payload: unknown; options?: Record<string, unknown> }>
+  ) => Promise<{ batchId?: string; runs: Array<{ id: string }> }>
+  createPublicToken?: (runId: string) => Promise<string | undefined>
+}
+
+let testTransportOverride: TriggerDispatchTransport | null = null
+
+export function setTriggerDispatchTransportForTests(
+  transport: TriggerDispatchTransport | null
+): void {
+  testTransportOverride = transport
 }
 
 /**
- * Returns true if the environment has Trigger.dev Cloud credentials configured.
+ * Thrown when `NODE_ENV === "production"` attempts to execute a heavy 60–300s durable task
+ * inline inside a Next.js serverless lambda because Trigger.dev Cloud is missing or
+ * unreachable (`T-037`).
+ */
+export class TriggerDispatchConfigurationError extends Error {
+  readonly code = "TRIGGER_CLOUD_REQUIRED_IN_PRODUCTION" as const
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options)
+    this.name = "TriggerDispatchConfigurationError"
+  }
+}
+
+function isProductionRuntime(): boolean {
+  return process.env.NODE_ENV === "production"
+}
+
+function getTriggerSecretKey(): string | undefined {
+  const key = process.env.TRIGGER_SECRET_KEY?.trim()
+  if (!key) return undefined
+  if (
+    key === "tr_dev_placeholder" ||
+    key === "tr_prod_placeholder" ||
+    key.startsWith("tr_dev_replace") ||
+    key.startsWith("tr_prod_replace")
+  ) {
+    return undefined
+  }
+  return key
+}
+
+/**
+ * Returns true if the environment has valid Trigger.dev Cloud credentials configured.
+ * In `NODE_ENV === "production"`, strictly requires a `tr_prod_*` key (`T-037`).
  */
 export function isTriggerCloudConfigured(): boolean {
-  return Boolean(getTriggerSecretKey())
+  const key = getTriggerSecretKey()
+  if (!key) return false
+  if (isProductionRuntime()) {
+    return key.startsWith("tr_prod_")
+  }
+  return key.startsWith("tr_dev_") || key.startsWith("tr_prod_")
 }
 
 /**
  * Returns true if the secret key targets Trigger.dev's always-on deployed `prod` workers.
- * (`tr_dev_` keys require `npm run trigger:dev` attached locally to execute queued runs.)
  */
 export function isTriggerProdKeyConfigured(): boolean {
   const key = getTriggerSecretKey()
   return Boolean(key && key.startsWith("tr_prod_"))
 }
 
+function assertInlineAllowedOrThrow(taskId: string, reason: string): void {
+  if (isProductionRuntime()) {
+    throw new TriggerDispatchConfigurationError(
+      `[Trigger Fail-Closed] Refusing to execute heavy task "${taskId}" inline in production (${reason}). Configure a valid tr_prod_* TRIGGER_SECRET_KEY and ensure Trigger.dev Cloud is reachable.`
+    )
+  }
+}
+
 export interface DispatchOptions extends TriggerOptions {
   tags?: string[]
+  /** Optional schedule timestamp mixed into global idempotency key so rescheduling is never poisoned for 30 days (`T-072`) */
+  scheduledFor?: Date | string | number
+  /** Optional content/template hash mixed into global idempotency key so edited renders run fresh (`T-072`) */
+  contentHash?: string
+  /** Optional retry attempt counter mixed into global idempotency key so retries run fresh (`T-072`) */
+  retryAttempt?: number
 }
 
 export interface DispatchResult<TOutput> {
-  mode: "cloud" | "inline"
+  mode: ExecutionMode
   runId?: string
+  publicAccessToken?: string
   output?: TOutput
   success: boolean
   error?: string
@@ -79,14 +157,14 @@ export interface BatchDispatchItem<TPayload> {
 }
 
 export interface BatchDispatchResult<TOutput = unknown> {
-  mode: "cloud" | "inline"
+  mode: ExecutionMode
   success: boolean
   batchId?: string
   runIds: string[]
   runs: Array<{
     id: string
     scheduledPostId?: string
-    mode: "cloud" | "inline"
+    mode: ExecutionMode
     output?: TOutput
     error?: string
   }>
@@ -102,8 +180,107 @@ function buildSyntheticInlineRunId(taskId: string, suffix?: string): string {
     : `inline_${cleanTask}_${Date.now()}_${rand}`
 }
 
+function inferScopeFromTaskAndTags(
+  taskId: string,
+  tags?: string[]
+): Omit<TaskProgressScope, "runId"> {
+  const firstTag = tags?.[0]?.trim()
+  if (!firstTag) {
+    return { taskType: taskId }
+  }
+  const colonIdx = firstTag.lastIndexOf(":")
+  if (colonIdx > 0 && colonIdx < firstTag.length - 1) {
+    return {
+      taskType: taskId,
+      entityId: firstTag.slice(colonIdx + 1),
+    }
+  }
+  return { taskType: taskId }
+}
+
+function stableSerialize(value: unknown): string {
+  if (value === null || value === undefined) return "null"
+  if (typeof value !== "object") return JSON.stringify(value)
+  if (value instanceof Date) return JSON.stringify(value.toISOString())
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(",")}]`
+  }
+  const obj = value as Record<string, unknown>
+  const keys = Object.keys(obj).sort()
+  const pairs = keys.map(
+    (k) => `${JSON.stringify(k)}:${stableSerialize(obj[k])}`
+  )
+  return `{${pairs.join(",")}}`
+}
+
 /**
- * Safely cancels a Trigger.dev run if a runId is recorded (e.g., cancelling a sleeping wait.until post).
+ * Computes a compact 16-hex-character SHA-256 content hash over any JSON-serializable value
+ * so callers can include edited poster/template state in `DispatchOptions.contentHash` (`T-072`).
+ */
+export function computePayloadContentHash(value: unknown): string {
+  return createHash("sha256")
+    .update(stableSerialize(value))
+    .digest("hex")
+    .slice(0, 16)
+}
+
+function normalizeScheduledForSegment(
+  scheduledFor: Date | string | number
+): string {
+  if (scheduledFor instanceof Date) {
+    return Number.isNaN(scheduledFor.getTime())
+      ? "invalid-date"
+      : scheduledFor.toISOString()
+  }
+  if (typeof scheduledFor === "number") {
+    const parsed = new Date(scheduledFor)
+    return Number.isNaN(parsed.getTime())
+      ? String(scheduledFor)
+      : parsed.toISOString()
+  }
+  const trimmed = scheduledFor.trim()
+  const parsed = new Date(trimmed)
+  return Number.isNaN(parsed.getTime()) ? trimmed : parsed.toISOString()
+}
+
+/**
+ * Composes the deterministic seed passed to `idempotencyKeys.create(seed, { scope: "global" })` (`T-072`):
+ * Incorporates optional `scheduledFor`, `contentHash`, and `retryAttempt` discriminators so
+ * rescheduling a post, re-rendering an edited poster, or retrying a broadcast never collides with
+ * Trigger.dev's 30-day idempotency cache (`A18-006`).
+ */
+export function composeDispatchIdempotencySeed(
+  options?: Pick<
+    DispatchOptions,
+    "idempotencyKey" | "scheduledFor" | "contentHash" | "retryAttempt"
+  >
+): string | undefined {
+  const baseKey =
+    typeof options?.idempotencyKey === "string"
+      ? options.idempotencyKey.trim()
+      : undefined
+  if (!baseKey) return undefined
+
+  const segments: string[] = [baseKey]
+
+  if (options?.scheduledFor !== undefined) {
+    segments.push(`sched:${normalizeScheduledForSegment(options.scheduledFor)}`)
+  }
+  if (options?.contentHash && options.contentHash.trim().length > 0) {
+    segments.push(`hash:${options.contentHash.trim()}`)
+  }
+  if (
+    options?.retryAttempt !== undefined &&
+    Number.isFinite(options.retryAttempt)
+  ) {
+    segments.push(`attempt:${Math.max(0, Math.trunc(options.retryAttempt))}`)
+  }
+
+  return segments.join("|")
+}
+
+/**
+ * Safely cancels a Trigger.dev run if a runId is recorded (e.g., cancelling a sleeping `wait.until` post).
  */
 export async function cancelTriggerRunIfActive(
   runId: string | null | undefined
@@ -124,41 +301,96 @@ export async function cancelTriggerRunIfActive(
 }
 
 /**
- * Promotes raw string idempotency keys to global project scope in Trigger.dev v4.
+ * Promotes raw string idempotency keys (plus optional `scheduledFor`, `contentHash`, `retryAttempt`
+ * discriminators) to global project scope in Trigger.dev v4 (`T-072`).
  */
 export async function normalizeDispatchOptions(
   options?: DispatchOptions
-): Promise<DispatchOptions | undefined> {
+): Promise<TriggerOptions | undefined> {
   if (!options) return undefined
-  if (!options.idempotencyKey || typeof options.idempotencyKey !== "string") {
-    return options
+
+  const {
+    scheduledFor,
+    contentHash,
+    retryAttempt,
+    idempotencyKey,
+    ...restTriggerOptions
+  } = options
+
+  if (!idempotencyKey) {
+    return restTriggerOptions
   }
-  if (!isTriggerCloudConfigured()) {
-    return options
+
+  if (typeof idempotencyKey !== "string") {
+    return {
+      ...restTriggerOptions,
+      idempotencyKey,
+    }
   }
+
+  const composedSeed =
+    composeDispatchIdempotencySeed({
+      idempotencyKey,
+      scheduledFor,
+      contentHash,
+      retryAttempt,
+    }) ?? idempotencyKey
+
   try {
-    const globalKey = await idempotencyKeys.create(options.idempotencyKey, {
+    const globalKey = await idempotencyKeys.create(composedSeed, {
       scope: "global",
     })
     return {
-      ...options,
+      ...restTriggerOptions,
       idempotencyKey: globalKey,
     }
   } catch {
-    return options
+    return {
+      ...restTriggerOptions,
+      idempotencyKey: composedSeed,
+    }
   }
 }
 
+export async function mintSingleRunRealtimeToken(
+  runId: string
+): Promise<string | undefined> {
+  if (testTransportOverride?.createPublicToken) {
+    return testTransportOverride.createPublicToken(runId)
+  }
+  if (!isTriggerCloudConfigured()) return undefined
+  try {
+    return await auth.createPublicToken({
+      scopes: {
+        read: {
+          runs: [runId],
+        },
+      },
+      expirationTime: "15m",
+    })
+  } catch {
+    return undefined
+  }
+}
+
+function formatCloudRunFailure(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message
+  if (error && typeof error === "object" && "message" in error) {
+    const msg = (error as { message?: unknown }).message
+    if (typeof msg === "string" && msg.length > 0) return msg
+  }
+  if (typeof error === "string" && error.length > 0) return error
+  return fallback
+}
+
 /**
- * Triggers a Trigger.dev task by string ID (avoiding runtime task bundle imports in Next.js Server Actions)
- * for fire-and-forget / scheduled background jobs (e.g. social publishing & WhatsApp broadcasts).
+ * Triggers a Trigger.dev task by string ID for fire-and-forget / scheduled background jobs (`T-037`).
  *
- * - For future-scheduled runs (`isFutureScheduled: true`): always dispatches to Trigger.dev Cloud and returns `runId`.
- * - For immediate runs (`isFutureScheduled: false`):
- *   - On `tr_prod_` keys: dispatches to Trigger.dev Cloud's 24/7 deployed worker and returns immediately.
- *   - On `tr_dev_` keys: dispatches to Trigger.dev Dev and checks after 2.2s whether a local `trigger:dev` worker
- *     picked it up; if still `QUEUED` (no local worker running), cancels the unattached dev run and executes `inlineRunner`
- *     so local dev testing never stalls.
+ * Fail-closed production invariants:
+ * - In `NODE_ENV === "production"`, missing/invalid `TRIGGER_SECRET_KEY` or unreachable Trigger Cloud
+ *   throws `TriggerDispatchConfigurationError` — NEVER executing heavy work inline inside Next.js lambdas.
+ * - In explicit non-production dev/test mode, cleanly falls back to `inlineRunner` when unconfigured
+ *   or when a `tr_dev_` run has no local `trigger:dev` worker attached.
  */
 export async function triggerByIdBackgroundOrInline<
   TPayload,
@@ -182,12 +414,29 @@ export async function triggerByIdBackgroundOrInline<
 
   if (isTriggerCloudConfigured()) {
     try {
-      const handle = await sdkTasks.trigger(taskId, payload, resolvedOptions)
-
-      if (isFutureScheduled || isTriggerProdKeyConfigured()) {
+      if (testTransportOverride) {
+        const handle = await testTransportOverride.trigger(
+          taskId,
+          payload,
+          resolvedOptions as Record<string, unknown> | undefined
+        )
+        const publicAccessToken = await mintSingleRunRealtimeToken(handle.id)
         return {
           mode: "cloud",
           runId: handle.id,
+          publicAccessToken,
+          success: true,
+        }
+      }
+
+      const handle = await sdkTasks.trigger(taskId, payload, resolvedOptions)
+
+      if (isFutureScheduled || isTriggerProdKeyConfigured()) {
+        const publicAccessToken = await mintSingleRunRealtimeToken(handle.id)
+        return {
+          mode: "cloud",
+          runId: handle.id,
+          publicAccessToken,
           success: true,
         }
       }
@@ -197,9 +446,11 @@ export async function triggerByIdBackgroundOrInline<
       const snapshot = await sdkRuns.retrieve(handle.id)
 
       if (snapshot.status !== "QUEUED") {
+        const publicAccessToken = await mintSingleRunRealtimeToken(handle.id)
         return {
           mode: "cloud",
           runId: handle.id,
+          publicAccessToken,
           success: true,
         }
       }
@@ -209,29 +460,44 @@ export async function triggerByIdBackgroundOrInline<
       )
       await cancelTriggerRunIfActive(handle.id)
     } catch (cloudErr: unknown) {
+      if (isProductionRuntime()) {
+        throw new TriggerDispatchConfigurationError(
+          `[Trigger Fail-Closed] Failed to dispatch background task "${taskId}" to Trigger.dev Cloud in production: ${
+            cloudErr instanceof Error ? cloudErr.message : String(cloudErr)
+          }`,
+          { cause: cloudErr }
+        )
+      }
       console.warn(
-        `[Trigger Cloud Dispatch Warning] Failed to trigger background task '${taskId}' on Cloud. Falling back to inline execution:`,
+        `[Trigger Cloud Dispatch Warning] Failed to trigger background task '${taskId}' on Cloud in non-production. Falling back to inline execution:`,
         cloudErr
       )
     }
+  } else {
+    assertInlineAllowedOrThrow(
+      taskId,
+      "TRIGGER_SECRET_KEY (tr_prod_*) is missing or invalid"
+    )
   }
 
   const syntheticRunId = buildSyntheticInlineRunId(taskId)
-  if (options?.tags && options.tags.length > 0) {
-    recordLocalRunTags(syntheticRunId, options.tags)
-  }
+  const scope = inferScopeFromTaskAndTags(taskId, options?.tags)
   if (options?.tags && options.tags.length > 0) {
     recordLocalRunTags(syntheticRunId, options.tags)
   }
 
   if (isFutureScheduled) {
-    setLocalRunProgressSnapshot(syntheticRunId, {
-      stage: "waiting_until_scheduled",
-      progress: 20,
-      label: "Scheduled locally",
-      detail: "Persisted in database for scheduled execution",
-      updatedAt: new Date().toISOString(),
-    })
+    setLocalRunProgressSnapshot(
+      syntheticRunId,
+      {
+        stage: "waiting_until_scheduled",
+        progress: 20,
+        label: "Scheduled locally",
+        detail: "Persisted in database for scheduled execution",
+        updatedAt: new Date().toISOString(),
+      },
+      scope
+    )
     return {
       mode: "inline",
       runId: syntheticRunId,
@@ -239,9 +505,34 @@ export async function triggerByIdBackgroundOrInline<
     }
   }
 
+  setLocalRunProgressSnapshot(
+    syntheticRunId,
+    {
+      stage: "initializing",
+      progress: 10,
+      label: `Running ${taskId}`,
+      detail: `Executing ${taskId} in local dev mode`,
+      updatedAt: new Date().toISOString(),
+    },
+    scope
+  )
+
   try {
-    const output = await withLocalRunProgressScope(syntheticRunId, () =>
-      inlineRunner(payload)
+    const output = await withLocalRunProgressScope(
+      syntheticRunId,
+      () => inlineRunner(payload),
+      scope
+    )
+    setLocalRunProgressSnapshot(
+      syntheticRunId,
+      {
+        stage: "completed",
+        progress: 100,
+        label: "Completed locally",
+        detail: `Completed ${taskId}`,
+        updatedAt: new Date().toISOString(),
+      },
+      scope
     )
     return {
       mode: "inline",
@@ -254,6 +545,18 @@ export async function triggerByIdBackgroundOrInline<
       inlineErr instanceof Error
         ? inlineErr.message
         : "Failed to execute background task inline"
+    setLocalRunProgressSnapshot(
+      syntheticRunId,
+      {
+        stage: "failed",
+        progress: 100,
+        label: "Failed locally",
+        detail: errorMsg,
+        error: errorMsg,
+        updatedAt: new Date().toISOString(),
+      },
+      scope
+    )
     console.error(`[Inline Background Execution Error] ${taskId}:`, inlineErr)
     return {
       mode: "inline",
@@ -265,12 +568,13 @@ export async function triggerByIdBackgroundOrInline<
 }
 
 /**
- * Triggers a heavy compute task by string ID on Trigger.dev Cloud (Multimodal AI extraction, `sharp`, Gotenberg PDF/4K poster)
- * and awaits its typed output via `runs.poll` so CPU/memory-heavy work executes on Trigger.dev Cloud's 300s container
- * rather than inside Vercel's serverless function memory.
+ * Triggers a heavy compute task by string ID on Trigger.dev Cloud and awaits its typed output (`T-037`).
  *
- * Automatically falls back to `inlineRunner` if Trigger.dev credentials are unset or if using a `tr_dev_` key
- * without a local `npm run trigger:dev` worker attached.
+ * Fail-closed production invariants:
+ * - In `NODE_ENV === "production"`, missing `tr_prod_*` `TRIGGER_SECRET_KEY` or unreachable Trigger Cloud
+ *   throws `TriggerDispatchConfigurationError`.
+ * - If Trigger Cloud executes the run and it fails (`!finished.isSuccess`), returns `{ mode: "cloud", success: false, error }`
+ *   instead of double-running `inlineRunner` inside the Next.js lambda!
  */
 export async function triggerByIdAndAwaitOrInline<
   TPayload,
@@ -280,19 +584,53 @@ export async function triggerByIdAndAwaitOrInline<
   payload: TPayload
   inlineRunner: (payload: TPayload) => Promise<TOutput>
   options?: DispatchOptions
+  pollIntervalMs?: number
 }): Promise<DispatchResult<TOutput>> {
-  const { taskId, payload, inlineRunner, options } = params
+  const {
+    taskId,
+    payload,
+    inlineRunner,
+    options,
+    pollIntervalMs = 800,
+  } = params
 
   const resolvedOptions = await normalizeDispatchOptions(options)
 
   if (isTriggerCloudConfigured()) {
     try {
+      if (testTransportOverride) {
+        const finished = await testTransportOverride.triggerAndWait(
+          taskId,
+          payload,
+          resolvedOptions as Record<string, unknown> | undefined
+        )
+        const publicAccessToken = await mintSingleRunRealtimeToken(finished.id)
+        if (finished.ok) {
+          return {
+            mode: "cloud",
+            runId: finished.id,
+            publicAccessToken,
+            output: finished.output as TOutput,
+            success: true,
+          }
+        }
+        return {
+          mode: "cloud",
+          runId: finished.id,
+          publicAccessToken,
+          success: false,
+          error: formatCloudRunFailure(
+            finished.error,
+            `Trigger.dev run ${finished.id} failed`
+          ),
+        }
+      }
+
       const handle = await sdkTasks.trigger(taskId, payload, resolvedOptions)
 
       let shouldPollCloud = isTriggerProdKeyConfigured()
 
       if (!shouldPollCloud) {
-        // Check if a local `trigger:dev` worker picked up the run within 2.2s
         await new Promise((resolve) => setTimeout(resolve, 2200))
         const snapshot = await sdkRuns.retrieve(handle.id)
         if (snapshot.status !== "QUEUED") {
@@ -306,39 +644,85 @@ export async function triggerByIdAndAwaitOrInline<
       }
 
       if (shouldPollCloud) {
-        const finished = await sdkRuns.poll(handle, { pollIntervalMs: 800 })
+        const publicAccessToken = await mintSingleRunRealtimeToken(handle.id)
+        const finished = await sdkRuns.poll(handle, { pollIntervalMs })
         if (finished.isSuccess) {
           return {
             mode: "cloud",
             runId: finished.id,
+            publicAccessToken,
             output: finished.output as TOutput,
             success: true,
           }
         }
 
-        const cloudErrMsg =
-          finished.error?.message ||
+        const cloudErrMsg = formatCloudRunFailure(
+          finished.error,
           `Trigger.dev run ${finished.id} ended with status ${finished.status}`
-        console.warn(
-          `[Trigger Cloud Run Failed] ${taskId} (${finished.id}): ${cloudErrMsg}. Falling back to inline execution.`
         )
+        return {
+          mode: "cloud",
+          runId: finished.id,
+          publicAccessToken,
+          success: false,
+          error: cloudErrMsg,
+        }
       }
     } catch (cloudErr: unknown) {
+      if (isProductionRuntime()) {
+        throw new TriggerDispatchConfigurationError(
+          `[Trigger Fail-Closed] Failed to dispatch/poll "${taskId}" on Trigger.dev Cloud in production: ${
+            cloudErr instanceof Error ? cloudErr.message : String(cloudErr)
+          }`,
+          { cause: cloudErr }
+        )
+      }
       console.warn(
-        `[Trigger Cloud Await Warning] Failed to execute '${taskId}' on Cloud. Falling back to inline execution:`,
+        `[Trigger Cloud Await Warning] Failed to execute '${taskId}' on Cloud in non-production. Falling back to inline execution:`,
         cloudErr
       )
     }
+  } else {
+    assertInlineAllowedOrThrow(
+      taskId,
+      "TRIGGER_SECRET_KEY (tr_prod_*) is missing or invalid"
+    )
   }
 
   const syntheticRunId = buildSyntheticInlineRunId(taskId)
+  const scope = inferScopeFromTaskAndTags(taskId, options?.tags)
   if (options?.tags && options.tags.length > 0) {
     recordLocalRunTags(syntheticRunId, options.tags)
   }
 
+  setLocalRunProgressSnapshot(
+    syntheticRunId,
+    {
+      stage: "initializing",
+      progress: 10,
+      label: `Running ${taskId}`,
+      detail: `Executing ${taskId} in local dev mode`,
+      updatedAt: new Date().toISOString(),
+    },
+    scope
+  )
+
   try {
-    const output = await withLocalRunProgressScope(syntheticRunId, () =>
-      inlineRunner(payload)
+    const output = await withLocalRunProgressScope(
+      syntheticRunId,
+      () => inlineRunner(payload),
+      scope
+    )
+    setLocalRunProgressSnapshot(
+      syntheticRunId,
+      {
+        stage: "completed",
+        progress: 100,
+        label: "Completed locally",
+        detail: `Completed ${taskId}`,
+        updatedAt: new Date().toISOString(),
+      },
+      scope
     )
     return {
       mode: "inline",
@@ -351,6 +735,18 @@ export async function triggerByIdAndAwaitOrInline<
       inlineErr instanceof Error
         ? inlineErr.message
         : "Failed to execute task inline"
+    setLocalRunProgressSnapshot(
+      syntheticRunId,
+      {
+        stage: "failed",
+        progress: 100,
+        label: "Failed locally",
+        detail: errorMsg,
+        error: errorMsg,
+        updatedAt: new Date().toISOString(),
+      },
+      scope
+    )
     console.error(`[Inline Task Execution Error] ${taskId}:`, inlineErr)
     return {
       mode: "inline",
@@ -361,8 +757,41 @@ export async function triggerByIdAndAwaitOrInline<
   }
 }
 
+export async function triggerAndAwaitOrInline<TPayload, TOutput>(params: {
+  taskHandle: Task<string, TPayload, TOutput> | AnyTask
+  payload: TPayload
+  inlineRunner: (payload: TPayload) => Promise<TOutput>
+  options?: DispatchOptions
+  pollIntervalMs?: number
+}): Promise<DispatchResult<TOutput>> {
+  return triggerByIdAndAwaitOrInline({
+    taskId: params.taskHandle.id,
+    payload: params.payload,
+    inlineRunner: params.inlineRunner,
+    options: params.options,
+    pollIntervalMs: params.pollIntervalMs,
+  })
+}
+
+export async function triggerBackgroundOrInline<TPayload, TOutput>(params: {
+  taskHandle: Task<string, TPayload, TOutput> | AnyTask
+  payload: TPayload
+  inlineRunner: (payload: TPayload) => Promise<TOutput>
+  options?: DispatchOptions
+  isFutureScheduled?: boolean
+}): Promise<DispatchResult<TOutput>> {
+  return triggerByIdBackgroundOrInline({
+    taskId: params.taskHandle.id,
+    payload: params.payload,
+    inlineRunner: params.inlineRunner,
+    options: params.options,
+    isFutureScheduled: params.isFutureScheduled,
+  })
+}
+
 /**
- * Parallel batch fan-out helper by task string ID with `Promise.all` local inline fallback.
+ * Parallel batch fan-out helper by task string ID with fail-closed production enforcement (`T-037`)
+ * and global idempotency normalization (`T-072`).
  */
 export async function batchTriggerByIdOrInline<TPayload, TOutput>(params: {
   taskId: string
@@ -383,16 +812,22 @@ export async function batchTriggerByIdOrInline<TPayload, TOutput>(params: {
 
   if (isTriggerCloudConfigured()) {
     try {
-      const batchTriggerFn = sdkTasks.batchTrigger ?? defaultTasks.batchTrigger
-      if (typeof batchTriggerFn === "function") {
-        const batchHandle = (await batchTriggerFn(
+      const normalizedItems = await Promise.all(
+        items.map(async (item) => ({
+          payload: item.payload,
+          options: await normalizeDispatchOptions(item.options),
+        }))
+      )
+
+      if (testTransportOverride) {
+        const batchHandle = await testTransportOverride.batchTrigger(
           taskId,
-          items.map((item) => ({
-            payload: item.payload,
-            options: item.options,
-          }))
-        )) as { batchId?: string; runs?: Array<{ id: string }> }
-        const runs = (batchHandle.runs ?? []).map((r: { id: string }) => ({
+          normalizedItems as Array<{
+            payload: unknown
+            options?: Record<string, unknown>
+          }>
+        )
+        const runs = (batchHandle.runs ?? []).map((r) => ({
           id: r.id,
           mode: "cloud" as const,
         }))
@@ -400,14 +835,32 @@ export async function batchTriggerByIdOrInline<TPayload, TOutput>(params: {
           mode: "cloud",
           success: true,
           batchId: batchHandle.batchId,
-          runIds: runs.map((r: { id: string }) => r.id),
+          runIds: runs.map((r) => r.id),
           runs,
         }
       }
 
-      // Fallback if test mock only overrides sdkTasks.trigger
+      const batchTriggerFn = sdkTasks.batchTrigger ?? defaultTasks.batchTrigger
+      if (typeof batchTriggerFn === "function") {
+        const batchHandle = (await batchTriggerFn(
+          taskId,
+          normalizedItems
+        )) as { batchId?: string; runs?: Array<{ id: string }> }
+        const runs = (batchHandle.runs ?? []).map((r) => ({
+          id: r.id,
+          mode: "cloud" as const,
+        }))
+        return {
+          mode: "cloud",
+          success: true,
+          batchId: batchHandle.batchId,
+          runIds: runs.map((r) => r.id),
+          runs,
+        }
+      }
+
       const handles = await Promise.all(
-        items.map((item) =>
+        normalizedItems.map((item) =>
           sdkTasks.trigger(taskId, item.payload, item.options)
         )
       )
@@ -422,24 +875,46 @@ export async function batchTriggerByIdOrInline<TPayload, TOutput>(params: {
         runs,
       }
     } catch (cloudErr: unknown) {
+      if (isProductionRuntime()) {
+        throw new TriggerDispatchConfigurationError(
+          `[Trigger Fail-Closed] Failed to batchTrigger "${taskId}" on Trigger.dev Cloud in production: ${
+            cloudErr instanceof Error ? cloudErr.message : String(cloudErr)
+          }`,
+          { cause: cloudErr }
+        )
+      }
       console.warn(
-        `[Trigger Batch Dispatch Warning] Failed to batchTrigger '${taskId}' on Cloud. Falling back to Promise.all inline execution:`,
+        `[Trigger Batch Dispatch Warning] Failed to batchTrigger '${taskId}' on Cloud in non-production. Falling back to Promise.all inline execution:`,
         cloudErr
       )
     }
+  } else {
+    assertInlineAllowedOrThrow(
+      taskId,
+      "TRIGGER_SECRET_KEY (tr_prod_*) is missing or invalid"
+    )
   }
 
   const settled = await Promise.all(
     items.map(async (item, idx) => {
       const syntheticRunId = buildSyntheticInlineRunId(taskId, String(idx + 1))
+      const scope = inferScopeFromTaskAndTags(taskId, item.options?.tags)
+      if (item.options?.tags && item.options.tags.length > 0) {
+        recordLocalRunTags(syntheticRunId, item.options.tags)
+      }
+
       if (item.isFutureScheduled) {
-        setLocalRunProgressSnapshot(syntheticRunId, {
-          stage: "waiting_until_scheduled",
-          progress: 20,
-          label: "Scheduled locally",
-          detail: "Persisted in database for scheduled execution",
-          updatedAt: new Date().toISOString(),
-        })
+        setLocalRunProgressSnapshot(
+          syntheticRunId,
+          {
+            stage: "waiting_until_scheduled",
+            progress: 20,
+            label: "Scheduled locally",
+            detail: "Persisted in database for scheduled execution",
+            updatedAt: new Date().toISOString(),
+          },
+          scope
+        )
         return {
           id: syntheticRunId,
           mode: "inline" as const,
@@ -449,8 +924,10 @@ export async function batchTriggerByIdOrInline<TPayload, TOutput>(params: {
       }
 
       try {
-        const output = await withLocalRunProgressScope(syntheticRunId, () =>
-          inlineRunner(item.payload)
+        const output = await withLocalRunProgressScope(
+          syntheticRunId,
+          () => inlineRunner(item.payload),
+          scope
         )
         return {
           id: syntheticRunId,
@@ -490,6 +967,9 @@ export interface BatchTriggerSocialPostItem {
   scheduledPostId: string
   isFutureScheduled?: boolean
   idempotencyKey?: string
+  scheduledFor?: Date | string | number
+  contentHash?: string
+  retryAttempt?: number
   tags?: string[]
 }
 
@@ -504,7 +984,7 @@ export type BatchTriggerSocialPostsInput<TOutput = unknown> =
 
 /**
  * Dispatches multiple scheduled social posts in parallel using `batchTrigger` when
- * `isTriggerCloudConfigured()` is true, and `Promise.all` local fallback otherwise.
+ * `isTriggerCloudConfigured()` is true, and `Promise.all` local fallback in non-production.
  */
 export async function batchTriggerSocialPosts<TOutput = unknown>(
   input: BatchTriggerSocialPostsInput<TOutput>,
@@ -529,30 +1009,18 @@ export async function batchTriggerSocialPosts<TOutput = unknown>(
   )
 
   const batchItems: Array<BatchDispatchItem<{ scheduledPostId: string }>> =
-    await Promise.all(
-      normalizedItems.map(async (item) => {
-        const rawKey =
-          item.idempotencyKey || `soc-post-run-${item.scheduledPostId}`
-        let idemKey = rawKey
-        if (isTriggerCloudConfigured()) {
-          try {
-            idemKey = await idempotencyKeys.create(rawKey, {
-              scope: "global",
-            })
-          } catch {
-            idemKey = rawKey
-          }
-        }
-        return {
-          payload: { scheduledPostId: item.scheduledPostId },
-          isFutureScheduled: item.isFutureScheduled,
-          options: {
-            idempotencyKey: idemKey,
-            tags: item.tags ?? [`social-post:${item.scheduledPostId}`],
-          },
-        }
-      })
-    )
+    normalizedItems.map((item) => ({
+      payload: { scheduledPostId: item.scheduledPostId },
+      isFutureScheduled: item.isFutureScheduled,
+      options: {
+        idempotencyKey:
+          item.idempotencyKey || `soc-post-run-${item.scheduledPostId}`,
+        scheduledFor: item.scheduledFor,
+        contentHash: item.contentHash,
+        retryAttempt: item.retryAttempt,
+        tags: item.tags ?? [`social-post:${item.scheduledPostId}`],
+      },
+    }))
 
   const resolvedRunner =
     customRunner ??
@@ -578,11 +1046,6 @@ export async function batchTriggerSocialPosts<TOutput = unknown>(
   }
 }
 
-/**
- * Clean typed dispatcher helper (triggerOrRunInline) that dispatches to Trigger.dev Cloud
- * via task.trigger(...) when env.TRIGGER_SECRET_KEY is configured, and gracefully
- * executes inline / locally when TRIGGER_SECRET_KEY is unset in local development.
- */
 export async function triggerOrRunInline<
   TIdentifier extends string,
   TPayload,
@@ -603,32 +1066,24 @@ export async function triggerOrRunInline<
 
 /**
  * Dispatches the decoupled `process-inbound-whatsapp` durable task via Trigger.dev Cloud
- * with global idempotency, or falls back to inline execution when running locally.
+ * with global idempotency and per-conversation `concurrencyKey: payload.conversationId` (`T-072`),
+ * failing closed in `NODE_ENV === "production"` (`T-037`).
  */
 export async function dispatchInboundWhatsAppProcessing(
-  rawPayload: ProcessInboundWhatsappPayload
+  rawPayload: ProcessInboundWhatsappPayload,
+  options?: { retryAttempt?: number }
 ): Promise<DispatchResult<ProcessInboundWhatsappResult>> {
   const payload = processInboundWhatsappPayloadSchema.parse(rawPayload)
-  const rawKey = `wa-inbound-process-${payload.messageId}`
-
-  let idempotencyKey: string = rawKey
-  if (isTriggerCloudConfigured()) {
-    try {
-      idempotencyKey = await idempotencyKeys.create(rawKey, {
-        scope: "global",
-      })
-    } catch {
-      idempotencyKey = rawKey
-    }
-  }
 
   return triggerByIdBackgroundOrInline({
     taskId: "process-inbound-whatsapp",
     payload,
     options: {
-      idempotencyKey,
+      idempotencyKey: `wa-inbound-process-${payload.messageId}`,
+      retryAttempt: options?.retryAttempt,
+      concurrencyKey: payload.conversationId,
       tags: [
-        `wa-inbound:${payload.messageId}`,
+        `wa-inbound:${payload.accountId}`,
         `wa-conv:${payload.conversationId}`,
         `wa-msg:${payload.messageId}`,
       ],

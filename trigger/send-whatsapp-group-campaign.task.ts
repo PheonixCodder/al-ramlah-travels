@@ -1,9 +1,5 @@
-import {
-  logger,
-  schemaTask,
-  wait,
-} from "@trigger.dev/sdk"
-import { eq, inArray } from "drizzle-orm"
+import { AbortTaskRunError, logger, schemaTask } from "@trigger.dev/sdk"
+import { and, eq, inArray } from "drizzle-orm"
 import { z } from "zod"
 import { db } from "@/db"
 import {
@@ -11,21 +7,14 @@ import {
   marketingChannels,
   postAssets,
 } from "@/db/schema/suppliers-and-marketing"
-import {
-  getPacingDelayRange,
-  getRandomPacingDelayMs,
-} from "@/lib/validations/whatsapp-linked-device"
-import {
-  resolveLinkedDeviceSessionForChannel,
-  sendLinkedDeviceGroupOrStatusPost,
-} from "@/lib/whatsapp/linked-device"
-import { updateTaskProgress } from "./metadata"
-import { whatsappBroadcastQueue } from "./queues"
+import { rethrowAsTaskError } from "@/trigger/errors"
+import { updateTaskProgress } from "@/trigger/metadata"
+import { whatsappGroupCampaignQueue } from "@/trigger/queues"
 
 export const sendWhatsappGroupCampaignPayloadSchema = z.object({
   postAssetId: z.string().uuid("Invalid Post Asset ID"),
-  caption: z.string().min(1, "Caption cannot be empty"),
-  channelIds: z.array(z.string().uuid()).min(1, "Select at least 1 channel"),
+  caption: z.string().min(1, "Caption cannot be empty").max(4096),
+  channelIds: z.array(z.string().uuid()).min(1, "Select at least 1 channel").max(100),
   pacingTier: z.enum(["fast", "safe", "ultra_safe"]).default("safe"),
   minDelaySec: z.number().int().positive().optional(),
   maxDelaySec: z.number().int().positive().optional(),
@@ -36,258 +25,343 @@ export type SendWhatsappGroupCampaignPayload = z.infer<
   typeof sendWhatsappGroupCampaignPayloadSchema
 >
 
+export interface SendWhatsappGroupCampaignChannelOutcome {
+  channelId: string
+  channelName: string
+  status: "manual_ready" | "sent" | "failed"
+  targetJid?: string
+  wamid?: string
+  error?: string
+}
+
 export interface SendWhatsappGroupCampaignResult {
   success: boolean
+  mode: "manual_ready"
+  status: "manual_ready" | "failed"
   totalChannels: number
+  totalTargets: number
+  manualReadyCount: number
   sentCount: number
   failedCount: number
-  channelResults: Array<{
-    channelId: string
-    channelName: string
-    status: "sent" | "failed"
-    wamid?: string
-    error?: string
-  }>
+  postCode?: string
+  channelResults: SendWhatsappGroupCampaignChannelOutcome[]
+  results: SendWhatsappGroupCampaignChannelOutcome[]
 }
 
 /**
- * Paced execution engine for automated WhatsApp community groups and status broadcasting.
- * Supports multi-session auto-routing per channel sender phone line.
+ * Validates that a WhatsApp Group / Status channel has a genuine `@g.us` group JID or
+ * `status@broadcast` handle — NEVER falling back to a fabricated direct phone JID (`T-073`, `A17-004`).
+ */
+export function resolveValidWhatsappGroupOrStatusHandle(channel: {
+  platform?: string
+  channelType?: string
+  externalGroupIdOrHandle: string | null
+}): { valid: true; targetJid: string } | { valid: false; reason: string } {
+  const effectiveType = channel.platform ?? channel.channelType ?? ""
+  const rawHandle = channel.externalGroupIdOrHandle?.trim() ?? ""
+
+  if (effectiveType === "whatsapp_status") {
+    if (
+      rawHandle.length === 0 ||
+      /^status@broadcast(?::[a-z0-9_-]+)?$/i.test(rawHandle)
+    ) {
+      return {
+        valid: true,
+        targetJid: rawHandle.length > 0 ? rawHandle : "status@broadcast",
+      }
+    }
+    return {
+      valid: false,
+      reason: `Invalid WhatsApp Status handle "${rawHandle}" (expected status@broadcast)`,
+    }
+  }
+
+  if (!rawHandle) {
+    return {
+      valid: false,
+      reason:
+        "Missing externalGroupIdOrHandle (must end with @g.us; direct phone fallback is forbidden)",
+    }
+  }
+
+  if (/^[^\s@]+@g\.us$/i.test(rawHandle)) {
+    return { valid: true, targetJid: rawHandle }
+  }
+
+  if (/^status@broadcast(?::[a-z0-9_-]+)?$/i.test(rawHandle)) {
+    return { valid: true, targetJid: rawHandle }
+  }
+
+  return {
+    valid: false,
+    reason: `Invalid WhatsApp Group JID "${rawHandle}" (must end with @g.us or equal status@broadcast)`,
+  }
+}
+
+function getTodayPktIsoDate(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now)
+}
+
+/**
+ * Core execution pipeline for WhatsApp Group & Status distribution under approved
+ * **`OD-01` Option A (Keep 1-Click Ban-Safe Manual Assisted Share Queue)** (`T-073`).
+ *
+ * - Imports ZERO unofficial WebSocket socket modules and opens ZERO WebSockets.
+ * - Rejects channels with missing or invalid group JIDs without ever fabricating direct phone JIDs.
+ * - Transitions valid queued channels cleanly to `manual_ready` (`daily_post_distributions.status = "queued"`,
+ *   `postedAt = null`) so staff can complete 1-click ban-safe sharing in `/admin/campaigns`.
  */
 export async function runSendWhatsappGroupCampaign(
-  payload: SendWhatsappGroupCampaignPayload,
-  options?: { isTask?: boolean }
+  payloadInput:
+    | SendWhatsappGroupCampaignPayload
+    | { payload: SendWhatsappGroupCampaignPayload; runId?: string },
+  options?: { isTask?: boolean; runId?: string }
 ): Promise<SendWhatsappGroupCampaignResult> {
-  const {
-    postAssetId,
-    caption,
-    channelIds,
-    pacingTier = "safe",
-    minDelaySec,
-    maxDelaySec,
-    sessionKey = "auto",
-  } = payload
+  const unwrapped =
+    "payload" in payloadInput ? payloadInput.payload : payloadInput
+  const effectiveRunId =
+    ("payload" in payloadInput ? payloadInput.runId : undefined) ??
+    options?.runId
 
-  logger.info("[SendWhatsappGroupCampaign] Starting group campaign", {
-    postAssetId,
-    targetCount: channelIds.length,
-    pacingTier,
-    sessionKey,
-  })
+  const validated = sendWhatsappGroupCampaignPayloadSchema.parse(unwrapped)
+  const scope = {
+    taskType: "send-whatsapp-group-campaign",
+    entityId: validated.postAssetId,
+    runId: effectiveRunId,
+  }
 
   updateTaskProgress({
+    ...scope,
     stage: "initializing",
-    progress: 5,
-    detail: `Preparing flyer dispatch to ${channelIds.length} WhatsApp groups/status channels...`,
+    progress: 10,
+    detail: `Preparing ${validated.channelIds.length} WhatsApp group/status target(s) for 1-click Ban-Safe Manual Assisted Share Queue (OD-01 Option A)...`,
   })
 
-  // 1. Fetch flyer post asset
   const [asset] = await db
-    .select()
+    .select({
+      id: postAssets.id,
+      postCode: postAssets.postCode,
+      title: postAssets.title,
+      imageUrl: postAssets.imageUrl,
+    })
     .from(postAssets)
-    .where(eq(postAssets.id, postAssetId))
+    .where(eq(postAssets.id, validated.postAssetId))
     .limit(1)
 
   if (!asset || !asset.imageUrl) {
-    const errorMsg = `Post asset ${postAssetId} not found or missing flyer image URL.`
-    logger.error("[SendWhatsappGroupCampaign] Asset not found", { postAssetId })
+    const errMsg = `Post asset ${validated.postAssetId} not found or missing flyer image URL`
     updateTaskProgress({
+      ...scope,
       stage: "failed",
       progress: 100,
-      detail: errorMsg,
-      error: errorMsg,
+      detail: errMsg,
+      error: errMsg,
     })
-    return {
-      success: false,
-      totalChannels: channelIds.length,
-      sentCount: 0,
-      failedCount: channelIds.length,
-      channelResults: [],
-    }
+    throw new AbortTaskRunError(errMsg)
   }
 
-  // 2. Fetch selected target marketing channels
   const targetChannels = await db
     .select()
     .from(marketingChannels)
-    .where(inArray(marketingChannels.id, channelIds))
-
-  if (targetChannels.length === 0) {
-    const errorMsg = "No matching marketing channels found in database."
-    updateTaskProgress({
-      stage: "failed",
-      progress: 100,
-      detail: errorMsg,
-      error: errorMsg,
-    })
-    return {
-      success: false,
-      totalChannels: 0,
-      sentCount: 0,
-      failedCount: 0,
-      channelResults: [],
-    }
-  }
-
-  const pacing = getPacingDelayRange(pacingTier, minDelaySec, maxDelaySec)
-  const todayIso = new Date().toISOString().split("T")[0]!
-
-  let sentCount = 0
-  let failedCount = 0
-  const channelResults: SendWhatsappGroupCampaignResult["channelResults"] = []
-
-  // 3. Sequential human-paced dispatch
-  for (let i = 0; i < targetChannels.length; i++) {
-    const ch = targetChannels[i]!
-
-    // Resolve the best connected WhatsApp line socket for this channel
-    const effectiveSessionKey = await resolveLinkedDeviceSessionForChannel(
-      ch.senderWhatsappNumber,
-      sessionKey
+    .where(
+      and(
+        inArray(marketingChannels.id, validated.channelIds),
+        eq(marketingChannels.isActive, true)
+      )
     )
 
-    const targetJid =
-      ch.externalGroupIdOrHandle ||
-      (ch.platform === "whatsapp_status"
-        ? "status@broadcast"
-        : `${ch.senderWhatsappNumber || "03214629700"}@s.whatsapp.net`)
-
-    // If not first target, apply anti-ban randomized spacing
-    if (i > 0) {
-      const delayMs = getRandomPacingDelayMs(pacing.minSec, pacing.maxSec)
-      const delaySec = Math.round(delayMs / 1000)
-
-      logger.info(
-        `[SendWhatsappGroupCampaign] Pacing wait ${delaySec}s before channel ${i + 1}/${targetChannels.length} (${ch.name})...`
-      )
-
-      updateTaskProgress({
-        stage: "pacing_delay",
-        progress: Math.min(95, Math.round((i / targetChannels.length) * 90)),
-        detail: `Pacing ${delaySec}s before posting to ${ch.name} (anti-ban protection active)...`,
-      })
-
-      if (options?.isTask) {
-        try {
-          await wait.for({ seconds: delaySec })
-        } catch {
-          await new Promise((res) => setTimeout(res, delayMs))
-        }
-      } else {
-        await new Promise((res) => setTimeout(res, delayMs))
-      }
-    }
-
+  if (targetChannels.length === 0) {
+    const errMsg =
+      "No active WhatsApp group or status channels matched the requested IDs"
     updateTaskProgress({
-      stage: "posting_to_group",
-      progress: Math.min(98, Math.round(((i + 0.5) / targetChannels.length) * 90)),
-      detail: `Posting 4K Flyer to "${ch.name}" (${i + 1}/${targetChannels.length}) via [${effectiveSessionKey}]...`,
+      ...scope,
+      stage: "failed",
+      progress: 100,
+      detail: errMsg,
+      error: errMsg,
     })
-
-    try {
-      const sendResult = await sendLinkedDeviceGroupOrStatusPost({
-        sessionKey: effectiveSessionKey,
-        jid: targetJid,
-        imageUrl: asset.imageUrl,
-        caption,
-        simulatePresence: true,
-      })
-
-      sentCount++
-      channelResults.push({
-        channelId: ch.id,
-        channelName: ch.name,
-        status: "sent",
-        wamid: sendResult.wamid,
-      })
-
-      // Log distribution matrix with actual sending phone line
-      await db.insert(dailyPostDistributions).values({
-        scheduledDate: todayIso,
-        channelId: ch.id,
-        postAssetId: asset.id,
-        stage: "standalone",
-        status: "sent",
-        senderWhatsappLine: ch.senderWhatsappNumber || "03214629700",
-        captionUsed: caption,
-        externalQueueJobId: sendResult.wamid,
-        postedAt: new Date(),
-      })
-
-      await db
-        .update(marketingChannels)
-        .set({ lastPostedAt: new Date() })
-        .where(eq(marketingChannels.id, ch.id))
-    } catch (err: unknown) {
-      failedCount++
-      const errorStr = err instanceof Error ? err.message : String(err)
-      logger.warn(`[SendWhatsappGroupCampaign] Failed dispatch to channel ${ch.name}:`, {
-        channelId: ch.id,
-        error: errorStr,
-      })
-
-      channelResults.push({
-        channelId: ch.id,
-        channelName: ch.name,
-        status: "failed",
-        error: errorStr,
-      })
-
-      // Log failed distribution record
-      await db.insert(dailyPostDistributions).values({
-        scheduledDate: todayIso,
-        channelId: ch.id,
-        postAssetId: asset.id,
-        stage: "standalone",
-        status: "failed",
-        senderWhatsappLine: ch.senderWhatsappNumber || "03214629700",
-        captionUsed: caption,
-        notes: `Dispatch failed: ${errorStr}`,
-        postedAt: new Date(),
-      })
-    }
+    throw new AbortTaskRunError(errMsg)
   }
 
-  const allSuccess = failedCount === 0
-  const finalDetail = `Dispatched campaign to ${sentCount}/${targetChannels.length} channels (${failedCount} failed).`
+  const totalTargets = targetChannels.length
+  const todayIso = getTodayPktIsoDate()
+  let manualReadyCount = 0
+  let failedCount = 0
+  const channelResults: SendWhatsappGroupCampaignChannelOutcome[] = []
+
+  for (const ch of targetChannels) {
+    const handleCheck = resolveValidWhatsappGroupOrStatusHandle({
+      platform: ch.platform,
+      externalGroupIdOrHandle: ch.externalGroupIdOrHandle,
+    })
+
+    const [existingDist] = await db
+      .select({ id: dailyPostDistributions.id })
+      .from(dailyPostDistributions)
+      .where(
+        and(
+          eq(dailyPostDistributions.channelId, ch.id),
+          eq(dailyPostDistributions.scheduledDate, todayIso)
+        )
+      )
+      .limit(1)
+
+    if (!handleCheck.valid) {
+      failedCount++
+      const errNote = `[OD-01 Validation Failed] ${handleCheck.reason}`
+
+      if (existingDist) {
+        await db
+          .update(dailyPostDistributions)
+          .set({
+            postAssetId: asset.id,
+            stage: "standalone",
+            status: "failed",
+            senderWhatsappLine: ch.senderWhatsappNumber ?? null,
+            captionUsed: validated.caption,
+            postedAt: null,
+            notes: errNote,
+            updatedAt: new Date(),
+          })
+          .where(eq(dailyPostDistributions.id, existingDist.id))
+      } else {
+        await db.insert(dailyPostDistributions).values({
+          postAssetId: asset.id,
+          channelId: ch.id,
+          scheduledDate: todayIso,
+          stage: "standalone",
+          status: "failed",
+          senderWhatsappLine: ch.senderWhatsappNumber ?? null,
+          captionUsed: validated.caption,
+          postedAt: null,
+          notes: errNote,
+        })
+      }
+
+      channelResults.push({
+        channelId: ch.id,
+        channelName: ch.name,
+        status: "failed",
+        error: handleCheck.reason,
+      })
+      continue
+    }
+
+    const readyNote = `[OD-01 manual_ready] Queued ${asset.postCode} for 1-click Ban-Safe Manual Assisted Share (${handleCheck.targetJid}) — caption ready.`
+
+    if (existingDist) {
+      await db
+        .update(dailyPostDistributions)
+        .set({
+          postAssetId: asset.id,
+          stage: "standalone",
+          status: "queued",
+          senderWhatsappLine: ch.senderWhatsappNumber ?? null,
+          captionUsed: validated.caption,
+          externalQueueJobId: null,
+          postedAt: null,
+          notes: readyNote,
+          updatedAt: new Date(),
+        })
+        .where(eq(dailyPostDistributions.id, existingDist.id))
+    } else {
+      await db.insert(dailyPostDistributions).values({
+        postAssetId: asset.id,
+        channelId: ch.id,
+        scheduledDate: todayIso,
+        stage: "standalone",
+        status: "queued",
+        senderWhatsappLine: ch.senderWhatsappNumber ?? null,
+        captionUsed: validated.caption,
+        externalQueueJobId: null,
+        postedAt: null,
+        notes: readyNote,
+      })
+    }
+
+    manualReadyCount++
+    channelResults.push({
+      channelId: ch.id,
+      channelName: ch.name,
+      status: "manual_ready",
+      targetJid: handleCheck.targetJid,
+    })
+  }
+
+  const overallSuccess = manualReadyCount > 0
+  const finalStatus: "manual_ready" | "failed" = overallSuccess
+    ? "manual_ready"
+    : "failed"
 
   updateTaskProgress({
-    stage: allSuccess ? "completed" : "completed_with_errors",
+    ...scope,
+    stage: overallSuccess ? "completed" : "failed",
     progress: 100,
-    detail: finalDetail,
-  })
-
-  logger.info("[SendWhatsappGroupCampaign] Campaign complete", {
-    sentCount,
-    failedCount,
-    total: targetChannels.length,
+    detail: overallSuccess
+      ? `Prepared ${manualReadyCount}/${totalTargets} channel(s) as manual_ready in the Ban-Safe Assisted Share Queue`
+      : `All ${totalTargets} target channel(s) failed JID validation`,
+    counters: {
+      sent: 0,
+      failed: failedCount,
+      total: totalTargets,
+    },
   })
 
   return {
-    success: allSuccess,
-    totalChannels: targetChannels.length,
-    sentCount,
+    success: overallSuccess,
+    mode: "manual_ready",
+    status: finalStatus,
+    totalChannels: totalTargets,
+    totalTargets,
+    manualReadyCount,
+    sentCount: 0,
     failedCount,
+    postCode: asset.postCode,
     channelResults,
+    results: channelResults,
   }
 }
 
 export const runSendWhatsappGroupCampaignInline = runSendWhatsappGroupCampaign
 
 /**
- * Trigger.dev v4 durable schemaTask bound to whatsappBroadcastQueue (concurrencyLimit: 1).
+ * Trigger.dev Cloud v4 Durable Task: WhatsApp Group & Status Assisted Queue Transition (`T-073`, `OD-01` Option A).
  */
 export const sendWhatsappGroupCampaignTask = schemaTask({
   id: "send-whatsapp-group-campaign",
   schema: sendWhatsappGroupCampaignPayloadSchema,
-  queue: whatsappBroadcastQueue,
+  queue: whatsappGroupCampaignQueue,
+  maxDuration: 120,
   retry: {
     maxAttempts: 2,
+    minTimeoutInMs: 3_000,
+    maxTimeoutInMs: 15_000,
     factor: 2,
-    minTimeoutInMs: 2000,
-    maxTimeoutInMs: 10000,
   },
-  run: async (payload) => {
-    return runSendWhatsappGroupCampaign(payload, { isTask: true })
+  run: async (payload, { ctx }): Promise<SendWhatsappGroupCampaignResult> => {
+    logger.info(
+      "Transitioning WhatsApp Group & Status campaign to manual_ready assisted queue (OD-01 Option A)",
+      {
+        postAssetId: payload.postAssetId,
+        targets: payload.channelIds.length,
+      }
+    )
+
+    try {
+      return await runSendWhatsappGroupCampaign(payload, {
+        isTask: true,
+        runId: ctx.run.id,
+      })
+    } catch (error) {
+      return rethrowAsTaskError(
+        error,
+        `WhatsApp Group campaign queue preparation failed (${payload.postAssetId})`
+      )
+    }
   },
 })

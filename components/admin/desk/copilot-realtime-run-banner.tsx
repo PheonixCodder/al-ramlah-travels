@@ -2,12 +2,23 @@
 
 import * as React from "react"
 import { useRealtimeRun } from "@trigger.dev/react-hooks"
-import { CheckCircle2, Loader2, Sparkles, X, AlertCircle } from "lucide-react"
+import { CheckCircle2, Loader2, X, AlertCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { getTaskRunProgressAction } from "@/app/actions/trigger-realtime"
+import type {
+  ApplicationQuoteCopilotResult,
+  WaCopilotDraftResult,
+} from "@/lib/ai/quoting-copilot"
 import { cn } from "@/lib/utils"
+
+/**
+ * Trigger.dev Cloud Realtime subscription column filter (`T-072`, `A18-009`):
+ * Skips large input `payload` blobs while keeping `output` enabled so completed
+ * AI Quoting Copilot proposals and Luxury Gotenberg PDF URLs hydrate immediately in the UI.
+ */
+export const COPILOT_REALTIME_SKIP_COLUMNS = ["payload"] as const
 
 export const COPILOT_STAGES = [
   {
@@ -34,12 +45,24 @@ export const COPILOT_STAGES = [
 
 export type CopilotStageKey = (typeof COPILOT_STAGES)[number]["key"]
 
+export interface CopilotBannerRunOutput {
+  draft?: ApplicationQuoteCopilotResult & WaCopilotDraftResult
+  modelUsed?: string
+  executionMode?: "ai_provider" | "deterministic_fallback"
+  pdfUrl?: string
+  pngUrl?: string
+  socialJpegUrl?: string
+  [key: string]: unknown
+}
+
 export interface CopilotRealtimeRunBannerProps {
   runId: string
   publicAccessToken?: string
   mode?: "cloud" | "inline" | "local"
   title?: string
-  onComplete?: (output?: any) => void
+  label?: string
+  onComplete?: (output?: CopilotBannerRunOutput) => void | Promise<void>
+  onError?: (errorMessage: string) => void
   onDismiss?: () => void
   className?: string
 }
@@ -48,20 +71,26 @@ export function CopilotRealtimeRunBanner({
   runId,
   publicAccessToken,
   mode = "cloud",
-  title = "AI Quoting Copilot Telemetry",
+  title,
+  label,
   onComplete,
+  onError,
   onDismiss,
   className,
 }: CopilotRealtimeRunBannerProps) {
-  const isCloudSubscription = mode === "cloud" && Boolean(publicAccessToken) && Boolean(runId)
+  const effectiveTitle = title ?? label ?? "AI Quoting Copilot Telemetry"
+  const isCloudSubscription =
+    mode === "cloud" &&
+    Boolean(publicAccessToken) &&
+    Boolean(runId) &&
+    !runId.startsWith("inline_")
 
   const { run: realtimeRun, error: hookError } = useRealtimeRun(runId, {
     accessToken: publicAccessToken,
-    skipColumns: ["payload", "output"],
+    skipColumns: [...COPILOT_REALTIME_SKIP_COLUMNS],
     enabled: isCloudSubscription,
   })
 
-  // Local fallback polling state for non-cloud or tokenless executions
   const [localProgress, setLocalProgress] = React.useState<number>(
     mode === "inline" ? 100 : 15
   )
@@ -72,9 +101,9 @@ export function CopilotRealtimeRunBanner({
     mode === "inline" ? "Completed" : "Starting..."
   )
   const [localError, setLocalError] = React.useState<string | null>(null)
-  const [hasTriggeredComplete, setHasTriggeredComplete] = React.useState(false)
+  const completedRunIdRef = React.useRef<string | null>(null)
+  const failedRunIdRef = React.useRef<string | null>(null)
 
-  // Resolve current progress & stage from realtimeRun or local fallback
   const cloudMetadata = (realtimeRun?.metadata ?? {}) as Record<string, unknown>
   const currentStageKey = (
     isCloudSubscription && typeof cloudMetadata.stage === "string"
@@ -86,14 +115,14 @@ export function CopilotRealtimeRunBanner({
     ? realtimeRun?.status === "COMPLETED"
       ? 100
       : typeof cloudMetadata.progress === "number"
-      ? cloudMetadata.progress
-      : 25
+        ? cloudMetadata.progress
+        : 25
     : localProgress
 
   const isCompleted =
     (isCloudSubscription && realtimeRun?.status === "COMPLETED") ||
-    currentProgress >= 100 ||
-    currentStageKey === "completed"
+    (!isCloudSubscription &&
+      (currentProgress >= 100 || currentStageKey === "completed"))
 
   const isFailed =
     (isCloudSubscription &&
@@ -103,7 +132,6 @@ export function CopilotRealtimeRunBanner({
     Boolean(hookError) ||
     Boolean(localError)
 
-  // Local polling loop if not using cloud realtime hook
   React.useEffect(() => {
     if (isCloudSubscription || !runId || isCompleted || isFailed) return
 
@@ -133,18 +161,44 @@ export function CopilotRealtimeRunBanner({
     }
   }, [isCloudSubscription, runId, isCompleted, isFailed])
 
-  // Trigger onComplete callback once upon task completion
   React.useEffect(() => {
-    if (isCompleted && !hasTriggeredComplete && onComplete) {
-      setHasTriggeredComplete(true)
-      onComplete(realtimeRun?.output)
+    if (isCompleted && completedRunIdRef.current !== runId && onComplete) {
+      completedRunIdRef.current = runId
+      const hydratedOutput =
+        realtimeRun?.output && typeof realtimeRun.output === "object"
+          ? (realtimeRun.output as CopilotBannerRunOutput)
+          : undefined
+      void onComplete(hydratedOutput)
     }
-  }, [isCompleted, hasTriggeredComplete, onComplete, realtimeRun])
+  }, [isCompleted, runId, onComplete, realtimeRun])
+
+  React.useEffect(() => {
+    if (isFailed && failedRunIdRef.current !== runId && onError) {
+      failedRunIdRef.current = runId
+      const errMessage =
+        hookError?.message ||
+        localError ||
+        (typeof realtimeRun?.error?.message === "string"
+          ? realtimeRun.error.message
+          : `${effectiveTitle} execution failed`)
+      onError(errMessage)
+    }
+  }, [
+    isFailed,
+    runId,
+    onError,
+    hookError,
+    localError,
+    realtimeRun,
+    effectiveTitle,
+  ])
 
   const matchedStageObj = COPILOT_STAGES.find((s) => s.key === currentStageKey)
   const displayLabel =
     matchedStageObj?.label ||
-    (typeof cloudMetadata.detail === "string" ? cloudMetadata.detail : localLabel)
+    (typeof cloudMetadata.detail === "string"
+      ? cloudMetadata.detail
+      : localLabel)
 
   return (
     <div
@@ -155,22 +209,22 @@ export function CopilotRealtimeRunBanner({
         isCompleted
           ? "border-[#C5A059]/80 bg-[#0A3622]/10 text-foreground"
           : isFailed
-          ? "border-red-500/40 bg-red-500/10 text-foreground"
-          : "border-[#C5A059]/40 bg-card text-foreground",
+            ? "border-red-500/40 bg-red-500/10 text-foreground"
+            : "border-[#C5A059]/40 bg-card text-foreground",
         className
       )}
     >
       <div className="flex items-center justify-between gap-3 mb-2">
         <div className="flex items-center gap-2">
           {isCompleted ? (
-            <CheckCircle2 className="size-4 text-[#0A3622] dark:text-[#C5A059]" />
+            <CheckCircle2 className="size-4 text-[#0A3622]" />
           ) : isFailed ? (
             <AlertCircle className="size-4 text-red-600" />
           ) : (
             <Loader2 className="size-4 animate-spin text-[#C5A059]" />
           )}
           <span className="text-xs font-semibold tracking-tight text-foreground font-display">
-            {title}
+            {effectiveTitle}
           </span>
           <Badge
             variant="outline"
@@ -179,15 +233,15 @@ export function CopilotRealtimeRunBanner({
               isCompleted
                 ? "border-emerald-600/40 bg-emerald-50 text-emerald-800"
                 : isFailed
-                ? "border-red-500/40 bg-red-50 text-red-700"
-                : "border-[#C5A059]/60 bg-[#C5A059]/10 text-[#0A3622]"
+                  ? "border-red-500/40 bg-red-50 text-red-700"
+                  : "border-[#C5A059]/60 bg-[#C5A059]/10 text-[#0A3622]"
             )}
           >
             {isCompleted
               ? "Completed"
               : isFailed
-              ? "Failed"
-              : "AI Estimate Engine"}
+                ? "Failed"
+                : "AI Estimate Engine"}
           </Badge>
         </div>
 
@@ -218,8 +272,8 @@ export function CopilotRealtimeRunBanner({
             isCompleted
               ? "bg-[#0A3622]"
               : isFailed
-              ? "bg-red-500"
-              : "bg-[#C5A059]"
+                ? "bg-red-500"
+                : "bg-[#C5A059]"
           )}
           style={{ width: `${Math.max(5, Math.min(100, currentProgress))}%` }}
         />
@@ -238,8 +292,8 @@ export function CopilotRealtimeRunBanner({
                 isStageActive
                   ? "border-[#C5A059] bg-[#C5A059]/20 text-[#0A3622] font-semibold"
                   : isStagePast
-                  ? "border-emerald-600/30 bg-emerald-500/10 text-emerald-800"
-                  : "border-border/50 bg-secondary/30 text-muted-foreground"
+                    ? "border-emerald-600/30 bg-emerald-500/10 text-emerald-800"
+                    : "border-border/50 bg-secondary/30 text-muted-foreground"
               )}
             >
               <div className="truncate">{stg.label}</div>

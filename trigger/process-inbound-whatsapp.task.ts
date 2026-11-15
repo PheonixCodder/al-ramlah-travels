@@ -4,8 +4,8 @@ import {
   metadata,
   schemaTask,
 } from "@trigger.dev/sdk"
-import { z } from "zod"
 import { desc, eq } from "drizzle-orm"
+import { z } from "zod"
 
 import { db } from "@/db"
 import {
@@ -14,50 +14,26 @@ import {
   whatsappMessages,
 } from "@/db/schema/whatsapp-crm"
 import {
+  processInboundWhatsappPayloadSchema,
+  type ProcessInboundWhatsappPayload,
+  type ProcessInboundWhatsappResult,
+} from "@/lib/trigger/inbound-whatsapp-schema"
+import { runWhatsappAutoResponder } from "@/lib/whatsapp/auto-responder"
+import { decrypt } from "@/lib/whatsapp/encryption"
+import { classifyWhatsappConversationIntent } from "@/lib/whatsapp/intent-classifier"
+import {
   mirrorInboundWhatsAppMediaToR2,
   type MirrorInboundWhatsAppMediaResult,
 } from "@/lib/whatsapp/media-mirror"
-import { classifyWhatsappConversationIntent } from "@/lib/whatsapp/intent-classifier"
-import { runWhatsappAutoResponder } from "@/lib/whatsapp/auto-responder"
 import { markWhatsAppMessageAsRead } from "@/lib/whatsapp/meta-api"
-import { decrypt } from "@/lib/whatsapp/encryption"
+import { rethrowAsTaskError } from "./errors"
+import { setLocalRunProgressSnapshot } from "./metadata"
+import { inboundWhatsappQueue } from "./queues"
 
-// ==========================================
-// 1. PAYLOAD & RESULT SCHEMAS (AC-1)
-// ==========================================
-
-export const processInboundWhatsappPayloadSchema = z.object({
-  messageId: z.string().min(1, "messageId is required"),
-  accountId: z.string().min(1, "accountId is required"),
-  conversationId: z.string().min(1, "conversationId is required"),
-  senderPhone: z.string().min(1, "senderPhone is required"),
-  contactDisplayName: z.string().optional(),
-  wamid: z.string().min(1, "wamid is required"),
-  bodyText: z.string(),
-  msgType: z.string(),
-  rawMediaId: z.string().nullable().optional(),
-  mediaMimeType: z.string().nullable().optional(),
-  interactiveReplyId: z.string().nullable().optional(),
-  detectedPostCode: z.string().nullable().optional(),
-  linkedApplicationId: z.string().nullable().optional(),
-  outreachContactId: z.string().nullable().optional(),
-})
-
-export type ProcessInboundWhatsappPayload = z.infer<
-  typeof processInboundWhatsappPayloadSchema
->
-
-export interface ProcessInboundWhatsappResult {
-  success: boolean
-  messageId: string
-  conversationId: string
-  mediaMirrored: boolean
-  mediaUrl?: string
-  intentCategory?: string
-  intentConfidence?: number
-  autoReplyTriggered: boolean
-  autoReplyRuleId?: string
-  error?: string
+export {
+  processInboundWhatsappPayloadSchema,
+  type ProcessInboundWhatsappPayload,
+  type ProcessInboundWhatsappResult,
 }
 
 export type ProcessInboundWhatsappProgressStage =
@@ -66,17 +42,12 @@ export type ProcessInboundWhatsappProgressStage =
   | "running_auto_responder"
   | "completed"
 
-import {
-  getLocalRunProgressSnapshot,
-  setLocalRunProgressSnapshot,
-  type TaskRunStage,
-} from "@/trigger/metadata"
-
 function setStageMetadataSafely(
   stage: ProcessInboundWhatsappProgressStage,
   progress: number,
   detail?: string,
-  messageId?: string
+  messageId?: string,
+  conversationId?: string
 ) {
   try {
     metadata
@@ -89,19 +60,23 @@ function setStageMetadataSafely(
   }
 
   if (messageId) {
-    setLocalRunProgressSnapshot(messageId, {
-      stage,
-      progress,
-      label: detail ?? stage,
-      detail: detail ?? stage,
-      updatedAt: new Date().toISOString(),
-    })
+    setLocalRunProgressSnapshot(
+      messageId,
+      {
+        stage,
+        progress,
+        label: detail ?? stage,
+        detail: detail ?? stage,
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        taskType: "process-inbound-whatsapp",
+        entityId: conversationId ?? messageId,
+        runId: messageId,
+      }
+    )
   }
 }
-
-// ==========================================
-// 2. INLINE & DURABLE EXECUTION RUNNER (AC-1)
-// ==========================================
 
 export async function runProcessInboundWhatsappInline(
   rawPayload: ProcessInboundWhatsappPayload,
@@ -114,7 +89,13 @@ export async function runProcessInboundWhatsappInline(
     progress: number,
     detail?: string
   ) => {
-    setStageMetadataSafely(stage, progress, detail, payload.messageId)
+    setStageMetadataSafely(
+      stage,
+      progress,
+      detail,
+      payload.messageId,
+      payload.conversationId
+    )
     onStage?.(stage, progress)
   }
 
@@ -248,53 +229,48 @@ export async function runProcessInboundWhatsappInline(
     (payload.msgType === "text" || payload.msgType === "interactive") &&
     shouldTriggerAutoReply
   ) {
-    try {
-      const [account] = await db
-        .select()
-        .from(whatsappAccounts)
-        .where(eq(whatsappAccounts.id, payload.accountId))
-        .limit(1)
+    const [account] = await db
+      .select()
+      .from(whatsappAccounts)
+      .where(eq(whatsappAccounts.id, payload.accountId))
+      .limit(1)
 
-      if (account) {
-        let accessToken = "mock_offline_token"
-        try {
-          accessToken = decrypt(account.encryptedAccessToken)
-        } catch {
-          accessToken = account.encryptedAccessToken || "mock_offline_token"
-        }
-
-        // 1. Blue-tick read receipt
-        await markWhatsAppMessageAsRead({
-          phoneNumberId: account.phoneNumberId,
-          accessToken,
-          messageId: payload.wamid,
-        }).catch(() => null)
-
-        // 2. 3-priority auto-responder pipeline
-        const autoRes = await runWhatsappAutoResponder({
-          accountId: payload.accountId,
-          conversationId: payload.conversationId,
-          contactPhone: payload.senderPhone,
-          inboundWamid: payload.wamid,
-          inboundText: payload.bodyText,
-          inboundBodyText: payload.bodyText,
-          detectedPostId: payload.detectedPostCode ?? null,
-          interactiveReplyId: payload.interactiveReplyId ?? null,
-          isFromBot: false,
-        })
-
-        autoReplyTriggered = autoRes.triggered
-        autoReplyRuleId = autoRes.ruleId
+    if (account) {
+      let accessToken: string
+      if (
+        process.env.NODE_ENV !== "production" &&
+        account.encryptedAccessToken === "mock_offline_token"
+      ) {
+        accessToken = "mock_offline_token"
+      } else {
+        accessToken = decrypt(account.encryptedAccessToken)
       }
-    } catch (autoErr) {
-      logger.warn("[ProcessInboundWhatsappTask] Auto-responder warning:", {
-        messageId: payload.messageId,
-        error: autoErr instanceof Error ? autoErr.message : String(autoErr),
+
+      // 1. Best-effort blue-tick read receipt
+      await markWhatsAppMessageAsRead({
+        phoneNumberId: account.phoneNumberId,
+        accessToken,
+        messageId: payload.wamid,
+      }).catch(() => null)
+
+      // 2. 3-priority auto-responder pipeline
+      const autoRes = await runWhatsappAutoResponder({
+        accountId: payload.accountId,
+        conversationId: payload.conversationId,
+        contactPhone: payload.senderPhone,
+        inboundWamid: payload.wamid,
+        inboundText: payload.bodyText,
+        inboundBodyText: payload.bodyText,
+        detectedPostId: payload.detectedPostCode ?? null,
+        interactiveReplyId: payload.interactiveReplyId ?? null,
+        isFromBot: false,
       })
+
+      autoReplyTriggered = autoRes.triggered
+      autoReplyRuleId = autoRes.ruleId
     }
   }
 
-  // Stage 4 (100%): Completed
   recordStage("completed", 100, "Inbound message processing completed")
 
   return {
@@ -310,13 +286,14 @@ export async function runProcessInboundWhatsappInline(
   }
 }
 
-// ==========================================
-// 3. TRIGGER.DEV V4 DURABLE TASK (AC-1)
-// ==========================================
-
+/**
+ * Trigger.dev v4 durable task bound to `inboundWhatsappQueue` (`concurrencyLimit: 10`),
+ * paired with `concurrencyKey: conversationId` at dispatch time (`T-072`) and `rethrowAsTaskError` (`T-037`).
+ */
 export const processInboundWhatsappTask = schemaTask({
   id: "process-inbound-whatsapp",
   schema: processInboundWhatsappPayloadSchema,
+  queue: inboundWhatsappQueue,
   retry: {
     maxAttempts: 3,
     factor: 2,
@@ -330,7 +307,7 @@ export const processInboundWhatsappTask = schemaTask({
       if (err instanceof z.ZodError) {
         throw new AbortTaskRunError(`Invalid payload: ${err.message}`)
       }
-      throw err
+      rethrowAsTaskError(err, "ProcessInboundWhatsappTask")
     }
   },
 })

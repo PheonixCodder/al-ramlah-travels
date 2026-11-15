@@ -5,7 +5,12 @@ import {
   type MirrorInboundWhatsAppMediaInput,
   type MirrorInboundWhatsAppMediaResult,
 } from "@/lib/whatsapp/media-mirror"
-import { triggerByIdBackgroundOrInline, type DispatchResult } from "@/trigger/dispatch"
+import {
+  triggerByIdBackgroundOrInline,
+  type DispatchResult,
+} from "@/trigger/dispatch"
+import { rethrowAsTaskError } from "./errors"
+import { mediaMirrorQueue } from "./queues"
 
 export const mirrorWhatsappMediaPayloadSchema = z.object({
   messageId: z.string().min(1, "messageId is required"),
@@ -28,28 +33,37 @@ export async function runMirrorWhatsappMediaTask(
     rawMediaId: payload.rawMediaId,
   })
 
-  const result = await mirrorInboundWhatsAppMediaToR2(payload)
+  try {
+    const result = await mirrorInboundWhatsAppMediaToR2(payload)
 
-  if (!result.success) {
-    logger.warn("[MirrorWhatsappMediaTask] Media mirror failed", {
-      messageId: payload.messageId,
-      error: result.error,
-    })
-  } else {
+    if (!result.success) {
+      logger.warn("[MirrorWhatsappMediaTask] Media mirror failed", {
+        messageId: payload.messageId,
+        error: result.error,
+      })
+      rethrowAsTaskError(
+        new Error(result.error || "WhatsApp media mirror failed"),
+        "MirrorWhatsappMediaTask"
+      )
+    }
+
     logger.info("[MirrorWhatsappMediaTask] Media mirrored to R2", {
       messageId: payload.messageId,
       mediaUrl: result.mediaUrl,
       mediaMimeType: result.mediaMimeType,
       provider: result.provider,
     })
-  }
 
-  return result
+    return result
+  } catch (err: unknown) {
+    rethrowAsTaskError(err, "MirrorWhatsappMediaTask")
+  }
 }
 
 export const mirrorWhatsappMediaTask = schemaTask({
   id: "mirror-whatsapp-media",
   schema: mirrorWhatsappMediaPayloadSchema,
+  queue: mediaMirrorQueue,
   retry: {
     maxAttempts: 3,
     factor: 2,
@@ -62,11 +76,12 @@ export const mirrorWhatsappMediaTask = schemaTask({
 })
 
 /**
- * Dispatches the `mirror-whatsapp-media` task via Trigger.dev Cloud or falls back
- * to inline execution when running locally without a live Trigger.dev worker.
+ * Dispatches the `mirror-whatsapp-media` task via Trigger.dev Cloud (`mediaMirrorQueue`),
+ * failing closed in production (`T-037`) and passing optional `retryAttempt` (`T-072`).
  */
 export async function dispatchMirrorWhatsAppMedia(
-  input: MirrorInboundWhatsAppMediaInput
+  input: MirrorInboundWhatsAppMediaInput,
+  options?: { retryAttempt?: number }
 ): Promise<DispatchResult<MirrorInboundWhatsAppMediaResult>> {
   const validated = mirrorWhatsappMediaPayloadSchema.parse(input)
   return triggerByIdBackgroundOrInline({
@@ -74,6 +89,7 @@ export async function dispatchMirrorWhatsAppMedia(
     payload: validated,
     options: {
       idempotencyKey: `wa-media-mirror-${validated.messageId}`,
+      retryAttempt: options?.retryAttempt,
       tags: [`wa-msg:${validated.messageId}`],
     },
     inlineRunner: async (payload) => {

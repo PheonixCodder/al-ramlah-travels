@@ -15,10 +15,8 @@ import {
   type WaCopilotDraftResult,
   type WaCopilotGenerationOutput,
 } from "@/lib/ai/quoting-copilot"
-
-// ==========================================
-// 1. TASK PAYLOAD & RESULT SCHEMAS (AC-3)
-// ==========================================
+import { rethrowAsTaskError } from "./errors"
+import { quotingCopilotQueue } from "./queues"
 
 export type QuotingCopilotProgressStage =
   | "assembling_context"
@@ -90,13 +88,8 @@ function setStageMetadataSafely(
   }
 }
 
-// ==========================================
-// 2. INLINE & DURABLE RUNNER (AC-3)
-// ==========================================
-
 /**
- * Executes the AI Quoting Copilot workflow across all 4 telemetry stages.
- * Can be invoked directly inline from Server Actions / tests or inside `quotingCopilotTask`.
+ * Executes the AI Quoting Copilot workflow across all 4 telemetry stages (`T-037`, `T-072`).
  */
 export async function runQuotingCopilotInline(
   rawPayload: QuotingCopilotTaskPayload,
@@ -120,13 +113,8 @@ export async function runQuotingCopilotInline(
     applicationId: payload.applicationId,
   })
 
-  // Stage 1: Assembling context
   recordStage("assembling_context", 15)
-
-  // Stage 2: Running read-only Drizzle domain tools
   recordStage("running_domain_tools", 40)
-
-  // Stage 3: Generating structured draft (AI provider cascade or deterministic fallback)
   recordStage("generating_structured_draft", 70)
 
   if (payload.mode === "wa_conversation") {
@@ -187,11 +175,13 @@ export async function runQuotingCopilotInline(
 }
 
 /**
- * Trigger.dev v4 durable `schemaTask` for the AI Quoting Copilot & WhatsApp Concierge Agent.
+ * Trigger.dev v4 durable `schemaTask` for the AI Quoting Copilot & WhatsApp Concierge Agent,
+ * bound to `quotingCopilotQueue` (`concurrencyLimit: 3`) with `rethrowAsTaskError` classification (`T-037`, `T-072`).
  */
 export const quotingCopilotTask = schemaTask({
   id: "quoting-copilot",
   schema: quotingCopilotPayloadSchema,
+  queue: quotingCopilotQueue,
   retry: {
     maxAttempts: 2,
     factor: 2,
@@ -205,7 +195,7 @@ export const quotingCopilotTask = schemaTask({
       if (err instanceof InvalidCopilotTargetError) {
         throw new AbortTaskRunError(err.message)
       }
-      throw err
+      rethrowAsTaskError(err, "QuotingCopilotTask")
     }
   },
 })

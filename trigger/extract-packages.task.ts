@@ -16,9 +16,13 @@ import {
   type ExtractedSupplierFlyerDraft,
 } from "@/lib/posters/extract-supplier-flyer"
 import { optimizePosterForSocialToR2 } from "@/lib/storage/r2"
-import { isTriggerCloudConfigured } from "./dispatch"
-import { throwIfNonRetryable } from "./errors"
+import {
+  computePayloadContentHash,
+  isTriggerCloudConfigured,
+} from "./dispatch"
+import { rethrowAsTaskError } from "./errors"
 import { updateTaskProgress } from "./metadata"
+import { aiExtractionQueue } from "./queues"
 import { renderGotenbergAssetTask } from "./render-gotenberg-asset.task"
 
 export const extractPackagesPayloadSchema = z.object({
@@ -66,12 +70,18 @@ export interface ExtractPackagesTaskResult {
 }
 
 /**
- * Core extraction runner function. Can be called directly inline or via Trigger.dev Cloud worker.
+ * Core extraction runner function (`T-037`, `T-072`).
+ * Permanent errors (`400/401/403/404/422`) raise `AbortTaskRunError`, while transient
+ * errors (`429/5xx`/timeouts) rethrow so Trigger.dev executes exponential backoff.
  */
 export async function runExtractPackages(
   payload: ExtractPackagesPayload
 ): Promise<ExtractPackagesTaskResult> {
+  const entityId = payload.flyerId || payload.supplierSlug || "flyer-extract"
+
   updateTaskProgress({
+    taskType: "extract-packages",
+    entityId,
     stage: "initializing",
     progress: 10,
     detail: "Initializing flyer package extraction",
@@ -85,6 +95,8 @@ export async function runExtractPackages(
     })
 
     updateTaskProgress({
+      taskType: "extract-packages",
+      entityId,
       stage: "extracting_ai",
       progress: 40,
       detail: "Extracting supplier flyer packages via multimodal AI",
@@ -98,6 +110,8 @@ export async function runExtractPackages(
       })
 
       updateTaskProgress({
+        taskType: "extract-packages",
+        entityId,
         stage: "completed",
         progress: 100,
         detail: `Extracted ${draft.cards.length} draft package cards`,
@@ -116,13 +130,14 @@ export async function runExtractPackages(
       const errMsg =
         draftErr instanceof Error ? draftErr.message : String(draftErr)
       updateTaskProgress({
+        taskType: "extract-packages",
+        entityId,
         stage: "failed",
         progress: 100,
         detail: errMsg,
         error: errMsg,
       })
-      throwIfNonRetryable(draftErr, "ExtractPackagesTask.draft")
-      throw draftErr
+      rethrowAsTaskError(draftErr, "ExtractPackagesTask.draft")
     }
   }
 
@@ -153,12 +168,14 @@ export async function runExtractPackages(
     if (!flyer && !payload.rawText) {
       const notFoundErr = new Error(`Supplier flyer ${flyerId} not found`)
       updateTaskProgress({
+        taskType: "extract-packages",
+        entityId,
         stage: "failed",
         progress: 100,
         detail: notFoundErr.message,
         error: notFoundErr.message,
       })
-      throwIfNonRetryable(notFoundErr, "ExtractPackagesTask")
+      rethrowAsTaskError(notFoundErr, "ExtractPackagesTask")
     }
 
     if (flyer) {
@@ -171,6 +188,8 @@ export async function runExtractPackages(
 
   // 2. Perform multimodal extraction
   updateTaskProgress({
+    taskType: "extract-packages",
+    entityId,
     stage: "extracting_ai",
     progress: 40,
     detail: "Running multimodal AI package extraction",
@@ -196,18 +215,14 @@ export async function runExtractPackages(
       error: errorMsg,
     })
     updateTaskProgress({
+      taskType: "extract-packages",
+      entityId,
       stage: "failed",
       progress: 100,
       detail: errorMsg,
       error: errorMsg,
     })
-    throwIfNonRetryable(extractErr, "ExtractPackagesTask.multimodal")
-    return {
-      success: false,
-      extractedCount: 0,
-      cardCodes: [],
-      error: errorMsg,
-    }
+    rethrowAsTaskError(extractErr, "ExtractPackagesTask.multimodal")
   }
 
   logger.info("[ExtractPackagesTask] Multimodal extraction complete", {
@@ -219,6 +234,8 @@ export async function runExtractPackages(
 
   // 3. Social 1080p JPEG normalization via sharp if mediaUrl is accessible
   updateTaskProgress({
+    taskType: "extract-packages",
+    entityId,
     stage: "normalizing_jpegs",
     progress: 75,
     detail: `Normalizing 1080x1520 social JPEG (${result.cards.length} cards extracted)`,
@@ -256,6 +273,8 @@ export async function runExtractPackages(
 
   // 4. Update database records if flyerId is provided
   updateTaskProgress({
+    taskType: "extract-packages",
+    entityId,
     stage: "saving_records",
     progress: 90,
     detail: "Saving extracted flyer packages to database",
@@ -286,7 +305,6 @@ export async function runExtractPackages(
         })
         .where(eq(supplierFlyers.id, flyerId))
 
-      // Upsert packages
       if (resolvedSupplierId && result.cards.length > 0) {
         for (const card of result.cards) {
           const cardPostCode =
@@ -374,7 +392,7 @@ export async function runExtractPackages(
           error: dbErr instanceof Error ? dbErr.message : String(dbErr),
         }
       )
-      throwIfNonRetryable(dbErr, "ExtractPackagesTask.db")
+      rethrowAsTaskError(dbErr, "ExtractPackagesTask.db")
     }
   }
 
@@ -390,8 +408,9 @@ export async function runExtractPackages(
           const postCode =
             card.postCode ||
             `PKG-${(flyerId || "FLY").slice(0, 8)}-${card.cardNumber.padStart(2, "0")}`
+          const cardHash = computePayloadContentHash(card)
           const idemKey = await idempotencyKeys.create(
-            `spotlight-render-${postCode}`,
+            `spotlight-render-${postCode}|hash:${cardHash}`,
             { scope: "global" }
           )
           return {
@@ -448,6 +467,8 @@ export async function runExtractPackages(
   }
 
   updateTaskProgress({
+    taskType: "extract-packages",
+    entityId,
     stage: "completed",
     progress: 100,
     detail: `Extracted ${result.cards.length} package cards`,
@@ -470,11 +491,12 @@ export async function runExtractPackages(
 export const runExtractPackagesInline = runExtractPackages
 
 /**
- * Trigger.dev v4 schemaTask for multimodal package extraction.
+ * Trigger.dev v4 schemaTask for multimodal package extraction, bound to `aiExtractionQueue` (`T-072`).
  */
 export const extractPackagesTask = schemaTask({
   id: "extract-packages",
   schema: extractPackagesPayloadSchema,
+  queue: aiExtractionQueue,
   retry: {
     maxAttempts: 3,
     factor: 2,

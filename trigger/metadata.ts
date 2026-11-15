@@ -34,12 +34,23 @@ export interface TaskProgressCounters {
   [key: string]: number | undefined
 }
 
+export interface TaskProgressScope {
+  taskType?: string
+  entityId?: string
+  runId?: string
+  actorUserId?: string
+}
+
 export interface TaskProgressMetadata {
   stage: TaskRunStage
   progress: number // 0..100
   label: string
   detail: string
   updatedAt: string
+  taskType?: string
+  entityId?: string
+  runId?: string
+  actorUserId?: string
   counters?: TaskProgressCounters
   // Optional domain fields
   extractedCount?: number
@@ -55,13 +66,12 @@ export interface TaskProgressMetadata {
   error?: string
 }
 
-export interface UpdateTaskProgressInput {
+export interface UpdateTaskProgressInput extends TaskProgressScope {
   stage: TaskRunStage
   progress: number
   label?: string
   detail?: string
   counters?: TaskProgressCounters
-  runId?: string
   extractedCount?: number
   totalRecipients?: number
   sentCount?: number
@@ -75,10 +85,26 @@ export interface UpdateTaskProgressInput {
   error?: string
 }
 
-const localRunContext = new AsyncLocalStorage<string>()
-const localProgressStore = new Map<string, TaskProgressMetadata>()
+interface ScopedRunContextValue {
+  runId: string
+  taskType?: string
+  entityId?: string
+  actorUserId?: string
+}
+
+const localRunContext = new AsyncLocalStorage<ScopedRunContextValue>()
+
+/**
+ * Scoped in-memory progress store for local dev / test execution (`T-090`, `A18-012`).
+ *
+ * Keyed strictly by `(taskType, entityId, runId)` composite keys and explicit `runId` —
+ * NEVER by a global `"latest"` singleton key — preventing concurrent entity or cross-staff
+ * runs from leaking progress or output URLs across sessions.
+ */
+const localProgressByCompositeKey = new Map<string, TaskProgressMetadata>()
+const localProgressByRunId = new Map<string, TaskProgressMetadata>()
 const localRunTagsStore = new Map<string, string[]>()
-const MAX_LOCAL_SNAPSHOTS = 250
+const MAX_LOCAL_SNAPSHOTS = 500
 
 export interface LocalActiveRunSummary {
   runId: string
@@ -89,16 +115,52 @@ export interface LocalActiveRunSummary {
   metadata?: Record<string, unknown>
 }
 
-export function recordLocalRunTags(runId: string, tags: string[]): void {
-  localRunTagsStore.set(runId, tags)
+function pruneMapIfNeeded<K, V>(map: Map<K, V>): void {
+  if (map.size < MAX_LOCAL_SNAPSHOTS) return
+  const firstKey = map.keys().next().value
+  if (firstKey !== undefined) {
+    map.delete(firstKey)
+  }
 }
 
-export function getLocalActiveRunsByTags(tags: string[]): LocalActiveRunSummary[] {
-  const matching: LocalActiveRunSummary[] = []
-  const requestedTags = new Set(tags)
+export function buildScopedProgressKey(
+  taskType: string,
+  entityId: string,
+  runId: string
+): string {
+  return `${taskType.trim()}::${entityId.trim()}::${runId.trim()}`
+}
 
-  for (const [runId, snapshot] of localProgressStore.entries()) {
-    if (runId === "latest") continue
+export function clearLocalRunProgressForTests(): void {
+  localProgressByCompositeKey.clear()
+  localProgressByRunId.clear()
+  localRunTagsStore.clear()
+}
+
+export function recordLocalRunTags(runId: string, tags: string[]): void {
+  const cleanRunId = runId.trim()
+  if (!cleanRunId || cleanRunId.toLowerCase() === "latest" || tags.length === 0) {
+    return
+  }
+  pruneMapIfNeeded(localRunTagsStore)
+  localRunTagsStore.set(
+    cleanRunId,
+    tags.map((t) => t.trim()).filter((t) => t.length > 0)
+  )
+}
+
+export function getLocalActiveRunsByTags(
+  tags: string[]
+): LocalActiveRunSummary[] {
+  const cleanTags = tags.map((t) => t.trim()).filter((t) => t.length > 0)
+  if (cleanTags.length === 0) {
+    return []
+  }
+
+  const matching: LocalActiveRunSummary[] = []
+  const requestedTags = new Set(cleanTags)
+
+  for (const [runId, snapshot] of localProgressByRunId.entries()) {
     if (
       snapshot.stage === "completed" ||
       snapshot.stage === "failed" ||
@@ -108,13 +170,15 @@ export function getLocalActiveRunsByTags(tags: string[]): LocalActiveRunSummary[
     }
     const runTags = localRunTagsStore.get(runId) || []
     const hasTag = runTags.some((t) => requestedTags.has(t))
-    if (hasTag || tags.length === 0) {
+    if (hasTag) {
       matching.push({
         runId,
-        taskIdentifier: runId.startsWith("inline_")
-          ? runId.split("_")[1] || "task"
-          : "task",
-        status: "EXECUTING",
+        taskIdentifier:
+          snapshot.taskType ??
+          (runId.startsWith("inline_") ? runId.split("_")[1] || "task" : "task"),
+        status: snapshot.stage === "queued" || snapshot.stage === "waiting_until_scheduled"
+          ? "QUEUED"
+          : "EXECUTING",
         createdAt: snapshot.updatedAt,
         tags: runTags,
         metadata: snapshot as unknown as Record<string, unknown>,
@@ -125,64 +189,109 @@ export function getLocalActiveRunsByTags(tags: string[]): LocalActiveRunSummary[
   return matching
 }
 
-function pruneStoreIfNeeded() {
-  if (localProgressStore.size <= MAX_LOCAL_SNAPSHOTS) return
-  const firstKey = localProgressStore.keys().next().value
-  if (firstKey) {
-    localProgressStore.delete(firstKey)
-  }
-}
-
 /**
- * Runs a function within an AsyncLocalStorage scope bound to a synthetic or local `runId`,
- * so all `updateTaskProgress()` calls inside the inline runner automatically index under `runId`.
+ * Runs a function within an `AsyncLocalStorage` scope bound to `(taskType, entityId, runId)`,
+ * so all `updateTaskProgress()` calls inside an inline runner index strictly under that scoped run.
  */
 export async function withLocalRunProgressScope<T>(
   runId: string,
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
+  scope?: Omit<TaskProgressScope, "runId">
 ): Promise<T> {
-  return localRunContext.run(runId, fn)
+  return localRunContext.run(
+    {
+      runId: runId.trim(),
+      taskType: scope?.taskType,
+      entityId: scope?.entityId,
+      actorUserId: scope?.actorUserId,
+    },
+    fn
+  )
 }
 
 /**
- * Explicitly records a progress snapshot in the local in-memory fallback store.
+ * Explicitly records a progress snapshot in the scoped local fallback store (`T-090`).
+ * Never writes to a global `"latest"` key.
  */
 export function setLocalRunProgressSnapshot(
   runId: string,
-  snapshot: TaskProgressMetadata
+  snapshot: TaskProgressMetadata,
+  scope?: TaskProgressScope
 ): void {
-  pruneStoreIfNeeded()
-  localProgressStore.set(runId, snapshot)
-  localProgressStore.set("latest", snapshot)
-}
-
-/**
- * Retrieves the latest progress snapshot for a given `runId` in local dev fallback mode.
- */
-export function getLocalRunProgressSnapshot(
-  runId: string
-): TaskProgressMetadata | null {
-  const direct = localProgressStore.get(runId)
-  if (direct) return direct
-
-  if (runId.startsWith("inline_") || runId.startsWith("local_")) {
-    const latest = localProgressStore.get("latest")
-    if (latest) return latest
-    return {
-      stage: "completed",
-      progress: 100,
-      label: "Completed locally",
-      detail: "Completed locally",
-      updatedAt: new Date().toISOString(),
-    }
+  const cleanRunId = runId.trim()
+  if (!cleanRunId || cleanRunId.toLowerCase() === "latest") {
+    return
   }
 
-  return null
+  const enriched: TaskProgressMetadata = {
+    ...snapshot,
+    runId: cleanRunId,
+    taskType: scope?.taskType ?? snapshot.taskType,
+    entityId: scope?.entityId ?? snapshot.entityId,
+    actorUserId: scope?.actorUserId ?? snapshot.actorUserId,
+  }
+
+  pruneMapIfNeeded(localProgressByRunId)
+  localProgressByRunId.set(cleanRunId, enriched)
+
+  if (enriched.taskType && enriched.entityId) {
+    const compositeKey = buildScopedProgressKey(
+      enriched.taskType,
+      enriched.entityId,
+      cleanRunId
+    )
+    pruneMapIfNeeded(localProgressByCompositeKey)
+    localProgressByCompositeKey.set(compositeKey, enriched)
+  }
 }
 
 /**
- * Safely updates Trigger.dev run metadata inside a task run and caches an in-memory
- * snapshot for local dev fallback when `TRIGGER_SECRET_KEY` is absent.
+ * Retrieves the progress snapshot for a specific `runId` (and optional `(taskType, entityId)` scope).
+ * Rejects `"latest"` and unknown run IDs cleanly with `null` (`T-090`).
+ */
+export function getLocalRunProgressSnapshot(
+  runId: string,
+  scope?: TaskProgressScope
+): TaskProgressMetadata | null {
+  const cleanRunId = (runId ?? "").trim()
+  if (!cleanRunId || cleanRunId.toLowerCase() === "latest") {
+    return null
+  }
+
+  if (scope?.taskType && scope?.entityId) {
+    const compositeKey = buildScopedProgressKey(
+      scope.taskType,
+      scope.entityId,
+      cleanRunId
+    )
+    return localProgressByCompositeKey.get(compositeKey) ?? null
+  }
+
+  const hit = localProgressByRunId.get(cleanRunId) ?? null
+  if (!hit) {
+    return null
+  }
+
+  if (scope?.taskType && hit.taskType && hit.taskType !== scope.taskType) {
+    return null
+  }
+  if (scope?.entityId && hit.entityId && hit.entityId !== scope.entityId) {
+    return null
+  }
+  if (
+    scope?.actorUserId &&
+    hit.actorUserId &&
+    hit.actorUserId !== scope.actorUserId
+  ) {
+    return null
+  }
+
+  return hit
+}
+
+/**
+ * Safely updates Trigger.dev run metadata inside a task run and caches a scoped in-memory
+ * snapshot keyed strictly by `(taskType, entityId, runId)` when running in local dev/test mode.
  */
 export function updateTaskProgress(
   input: UpdateTaskProgressInput
@@ -224,10 +333,15 @@ export function updateTaskProgress(
     mergedCounters.extractedCount = input.extractedCount
   }
 
-  // Also normalize shorthand sent/failed/total into canonical fields
   const sentCount = input.sentCount ?? mergedCounters.sent
   const failedCount = input.failedCount ?? mergedCounters.failed
   const totalRecipients = input.totalRecipients ?? mergedCounters.total
+
+  const ctxScope = localRunContext.getStore()
+  const scopedRunId = input.runId ?? ctxScope?.runId
+  const scopedTaskType = input.taskType ?? ctxScope?.taskType
+  const scopedEntityId = input.entityId ?? ctxScope?.entityId
+  const scopedActorUserId = input.actorUserId ?? ctxScope?.actorUserId
 
   const snapshot: TaskProgressMetadata = {
     stage: input.stage,
@@ -235,6 +349,10 @@ export function updateTaskProgress(
     label: resolvedLabel,
     detail: resolvedDetail,
     updatedAt,
+    ...(scopedTaskType ? { taskType: scopedTaskType } : {}),
+    ...(scopedEntityId ? { entityId: scopedEntityId } : {}),
+    ...(scopedRunId ? { runId: scopedRunId } : {}),
+    ...(scopedActorUserId ? { actorUserId: scopedActorUserId } : {}),
     ...(Object.keys(mergedCounters).length > 0
       ? { counters: mergedCounters }
       : {}),
@@ -261,12 +379,13 @@ export function updateTaskProgress(
     ...(input.error !== undefined ? { error: input.error } : {}),
   }
 
-  const scopedRunId = input.runId ?? localRunContext.getStore()
   if (scopedRunId) {
-    setLocalRunProgressSnapshot(scopedRunId, snapshot)
-  } else {
-    pruneStoreIfNeeded()
-    localProgressStore.set("latest", snapshot)
+    setLocalRunProgressSnapshot(scopedRunId, snapshot, {
+      taskType: scopedTaskType,
+      entityId: scopedEntityId,
+      runId: scopedRunId,
+      actorUserId: scopedActorUserId,
+    })
   }
 
   try {
@@ -277,8 +396,20 @@ export function updateTaskProgress(
       .set("detail", snapshot.detail)
       .set("updatedAt", snapshot.updatedAt)
 
+    if (snapshot.taskType) {
+      metadata.set("taskType", snapshot.taskType)
+    }
+    if (snapshot.entityId) {
+      metadata.set("entityId", snapshot.entityId)
+    }
     if (snapshot.counters) {
-      metadata.set("counters", snapshot.counters as Record<string, number>)
+      const cleanCounters: Record<string, number> = {}
+      for (const [k, v] of Object.entries(snapshot.counters)) {
+        if (typeof v === "number") {
+          cleanCounters[k] = v
+        }
+      }
+      metadata.set("counters", cleanCounters)
     }
     if (snapshot.extractedCount !== undefined) {
       metadata.set("extractedCount", snapshot.extractedCount)

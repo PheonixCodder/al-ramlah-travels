@@ -1,42 +1,52 @@
 "use server"
 
 import { auth as triggerAuth, runs } from "@trigger.dev/sdk"
-import { z } from "zod"
 import { requireAdmin } from "@/lib/auth-guard"
+import {
+  ALLOWED_OBSERVABLE_TASK_IDS,
+  batchRealtimeRunIdsSchema,
+  listActiveRunsInputSchema,
+  realtimeRunIdSchema,
+  verifyRealtimeTagAuthorization,
+  verifyRealtimeTagsBatchAuthorization,
+} from "@/lib/trigger/realtime-scoping"
 import { isTriggerCloudConfigured } from "@/trigger/dispatch"
 import {
-  getLocalRunProgressSnapshot,
   getLocalActiveRunsByTags,
+  getLocalRunProgressSnapshot,
   type TaskProgressMetadata,
   type TaskRunStage,
 } from "@/trigger/metadata"
 
-const runIdInputSchema = z.union([
-  z.string().min(1, "runId is required"),
-  z.object({
-    runId: z.string().min(1, "runId is required"),
-  }),
-])
+function parseValidatedRunId(rawInput: unknown): {
+  ok: true
+  runId: string
+} | {
+  ok: false
+  rawRunId: string
+  error: string
+} {
+  const candidate =
+    rawInput &&
+    typeof rawInput === "object" &&
+    "runId" in rawInput &&
+    !Array.isArray(rawInput)
+      ? (rawInput as { runId?: unknown }).runId
+      : rawInput
 
-const batchRunIdsInputSchema = z.union([
-  z.array(z.string().min(1)).min(1),
-  z.object({
-    runIds: z.array(z.string().min(1)).min(1),
-  }),
-])
+  const rawRunId = typeof candidate === "string" ? candidate : ""
+  const parsed = realtimeRunIdSchema.safeParse(candidate)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      rawRunId,
+      error: parsed.error.issues[0]?.message || "Invalid Trigger runId",
+    }
+  }
 
-function extractRunId(rawInput: unknown): string {
-  const parsed = runIdInputSchema.parse(rawInput)
-  return typeof parsed === "string" ? parsed.trim() : parsed.runId.trim()
-}
-
-function buildDefaultLocalSnapshot(): TaskProgressMetadata {
   return {
-    stage: "completed",
-    progress: 100,
-    label: "Completed locally",
-    detail: "Completed locally",
-    updatedAt: new Date().toISOString(),
+    ok: true,
+    runId: parsed.data,
   }
 }
 
@@ -52,60 +62,148 @@ export interface MintRealtimeRunTokenResult {
   error?: string
 }
 
+export type RealtimeRunTokenResult = MintRealtimeRunTokenResult
+
 export interface TaskRunProgressResult {
   success: boolean
   mode: "cloud" | "local"
   runId: string
   status?: string
+  isCompleted?: boolean
+  isSuccess?: boolean
+  isFailed?: boolean
   snapshot: TaskProgressMetadata | null
+  output?: unknown
   error?: string
 }
 
+export type TaskRunStatusResult = TaskRunProgressResult
+
+async function verifyCloudRunAccess(
+  runId: string,
+  session: Awaited<ReturnType<typeof requireAdmin>>
+): Promise<
+  | { ok: true; run: Awaited<ReturnType<typeof runs.retrieve>> }
+  | { ok: false; error: string }
+> {
+  const run = await runs.retrieve(runId)
+
+  if (!ALLOWED_OBSERVABLE_TASK_IDS.has(run.taskIdentifier)) {
+    return {
+      ok: false,
+      error: `Forbidden: Task "${run.taskIdentifier}" is not observable via client Realtime`,
+    }
+  }
+
+  if (
+    run.taskIdentifier === "send-whatsapp-broadcast" &&
+    session.user.role !== "super_admin"
+  ) {
+    return {
+      ok: false,
+      error:
+        "Forbidden: Super Administrator privilege required for broadcast runs",
+    }
+  }
+
+  const runTags = Array.isArray(run.tags) ? run.tags : []
+  const entityTags = runTags.filter(
+    (t) => !t.startsWith("platform:") && !t.startsWith("pacing:")
+  )
+
+  if (entityTags.length > 0) {
+    let anyAuthorized = false
+    let lastError = "Forbidden: Run entity is not accessible"
+    for (const tag of entityTags) {
+      const check = await verifyRealtimeTagAuthorization(tag, session)
+      if (check.ok) {
+        anyAuthorized = true
+        break
+      }
+      lastError = check.error
+    }
+    if (!anyAuthorized) {
+      return { ok: false, error: lastError }
+    }
+  }
+
+  return { ok: true, run }
+}
+
 /**
- * Mints a scoped read-only Trigger.dev Public Access Token (`scopes: { read: { runs: [runId] } }`)
- * for browser `useRealtimeRun` subscriptions after verifying a Better Auth staff/super_admin session.
- *
- * When `TRIGGER_SECRET_KEY` is absent or `runId` is a local/inline synthetic ID, returns
- * `{ success: true, mode: "local", runId, snapshot }` for zero-config local dev fallback.
+ * Mints a short-lived (`15m`), read-only Trigger.dev Public Access Token (`scopes: { read: { runs: [runId] } }`)
+ * after verifying `requireAdmin()`, `runId` format, observable task allowlist, and entity access (`T-090`).
  */
 export async function mintRealtimeRunPublicTokenAction(
   rawInput: string | { runId: string }
 ): Promise<MintRealtimeRunTokenResult> {
   try {
-    await requireAdmin()
-    const runId = extractRunId(rawInput)
+    const session = await requireAdmin()
+    const parsed = parseValidatedRunId(rawInput)
+    if (!parsed.ok) {
+      return {
+        success: false,
+        mode: "local",
+        runId: parsed.rawRunId,
+        error: parsed.error,
+      }
+    }
 
+    const runId = parsed.runId
     const isLocalSynthetic =
       runId.startsWith("inline_") || runId.startsWith("local_")
 
     if (isTriggerCloudConfigured() && !isLocalSynthetic) {
-      try {
-        const publicAccessToken = await triggerAuth.createPublicToken({
-          scopes: {
-            read: {
-              runs: [runId],
-            },
-          },
-          expirationTime: "1h",
-        })
-
+      const access = await verifyCloudRunAccess(runId, session)
+      if (!access.ok) {
         return {
-          success: true,
+          success: false,
           mode: "cloud",
           runId,
-          token: publicAccessToken,
-          publicAccessToken,
+          error: access.error,
         }
-      } catch (tokenErr) {
-        console.warn(
-          `[Trigger Realtime Token Warning] Could not mint cloud public token for ${runId}; falling back to local snapshot:`,
-          tokenErr
-        )
+      }
+
+      const publicAccessToken = await triggerAuth.createPublicToken({
+        scopes: {
+          read: {
+            runs: [runId],
+          },
+        },
+        expirationTime: "15m",
+      })
+
+      return {
+        success: true,
+        mode: "cloud",
+        runId,
+        token: publicAccessToken,
+        publicAccessToken,
       }
     }
 
-    const snapshot =
-      getLocalRunProgressSnapshot(runId) ?? buildDefaultLocalSnapshot()
+    const snapshot = getLocalRunProgressSnapshot(runId)
+    if (!snapshot) {
+      return {
+        success: false,
+        mode: "local",
+        runId,
+        error: "Run not found in scoped local progress store",
+      }
+    }
+
+    if (
+      snapshot.taskType === "send-whatsapp-broadcast" &&
+      session.user.role !== "super_admin"
+    ) {
+      return {
+        success: false,
+        mode: "local",
+        runId,
+        error:
+          "Forbidden: Super Administrator privilege required for broadcast runs",
+      }
+    }
 
     return {
       success: true,
@@ -115,9 +213,9 @@ export async function mintRealtimeRunPublicTokenAction(
       fallbackStatus:
         snapshot.stage === "failed"
           ? "FAILED"
-          : snapshot.progress >= 100
-          ? "COMPLETED"
-          : "EXECUTING",
+          : snapshot.progress >= 100 || snapshot.stage === "completed"
+            ? "COMPLETED"
+            : "EXECUTING",
       fallbackMetadata: snapshot,
     }
   } catch (err: unknown) {
@@ -135,121 +233,185 @@ export async function mintRealtimeRunPublicTokenAction(
 }
 
 /**
- * Retrieves the current task run progress snapshot (from Trigger.dev Cloud when configured,
- * or from the in-memory local dev fallback snapshot store when running locally).
+ * Retrieves the current task run progress snapshot after verifying `requireAdmin()`, `runId` format,
+ * observable task allowlist, and entity ownership (`T-090`).
  */
 export async function getTaskRunProgressAction(
   rawInput: string | { runId: string }
 ): Promise<TaskRunProgressResult> {
   try {
-    await requireAdmin()
-    const runId = extractRunId(rawInput)
+    const session = await requireAdmin()
+    const parsed = parseValidatedRunId(rawInput)
+    if (!parsed.ok) {
+      return {
+        success: false,
+        mode: "local",
+        runId: parsed.rawRunId,
+        snapshot: null,
+        isCompleted: false,
+        isSuccess: false,
+        isFailed: true,
+        error: parsed.error,
+      }
+    }
 
+    const runId = parsed.runId
     const isLocalSynthetic =
       runId.startsWith("inline_") || runId.startsWith("local_")
 
     if (isTriggerCloudConfigured() && !isLocalSynthetic) {
-      try {
-        const run = await runs.retrieve(runId)
-        const meta = (run.metadata ?? {}) as Record<string, unknown>
+      const access = await verifyCloudRunAccess(runId, session)
+      if (!access.ok) {
+        return {
+          success: false,
+          mode: "cloud",
+          runId,
+          snapshot: null,
+          isCompleted: false,
+          isSuccess: false,
+          isFailed: true,
+          error: access.error,
+        }
+      }
 
-        const stage: TaskRunStage =
-          typeof meta.stage === "string"
-            ? (meta.stage as TaskRunStage)
-            : run.status === "COMPLETED"
+      const run = access.run
+      const meta = (run.metadata ?? {}) as Record<string, unknown>
+
+      const stage: TaskRunStage =
+        typeof meta.stage === "string"
+          ? (meta.stage as TaskRunStage)
+          : run.status === "COMPLETED"
             ? "completed"
             : run.status === "FAILED" ||
-              run.status === "CRASHED" ||
-              run.status === "CANCELED"
-            ? "failed"
-            : "initializing"
+                run.status === "CRASHED" ||
+                run.status === "CANCELED"
+              ? "failed"
+              : "initializing"
 
-        const progress =
-          typeof meta.progress === "number"
-            ? meta.progress
-            : run.status === "COMPLETED"
+      const progress =
+        typeof meta.progress === "number"
+          ? meta.progress
+          : run.status === "COMPLETED"
             ? 100
             : 0
 
-        const label =
-          typeof meta.label === "string"
-            ? meta.label
-            : typeof meta.detail === "string"
+      const label =
+        typeof meta.label === "string"
+          ? meta.label
+          : typeof meta.detail === "string"
             ? meta.detail
             : String(stage)
 
-        const detail =
-          typeof meta.detail === "string" ? meta.detail : label
+      const detail = typeof meta.detail === "string" ? meta.detail : label
 
-        const snapshot: TaskProgressMetadata = {
-          stage,
-          progress,
-          label,
-          detail,
-          updatedAt:
-            typeof meta.updatedAt === "string"
-              ? meta.updatedAt
-              : new Date().toISOString(),
-          ...(typeof meta.counters === "object" && meta.counters !== null
-            ? { counters: meta.counters as TaskProgressMetadata["counters"] }
-            : {}),
-          ...(typeof meta.extractedCount === "number"
-            ? { extractedCount: meta.extractedCount }
-            : {}),
-          ...(typeof meta.totalRecipients === "number"
-            ? { totalRecipients: meta.totalRecipients }
-            : {}),
-          ...(typeof meta.sentCount === "number"
-            ? { sentCount: meta.sentCount }
-            : {}),
-          ...(typeof meta.failedCount === "number"
-            ? { failedCount: meta.failedCount }
-            : {}),
-          ...(typeof meta.completedTargets === "number"
-            ? { completedTargets: meta.completedTargets }
-            : {}),
-          ...(typeof meta.failedTargets === "number"
-            ? { failedTargets: meta.failedTargets }
-            : {}),
-          ...(typeof meta.totalTargets === "number"
-            ? { totalTargets: meta.totalTargets }
-            : {}),
-          ...(typeof meta.pdfUrl === "string" ? { pdfUrl: meta.pdfUrl } : {}),
-          ...(typeof meta.pngUrl === "string" ? { pngUrl: meta.pngUrl } : {}),
-          ...(typeof meta.socialJpegUrl === "string"
-            ? { socialJpegUrl: meta.socialJpegUrl }
-            : {}),
-          ...(typeof meta.error === "string" ? { error: meta.error } : {}),
-        }
+      const snapshot: TaskProgressMetadata = {
+        stage,
+        progress,
+        label,
+        detail,
+        updatedAt:
+          typeof meta.updatedAt === "string"
+            ? meta.updatedAt
+            : new Date().toISOString(),
+        ...(typeof meta.counters === "object" && meta.counters !== null
+          ? { counters: meta.counters as TaskProgressMetadata["counters"] }
+          : {}),
+        ...(typeof meta.extractedCount === "number"
+          ? { extractedCount: meta.extractedCount }
+          : {}),
+        ...(typeof meta.totalRecipients === "number"
+          ? { totalRecipients: meta.totalRecipients }
+          : {}),
+        ...(typeof meta.sentCount === "number"
+          ? { sentCount: meta.sentCount }
+          : {}),
+        ...(typeof meta.failedCount === "number"
+          ? { failedCount: meta.failedCount }
+          : {}),
+        ...(typeof meta.completedTargets === "number"
+          ? { completedTargets: meta.completedTargets }
+          : {}),
+        ...(typeof meta.failedTargets === "number"
+          ? { failedTargets: meta.failedTargets }
+          : {}),
+        ...(typeof meta.totalTargets === "number"
+          ? { totalTargets: meta.totalTargets }
+          : {}),
+        ...(typeof meta.pdfUrl === "string" ? { pdfUrl: meta.pdfUrl } : {}),
+        ...(typeof meta.pngUrl === "string" ? { pngUrl: meta.pngUrl } : {}),
+        ...(typeof meta.socialJpegUrl === "string"
+          ? { socialJpegUrl: meta.socialJpegUrl }
+          : {}),
+        ...(typeof meta.error === "string" ? { error: meta.error } : {}),
+      }
 
-        return {
-          success: true,
-          mode: "cloud",
-          runId,
-          status: run.status,
-          snapshot,
-        }
-      } catch (cloudErr) {
-        console.warn(
-          `[Trigger Run Progress Warning] Could not retrieve cloud run ${runId}; checking local snapshot:`,
-          cloudErr
-        )
+      const isCompleted = Boolean(run.isCompleted || run.status === "COMPLETED")
+      const isFailed = Boolean(
+        run.isFailed ||
+          run.status === "FAILED" ||
+          run.status === "CRASHED" ||
+          run.status === "CANCELED"
+      )
+
+      return {
+        success: true,
+        mode: "cloud",
+        runId,
+        status: run.status,
+        isCompleted: isCompleted || isFailed,
+        isSuccess: Boolean(run.isSuccess || run.status === "COMPLETED"),
+        isFailed,
+        snapshot,
+        output: run.output,
       }
     }
 
-    const snapshot =
-      getLocalRunProgressSnapshot(runId) ?? buildDefaultLocalSnapshot()
+    const snapshot = getLocalRunProgressSnapshot(runId)
+    if (!snapshot) {
+      return {
+        success: false,
+        mode: "local",
+        runId,
+        snapshot: null,
+        isCompleted: false,
+        isSuccess: false,
+        isFailed: true,
+        error: "Run not found in scoped local progress store",
+      }
+    }
+
+    if (
+      snapshot.taskType === "send-whatsapp-broadcast" &&
+      session.user.role !== "super_admin"
+    ) {
+      return {
+        success: false,
+        mode: "local",
+        runId,
+        snapshot: null,
+        isCompleted: false,
+        isSuccess: false,
+        isFailed: true,
+        error:
+          "Forbidden: Super Administrator privilege required for broadcast runs",
+      }
+    }
+
+    const status =
+      snapshot.stage === "failed"
+        ? "FAILED"
+        : snapshot.progress >= 100 || snapshot.stage === "completed"
+          ? "COMPLETED"
+          : "EXECUTING"
 
     return {
       success: true,
       mode: "local",
       runId,
-      status:
-        snapshot.stage === "failed"
-          ? "FAILED"
-          : snapshot.progress >= 100
-          ? "COMPLETED"
-          : "EXECUTING",
+      status,
+      isCompleted: status === "COMPLETED" || status === "FAILED",
+      isSuccess: status === "COMPLETED",
+      isFailed: status === "FAILED",
       snapshot,
     }
   } catch (err: unknown) {
@@ -262,14 +424,14 @@ export async function getTaskRunProgressAction(
       mode: "local",
       runId: typeof rawInput === "string" ? rawInput : rawInput?.runId ?? "",
       snapshot: null,
+      isCompleted: false,
+      isSuccess: false,
+      isFailed: true,
       error,
     }
   }
 }
 
-/**
- * Alias matching Spec 0012 Section 6 signature.
- */
 export async function createRealtimeRunTokenAction(
   rawInput: unknown
 ): Promise<MintRealtimeRunTokenResult> {
@@ -278,36 +440,67 @@ export async function createRealtimeRunTokenAction(
   )
 }
 
-/**
- * Mints a scoped read-only token covering multiple run IDs in a single call.
- */
-export async function createBatchRealtimeRunTokensAction(
-  rawInput: unknown
-): Promise<{
+export interface BatchRealtimeTokenResult {
   success: boolean
   mode: "cloud" | "local" | "inline"
   publicAccessToken?: string
   token?: string
   runIds: string[]
   error?: string
-}> {
-  try {
-    await requireAdmin()
-    const parsed = batchRunIdsInputSchema.parse(rawInput)
-    const runIds = Array.isArray(parsed) ? parsed : parsed.runIds
+}
 
+/**
+ * Mints a short-lived (`15m`), read-only token covering multiple authorized run IDs (`<= 25`) (`T-090`).
+ */
+export async function createBatchRealtimeRunTokensAction(
+  rawInput: unknown
+): Promise<BatchRealtimeTokenResult> {
+  try {
+    const session = await requireAdmin()
+    const candidate =
+      rawInput &&
+      typeof rawInput === "object" &&
+      "runIds" in rawInput &&
+      !Array.isArray(rawInput)
+        ? (rawInput as { runIds?: unknown }).runIds
+        : rawInput
+
+    const parsed = batchRealtimeRunIdsSchema.safeParse(candidate)
+    if (!parsed.success) {
+      return {
+        success: false,
+        mode: "local",
+        runIds: [],
+        error:
+          parsed.error.issues[0]?.message || "Invalid batch runIds payload",
+      }
+    }
+
+    const runIds = parsed.data
     const cloudRunIds = runIds.filter(
       (id) => !id.startsWith("inline_") && !id.startsWith("local_")
     )
 
     if (isTriggerCloudConfigured() && cloudRunIds.length > 0) {
+      for (const id of cloudRunIds) {
+        const access = await verifyCloudRunAccess(id, session)
+        if (!access.ok) {
+          return {
+            success: false,
+            mode: "cloud",
+            runIds: [],
+            error: access.error,
+          }
+        }
+      }
+
       const publicAccessToken = await triggerAuth.createPublicToken({
         scopes: {
           read: {
             runs: cloudRunIds,
           },
         },
-        expirationTime: "1h",
+        expirationTime: "15m",
       })
       return {
         success: true,
@@ -337,6 +530,85 @@ export async function createBatchRealtimeRunTokensAction(
   }
 }
 
+export async function mintBatchRealtimePublicTokenAction(
+  runIds: string[]
+): Promise<BatchRealtimeTokenResult> {
+  return createBatchRealtimeRunTokensAction(runIds)
+}
+
+/**
+ * Mints a short-lived (`15m`), read-only Trigger.dev Realtime token scoped strictly
+ * to validated, entity-authorized tags (`T-090`).
+ */
+export async function mintRealtimeTagPublicTokenAction(
+  tags: string[]
+): Promise<{
+  success: boolean
+  mode: "cloud" | "local"
+  publicAccessToken?: string
+  token?: string
+  error?: string
+}> {
+  try {
+    const session = await requireAdmin()
+    const parsed = listActiveRunsInputSchema.safeParse(tags)
+    if (!parsed.success) {
+      return {
+        success: false,
+        mode: "local",
+        error:
+          parsed.error.issues[0]?.message ||
+          "At least one valid tag is required",
+      }
+    }
+
+    const rawTags = Array.isArray(parsed.data) ? parsed.data : parsed.data.tags
+    const authCheck = await verifyRealtimeTagsBatchAuthorization(
+      rawTags,
+      session
+    )
+    if (!authCheck.ok) {
+      return {
+        success: false,
+        mode: isTriggerCloudConfigured() ? "cloud" : "local",
+        error: authCheck.error,
+      }
+    }
+
+    if (!isTriggerCloudConfigured()) {
+      return {
+        success: true,
+        mode: "local",
+      }
+    }
+
+    const publicAccessToken = await triggerAuth.createPublicToken({
+      scopes: {
+        read: {
+          tags: authCheck.validTags,
+        },
+      },
+      expirationTime: "15m",
+    })
+
+    return {
+      success: true,
+      mode: "cloud",
+      publicAccessToken,
+      token: publicAccessToken,
+    }
+  } catch (err: unknown) {
+    return {
+      success: false,
+      mode: "local",
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to mint tag-scoped Trigger Realtime token",
+    }
+  }
+}
+
 export interface ActiveRunSummary {
   runId: string
   taskIdentifier: string
@@ -346,6 +618,8 @@ export interface ActiveRunSummary {
   metadata?: Record<string, unknown>
 }
 
+export type ActiveTaggedRunSummary = ActiveRunSummary
+
 export interface ListActiveRunsResult {
   success: boolean
   mode: "cloud" | "local"
@@ -354,51 +628,94 @@ export interface ListActiveRunsResult {
   error?: string
 }
 
-const listActiveRunsInputSchema = z.union([
-  z.array(z.string().min(1)),
-  z.object({
-    tags: z.array(z.string().min(1)),
-    limit: z.number().int().positive().max(100).optional(),
-  }),
-])
+export type ListActiveRunsByTagsResult = ListActiveRunsResult
+
+type TriggerRunsListParams = NonNullable<Parameters<typeof runs.list>[0]>
+type TriggerRunsListStatus = TriggerRunsListParams["status"]
+
+const ACTIVE_TRIGGER_RUN_STATUSES: TriggerRunsListStatus = [
+  "PENDING_VERSION",
+  "QUEUED",
+  "DEQUEUED",
+  "EXECUTING",
+  "WAITING",
+  "DELAYED",
+]
+
+function mapCloudRunStatus(
+  rawStatus: string
+): ActiveRunSummary["status"] {
+  if (rawStatus === "EXECUTING" || rawStatus === "DEQUEUED") {
+    return "EXECUTING"
+  }
+  if (rawStatus === "WAITING" || rawStatus === "DELAYED") {
+    return "FROZEN"
+  }
+  return "QUEUED"
+}
 
 /**
- * Queries active Trigger.dev runs by tags and mints a scoped public access token
- * so browser tabs can rehydrate in-flight tasks upon page reload.
+ * Queries active Trigger.dev runs by validated, entity-authorized tags and mints a `15m`
+ * scoped public access token so browser tabs rehydrate in-flight tasks safely (`T-090`).
  */
 export async function listActiveRunsByTagsAction(
   rawInput: { tags: string[]; limit?: number } | string[]
 ): Promise<ListActiveRunsResult> {
   try {
-    await requireAdmin()
-    const parsed = listActiveRunsInputSchema.parse(rawInput)
-    const tags = Array.isArray(parsed) ? parsed : parsed.tags
-    const limit = Array.isArray(parsed) ? 10 : parsed.limit ?? 10
+    const session = await requireAdmin()
+    const parsed = listActiveRunsInputSchema.safeParse(rawInput)
+    if (!parsed.success) {
+      return {
+        success: false,
+        mode: "local",
+        activeRuns: [],
+        error:
+          parsed.error.issues[0]?.message ||
+          "Invalid tags filter payload",
+      }
+    }
+
+    const rawTags = Array.isArray(parsed.data) ? parsed.data : parsed.data.tags
+    const limit = Array.isArray(parsed.data)
+      ? 10
+      : (parsed.data.limit ?? 10)
+
+    const authCheck = await verifyRealtimeTagsBatchAuthorization(
+      rawTags,
+      session
+    )
+    if (!authCheck.ok) {
+      return {
+        success: false,
+        mode: isTriggerCloudConfigured() ? "cloud" : "local",
+        activeRuns: [],
+        error: authCheck.error,
+      }
+    }
+
+    const validTags = authCheck.validTags
 
     if (isTriggerCloudConfigured()) {
       try {
-        const activeStatuses = [
-          "EXECUTING",
-          "QUEUED",
-          "WAITING_FOR_DEPLOY",
-          "REATTEMPTING",
-          "FROZEN",
-        ] as const
-
         const page = await runs.list({
-          tag: tags,
-          status: activeStatuses as unknown as any,
+          tag: validTags,
+          status: ACTIVE_TRIGGER_RUN_STATUSES,
           limit,
         })
 
-        const runItems = page.data || []
+        const runItems = (page.data || []).filter((r) =>
+          ALLOWED_OBSERVABLE_TASK_IDS.has(r.taskIdentifier)
+        )
         const activeRuns: ActiveRunSummary[] = runItems.map((r) => ({
           runId: r.id,
           taskIdentifier: r.taskIdentifier,
-          status: r.status as ActiveRunSummary["status"],
-          createdAt: r.createdAt.toISOString(),
+          status: mapCloudRunStatus(r.status),
+          createdAt:
+            r.createdAt instanceof Date
+              ? r.createdAt.toISOString()
+              : String(r.createdAt),
           tags: r.tags || [],
-          metadata: r.metadata as Record<string, unknown>,
+          metadata: (r.metadata ?? {}) as Record<string, unknown>,
         }))
 
         if (activeRuns.length > 0) {
@@ -408,7 +725,7 @@ export async function listActiveRunsByTagsAction(
                 runs: activeRuns.map((r) => r.runId),
               },
             },
-            expirationTime: "1h",
+            expirationTime: "15m",
           })
 
           return {
@@ -428,8 +745,7 @@ export async function listActiveRunsByTagsAction(
       }
     }
 
-    // Local dev snapshot store fallback
-    const localSnapshots = getLocalActiveRunsByTags(tags)
+    const localSnapshots = getLocalActiveRunsByTags(validTags).slice(0, limit)
     return {
       success: true,
       mode: "local",

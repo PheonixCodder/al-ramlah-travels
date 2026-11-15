@@ -1,26 +1,32 @@
 import {
+  AbortTaskRunError,
   idempotencyKeys,
   logger,
   schedules,
   schemaTask,
   wait,
 } from "@trigger.dev/sdk"
-import { and, eq, lte } from "drizzle-orm"
+import { and, asc, eq, lte } from "drizzle-orm"
 import { z } from "zod"
 import { db } from "@/db"
+import { scheduledPosts } from "@/db/schema/social-scheduler"
 import {
-  scheduledPosts,
-  scheduledPostTargets,
-  socialIntegrations,
-} from "@/db/schema/social-scheduler"
-import { executeScheduledPostNowAction } from "@/app/actions/social-scheduler"
-import { decryptToken } from "@/lib/social/crypto"
-import { getSocialProvider } from "@/lib/social/providers"
-import type { SocialProviderId } from "@/lib/social/types"
-import { isTriggerCloudConfigured } from "./dispatch"
-import { throwIfNonRetryable } from "./errors"
-import { updateTaskProgress } from "./metadata"
-import { socialPublishQueue } from "./queues"
+  claimScheduledPostForPublishing,
+  executeClaimedScheduledPostPublish,
+  type TargetPublisherFn,
+} from "@/lib/trigger/publish-scheduled-post"
+import {
+  composeDispatchIdempotencySeed,
+  isTriggerCloudConfigured,
+} from "@/trigger/dispatch"
+import { rethrowAsTaskError } from "@/trigger/errors"
+import { updateTaskProgress } from "@/trigger/metadata"
+import {
+  scheduledMaintenanceQueue,
+  socialPublishQueue,
+} from "@/trigger/queues"
+
+export { claimScheduledPostForPublishing }
 
 export const publishSocialPostPayloadSchema = z.object({
   scheduledPostId: z.string().min(1),
@@ -34,357 +40,355 @@ export interface PublishSocialPostTaskResult {
   success: boolean
   scheduledPostId: string
   primaryStatus: string
+  postStatus: string
   completedTargets: number
   failedTargets: number
+  skipped?: boolean
   step2Triggered?: boolean
   step2Status?: string
   error?: string
 }
 
-/**
- * Forward-compatible helper for Spec 0014 First-Comment Auto-Plug.
- * If `post.firstComment` is populated and a provider adapter exposes `publishComment`,
- * posts the follow-up comment on targets that haven't already recorded `firstCommentId`.
- */
-async function maybePublishFirstCommentsForPost(
-  post: typeof scheduledPosts.$inferSelect
-): Promise<void> {
-  const globalFirstComment = (
-    post as { firstComment?: string | null }
-  ).firstComment?.trim()
-  const platformCaptions = (
-    post as { platformCaptions?: Record<string, { firstComment?: string }> | null }
-  ).platformCaptions
-
-  if (!globalFirstComment && (!platformCaptions || Object.keys(platformCaptions).length === 0)) {
-    return
-  }
-
-  try {
-    const publishedTargets = await db
-      .select({
-        target: scheduledPostTargets,
-        integration: socialIntegrations,
-      })
-      .from(scheduledPostTargets)
-      .innerJoin(
-        socialIntegrations,
-        eq(scheduledPostTargets.integrationId, socialIntegrations.id)
-      )
-      .where(
-        and(
-          eq(scheduledPostTargets.scheduledPostId, post.id),
-          eq(scheduledPostTargets.status, "published")
-        )
-      )
-
-    for (const { target, integration } of publishedTargets) {
-      if (!target.externalPostId) continue
-
-      const provider = integration.provider as SocialProviderId
-      const targetOverride = platformCaptions?.[provider]?.firstComment?.trim()
-      const effectiveCommentText = targetOverride || globalFirstComment
-      if (!effectiveCommentText) continue
-
-      const existingAnalytics = (
-        target as {
-          analyticsData?: { firstCommentId?: string } | null
-        }
-      ).analyticsData
-      if (existingAnalytics?.firstCommentId) {
-        continue
-      }
-
-      const adapter = getSocialProvider(provider)
-      const publishCommentFn = (
-        adapter as {
-          publishComment?: (params: {
-            accessToken: string
-            externalPostId: string
-            commentText: string
-            accountId?: string
-            metadata?: Record<string, unknown>
-          }) => Promise<{ commentId: string }>
-        }
-      ).publishComment
-
-      if (typeof publishCommentFn !== "function") continue
-
-      try {
-        const accessToken = decryptToken(integration.encryptedAccessToken)
-        const commentRes = await publishCommentFn({
-          accessToken,
-          externalPostId: target.externalPostId,
-          commentText: effectiveCommentText,
-          accountId: integration.internalAccountId,
-          metadata: integration.metadata,
-        })
-
-        logger.info("[PublishSocialPostTask] Published first comment", {
-          scheduledPostId: post.id,
-          targetId: target.id,
-          provider: integration.provider,
-          commentId: commentRes.commentId,
-        })
-      } catch (commentErr) {
-        logger.warn(
-          "[PublishSocialPostTask] First comment auto-plug skipped/failed",
-          {
-            scheduledPostId: post.id,
-            targetId: target.id,
-            provider: integration.provider,
-            error:
-              commentErr instanceof Error
-                ? commentErr.message
-                : String(commentErr),
-          }
-        )
-      }
-    }
-  } catch (err) {
-    logger.warn("[PublishSocialPostTask] Could not inspect first comments", {
-      scheduledPostId: post.id,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
-}
+export type PublishSocialPostResult = PublishSocialPostTaskResult
 
 /**
- * Core publication runner. Can be invoked inline or from Trigger.dev Cloud worker.
+ * Core execution pipeline for publishing a scheduled social post (`T-037`, `T-090`).
+ *
+ * - Pure worker task module with zero Next.js server-cache or Server Action imports (`A18-013`).
+ * - Acquires atomic `UPDATE scheduled_posts SET status = 'publishing' WHERE id = $1 AND status = 'scheduled' RETURNING *`
+ *   claim lock after `wait.until()` so concurrent sweeper and scheduled runs can NEVER double-publish (`A16-006`).
+ * - Routes permanent (`400/401/403/404/422`) vs transient (`429/5xx`) errors through `rethrowAsTaskError` (`A18-002`).
  */
-export async function runPublishSocialPost(
-  payload: PublishSocialPostPayload
-): Promise<PublishSocialPostTaskResult> {
-  const { scheduledPostId } = payload
-
-  logger.info("[PublishSocialPostTask] Fetching scheduled post", {
+export async function runPublishSocialPostExecution(params: {
+  scheduledPostId: string
+  runId?: string
+  waitUntilDue?: (dueDate: Date) => Promise<void>
+  waitStep2Delay?: (minutes: number) => Promise<void>
+  triggerFollowUpPost?: (
+    followUpPostId: string,
+    scheduledFor: Date
+  ) => Promise<void>
+  publisherOverride?: TargetPublisherFn
+}): Promise<PublishSocialPostTaskResult> {
+  const {
     scheduledPostId,
-  })
+    runId,
+    waitUntilDue,
+    waitStep2Delay,
+    triggerFollowUpPost,
+    publisherOverride,
+  } = params
+
+  const scope = {
+    taskType: "publish-social-post",
+    entityId: scheduledPostId,
+    runId,
+  }
 
   updateTaskProgress({
+    ...scope,
     stage: "initializing",
     progress: 10,
     detail: `Loading scheduled post ${scheduledPostId}`,
   })
 
-  // 1. Fetch post and check current status
-  const [post] = await db
+  const [initialPost] = await db
     .select()
     .from(scheduledPosts)
     .where(eq(scheduledPosts.id, scheduledPostId))
     .limit(1)
 
-  if (!post) {
-    const errMsg = `Post ${scheduledPostId} not found`
-    logger.warn("[PublishSocialPostTask] Scheduled post not found in DB", {
-      scheduledPostId,
-    })
+  if (!initialPost) {
+    const errMsg = `Scheduled post ${scheduledPostId} not found`
     updateTaskProgress({
+      ...scope,
       stage: "failed",
       progress: 100,
       detail: errMsg,
       error: errMsg,
     })
-    throwIfNonRetryable(new Error(errMsg), "PublishSocialPostTask")
-    return {
-      success: false,
-      scheduledPostId,
-      primaryStatus: "failed",
-      completedTargets: 0,
-      failedTargets: 0,
-      error: errMsg,
-    }
+    throw new AbortTaskRunError(errMsg)
   }
 
-  if (post.status === "completed" || post.status === "cancelled") {
-    logger.info("[PublishSocialPostTask] Post already completed or cancelled", {
-      scheduledPostId,
-      status: post.status,
-    })
+  if (
+    initialPost.status === "completed" ||
+    initialPost.status === "cancelled" ||
+    initialPost.status === "publishing"
+  ) {
     updateTaskProgress({
+      ...scope,
       stage: "completed",
       progress: 100,
-      detail: `Post already ${post.status}`,
+      detail: `Skipped duplicate run (post status is '${initialPost.status}')`,
     })
     return {
       success: true,
       scheduledPostId,
-      primaryStatus: post.status,
+      primaryStatus: initialPost.status,
+      postStatus: initialPost.status,
       completedTargets: 0,
       failedTargets: 0,
+      skipped: true,
     }
   }
 
-  // 2. If scheduledFor is in the future, sleep durably via wait.until
-  if (post.scheduledFor && post.scheduledFor.getTime() > Date.now()) {
-    logger.info(
-      "[PublishSocialPostTask] Post is scheduled in the future; sleeping until target time",
-      {
-        scheduledPostId,
-        scheduledFor: post.scheduledFor.toISOString(),
-      }
-    )
+  // Wait durably until `scheduledFor` arrives while keeping status = 'scheduled'
+  if (
+    waitUntilDue &&
+    initialPost.scheduledFor &&
+    initialPost.scheduledFor.getTime() > Date.now() + 5_000
+  ) {
     updateTaskProgress({
+      ...scope,
       stage: "waiting_until_scheduled",
       progress: 20,
-      detail: `Waiting until scheduled time (${post.scheduledFor.toISOString()})`,
+      detail: `Waiting until ${initialPost.scheduledFor.toISOString()} to publish`,
     })
-    await wait.until({ date: post.scheduledFor })
+
+    await waitUntilDue(initialPost.scheduledFor)
+
+    const [rechecked] = await db
+      .select({
+        status: scheduledPosts.status,
+        scheduledFor: scheduledPosts.scheduledFor,
+      })
+      .from(scheduledPosts)
+      .where(eq(scheduledPosts.id, scheduledPostId))
+      .limit(1)
+
+    if (!rechecked || rechecked.status !== "scheduled") {
+      const skippedStatus = rechecked?.status ?? "cancelled"
+      return {
+        success: true,
+        scheduledPostId,
+        primaryStatus: skippedStatus,
+        postStatus: skippedStatus,
+        completedTargets: 0,
+        failedTargets: 0,
+        skipped: true,
+      }
+    }
+
+    if (
+      rechecked.scheduledFor &&
+      rechecked.scheduledFor.getTime() > Date.now() + 5_000
+    ) {
+      await waitUntilDue(rechecked.scheduledFor)
+    }
   }
 
-  // 3. Publish to targeted social providers
-  logger.info("[PublishSocialPostTask] Executing target publishing", {
-    scheduledPostId,
-  })
   updateTaskProgress({
+    ...scope,
     stage: "publishing_targets",
     progress: 50,
-    detail: "Publishing post to connected social channels",
+    detail: "Claiming scheduled post and publishing to connected social channels",
   })
 
-  let execRes: Awaited<ReturnType<typeof executeScheduledPostNowAction>>
-  try {
-    execRes = await executeScheduledPostNowAction({ scheduledPostId })
-  } catch (execErr: unknown) {
-    const errMsg =
-      execErr instanceof Error ? execErr.message : String(execErr)
-    updateTaskProgress({
-      stage: "failed",
-      progress: 100,
-      detail: errMsg,
-      error: errMsg,
-    })
-    throwIfNonRetryable(execErr, "PublishSocialPostTask")
-    throw execErr
-  }
-
-  logger.info("[PublishSocialPostTask] Publication result", {
+  const outcome = await executeClaimedScheduledPostPublish({
     scheduledPostId,
-    execRes,
+    publisherOverride,
   })
 
-  // 3b. Forward-compatible First-Comment Auto-Plug if post.firstComment is present
-  if (execRes.completedTargets > 0) {
-    await maybePublishFirstCommentsForPost(post)
+  if (!outcome.claimed) {
+    if (outcome.postStatus === "not_found") {
+      throw new AbortTaskRunError(
+        outcome.error ?? `Scheduled post ${scheduledPostId} not found`
+      )
+    }
+
+    updateTaskProgress({
+      ...scope,
+      stage: "completed",
+      progress: 100,
+      detail: `Skipped duplicate run (post status is '${outcome.postStatus}')`,
+    })
+
+    return {
+      success: true,
+      scheduledPostId,
+      primaryStatus: outcome.postStatus,
+      postStatus: outcome.postStatus,
+      completedTargets: 0,
+      failedTargets: 0,
+      skipped: true,
+    }
   }
 
-  if (!execRes.success && execRes.error) {
-    throwIfNonRetryable(new Error(execRes.error), "PublishSocialPostTask")
+  // Transient provider failure (429/5xx/timeout) -> rethrow for Trigger.dev exponential backoff
+  if (outcome.transientErrors.length > 0) {
+    rethrowAsTaskError(
+      outcome.transientErrors[0],
+      `Transient error publishing scheduled post ${scheduledPostId}`
+    )
   }
 
-  const totalTargets = execRes.completedTargets + execRes.failedTargets
+  // All targets failed permanently (400/401/403/422) -> abort run so Trigger does not waste retries
+  if (outcome.completedTargets === 0 && outcome.permanentErrors.length > 0) {
+    rethrowAsTaskError(
+      outcome.permanentErrors[0],
+      `Permanent error publishing scheduled post ${scheduledPostId}`
+    )
+  }
 
-  // 4. Check two-step funnel follow-up
+  const totalTargets = outcome.completedTargets + outcome.failedTargets
   let step2Triggered = false
   let step2Status: string | undefined
 
-  if (post.pairedFollowUpPostId && execRes.success) {
-    const delayMinutes = post.twoStepDelayMinutes || 180
-    logger.info(
-      "[PublishSocialPostTask] Two-step funnel detected. Sleeping before Step 2",
-      {
-        primaryPostId: scheduledPostId,
-        pairedFollowUpPostId: post.pairedFollowUpPostId,
-        delayMinutes,
-      }
-    )
+  if (initialPost.pairedFollowUpPostId && outcome.success) {
+    if (triggerFollowUpPost) {
+      const [paired] = await db
+        .select({
+          id: scheduledPosts.id,
+          status: scheduledPosts.status,
+          triggerRunId: scheduledPosts.triggerRunId,
+          scheduledFor: scheduledPosts.scheduledFor,
+        })
+        .from(scheduledPosts)
+        .where(eq(scheduledPosts.id, initialPost.pairedFollowUpPostId))
+        .limit(1)
 
-    updateTaskProgress({
-      stage: "waiting_step2_delay",
-      progress: 75,
-      detail: `Waiting ${delayMinutes}m before Step 2 follow-up sheet`,
-      completedTargets: execRes.completedTargets,
-      failedTargets: execRes.failedTargets,
-      totalTargets,
-      counters: {
-        completedTargets: execRes.completedTargets,
-        failedTargets: execRes.failedTargets,
+      if (paired && paired.status === "scheduled" && !paired.triggerRunId) {
+        step2Triggered = true
+        step2Status = "scheduled"
+        await triggerFollowUpPost(paired.id, paired.scheduledFor)
+      }
+    } else if (waitStep2Delay) {
+      const delayMinutes = initialPost.twoStepDelayMinutes || 180
+      updateTaskProgress({
+        ...scope,
+        stage: "waiting_step2_delay",
+        progress: 75,
+        detail: `Waiting ${delayMinutes}m before Step 2 follow-up sheet`,
+        completedTargets: outcome.completedTargets,
+        failedTargets: outcome.failedTargets,
         totalTargets,
-      },
-    })
-
-    await wait.for({ minutes: delayMinutes })
-
-    updateTaskProgress({
-      stage: "publishing_step2",
-      progress: 90,
-      detail: "Publishing Step 2 multi-package follow-up post",
-      completedTargets: execRes.completedTargets,
-      failedTargets: execRes.failedTargets,
-      totalTargets,
-    })
-
-    step2Triggered = true
-    const step2Res = await executeScheduledPostNowAction({
-      scheduledPostId: post.pairedFollowUpPostId,
-    })
-    step2Status = step2Res.postStatus
-
-    logger.info(
-      "[PublishSocialPostTask] Two-step funnel Step 2 publication complete",
-      {
-        pairedFollowUpPostId: post.pairedFollowUpPostId,
-        step2Res,
-      }
-    )
+      })
+      await waitStep2Delay(delayMinutes)
+      step2Triggered = true
+      const step2Outcome = await executeClaimedScheduledPostPublish({
+        scheduledPostId: initialPost.pairedFollowUpPostId,
+        publisherOverride,
+      })
+      step2Status = step2Outcome.postStatus
+    }
   }
 
   updateTaskProgress({
-    stage: execRes.success ? "completed" : "failed",
+    ...scope,
+    stage: outcome.success ? "completed" : "failed",
     progress: 100,
-    detail: execRes.success
-      ? `Published to ${execRes.completedTargets}/${totalTargets} social channels`
-      : execRes.error || `Failed (${execRes.failedTargets} channel errors)`,
-    completedTargets: execRes.completedTargets,
-    failedTargets: execRes.failedTargets,
+    detail: outcome.success
+      ? `Published to ${outcome.completedTargets}/${totalTargets} social channels`
+      : outcome.error || `Failed (${outcome.failedTargets} channel errors)`,
+    completedTargets: outcome.completedTargets,
+    failedTargets: outcome.failedTargets,
     totalTargets,
-    error: execRes.error,
+    error: outcome.error,
     counters: {
-      completedTargets: execRes.completedTargets,
-      failedTargets: execRes.failedTargets,
+      completedTargets: outcome.completedTargets,
+      failedTargets: outcome.failedTargets,
       totalTargets,
     },
   })
 
   return {
-    success: execRes.success,
+    success: outcome.success,
     scheduledPostId,
-    primaryStatus: execRes.postStatus,
-    completedTargets: execRes.completedTargets,
-    failedTargets: execRes.failedTargets,
+    primaryStatus: outcome.postStatus,
+    postStatus: outcome.postStatus,
+    completedTargets: outcome.completedTargets,
+    failedTargets: outcome.failedTargets,
     step2Triggered,
     step2Status,
-    error: execRes.error,
+    error: outcome.error,
   }
+}
+
+/**
+ * Core publication runner compatible with inline dev/test callers and marketing bridges.
+ */
+export async function runPublishSocialPost(
+  payload: PublishSocialPostPayload,
+  options?: { publisherOverride?: TargetPublisherFn; runId?: string }
+): Promise<PublishSocialPostTaskResult> {
+  return runPublishSocialPostExecution({
+    scheduledPostId: payload.scheduledPostId,
+    runId: options?.runId,
+    publisherOverride: options?.publisherOverride,
+  })
 }
 
 export const runPublishSocialPostInline = runPublishSocialPost
 
 /**
- * Main Trigger.dev v4 schemaTask for publishing social posts, bound to socialPublishQueue (concurrencyLimit: 5).
+ * Trigger.dev Cloud v4 Durable Task: Multi-Channel Social Media Publisher (`T-037`, `T-072`, `T-090`).
  */
 export const publishSocialPostTask = schemaTask({
   id: "publish-social-post",
   schema: publishSocialPostPayloadSchema,
   queue: socialPublishQueue,
+  maxDuration: 300,
   retry: {
     maxAttempts: 3,
+    minTimeoutInMs: 5_000,
+    maxTimeoutInMs: 45_000,
     factor: 2,
-    minTimeoutInMs: 1000,
-    maxTimeoutInMs: 15000,
+    randomize: true,
   },
-  run: async (payload) => runPublishSocialPost(payload),
+  run: async (payload, { ctx }): Promise<PublishSocialPostTaskResult> => {
+    try {
+      return await runPublishSocialPostExecution({
+        scheduledPostId: payload.scheduledPostId,
+        runId: ctx.run.id,
+        waitUntilDue: async (dueDate) => {
+          logger.info(
+            `[PublishSocialPostTask] Pausing run until scheduled publish timestamp: ${dueDate.toISOString()}`,
+            { scheduledPostId: payload.scheduledPostId }
+          )
+          await wait.until({ date: dueDate })
+        },
+        triggerFollowUpPost: async (followUpPostId, scheduledFor) => {
+          const seed = composeDispatchIdempotencySeed({
+            idempotencyKey: `soc-post-run-${followUpPostId}`,
+            scheduledFor,
+          })!
+          const followUpKey = await idempotencyKeys.create(seed, {
+            scope: "global",
+          })
+          const followUpHandle = await publishSocialPostTask.trigger(
+            { scheduledPostId: followUpPostId },
+            {
+              idempotencyKey: followUpKey,
+              tags: [`social-post:${followUpPostId}`],
+            }
+          )
+          await db
+            .update(scheduledPosts)
+            .set({ triggerRunId: followUpHandle.id, updatedAt: new Date() })
+            .where(eq(scheduledPosts.id, followUpPostId))
+        },
+      })
+    } catch (error) {
+      return rethrowAsTaskError(
+        error,
+        `Failed publishing scheduled post ${payload.scheduledPostId}`
+      )
+    }
+  },
 })
 
 /**
- * Sweeper runner: catches any posts whose scheduled time arrived but were missed.
- * Uses parallel batchTrigger with global idempotencyKeys when Trigger.dev Cloud is configured.
+ * Sweeper runner: catches scheduled posts overdue by `> 10 minutes` without racing active `wait.until()` runs.
+ * Mixes `scheduledFor` into `idempotencyKeys.create()` so rescheduled posts are never poisoned (`T-072`, `T-074`).
  */
-export async function runSweepDueSocialPosts(): Promise<{
+export async function runSweepDueSocialPosts(options?: {
+  graceMinutes?: number
+}): Promise<{
   sweptCount: number
   processed: Array<{ id: string; status: string }>
 }> {
-  logger.info("[SweepDueSocialPosts] Checking for due scheduled posts")
+  const graceMs = Math.max(0, options?.graceMinutes ?? 10) * 60 * 1000
+  const overdueCutoff = new Date(Date.now() - graceMs)
 
   const duePosts = await db
     .select({
@@ -395,13 +399,11 @@ export async function runSweepDueSocialPosts(): Promise<{
     .where(
       and(
         eq(scheduledPosts.status, "scheduled"),
-        lte(scheduledPosts.scheduledFor, new Date())
+        lte(scheduledPosts.scheduledFor, overdueCutoff)
       )
     )
-
-  logger.info("[SweepDueSocialPosts] Found due posts", {
-    count: duePosts.length,
-  })
+    .orderBy(asc(scheduledPosts.scheduledFor))
+    .limit(20)
 
   if (duePosts.length === 0) {
     return { sweptCount: 0, processed: [] }
@@ -410,38 +412,31 @@ export async function runSweepDueSocialPosts(): Promise<{
   const processed: Array<{ id: string; status: string }> = []
 
   if (isTriggerCloudConfigured()) {
-    try {
-      const batchItems = await Promise.all(
-        duePosts.map(async (p) => {
-          const idemKey = await idempotencyKeys.create(
-            `soc-post-sweep-${p.id}`,
-            { scope: "global" }
-          )
-          return {
-            payload: { scheduledPostId: p.id },
-            options: {
-              idempotencyKey: idemKey,
-              tags: [`social-post:${p.id}`],
-            },
-          }
+    const batchItems = await Promise.all(
+      duePosts.map(async (p) => {
+        const seed = composeDispatchIdempotencySeed({
+          idempotencyKey: `soc-post-sweep-${p.id}`,
+          scheduledFor: p.scheduledFor,
+        })!
+        const idemKey = await idempotencyKeys.create(seed, {
+          scope: "global",
         })
-      )
-      await publishSocialPostTask.batchTrigger(batchItems)
-      for (const p of duePosts) {
-        processed.push({ id: p.id, status: "triggered_batch" })
-      }
-      return {
-        sweptCount: duePosts.length,
-        processed,
-      }
-    } catch (batchErr) {
-      logger.warn(
-        "[SweepDueSocialPosts] batchTrigger failed; falling back to inline sweep",
-        {
-          error:
-            batchErr instanceof Error ? batchErr.message : String(batchErr),
+        return {
+          payload: { scheduledPostId: p.id },
+          options: {
+            idempotencyKey: idemKey,
+            tags: [`social-post:${p.id}`],
+          },
         }
-      )
+      })
+    )
+    await publishSocialPostTask.batchTrigger(batchItems)
+    for (const p of duePosts) {
+      processed.push({ id: p.id, status: "triggered_batch" })
+    }
+    return {
+      sweptCount: duePosts.length,
+      processed,
     }
   }
 
@@ -465,13 +460,20 @@ export async function runSweepDueSocialPosts(): Promise<{
 }
 
 /**
- * 5-minute safety sweep cron that automatically triggers any due scheduled posts.
+ * Safety-net cron sweeper (`T-074`, `OD-07`):
+ * Runs hourly during PKT active hours (`15 9-23 * * *` `Asia/Karachi`, `PRODUCTION` only,
+ * `concurrencyLimit: 1`) so Neon scales to zero overnight while catching overdue scheduled posts.
  */
 export const sweepDueSocialPostsSchedule = schedules.task({
   id: "sweep-due-social-posts",
   cron: {
-    pattern: "*/5 * * * *",
+    pattern: "15 9-23 * * *",
     timezone: "Asia/Karachi",
+    environments: ["PRODUCTION"],
   },
-  run: runSweepDueSocialPosts,
+  queue: scheduledMaintenanceQueue,
+  maxDuration: 180,
+  run: async () => runSweepDueSocialPosts({ graceMinutes: 10 }),
 })
+
+export const sweepOverdueSocialPostsSchedule = sweepDueSocialPostsSchedule

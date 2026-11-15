@@ -19,7 +19,7 @@ import {
   renderAndUploadSinglePackagePoster,
   type SinglePackageSpotlightInput,
 } from "@/lib/posters/render-single-package-poster"
-import { throwIfNonRetryable } from "./errors"
+import { rethrowAsTaskError } from "./errors"
 import { updateTaskProgress } from "./metadata"
 import { gotenbergQueue } from "./queues"
 
@@ -111,16 +111,30 @@ export interface RenderGotenbergAssetTaskResult {
 }
 
 /**
- * Core Gotenberg asset rendering runner. Dispatches to Gotenberg and uploads to Cloudflare R2.
+ * Core Gotenberg asset rendering runner (`T-037`, `T-072`).
+ * Permanent errors (`400/401/403/404/422`) throw `AbortTaskRunError`, while transient
+ * errors (`429/5xx`/timeouts) rethrow via `rethrowAsTaskError` so Trigger.dev retries cleanly.
  */
 export async function runRenderGotenbergAsset(
   payload: RenderGotenbergAssetPayload
 ): Promise<RenderGotenbergAssetTaskResult> {
+  const entityId =
+    payload.kind === "quotation_pdf"
+      ? payload.applicationQuoteId || payload.data.referenceNumber
+      : payload.kind === "multi_poster"
+        ? payload.flyerId || payload.postAssetId || payload.data.postCode
+        : payload.postAssetId ||
+          payload.data.postRefCode ||
+          payload.data.postCode ||
+          "spotlight"
+
   logger.info("[RenderGotenbergAssetTask] Starting asset rendering", {
     kind: payload.kind,
   })
 
   updateTaskProgress({
+    taskType: "render-gotenberg-asset",
+    entityId,
     stage: "initializing",
     progress: 15,
     detail: `Initializing ${payload.kind} render pipeline`,
@@ -136,6 +150,8 @@ export async function runRenderGotenbergAsset(
         })
 
         updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
           stage: "rendering_gotenberg",
           progress: 55,
           detail: `Rendering 3-page luxury quotation PDF (${data.referenceNumber})`,
@@ -144,6 +160,8 @@ export async function runRenderGotenbergAsset(
         const result = await renderAndUploadLuxuryQuotationPdf(data)
 
         updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
           stage: "uploading_r2",
           progress: 85,
           detail: "Uploaded quotation PDF to Cloudflare R2",
@@ -152,6 +170,8 @@ export async function runRenderGotenbergAsset(
 
         if (applicationQuoteId) {
           updateTaskProgress({
+            taskType: "render-gotenberg-asset",
+            entityId,
             stage: "persisting_db",
             progress: 95,
             detail: "Updating quotation PDF record in database",
@@ -169,6 +189,8 @@ export async function runRenderGotenbergAsset(
         }
 
         updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
           stage: "completed",
           progress: 100,
           detail: "Luxury quotation PDF ready",
@@ -201,6 +223,8 @@ export async function runRenderGotenbergAsset(
         )
 
         updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
           stage: "rendering_gotenberg",
           progress: 55,
           detail: `Rendering 4K multi-package sheet (${data.postCode})`,
@@ -209,6 +233,8 @@ export async function runRenderGotenbergAsset(
         const result = await renderAndUploadMultiPackagePoster(data)
 
         updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
           stage: "uploading_r2",
           progress: 85,
           detail: "Uploaded 4K PNG, PDF, and social JPEG to Cloudflare R2",
@@ -219,6 +245,8 @@ export async function runRenderGotenbergAsset(
 
         if (postAssetId || flyerId) {
           updateTaskProgress({
+            taskType: "render-gotenberg-asset",
+            entityId,
             stage: "persisting_db",
             progress: 95,
             detail: "Persisting multi-package asset URLs to database",
@@ -250,6 +278,8 @@ export async function runRenderGotenbergAsset(
         }
 
         updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
           stage: "completed",
           progress: 100,
           detail: "Multi-package 4K sheet poster ready",
@@ -290,6 +320,8 @@ export async function runRenderGotenbergAsset(
         )
 
         updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
           stage: "rendering_gotenberg",
           progress: 55,
           detail: `Rendering 4K single spotlight poster (${effectiveCode})`,
@@ -298,6 +330,8 @@ export async function runRenderGotenbergAsset(
         const result = await renderAndUploadSinglePackagePoster(data)
 
         updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
           stage: "uploading_r2",
           progress: 85,
           detail: "Uploaded spotlight PNG, PDF, and social JPEG to Cloudflare R2",
@@ -308,6 +342,8 @@ export async function runRenderGotenbergAsset(
 
         if (postAssetId) {
           updateTaskProgress({
+            taskType: "render-gotenberg-asset",
+            entityId,
             stage: "persisting_db",
             progress: 95,
             detail: "Updating spotlight asset record in database",
@@ -326,6 +362,8 @@ export async function runRenderGotenbergAsset(
         }
 
         updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
           stage: "completed",
           progress: 100,
           detail: "Single spotlight 4K poster ready",
@@ -366,6 +404,8 @@ export async function runRenderGotenbergAsset(
         : "Unknown Gotenberg asset rendering failure"
 
     updateTaskProgress({
+      taskType: "render-gotenberg-asset",
+      entityId,
       stage: "failed",
       progress: 100,
       detail: errorMsg,
@@ -377,20 +417,14 @@ export async function runRenderGotenbergAsset(
       error: errorMsg,
     })
 
-    throwIfNonRetryable(err, "RenderGotenbergAssetTask")
-
-    return {
-      success: false,
-      kind: payload.kind,
-      error: errorMsg,
-    }
+    rethrowAsTaskError(err, "RenderGotenbergAssetTask")
   }
 }
 
 export const runRenderGotenbergAssetInline = runRenderGotenbergAsset
 
 /**
- * Trigger.dev v4 schemaTask for Gotenberg asset rendering, bound to gotenbergQueue (concurrencyLimit: 2).
+ * Trigger.dev v4 schemaTask for Gotenberg asset rendering, bound to `gotenbergQueue` (`concurrencyLimit: 2`).
  */
 export const renderGotenbergAssetTask = schemaTask({
   id: "render-gotenberg-asset",

@@ -1,4 +1,3 @@
-import crypto from "node:crypto"
 import { desc, eq } from "drizzle-orm"
 import { db } from "@/db"
 import {
@@ -7,51 +6,20 @@ import {
   socialIntegrations,
   type SocialPostAnalyticsData,
 } from "@/db/schema/social-scheduler"
-import { decryptToken } from "./crypto"
+import { logger } from "@/lib/logger"
 import {
-  getSocialProvider,
-  resolveTikTokPublishedPostId,
-} from "./providers"
-import type { SocialPostAnalyticsSnapshot, SocialProviderId } from "./types"
-
-const GRAPH_API_VERSION = "v25.0"
-const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`
-
-/**
- * Generates deterministic, realistic post performance metrics seeded from
- * `${provider}:${externalPostId}` so local dev / sandbox runs without live
- * insights permissions never return NaN or crash.
- */
-export function buildDeterministicMockAnalytics(
-  provider: SocialProviderId,
-  externalPostId: string
-): SocialPostAnalyticsSnapshot {
-  const hash = crypto
-    .createHash("sha256")
-    .update(`${provider}:${externalPostId}`)
-    .digest()
-
-  const seedA = hash.readUInt16BE(0)
-  const seedB = hash.readUInt16BE(2)
-  const seedC = hash.readUInt16BE(4)
-  const seedD = hash.readUInt16BE(6)
-  const seedE = hash.readUInt16BE(8)
-
-  const impressions = 420 + (seedA % 4800)
-  const likes = 18 + (seedB % Math.max(40, Math.floor(impressions * 0.14)))
-  const comments = 3 + (seedC % Math.max(12, Math.floor(likes * 0.35)))
-  const shares = 2 + (seedD % Math.max(10, Math.floor(likes * 0.25)))
-  const clicks = 9 + (seedE % Math.max(25, Math.floor(impressions * 0.08)))
-
-  return {
-    impressions,
-    likes,
-    comments,
-    shares,
-    clicks,
-    lastSyncedAt: new Date().toISOString(),
-  }
-}
+  aggregateCampaignAnalytics,
+  type CampaignAnalyticsOverview,
+  type PostTargetAnalyticsSnapshot,
+} from "./analytics-aggregate"
+import { getSocialProvider, resolveTikTokPublishedPostId } from "./providers"
+import { evaluateAndTriggerReactiveEngagementPlug } from "./reactive-engagement"
+import { resolveFreshIntegrationAccessToken } from "./token-refresh"
+import type {
+  SocialAnalyticsSyncStatus,
+  SocialPostAnalyticsSnapshot,
+  SocialProviderId,
+} from "./types"
 
 function isMockOrLocalToken(accessToken: string): boolean {
   if (!accessToken) {
@@ -67,281 +35,17 @@ function isMockOrLocalToken(accessToken: string): boolean {
   )
 }
 
-async function fetchInstagramMetrics(
-  accessToken: string,
-  externalPostId: string
-): Promise<SocialPostAnalyticsSnapshot> {
-  let likes = 0
-  let comments = 0
-  let impressions = 0
-  let shares = 0
-  let clicks = 0
-
-  const basicRes = await fetch(
-    `${GRAPH_BASE_URL}/${externalPostId}?fields=like_count,comments_count&access_token=${encodeURIComponent(
-      accessToken
-    )}`
-  )
-
-  if (!basicRes.ok) {
-    throw new Error(`Instagram media metrics request failed (${basicRes.status})`)
-  }
-
-  const basicData = (await basicRes.json()) as {
-    like_count?: number
-    comments_count?: number
-  }
-  likes = Number(basicData.like_count ?? 0)
-  comments = Number(basicData.comments_count ?? 0)
-
-  try {
-    const insightsRes = await fetch(
-      `${GRAPH_BASE_URL}/${externalPostId}/insights?metric=impressions,reach,shares,saved&access_token=${encodeURIComponent(
-        accessToken
-      )}`
-    )
-    if (insightsRes.ok) {
-      const insightsData = (await insightsRes.json()) as {
-        data?: Array<{
-          name: string
-          values?: Array<{ value?: number }>
-        }>
-      }
-      for (const item of insightsData.data || []) {
-        const val = Number(item.values?.[0]?.value ?? 0)
-        if (item.name === "impressions" && val > 0) {
-          impressions = val
-        } else if (item.name === "reach" && impressions === 0) {
-          impressions = val
-        } else if (item.name === "shares") {
-          shares = val
-        } else if (item.name === "saved") {
-          clicks = val
-        }
-      }
-    }
-  } catch {
-    // Insights endpoint is optional on personal/non-business media items
-  }
-
-  return {
-    impressions,
-    likes,
-    comments,
-    shares,
-    clicks,
-    lastSyncedAt: new Date().toISOString(),
-  }
-}
-
-async function fetchFacebookMetrics(
-  accessToken: string,
-  externalPostId: string
-): Promise<SocialPostAnalyticsSnapshot> {
-  const fields =
-    "shares,likes.summary(true),comments.summary(true),insights.metric(post_impressions,post_clicks)"
-  const res = await fetch(
-    `${GRAPH_BASE_URL}/${externalPostId}?fields=${encodeURIComponent(
-      fields
-    )}&access_token=${encodeURIComponent(accessToken)}`
-  )
-
-  if (!res.ok) {
-    throw new Error(`Facebook post metrics request failed (${res.status})`)
-  }
-
-  const data = (await res.json()) as {
-    shares?: { count?: number }
-    likes?: { summary?: { total_count?: number } }
-    comments?: { summary?: { total_count?: number } }
-    insights?: {
-      data?: Array<{
-        name: string
-        values?: Array<{ value?: number }>
-      }>
-    }
-  }
-
-  let impressions = 0
-  let clicks = 0
-
-  for (const item of data.insights?.data || []) {
-    const val = Number(item.values?.[0]?.value ?? 0)
-    if (item.name === "post_impressions") {
-      impressions = val
-    } else if (item.name === "post_clicks") {
-      clicks = val
-    }
-  }
-
-  return {
-    impressions,
-    likes: Number(data.likes?.summary?.total_count ?? 0),
-    comments: Number(data.comments?.summary?.total_count ?? 0),
-    shares: Number(data.shares?.count ?? 0),
-    clicks,
-    lastSyncedAt: new Date().toISOString(),
-  }
-}
-
-async function fetchYouTubeMetrics(
-  accessToken: string,
-  externalPostId: string
-): Promise<SocialPostAnalyticsSnapshot> {
-  const res = await fetch(
-    `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(
-      externalPostId
-    )}`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    }
-  )
-
-  if (!res.ok) {
-    throw new Error(`YouTube video statistics request failed (${res.status})`)
-  }
-
-  const data = (await res.json()) as {
-    items?: Array<{
-      statistics?: {
-        viewCount?: string
-        likeCount?: string
-        commentCount?: string
-        favoriteCount?: string
-      }
-    }>
-  }
-
-  const stats = data.items?.[0]?.statistics
-
-  return {
-    impressions: Number(stats?.viewCount ?? 0),
-    likes: Number(stats?.likeCount ?? 0),
-    comments: Number(stats?.commentCount ?? 0),
-    shares: 0,
-    clicks: Number(stats?.favoriteCount ?? 0),
-    lastSyncedAt: new Date().toISOString(),
-  }
-}
-
-async function fetchTikTokMetrics(
-  accessToken: string,
-  externalPostId: string
-): Promise<SocialPostAnalyticsSnapshot> {
-  const res = await fetch(
-    "https://open.tiktokapis.com/v2/video/query/?fields=id,view_count,like_count,comment_count,share_count",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        filters: {
-          video_ids: [externalPostId],
-        },
-      }),
-    }
-  )
-
-  if (!res.ok) {
-    throw new Error(`TikTok video query metrics request failed (${res.status})`)
-  }
-
-  const data = (await res.json()) as {
-    data?: {
-      videos?: Array<{
-        id?: string
-        view_count?: number
-        like_count?: number
-        comment_count?: number
-        share_count?: number
-      }>
-    }
-  }
-
-  const video = data.data?.videos?.[0]
-
-  return {
-    impressions: Number(video?.view_count ?? 0),
-    likes: Number(video?.like_count ?? 0),
-    comments: Number(video?.comment_count ?? 0),
-    shares: Number(video?.share_count ?? 0),
-    clicks: 0,
-    lastSyncedAt: new Date().toISOString(),
-  }
-}
-
-async function fetchGmbMetrics(
-  accessToken: string,
-  externalPostId: string,
-  internalAccountId?: string
-): Promise<SocialPostAnalyticsSnapshot> {
-  const locationPath =
-    internalAccountId ||
-    externalPostId.replace(/\/localPosts\/[^/]+$/, "")
-
-  const res = await fetch(
-    `https://mybusiness.googleapis.com/v4/${locationPath}/localPosts:reportInsights`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        localPostNames: [externalPostId],
-        basicRequest: {
-          metricRequests: [
-            { metric: "LOCAL_POST_VIEWS_SEARCH" },
-            { metric: "LOCAL_POST_ACTIONS_CALL_TO_ACTION" },
-          ],
-        },
-      }),
-    }
-  )
-
-  if (!res.ok) {
-    throw new Error(`Google Business localPost insights failed (${res.status})`)
-  }
-
-  const data = (await res.json()) as {
-    localPostMetrics?: Array<{
-      metricValues?: Array<{
-        metric?: string
-        totalValue?: { value?: string }
-      }>
-    }>
-  }
-
-  let impressions = 0
-  let clicks = 0
-
-  for (const mv of data.localPostMetrics?.[0]?.metricValues || []) {
-    const val = Number(mv.totalValue?.value ?? 0)
-    if (mv.metric === "LOCAL_POST_VIEWS_SEARCH") {
-      impressions = val
-    } else if (mv.metric === "LOCAL_POST_ACTIONS_CALL_TO_ACTION") {
-      clicks = val
-    }
-  }
-
-  return {
-    impressions,
-    likes: 0,
-    comments: 0,
-    shares: 0,
-    clicks,
-    lastSyncedAt: new Date().toISOString(),
-  }
-}
-
 /**
- * Fetches normalized performance analytics (`impressions`, `likes`, `comments`, `shares`, `clicks`)
- * for a single published target across the Core 5 providers (`instagram`, `facebook`, `tiktok`, `youtube`, `gmb`).
- * Falls back to deterministic mock analytics when tokens are local/mock or sandbox API calls are unavailable.
+ * Fetches live verified performance analytics (`impressions`, `likes`, `comments`, `shares`, `clicks`)
+ * from the upstream Core 5 provider API (`T-036`, `OD-11`).
+ *
+ * Returns `null` (honest unavailable state) whenever:
+ * - `externalPostId` is missing or a local synthetic placeholder
+ * - `accessToken` is empty, mock, local, or Composio-proxied without direct Graph token
+ * - Provider approval gate is disabled (e.g. `GBP_API_APPROVED !== "true"`)
+ * - Upstream API call fails or lacks insights permission
+ *
+ * NEVER fabricates deterministic SHA-256 hash metrics (`T-036`).
  */
 export async function fetchSocialTargetAnalytics(params: {
   provider: SocialProviderId
@@ -349,45 +53,62 @@ export async function fetchSocialTargetAnalytics(params: {
   externalPostId: string
   internalAccountId?: string
   metadata?: Record<string, unknown>
-}): Promise<SocialPostAnalyticsSnapshot> {
-  const { provider, accessToken, externalPostId, internalAccountId } = params
+}): Promise<SocialPostAnalyticsSnapshot | null> {
+  const { provider, accessToken, externalPostId, internalAccountId, metadata } =
+    params
 
-  if (!externalPostId || isMockOrLocalToken(accessToken)) {
-    return buildDeterministicMockAnalytics(
-      provider,
-      externalPostId || "local_post"
-    )
+  if (!externalPostId || !externalPostId.trim() || isMockOrLocalToken(accessToken)) {
+    return null
   }
 
   try {
-    switch (provider) {
-      case "instagram":
-        return await fetchInstagramMetrics(accessToken, externalPostId)
-      case "facebook":
-        return await fetchFacebookMetrics(accessToken, externalPostId)
-      case "youtube":
-        return await fetchYouTubeMetrics(accessToken, externalPostId)
-      case "tiktok":
-        return await fetchTikTokMetrics(accessToken, externalPostId)
-      case "gmb":
-        return await fetchGmbMetrics(
-          accessToken,
-          externalPostId,
-          internalAccountId
-        )
-      default:
-        return buildDeterministicMockAnalytics(provider, externalPostId)
+    const adapter = getSocialProvider(provider)
+    if (!adapter.fetchPostAnalytics) {
+      return null
     }
-  } catch {
-    return buildDeterministicMockAnalytics(provider, externalPostId)
+
+    const snapshot = await adapter.fetchPostAnalytics({
+      accessToken,
+      externalPostId: externalPostId.trim(),
+      accountId: internalAccountId,
+      metadata,
+    })
+
+    return {
+      ...snapshot,
+      impressions: Math.max(0, Number(snapshot.impressions ?? 0)),
+      likes: Math.max(0, Number(snapshot.likes ?? 0)),
+      comments: Math.max(0, Number(snapshot.comments ?? 0)),
+      shares: Math.max(0, Number(snapshot.shares ?? 0)),
+      clicks: Math.max(0, Number(snapshot.clicks ?? 0)),
+      lastSyncedAt: snapshot.lastSyncedAt || new Date().toISOString(),
+      syncStatus: "live",
+      isLiveVerified: true,
+    }
+  } catch (err: unknown) {
+    logger.warn("Live social target analytics fetch unavailable", {
+      provider,
+      externalPostId,
+      error: err,
+    })
+    return null
   }
 }
 
 export const fetchTargetPostAnalytics = fetchSocialTargetAnalytics
 
+export interface SyncSocialPostAnalyticsTargetOutcome {
+  targetId: string
+  provider: SocialProviderId
+  syncStatus: SocialAnalyticsSyncStatus
+  isLiveVerified: boolean
+  analytics: SocialPostAnalyticsData | null
+}
+
 export interface SyncSocialPostAnalyticsResult {
   postId: string
   syncedTargets: number
+  unavailableTargets: number
   totals: {
     impressions: number
     likes: number
@@ -395,16 +116,15 @@ export interface SyncSocialPostAnalyticsResult {
     shares: number
     clicks: number
   }
-  targets: Array<{
-    targetId: string
-    provider: SocialProviderId
-    analytics: SocialPostAnalyticsData
-  }>
+  targets: SyncSocialPostAnalyticsTargetOutcome[]
 }
 
 /**
- * Synchronizes performance analytics across all published targets for a given scheduled post ID
- * and persists the updated `analyticsData` JSONB snapshot on `scheduledPostTargets`.
+ * Synchronizes live performance analytics across published targets for a scheduled post (`T-036`).
+ * - Never fabricates metrics when credentials or API endpoints are unavailable.
+ * - Preserves `analyticsData = null` on targets that could not be fetched live so the UI
+ *   truthfully renders `"Analytics unavailable"` instead of fake reach/likes.
+ * - Evaluates Reactive Engagement Auto-Plugs ONLY when `syncedTargets > 0` (live verified metrics).
  */
 export async function syncSocialPostAnalytics(
   postId: string
@@ -429,11 +149,9 @@ export async function syncSocialPostAnalytics(
     clicks: 0,
   }
 
-  const syncedList: Array<{
-    targetId: string
-    provider: SocialProviderId
-    analytics: SocialPostAnalyticsData
-  }> = []
+  let liveSyncedCount = 0
+  let unavailableCount = 0
+  const outcomes: SyncSocialPostAnalyticsTargetOutcome[] = []
 
   for (const { target, integration } of rows) {
     if (target.status !== "published" && !target.externalPostId) {
@@ -441,29 +159,59 @@ export async function syncSocialPostAnalytics(
     }
 
     const provider = integration.provider as SocialProviderId
-    let accessToken = ""
-    try {
-      accessToken = decryptToken(integration.encryptedAccessToken)
-    } catch {
-      accessToken = "mock_token"
+
+    if (!target.externalPostId) {
+      unavailableCount += 1
+      outcomes.push({
+        targetId: target.id,
+        provider,
+        syncStatus: "unavailable",
+        isLiveVerified: false,
+        analytics: null,
+      })
+      continue
     }
 
-    let activeExternalPostId = target.externalPostId || target.id
+    let accessToken = ""
+    try {
+      accessToken = await resolveFreshIntegrationAccessToken(integration)
+    } catch (decErr: unknown) {
+      logger.warn("Social token unavailable during analytics sync", {
+        postId,
+        targetId: target.id,
+        provider,
+        error: decErr,
+      })
+      unavailableCount += 1
+      outcomes.push({
+        targetId: target.id,
+        provider,
+        syncStatus: "unavailable",
+        isLiveVerified: false,
+        analytics: null,
+      })
+      continue
+    }
 
-    // TikTok publish status resolution: if target has publish_id (v_pub_file~ or p_pub_url~), resolve publicaly_available_post_id
+    let activeExternalPostId = target.externalPostId
+
+    // Resolve TikTok publish_id -> public video ID when live token is available
     if (
       provider === "tiktok" &&
-      target.externalPostId &&
-      (target.externalPostId.startsWith("v_pub_file~") ||
-        target.externalPostId.startsWith("p_pub_url~") ||
-        target.externalPostId.includes("pub_"))
+      !isMockOrLocalToken(accessToken) &&
+      (activeExternalPostId.startsWith("v_pub_file~") ||
+        activeExternalPostId.startsWith("p_pub_url~") ||
+        activeExternalPostId.includes("pub_"))
     ) {
       try {
         const username =
-          integration.handle || (integration.metadata?.username as string) || ""
+          integration.handle ||
+          (typeof integration.metadata?.username === "string"
+            ? integration.metadata.username
+            : "")
         const resolved = await resolveTikTokPublishedPostId({
           accessToken,
-          publishId: target.externalPostId,
+          publishId: activeExternalPostId,
           username,
         })
         if (resolved.status === "PUBLISH_COMPLETE" && resolved.publicPostId) {
@@ -476,12 +224,32 @@ export async function syncSocialPostAnalytics(
               updatedAt: new Date(),
             })
             .where(eq(scheduledPostTargets.id, target.id))
+        } else {
+          // Still processing or public post ID not yet available
+          unavailableCount += 1
+          outcomes.push({
+            targetId: target.id,
+            provider,
+            syncStatus: "unavailable",
+            isLiveVerified: false,
+            analytics: null,
+          })
+          continue
         }
-      } catch (ttErr) {
-        console.warn(
-          `[TikTok Permalink Resolution Warning] Target ${target.id}:`,
-          ttErr
-        )
+      } catch (ttErr: unknown) {
+        logger.warn("TikTok permalink resolution unavailable during sync", {
+          targetId: target.id,
+          error: ttErr,
+        })
+        unavailableCount += 1
+        outcomes.push({
+          targetId: target.id,
+          provider,
+          syncStatus: "unavailable",
+          isLiveVerified: false,
+          analytics: null,
+        })
+        continue
       }
     }
 
@@ -493,9 +261,21 @@ export async function syncSocialPostAnalytics(
       metadata: integration.metadata,
     })
 
+    if (!snapshot || snapshot.isLiveVerified === false) {
+      unavailableCount += 1
+      outcomes.push({
+        targetId: target.id,
+        provider,
+        syncStatus: "unavailable",
+        isLiveVerified: false,
+        analytics: null,
+      })
+      continue
+    }
+
     const existingAnalytics = target.analyticsData ?? null
     const mergedAnalytics: SocialPostAnalyticsData = {
-      ...existingAnalytics,
+      ...(existingAnalytics ?? {}),
       impressions: snapshot.impressions,
       likes: snapshot.likes,
       comments: snapshot.comments,
@@ -518,93 +298,45 @@ export async function syncSocialPostAnalytics(
       })
       .where(eq(scheduledPostTargets.id, target.id))
 
+    liveSyncedCount += 1
     totals.impressions += mergedAnalytics.impressions
     totals.likes += mergedAnalytics.likes
     totals.comments += mergedAnalytics.comments
     totals.shares += mergedAnalytics.shares
     totals.clicks += mergedAnalytics.clicks
 
-    syncedList.push({
+    outcomes.push({
       targetId: target.id,
       provider,
+      syncStatus: "live",
+      isLiveVerified: true,
       analytics: mergedAnalytics,
     })
   }
 
-  // Reactive Engagement Auto-Plug evaluation
-  try {
-    const [parentPost] = await db
-      .select()
-      .from(scheduledPosts)
-      .where(eq(scheduledPosts.id, postId))
-      .limit(1)
-
-    if (
-      parentPost?.engagementPlugConfig?.enabled &&
-      !parentPost.engagementPlugConfig.triggeredAt
-    ) {
-      const { minLikes, minViews, plugText } = parentPost.engagementPlugConfig
-      if (totals.likes >= minLikes || totals.impressions >= minViews) {
-        const eligibleTargets = rows.filter(
-          (r) =>
-            r.target.status === "published" &&
-            r.target.externalPostId &&
-            ["instagram", "facebook", "youtube"].includes(
-              r.integration.provider
-            )
-        )
-
-        for (const {
-          target: elTarget,
-          integration: elIntegration,
-        } of eligibleTargets) {
-          try {
-            const adapter = getSocialProvider(
-              elIntegration.provider as SocialProviderId
-            )
-            if (adapter.publishComment) {
-              const decToken = decryptToken(elIntegration.encryptedAccessToken)
-              await adapter.publishComment({
-                accessToken: decToken,
-                externalPostId: elTarget.externalPostId!,
-                commentText: plugText,
-                accountId: elIntegration.internalAccountId,
-                metadata: elIntegration.metadata,
-              })
-            }
-          } catch (plugErr) {
-            console.warn(
-              `[Engagement Auto-Plug Warning] Target ${elTarget.id} on ${elIntegration.provider}:`,
-              plugErr
-            )
-          }
-        }
-
-        // Stamp triggeredAt to prevent re-triggering
-        await db
-          .update(scheduledPosts)
-          .set({
-            engagementPlugConfig: {
-              ...parentPost.engagementPlugConfig,
-              triggeredAt: new Date().toISOString(),
-            },
-            updatedAt: new Date(),
-          })
-          .where(eq(scheduledPosts.id, parentPost.id))
-      }
+  // Reactive Engagement Auto-Plug ONLY fires on verified live provider metrics (`T-036`)
+  if (liveSyncedCount > 0) {
+    try {
+      await evaluateAndTriggerReactiveEngagementPlug({
+        postId,
+        hasVerifiedLiveMetrics: true,
+        verifiedLikes: totals.likes,
+        verifiedImpressions: totals.impressions,
+      })
+    } catch (plugCheckErr: unknown) {
+      logger.warn("Reactive engagement auto-plug evaluation failed", {
+        postId,
+        error: plugCheckErr,
+      })
     }
-  } catch (plugCheckErr) {
-    console.warn(
-      `[Engagement Auto-Plug Error] Evaluating post ${postId}:`,
-      plugCheckErr
-    )
   }
 
   return {
     postId,
-    syncedTargets: syncedList.length,
+    syncedTargets: liveSyncedCount,
+    unavailableTargets: unavailableCount,
     totals,
-    targets: syncedList,
+    targets: outcomes,
   }
 }
 
@@ -623,23 +355,20 @@ export {
   aggregateCampaignAnalytics,
 } from "./analytics-aggregate"
 
-import {
-  aggregateCampaignAnalytics,
-  type CampaignAnalyticsOverview,
-  type PostTargetAnalyticsSnapshot,
-} from "./analytics-aggregate"
+export { evaluateAndTriggerReactiveEngagementPlug } from "./reactive-engagement"
 
 export const aggregateCrossChannelAnalytics = aggregateCampaignAnalytics
 
 export interface SyncAllPublishedPostsAnalyticsResult {
   syncedPostsCount: number
   syncedTargetsCount: number
+  unavailableTargetsCount: number
   overview: CampaignAnalyticsOverview
 }
 
 /**
- * Synchronizes performance analytics across all recent published social posts (`limit` default 25)
- * and returns a rolled-up `CampaignAnalyticsOverview`.
+ * Synchronizes live performance analytics across recent published social posts (`limit` default 25)
+ * and returns an honest rolled-up `CampaignAnalyticsOverview`.
  */
 export async function syncAllPublishedPostsAnalytics(
   limit = 25
@@ -656,6 +385,7 @@ export async function syncAllPublishedPostsAnalytics(
 
   let syncedPostsCount = 0
   let syncedTargetsCount = 0
+  let unavailableTargetsCount = 0
   const allTargetSnapshots: PostTargetAnalyticsSnapshot[] = []
 
   for (const post of recentPosts) {
@@ -663,7 +393,11 @@ export async function syncAllPublishedPostsAnalytics(
     if (syncRes.syncedTargets > 0) {
       syncedPostsCount += 1
       syncedTargetsCount += syncRes.syncedTargets
-      for (const item of syncRes.targets) {
+    }
+    unavailableTargetsCount += syncRes.unavailableTargets
+
+    for (const item of syncRes.targets) {
+      if (item.syncStatus === "live" && item.analytics) {
         allTargetSnapshots.push({
           targetId: item.targetId,
           postId: post.id,
@@ -676,6 +410,24 @@ export async function syncAllPublishedPostsAnalytics(
           shares: item.analytics.shares,
           clicks: item.analytics.clicks,
           lastSyncedAt: item.analytics.lastSyncedAt,
+          syncStatus: "live",
+          isLiveVerified: true,
+        })
+      } else {
+        allTargetSnapshots.push({
+          targetId: item.targetId,
+          postId: post.id,
+          caption: post.caption,
+          provider: item.provider,
+          views: null,
+          impressions: null,
+          likes: null,
+          comments: null,
+          shares: null,
+          clicks: null,
+          lastSyncedAt: null,
+          syncStatus: "unavailable",
+          isLiveVerified: false,
         })
       }
     }
@@ -684,7 +436,7 @@ export async function syncAllPublishedPostsAnalytics(
   return {
     syncedPostsCount,
     syncedTargetsCount,
+    unavailableTargetsCount,
     overview: aggregateCampaignAnalytics(allTargetSnapshots),
   }
 }
-

@@ -2,15 +2,16 @@
 
 import { cookies } from "next/headers"
 import { revalidatePath } from "next/cache"
-import { and, desc, eq, gte, ilike, inArray, or } from "drizzle-orm"
-import { db } from "@/db"
+import { and, desc, eq, gte, ilike, inArray, notLike, or } from "drizzle-orm"
+import { z } from "zod"
+import { db, withTransaction } from "@/db"
+import { agencySettings } from "@/db/schema/settings"
 import {
   scheduledPosts,
   scheduledPostTargets,
   socialIntegrations,
   type ScheduledPost,
   type ScheduledPostTarget,
-  type SocialPostAnalyticsData,
 } from "@/db/schema/social-scheduler"
 import {
   postAssets,
@@ -18,7 +19,10 @@ import {
   supplierFlyers,
   suppliers,
 } from "@/db/schema/suppliers-and-marketing"
-import { requireAdmin } from "@/lib/auth-guard"
+import { recordAuditLog } from "@/lib/audit-log"
+import { requireAdmin, requireSuperAdmin } from "@/lib/auth-guard"
+import { getCompanyInfo } from "@/lib/company-info"
+import { logger } from "@/lib/logger"
 import {
   syncAllPublishedPostsAnalytics,
   syncSocialPostAnalytics,
@@ -28,17 +32,36 @@ import {
 } from "@/lib/social/analytics"
 import {
   generateSocialCaptionsCopilot,
-  type GenerateSocialCaptionsInput,
   type GeneratedPlatformCaptionsResult,
 } from "@/lib/social/caption-copilot"
-import { findNextFreePostingSlot, formatPktDate } from "@/lib/social/time-slots"
-import { publishViaComposio } from "@/lib/social/composio"
-import { decryptToken, encryptToken } from "@/lib/social/crypto"
+import { encryptToken } from "@/lib/social/crypto"
 import { buildArtFirstCommentPlug } from "@/lib/social/first-comment"
-import { getSocialProvider } from "@/lib/social/providers"
+import {
+  getSocialProvider,
+  isTikTokDirectPostApproved,
+  queryTikTokCreatorInfo,
+} from "@/lib/social/providers"
+import {
+  buildTargetSocialPostPayload,
+  dispatchPostToIntegration,
+  executeScheduledPostNowInternal,
+  tryPublishFirstCommentForTarget,
+} from "@/lib/social/publish-executor"
+import {
+  assertSafeSocialMediaUrl,
+  inferMediaMimeType,
+} from "@/lib/social/safe-media"
+import {
+  findNextFreePostingSlot,
+  formatPktDate,
+  formatPktDateTimeLocal,
+  parsePktDateTimeLocal,
+  reserveNextFreePostingSlotInTx,
+} from "@/lib/social/time-slots"
 import {
   refreshExpiringSocialTokens,
   refreshSingleSocialIntegrationToken,
+  resolveFreshIntegrationAccessToken,
   type TokenRefreshBatchResult,
   type TokenRefreshItemResult,
 } from "@/lib/social/token-refresh"
@@ -47,12 +70,14 @@ import type {
   EngagementPlugConfig,
   PlatformCaptionsMap,
   SafeSocialAccountCandidate,
+  ScheduledPostExtraMeta,
   SocialIntegrationStatus,
   SocialMediaItem,
   SocialPostFormat,
   SocialPostPayload,
   SocialProviderId,
-  SocialPublishResult,
+  TikTokCreatorInfo,
+  TikTokPostSettings,
 } from "@/lib/social/types"
 import {
   cancelScheduledPostSchema,
@@ -73,6 +98,71 @@ import {
   cancelTriggerRunIfActive,
   triggerByIdBackgroundOrInline,
 } from "@/trigger/dispatch"
+
+// ==========================================
+// 0. STRICT ACTION VALIDATION EXTENSIONS
+// ==========================================
+
+const executeScheduledPostNowSchema = z.object({
+  scheduledPostId: z.string().uuid("Valid scheduledPostId UUID is required"),
+})
+
+const deleteSocialIntegrationSchema = z.object({
+  integrationId: z.string().uuid("Valid integration ID is required"),
+})
+
+const getTikTokCreatorInfoSchema = z.object({
+  integrationId: z.string().uuid("Valid TikTok integration ID is required"),
+})
+
+const tiktokPostSettingsSchema = z.object({
+  privacyLevel: z
+    .enum([
+      "PUBLIC_TO_EVERYONE",
+      "MUTUAL_FOLLOW_FRIENDS",
+      "FOLLOWER_OF_CREATOR",
+      "SELF_ONLY",
+    ])
+    .optional(),
+  disableComment: z.boolean().optional(),
+  disableDuet: z.boolean().optional(),
+  disableStitch: z.boolean().optional(),
+  commercialDisclosure: z.boolean().optional(),
+  brandOrganicToggle: z.boolean().optional(),
+  brandedContentToggle: z.boolean().optional(),
+  uploadMode: z.enum(["PULL_FROM_URL", "FILE_UPLOAD"]).optional(),
+})
+
+const extendedCreatePostExtrasSchema = z.object({
+  useNextFreeSlot: z.boolean().optional(),
+  scheduledForPktLocal: z.string().optional(),
+  tiktokSettings: tiktokPostSettingsSchema.optional(),
+})
+
+const scheduledPostStatusFilterSchema = z.enum([
+  "draft",
+  "scheduled",
+  "publishing",
+  "completed",
+  "partially_failed",
+  "failed",
+  "cancelled",
+])
+
+const postAssetKindFilterSchema = z.enum([
+  "multi_package_sheet",
+  "single_package_spotlight",
+  "custom_quotation_pdf",
+])
+
+async function loadVerifiedCompanyInfo() {
+  try {
+    const [row] = await db.select().from(agencySettings).limit(1)
+    return getCompanyInfo(row ?? null)
+  } catch {
+    return getCompanyInfo(null)
+  }
+}
 
 // ==========================================
 // 1. SOCIAL INTEGRATIONS (ACCOUNTS)
@@ -112,15 +202,16 @@ function sanitizeIntegrationMetadata(
 
 /**
  * Returns all connected social integrations without exposing secret tokens.
+ * Excludes short-lived `pending:<uuid>` OAuth candidate staging rows.
  */
 export async function listSocialIntegrationsAction(): Promise<{
   success: boolean
   integrations?: SafeSocialIntegration[]
   error?: string
 }> {
-  try {
-    await requireAdmin()
+  await requireAdmin()
 
+  try {
     const rows = await db
       .select({
         id: socialIntegrations.id,
@@ -138,6 +229,7 @@ export async function listSocialIntegrationsAction(): Promise<{
         createdAt: socialIntegrations.createdAt,
       })
       .from(socialIntegrations)
+      .where(notLike(socialIntegrations.internalAccountId, "pending:%"))
       .orderBy(desc(socialIntegrations.createdAt))
 
     const sanitized: SafeSocialIntegration[] = rows.map((row) => ({
@@ -162,7 +254,8 @@ export async function listSocialIntegrationsAction(): Promise<{
 
 /**
  * Lists pending multi-page / multi-account / multi-location candidates discovered during OAuth
- * without exposing encryptedAccessToken or encryptedRefreshToken to the browser.
+ * without exposing encryptedAccessToken or encryptedRefreshToken to the browser (`T-033`, `T-069`).
+ * Restricted to `super_admin`. Automatically purges expired staging rows (>15 min TTL).
  */
 export async function getPendingSocialAccountCandidatesAction(
   input?:
@@ -178,9 +271,9 @@ export async function getPendingSocialAccountCandidatesAction(
   candidates?: SafeSocialAccountCandidate[]
   error?: string
 }> {
-  try {
-    await requireAdmin()
+  await requireSuperAdmin()
 
+  try {
     const filterProvider =
       typeof input === "string" ? input : input?.provider
     const filterIntegrationId =
@@ -197,6 +290,7 @@ export async function getPendingSocialAccountCandidatesAction(
     }
 
     const targetIntegrationId = filterIntegrationId || cookieIntegrationId
+    const nowMs = Date.now()
 
     const rows = await db
       .select()
@@ -204,6 +298,23 @@ export async function getPendingSocialAccountCandidatesAction(
       .orderBy(desc(socialIntegrations.updatedAt))
 
     for (const row of rows) {
+      const meta = (row.metadata as Record<string, unknown> | null) ?? {}
+      const rawExpiresAt =
+        typeof meta.pendingExpiresAt === "string" ? meta.pendingExpiresAt : null
+
+      if (rawExpiresAt) {
+        const expMs = Date.parse(rawExpiresAt)
+        if (Number.isFinite(expMs) && expMs < nowMs) {
+          if (row.internalAccountId.startsWith("pending:")) {
+            await db
+              .delete(socialIntegrations)
+              .where(eq(socialIntegrations.id, row.id))
+              .catch(() => undefined)
+          }
+          continue
+        }
+      }
+
       if (targetIntegrationId && row.id !== targetIntegrationId) {
         continue
       }
@@ -211,7 +322,6 @@ export async function getPendingSocialAccountCandidatesAction(
         continue
       }
 
-      const meta = (row.metadata as Record<string, unknown> | null) ?? {}
       const rawPending = meta.pendingCandidates
       if (!Array.isArray(rawPending) || rawPending.length === 0) {
         continue
@@ -257,9 +367,13 @@ export async function getPendingSocialAccountCandidatesAction(
   }
 }
 
+export const listPendingSocialCandidatesAction =
+  getPendingSocialAccountCandidatesAction
+
 /**
- * Finalizes multi-account OAuth selection by activating the chosen Page / IG Business / YouTube Channel / GMB Location
- * and clearing temporary candidate state.
+ * Finalizes multi-account OAuth selection by activating the chosen Page / IG Business /
+ * YouTube Channel / GMB Location and removing the short-lived `pending:<uuid>` staging row
+ * without overwriting any other existing `ACTIVE` integration (`T-033`, `T-069`).
  */
 export async function selectSocialAccountCandidateAction(
   rawInput: unknown
@@ -268,8 +382,9 @@ export async function selectSocialAccountCandidateAction(
   integrationId?: string
   error?: string
 }> {
+  const session = await requireSuperAdmin()
+
   try {
-    const session = await requireAdmin()
     const parsed = selectSocialAccountCandidateSchema.safeParse(rawInput)
     if (!parsed.success) {
       return {
@@ -281,6 +396,7 @@ export async function selectSocialAccountCandidateAction(
     }
 
     const { provider, integrationId, internalAccountId } = parsed.data
+    const nowMs = Date.now()
 
     const rows = await db
       .select()
@@ -299,6 +415,21 @@ export async function selectSocialAccountCandidateAction(
       }
 
       const meta = (row.metadata as Record<string, unknown> | null) ?? {}
+      const rawExpiresAt =
+        typeof meta.pendingExpiresAt === "string" ? meta.pendingExpiresAt : null
+      if (rawExpiresAt) {
+        const expMs = Date.parse(rawExpiresAt)
+        if (Number.isFinite(expMs) && expMs < nowMs) {
+          if (row.internalAccountId.startsWith("pending:")) {
+            await db
+              .delete(socialIntegrations)
+              .where(eq(socialIntegrations.id, row.id))
+              .catch(() => undefined)
+          }
+          continue
+        }
+      }
+
       const pendingList = Array.isArray(meta.pendingCandidates)
         ? (meta.pendingCandidates as EncryptedSocialAccountCandidate[])
         : []
@@ -325,15 +456,21 @@ export async function selectSocialAccountCandidateAction(
     const now = new Date()
     const tokenExpiresAt = matchedCandidate.expiresIn
       ? new Date(Date.now() + matchedCandidate.expiresIn * 1000)
-      : sourceRow.tokenExpiresAt
+      : null
 
     const cleanedMetadata: Record<string, unknown> = {
       ...(matchedCandidate.metadata || {}),
     }
+    if (resolvedProvider === "facebook" || resolvedProvider === "instagram") {
+      cleanedMetadata.encryptedPageAccessToken =
+        matchedCandidate.encryptedAccessToken
+    }
     delete cleanedMetadata.pendingCandidates
     delete cleanedMetadata.pendingCreatedAt
+    delete cleanedMetadata.pendingExpiresAt
+    delete cleanedMetadata.isPendingStaging
+    delete cleanedMetadata.pendingActorUserId
 
-    // Check if an integration row already exists for (provider, internalAccountId)
     const [existingTargetRow] = await db
       .select({ id: socialIntegrations.id })
       .from(socialIntegrations)
@@ -375,53 +512,6 @@ export async function selectSocialAccountCandidateAction(
         .where(eq(socialIntegrations.id, existingTargetRow.id))
 
       activeIntegrationId = existingTargetRow.id
-
-      // If sourceRow was a different placeholder row, clean its pendingCandidates or remove if PENDING_SELECTION
-      if (sourceRow.id !== existingTargetRow.id) {
-        const sourceMeta = {
-          ...((sourceRow.metadata as Record<string, unknown>) || {}),
-        }
-        delete sourceMeta.pendingCandidates
-        delete sourceMeta.pendingCreatedAt
-
-        if (sourceRow.status === "PENDING_SELECTION") {
-          await db
-            .delete(socialIntegrations)
-            .where(eq(socialIntegrations.id, sourceRow.id))
-        } else {
-          await db
-            .update(socialIntegrations)
-            .set({ metadata: sourceMeta, updatedAt: now })
-            .where(eq(socialIntegrations.id, sourceRow.id))
-        }
-      }
-    } else if (sourceRow.status === "PENDING_SELECTION") {
-      // Update placeholder row directly to the selected candidate
-      await db
-        .update(socialIntegrations)
-        .set({
-          internalAccountId: matchedCandidate.internalAccountId,
-          name: matchedCandidate.name,
-          handle: matchedCandidate.handle ?? null,
-          avatarUrl: matchedCandidate.avatarUrl ?? null,
-          encryptedAccessToken: matchedCandidate.encryptedAccessToken,
-          encryptedRefreshToken:
-            matchedCandidate.encryptedRefreshToken ??
-            sourceRow.encryptedRefreshToken,
-          tokenExpiresAt,
-          scopes:
-            matchedCandidate.scopes?.length > 0
-              ? matchedCandidate.scopes
-              : sourceRow.scopes,
-          metadata: cleanedMetadata,
-          status: "ACTIVE",
-          isActive: true,
-          lastSyncedAt: now,
-          updatedAt: now,
-        })
-        .where(eq(socialIntegrations.id, sourceRow.id))
-
-      activeIntegrationId = sourceRow.id
     } else {
       const [inserted] = await db
         .insert(socialIntegrations)
@@ -448,7 +538,30 @@ export async function selectSocialAccountCandidateAction(
         })
         .returning({ id: socialIntegrations.id })
 
-      activeIntegrationId = inserted.id
+      activeIntegrationId = inserted!.id
+    }
+
+    // Clean up temporary staging row (or strip pending metadata if attached to a legacy row)
+    if (sourceRow.id !== activeIntegrationId) {
+      if (
+        sourceRow.internalAccountId.startsWith("pending:") ||
+        sourceRow.status === "PENDING_SELECTION"
+      ) {
+        await db
+          .delete(socialIntegrations)
+          .where(eq(socialIntegrations.id, sourceRow.id))
+      } else {
+        const sourceMeta = {
+          ...((sourceRow.metadata as Record<string, unknown>) || {}),
+        }
+        delete sourceMeta.pendingCandidates
+        delete sourceMeta.pendingCreatedAt
+        delete sourceMeta.pendingExpiresAt
+        await db
+          .update(socialIntegrations)
+          .set({ metadata: sourceMeta, updatedAt: now })
+          .where(eq(socialIntegrations.id, sourceRow.id))
+      }
     }
 
     try {
@@ -457,6 +570,19 @@ export async function selectSocialAccountCandidateAction(
     } catch {
       // Cookie cleanup is best-effort
     }
+
+    await recordAuditLog({
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      action: "social.integration.candidate_selected",
+      entityType: "social_integration",
+      entityId: activeIntegrationId,
+      after: {
+        provider: resolvedProvider,
+        internalAccountId: matchedCandidate.internalAccountId,
+        name: matchedCandidate.name,
+      },
+    })
 
     revalidatePath("/admin/settings")
     revalidatePath("/admin/campaigns")
@@ -474,7 +600,8 @@ export async function selectSocialAccountCandidateAction(
 }
 
 /**
- * Refreshes a single social integration token or runs a proactive sweep of expiring tokens.
+ * Refreshes a single social integration token or runs a proactive sweep (`T-033`, `T-035`).
+ * Restricted to `super_admin`.
  */
 export async function refreshSocialIntegrationTokenAction(
   rawInput?: unknown
@@ -484,8 +611,9 @@ export async function refreshSocialIntegrationTokenAction(
   batchResult?: TokenRefreshBatchResult
   error?: string
 }> {
+  const session = await requireSuperAdmin()
+
   try {
-    await requireAdmin()
     const parsed = refreshSocialIntegrationTokenSchema.safeParse(
       rawInput ?? {}
     )
@@ -501,9 +629,22 @@ export async function refreshSocialIntegrationTokenAction(
       const itemResult = await refreshSingleSocialIntegrationToken(
         parsed.data.integrationId
       )
+      await recordAuditLog({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        action: "social.integration.token_refreshed",
+        entityType: "social_integration",
+        entityId: parsed.data.integrationId,
+        after: {
+          provider: itemResult.provider,
+          status: itemResult.status,
+        },
+      })
       revalidatePath("/admin/settings")
       return {
-        success: itemResult.status !== "expired" && itemResult.status !== "transient_failure",
+        success:
+          itemResult.status !== "expired" &&
+          itemResult.status !== "transient_failure",
         itemResult,
         error: itemResult.error,
       }
@@ -511,6 +652,17 @@ export async function refreshSocialIntegrationTokenAction(
 
     const batchResult = await refreshExpiringSocialTokens({
       withinHours: parsed.data.withinHours ?? 24,
+    })
+    await recordAuditLog({
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      action: "social.integration.tokens_swept",
+      entityType: "social_integration",
+      after: {
+        scannedCount: batchResult.scannedCount,
+        refreshedCount: batchResult.refreshedCount,
+        expiredCount: batchResult.expiredCount,
+      },
     })
     revalidatePath("/admin/settings")
     return {
@@ -531,13 +683,15 @@ export async function runProactiveTokenRefreshAction(rawInput?: unknown) {
 }
 
 /**
- * Disconnects (deactivates) a social integration. Restricted to Super Admin or Staff.
+ * Disconnects (deactivates) a social integration (`T-033`, `OD-07`).
+ * Strictly restricted to `super_admin` and audited via `recordAuditLog`.
  */
 export async function disconnectSocialIntegrationAction(
   rawInput: unknown
 ): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSuperAdmin()
+
   try {
-    await requireAdmin()
     const parsed = disconnectSocialIntegrationSchema.safeParse(rawInput)
     if (!parsed.success) {
       return {
@@ -547,6 +701,20 @@ export async function disconnectSocialIntegrationAction(
     }
 
     const { integrationId } = parsed.data
+    const [beforeRow] = await db
+      .select({
+        id: socialIntegrations.id,
+        provider: socialIntegrations.provider,
+        name: socialIntegrations.name,
+        isActive: socialIntegrations.isActive,
+      })
+      .from(socialIntegrations)
+      .where(eq(socialIntegrations.id, integrationId))
+      .limit(1)
+
+    if (!beforeRow) {
+      return { success: false, error: "Social integration not found" }
+    }
 
     await db
       .update(socialIntegrations)
@@ -556,7 +724,26 @@ export async function disconnectSocialIntegrationAction(
       })
       .where(eq(socialIntegrations.id, integrationId))
 
+    await recordAuditLog({
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      action: "social.integration.disconnected",
+      entityType: "social_integration",
+      entityId: integrationId,
+      before: {
+        provider: beforeRow.provider,
+        name: beforeRow.name,
+        isActive: beforeRow.isActive,
+      },
+      after: {
+        provider: beforeRow.provider,
+        name: beforeRow.name,
+        isActive: false,
+      },
+    })
+
     revalidatePath("/admin/settings")
+    revalidatePath("/admin/campaigns")
     return { success: true }
   } catch (err: unknown) {
     const error =
@@ -568,13 +755,106 @@ export async function disconnectSocialIntegrationAction(
 }
 
 /**
- * Manually connects or updates a social integration by pasting a long-lived page or system access token.
+ * Permanently deletes an unused social integration or deactivates & scrubs tokens if historical
+ * published post targets reference it (`T-033`, `OD-07`). Restricted to `super_admin`.
+ */
+export async function deleteSocialIntegrationAction(
+  rawInput: unknown
+): Promise<{
+  success: boolean
+  mode?: "deleted" | "deactivated_with_history"
+  error?: string
+}> {
+  const session = await requireSuperAdmin()
+
+  try {
+    const parsed = deleteSocialIntegrationSchema.safeParse(rawInput)
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message || "Invalid integration ID",
+      }
+    }
+
+    const { integrationId } = parsed.data
+    const [beforeRow] = await db
+      .select({
+        id: socialIntegrations.id,
+        provider: socialIntegrations.provider,
+        name: socialIntegrations.name,
+        internalAccountId: socialIntegrations.internalAccountId,
+      })
+      .from(socialIntegrations)
+      .where(eq(socialIntegrations.id, integrationId))
+      .limit(1)
+
+    if (!beforeRow) {
+      return { success: false, error: "Social integration not found" }
+    }
+
+    const [linkedTarget] = await db
+      .select({ id: scheduledPostTargets.id })
+      .from(scheduledPostTargets)
+      .where(eq(scheduledPostTargets.integrationId, integrationId))
+      .limit(1)
+
+    let mode: "deleted" | "deactivated_with_history" = "deleted"
+
+    if (linkedTarget) {
+      mode = "deactivated_with_history"
+      await db
+        .update(socialIntegrations)
+        .set({
+          isActive: false,
+          status: "EXPIRED",
+          encryptedAccessToken: encryptToken("revoked_token"),
+          encryptedRefreshToken: null,
+          metadata: { revokedAt: new Date().toISOString() },
+          updatedAt: new Date(),
+        })
+        .where(eq(socialIntegrations.id, integrationId))
+    } else {
+      await db
+        .delete(socialIntegrations)
+        .where(eq(socialIntegrations.id, integrationId))
+    }
+
+    await recordAuditLog({
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      action: "social.integration.deleted",
+      entityType: "social_integration",
+      entityId: integrationId,
+      before: {
+        provider: beforeRow.provider,
+        name: beforeRow.name,
+        internalAccountId: beforeRow.internalAccountId,
+      },
+      after: { mode },
+    })
+
+    revalidatePath("/admin/settings")
+    revalidatePath("/admin/campaigns")
+    return { success: true, mode }
+  } catch (err: unknown) {
+    const error =
+      err instanceof Error
+        ? err.message
+        : "Failed to delete social integration"
+    return { success: false, error }
+  }
+}
+
+/**
+ * Manually connects or updates a social integration (`T-033`, `OD-07`).
+ * Restricted to `super_admin` and audited via `recordAuditLog`.
  */
 export async function saveManualSocialIntegrationAction(
   rawInput: unknown
 ): Promise<{ success: boolean; integrationId?: string; error?: string }> {
+  const session = await requireSuperAdmin()
+
   try {
-    const session = await requireAdmin()
     const parsed = saveManualSocialIntegrationSchema.safeParse(rawInput)
     if (!parsed.success) {
       return {
@@ -595,8 +875,11 @@ export async function saveManualSocialIntegrationAction(
       : null
 
     const now = new Date()
+    const mergedMeta: Record<string, unknown> = { ...(data.metadata || {}) }
+    if (data.provider === "facebook" || data.provider === "instagram") {
+      mergedMeta.encryptedPageAccessToken = encryptedAccessToken
+    }
 
-    // Check if account already exists
     const [existing] = await db
       .select({ id: socialIntegrations.id })
       .from(socialIntegrations)
@@ -619,7 +902,7 @@ export async function saveManualSocialIntegrationAction(
           encryptedAccessToken,
           encryptedRefreshToken,
           tokenExpiresAt,
-          metadata: data.metadata || {},
+          metadata: mergedMeta,
           status: "ACTIVE",
           isActive: true,
           lastSyncedAt: now,
@@ -638,23 +921,91 @@ export async function saveManualSocialIntegrationAction(
           encryptedAccessToken,
           encryptedRefreshToken,
           tokenExpiresAt,
-          metadata: data.metadata || {},
+          metadata: mergedMeta,
           status: "ACTIVE",
           isActive: true,
           lastSyncedAt: now,
           createdByUserId: session.user.id,
         })
         .returning({ id: socialIntegrations.id })
-      integrationId = inserted.id
+      integrationId = inserted!.id
     }
 
+    await recordAuditLog({
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      action: "social.integration.manual_saved",
+      entityType: "social_integration",
+      entityId: integrationId,
+      after: {
+        provider: data.provider,
+        name: data.name,
+        internalAccountId: data.internalAccountId,
+      },
+    })
+
     revalidatePath("/admin/settings")
+    revalidatePath("/admin/campaigns")
     return { success: true, integrationId }
   } catch (err: unknown) {
     const error =
       err instanceof Error
         ? err.message
         : "Failed to save manual social integration"
+    return { success: false, error }
+  }
+}
+
+/**
+ * Fetches live TikTok creator UX info (`privacy_level_options`, `comment_disabled`, `duet_disabled`,
+ * `stitch_disabled`, `max_video_post_duration_sec`) required by TikTok Direct Post Audit UX (`T-070`).
+ */
+export async function getTikTokCreatorInfoAction(rawInput: unknown): Promise<{
+  success: boolean
+  creatorInfo?: TikTokCreatorInfo
+  directPostApproved?: boolean
+  error?: string
+}> {
+  await requireAdmin()
+
+  try {
+    const parsed = getTikTokCreatorInfoSchema.safeParse(rawInput)
+    if (!parsed.success) {
+      return {
+        success: false,
+        error:
+          parsed.error.issues[0]?.message ||
+          "Valid TikTok integration ID is required",
+      }
+    }
+
+    const [integration] = await db
+      .select()
+      .from(socialIntegrations)
+      .where(
+        and(
+          eq(socialIntegrations.id, parsed.data.integrationId),
+          eq(socialIntegrations.provider, "tiktok")
+        )
+      )
+      .limit(1)
+
+    if (!integration) {
+      return { success: false, error: "TikTok integration not found" }
+    }
+
+    const accessToken = await resolveFreshIntegrationAccessToken(integration)
+    const creatorInfo = await queryTikTokCreatorInfo(accessToken)
+    return {
+      success: true,
+      creatorInfo,
+      directPostApproved: isTikTokDirectPostApproved(),
+    }
+  } catch (err: unknown) {
+    const error =
+      err instanceof Error
+        ? err.message
+        : "Failed to query TikTok creator settings"
     return { success: false, error }
   }
 }
@@ -688,17 +1039,25 @@ export async function listScheduledPostsAction(filter?: {
   posts?: ScheduledPostWithTargets[]
   error?: string
 }> {
-  try {
-    await requireAdmin()
+  await requireAdmin()
 
-    const limit = filter?.limit ?? 50
-    const postsQuery = db
+  try {
+    const limit = Math.max(1, Math.min(filter?.limit ?? 50, 100))
+    const statusParsed =
+      filter?.status && filter.status !== "all"
+        ? scheduledPostStatusFilterSchema.safeParse(filter.status)
+        : null
+
+    const posts = await db
       .select()
       .from(scheduledPosts)
+      .where(
+        statusParsed?.success
+          ? eq(scheduledPosts.status, statusParsed.data)
+          : undefined
+      )
       .orderBy(desc(scheduledPosts.scheduledFor))
       .limit(limit)
-
-    const posts = await postsQuery
 
     if (posts.length === 0) {
       return { success: true, posts: [] }
@@ -706,7 +1065,6 @@ export async function listScheduledPostsAction(filter?: {
 
     const postIds = posts.map((p: ScheduledPost) => p.id)
 
-    // Load targets joined with integration info
     const targets = await db
       .select({
         target: scheduledPostTargets,
@@ -744,12 +1102,9 @@ export async function listScheduledPostsAction(filter?: {
       const list = targetsByPostId.get(item.target.scheduledPostId) || []
       list.push({
         ...item.target,
-        integration: item.integration as {
-          id: string
-          name: string
-          provider: SocialProviderId
-          handle: string | null
-          avatarUrl: string | null
+        integration: {
+          ...item.integration,
+          provider: item.integration.provider as SocialProviderId,
         },
       })
       targetsByPostId.set(item.target.scheduledPostId, list)
@@ -770,6 +1125,13 @@ export async function listScheduledPostsAction(filter?: {
   }
 }
 
+export async function getScheduledPostsQueueAction(filter?: {
+  status?: string
+  limit?: number
+}) {
+  return listScheduledPostsAction(filter)
+}
+
 /**
  * Generates an ART-... First-Comment WhatsApp click-to-chat CTA from either a postAssetId or explicit package fields.
  */
@@ -781,8 +1143,9 @@ export async function generateArtFirstCommentAction(
   postCode?: string
   error?: string
 }> {
+  await requireAdmin()
+
   try {
-    await requireAdmin()
     const parsed = generateArtFirstCommentSchema.safeParse(rawInput)
     if (!parsed.success) {
       return {
@@ -794,6 +1157,9 @@ export async function generateArtFirstCommentAction(
     }
 
     const data = parsed.data
+    const companyInfo = await loadVerifiedCompanyInfo()
+    const resolvedWhatsapp =
+      data.whatsappNumber || companyInfo.normalizedWhatsapp
 
     if (data.postAssetId) {
       const [assetRow] = await db
@@ -863,7 +1229,7 @@ export async function generateArtFirstCommentAction(
           doublePricePkr: data.doublePricePkr ?? pkgRow?.retailDoublePkr,
           makkahHotelName: data.makkahHotelName ?? pkgRow?.makkahHotelName,
           madinahHotelName: data.madinahHotelName ?? pkgRow?.madinahHotelName,
-          whatsappNumber: data.whatsappNumber,
+          whatsappNumber: resolvedWhatsapp,
         })
 
         return {
@@ -884,7 +1250,7 @@ export async function generateArtFirstCommentAction(
       doublePricePkr: data.doublePricePkr,
       makkahHotelName: data.makkahHotelName,
       madinahHotelName: data.madinahHotelName,
-      whatsappNumber: data.whatsappNumber,
+      whatsappNumber: resolvedWhatsapp,
     })
 
     return {
@@ -902,8 +1268,7 @@ export async function generateArtFirstCommentAction(
 }
 
 /**
- * Syncs performance metrics (`impressions`, `likes`, `comments`, `shares`, `clicks`) across all published targets
- * of a scheduled post.
+ * Syncs live performance metrics across published targets of a scheduled post (`T-036`).
  */
 export async function syncSocialPostAnalyticsAction(
   rawInput: unknown
@@ -912,8 +1277,9 @@ export async function syncSocialPostAnalyticsAction(
   result?: SyncSocialPostAnalyticsResult
   error?: string
 }> {
+  await requireAdmin()
+
   try {
-    await requireAdmin()
     const parsed = syncSocialPostAnalyticsSchema.safeParse(rawInput)
     if (!parsed.success) {
       return {
@@ -942,7 +1308,7 @@ export async function syncSocialPostAnalyticsAction(
 }
 
 /**
- * Batch syncs performance metrics across all recent published scheduled posts and returns a rolled-up CampaignAnalyticsOverview.
+ * Batch syncs live performance metrics across recent published scheduled posts (`T-036`).
  */
 export async function syncAllPublishedPostsAnalyticsAction(rawInput?: {
   limit?: number
@@ -950,12 +1316,14 @@ export async function syncAllPublishedPostsAnalyticsAction(rawInput?: {
   success: boolean
   syncedPostsCount?: number
   syncedTargetsCount?: number
+  unavailableTargetsCount?: number
   overview?: CampaignAnalyticsOverview
   result?: SyncAllPublishedPostsAnalyticsResult
   error?: string
 }> {
+  await requireAdmin()
+
   try {
-    await requireAdmin()
     const limit =
       typeof rawInput?.limit === "number" && rawInput.limit > 0
         ? rawInput.limit
@@ -967,6 +1335,7 @@ export async function syncAllPublishedPostsAnalyticsAction(rawInput?: {
       success: true,
       syncedPostsCount: result.syncedPostsCount,
       syncedTargetsCount: result.syncedTargetsCount,
+      unavailableTargetsCount: result.unavailableTargetsCount,
       overview: result.overview,
       result,
     }
@@ -979,9 +1348,25 @@ export async function syncAllPublishedPostsAnalyticsAction(rawInput?: {
   }
 }
 
+export const syncAllSocialAnalyticsAction = syncAllPublishedPostsAnalyticsAction
+
+function isVideoMediaExtension(url: string): boolean {
+  const lower = url.trim().toLowerCase()
+  return (
+    lower.endsWith(".mp4") ||
+    lower.endsWith(".mov") ||
+    lower.endsWith(".webm") ||
+    lower.endsWith(".m4v")
+  )
+}
+
 /**
- * Creates and schedules a multi-channel social post, optionally linking a Step 2 follow-up sheet.
- * If publishNow is true, publishes immediately inline with idempotency guards.
+ * Creates and schedules a multi-channel social post (`T-033`, `T-034`, `T-070`, `T-089`):
+ * - Enforces `assertSafeSocialMediaUrl` on every media URL (blocks `blob:`, `file:`, private IPs)
+ * - Preserves distinct Spotlight poster URLs when `asset.kind === "single_package_spotlight"`
+ * - Persists `_meta` (`title`, GMB CTA, `tiktokSettings`) inside `platformCaptions`
+ * - Supports transactional PKT slot reservation (`useNextFreeSlot`) and `+05:00` PKT local strings
+ * - Records an immutable `audit_logs` entry
  */
 export async function createScheduledSocialPostAction(
   rawInput: unknown
@@ -989,12 +1374,36 @@ export async function createScheduledSocialPostAction(
   success: boolean
   postId?: string
   pairedPostId?: string
+  scheduledForUtc?: string
+  triggerRunId?: string | null
   error?: string
 }> {
-  try {
-    const session = await requireAdmin()
-    const parsed = createScheduledPostSchema.safeParse(rawInput)
+  const session = await requireAdmin()
 
+  try {
+    const extrasParsed =
+      rawInput && typeof rawInput === "object"
+        ? extendedCreatePostExtrasSchema.safeParse(rawInput)
+        : { success: false as const, data: undefined }
+
+    // If caller supplied an explicit PKT datetime-local string, parse it as +05:00 PKT
+    let normalizedRawInput = rawInput
+    if (
+      extrasParsed.success &&
+      extrasParsed.data.scheduledForPktLocal?.trim() &&
+      rawInput &&
+      typeof rawInput === "object"
+    ) {
+      const pktUtcDate = parsePktDateTimeLocal(
+        extrasParsed.data.scheduledForPktLocal
+      )
+      normalizedRawInput = {
+        ...(rawInput as Record<string, unknown>),
+        scheduledFor: pktUtcDate,
+      }
+    }
+
+    const parsed = createScheduledPostSchema.safeParse(normalizedRawInput)
     if (!parsed.success) {
       return {
         success: false,
@@ -1003,8 +1412,24 @@ export async function createScheduledSocialPostAction(
     }
 
     const data = parsed.data
+    const tiktokSettings: TikTokPostSettings | undefined = extrasParsed.success
+      ? extrasParsed.data.tiktokSettings
+      : undefined
+    const useNextFreeSlot = extrasParsed.success
+      ? Boolean(extrasParsed.data.useNextFreeSlot)
+      : false
 
-    // 1. Verify and fetch targeted integrations
+    // 1. SSRF & blob: URL guard on all primary and Step-2 media URLs (`T-034`, `T-070`)
+    for (const url of data.mediaUrls) {
+      await assertSafeSocialMediaUrl(url)
+    }
+    if (data.followUpPost?.mediaUrls) {
+      for (const url of data.followUpPost.mediaUrls) {
+        await assertSafeSocialMediaUrl(url)
+      }
+    }
+
+    // 2. Verify and fetch targeted integrations
     const integrations = await db
       .select()
       .from(socialIntegrations)
@@ -1023,35 +1448,54 @@ export async function createScheduledSocialPostAction(
       }
     }
 
-    // 2. Validate media and caption rules against each target provider's adapter
+    // 3. Validate media and caption rules against each target provider's adapter
     const mediaItems: SocialMediaItem[] = (data.mediaUrls || []).map(
       (url: string) => ({
         url,
-        type: url.toLowerCase().endsWith(".mp4") ? "video" : "image",
+        type: isVideoMediaExtension(url) ? "video" : "image",
+        mimeType: inferMediaMimeType(url),
       })
     )
 
     const effectivePostFormat: SocialPostFormat =
       data.postFormat || (data.postType === "story" ? "STORY" : "FEED")
 
-    const postPayload: SocialPostPayload = {
-      id: "pending_validation",
-      caption: data.caption,
-      media: mediaItems,
-      postType: data.postType,
-      postFormat: effectivePostFormat,
-      firstComment: data.firstComment ?? null,
-      title: data.title,
-      callToActionUrl: data.callToActionUrl,
-      callToActionType: data.callToActionType,
-      offerDetails: data.offerDetails,
+    const extraMeta: ScheduledPostExtraMeta = {
+      ...(data.title ? { title: data.title } : {}),
+      ...(data.callToActionUrl ? { callToActionUrl: data.callToActionUrl } : {}),
+      ...(data.callToActionType
+        ? { callToActionType: data.callToActionType }
+        : {}),
+      ...(data.offerDetails ? { offerDetails: data.offerDetails } : {}),
+      ...(tiktokSettings ? { tiktokSettings } : {}),
+    }
+
+    const storedPlatformCaptions: PlatformCaptionsMap = {
+      ...((data.platformCaptions as PlatformCaptionsMap | undefined) || {}),
+      ...(Object.keys(extraMeta).length > 0 ? { _meta: extraMeta } : {}),
     }
 
     for (const integration of integrations) {
-      const adapter = getSocialProvider(
-        integration.provider as SocialProviderId
-      )
-      const valResult = await adapter.validateSocialPost(postPayload)
+      const provider = integration.provider as SocialProviderId
+      const adapter = getSocialProvider(provider)
+      const overrideCaption =
+        storedPlatformCaptions[provider]?.caption?.trim() || data.caption
+
+      const valPayload: SocialPostPayload = {
+        id: "pending_validation",
+        caption: overrideCaption,
+        media: mediaItems,
+        postType: data.postType,
+        postFormat: effectivePostFormat,
+        firstComment: data.firstComment ?? null,
+        title: data.title,
+        callToActionUrl: data.callToActionUrl || undefined,
+        callToActionType: data.callToActionType,
+        offerDetails: data.offerDetails,
+        tiktokSettings,
+      }
+
+      const valResult = adapter.validateSocialPost(valPayload)
       if (!valResult.valid) {
         return {
           success: false,
@@ -1060,11 +1504,13 @@ export async function createScheduledSocialPostAction(
       }
     }
 
-    // 3. Resolve 1080x1520 normalized social JPEG if post asset is linked
+    // 4. Resolve normalized social JPEG URL ONLY when linked asset is `multi_package_sheet` (`T-070`!)
+    // NEVER overwrite `single_package_spotlight` child media URLs with the parent multi-package rate sheet!
     let resolvedSocialJpegUrls = [...(data.mediaUrls || [])]
     if (data.postAssetId) {
       const [assetRecord] = await db
         .select({
+          kind: postAssets.kind,
           imageUrl: postAssets.imageUrl,
           flyerSocialJpeg: supplierFlyers.socialReadySheetJpegUrl,
         })
@@ -1073,7 +1519,11 @@ export async function createScheduledSocialPostAction(
         .where(eq(postAssets.id, data.postAssetId))
         .limit(1)
 
-      if (assetRecord?.flyerSocialJpeg) {
+      if (
+        assetRecord?.kind === "multi_package_sheet" &&
+        assetRecord.flyerSocialJpeg
+      ) {
+        await assertSafeSocialMediaUrl(assetRecord.flyerSocialJpeg)
         resolvedSocialJpegUrls = [
           assetRecord.flyerSocialJpeg,
           ...data.mediaUrls.filter((u) => u !== assetRecord.flyerSocialJpeg),
@@ -1081,97 +1531,144 @@ export async function createScheduledSocialPostAction(
       }
     }
 
-    // 4. Insert primary scheduled post
-    const [insertedPost] = await db
-      .insert(scheduledPosts)
-      .values({
-        postAssetId: data.postAssetId,
-        caption: data.caption,
-        postType: data.postType,
-        postFormat: effectivePostFormat,
-        firstComment: data.firstComment?.trim() || null,
-        platformCaptions: (data.platformCaptions as PlatformCaptionsMap) || {},
-        engagementPlugConfig: (data.engagementPlugConfig as EngagementPlugConfig | null) || null,
-        mediaUrls: data.mediaUrls,
-        socialJpegUrls: resolvedSocialJpegUrls,
-        campaignStage: data.campaignStage,
-        twoStepDelayMinutes: data.twoStepDelayMinutes,
-        status: "scheduled",
-        scheduledFor: data.scheduledFor,
-        createdByUserId: session.user.id,
+    // 5. Insert primary scheduled post (+ optional Step 2 follow-up) atomically inside a DB transaction
+    const { primaryPostId, pairedPostId, finalScheduledFor } =
+      await withTransaction(async (tx) => {
+        const effectiveScheduledFor =
+          useNextFreeSlot && !data.publishNow
+            ? await reserveNextFreePostingSlotInTx(tx)
+            : data.scheduledFor
+
+        const [insertedPost] = await tx
+          .insert(scheduledPosts)
+          .values({
+            postAssetId: data.postAssetId,
+            caption: data.caption,
+            postType: data.postType,
+            postFormat: effectivePostFormat,
+            firstComment: data.firstComment?.trim() || null,
+            platformCaptions: storedPlatformCaptions,
+            engagementPlugConfig:
+              (data.engagementPlugConfig as EngagementPlugConfig | null) ||
+              null,
+            mediaUrls: data.mediaUrls,
+            socialJpegUrls: resolvedSocialJpegUrls,
+            campaignStage: data.campaignStage,
+            twoStepDelayMinutes: data.twoStepDelayMinutes,
+            status: "scheduled",
+            scheduledFor: effectiveScheduledFor,
+            createdByUserId: session.user.id,
+          })
+          .returning({ id: scheduledPosts.id })
+
+        const createdPrimaryId = insertedPost!.id
+
+        for (const integration of integrations) {
+          const idempotencyKey = `soc-pub-${createdPrimaryId}-${integration.id}-1`
+          await tx.insert(scheduledPostTargets).values({
+            scheduledPostId: createdPrimaryId,
+            integrationId: integration.id,
+            status: "pending",
+            idempotencyKey,
+          })
+        }
+
+        let createdPairedId: string | undefined
+
+        if (data.followUpPost) {
+          const followUp = data.followUpPost
+          const followUpTime = new Date(
+            effectiveScheduledFor.getTime() +
+              data.twoStepDelayMinutes * 60 * 1000
+          )
+
+          let followUpSocialJpegs = [...followUp.mediaUrls]
+          if (followUp.postAssetId) {
+            const [followAsset] = await tx
+              .select({
+                kind: postAssets.kind,
+                flyerSocialJpeg: supplierFlyers.socialReadySheetJpegUrl,
+              })
+              .from(postAssets)
+              .leftJoin(
+                supplierFlyers,
+                eq(postAssets.flyerId, supplierFlyers.id)
+              )
+              .where(eq(postAssets.id, followUp.postAssetId))
+              .limit(1)
+
+            if (
+              followAsset?.kind === "multi_package_sheet" &&
+              followAsset.flyerSocialJpeg
+            ) {
+              await assertSafeSocialMediaUrl(followAsset.flyerSocialJpeg)
+              followUpSocialJpegs = [
+                followAsset.flyerSocialJpeg,
+                ...followUp.mediaUrls.filter(
+                  (u) => u !== followAsset.flyerSocialJpeg
+                ),
+              ]
+            }
+          }
+
+          const followUpCaptions: PlatformCaptionsMap = followUp.title
+            ? { _meta: { title: followUp.title } }
+            : {}
+
+          const [insertedFollowUp] = await tx
+            .insert(scheduledPosts)
+            .values({
+              postAssetId: followUp.postAssetId || data.postAssetId,
+              caption: followUp.caption,
+              postType: followUp.postType,
+              postFormat: followUp.postFormat || "FEED",
+              firstComment: followUp.firstComment?.trim() || null,
+              platformCaptions: followUpCaptions,
+              mediaUrls: followUp.mediaUrls,
+              socialJpegUrls: followUpSocialJpegs,
+              campaignStage: "step_2_all_packages",
+              twoStepDelayMinutes: data.twoStepDelayMinutes,
+              status: "scheduled",
+              scheduledFor: followUpTime,
+              createdByUserId: session.user.id,
+            })
+            .returning({ id: scheduledPosts.id })
+
+          createdPairedId = insertedFollowUp!.id
+
+          await tx
+            .update(scheduledPosts)
+            .set({ pairedFollowUpPostId: createdPairedId })
+            .where(eq(scheduledPosts.id, createdPrimaryId))
+
+          for (const integration of integrations) {
+            const idempotencyKey = `soc-pub-${createdPairedId}-${integration.id}-1`
+            await tx.insert(scheduledPostTargets).values({
+              scheduledPostId: createdPairedId,
+              integrationId: integration.id,
+              status: "pending",
+              idempotencyKey,
+            })
+          }
+        }
+
+        return {
+          primaryPostId: createdPrimaryId,
+          pairedPostId: createdPairedId,
+          finalScheduledFor: effectiveScheduledFor,
+        }
       })
-      .returning({ id: scheduledPosts.id })
 
-    const primaryPostId = insertedPost.id
-
-    // 4. Insert targets for primary post
-    for (const integration of integrations) {
-      const idempotencyKey = `soc-pub-${primaryPostId}-${integration.id}-1`
-      await db.insert(scheduledPostTargets).values({
-        scheduledPostId: primaryPostId,
-        integrationId: integration.id,
-        status: "pending",
-        idempotencyKey,
-      })
-    }
-
-    let pairedPostId: string | undefined
-
-    // 5. If 2-step campaign follow-up post is supplied, create the paired Step 2 post
-    if (data.followUpPost) {
-      const followUp = data.followUpPost
-      const followUpTime = new Date(
-        data.scheduledFor.getTime() + data.twoStepDelayMinutes * 60 * 1000
-      )
-
-      const [insertedFollowUp] = await db
-        .insert(scheduledPosts)
-        .values({
-          postAssetId: followUp.postAssetId || data.postAssetId,
-          caption: followUp.caption,
-          postType: followUp.postType,
-          postFormat: followUp.postFormat || "FEED",
-          firstComment: followUp.firstComment?.trim() || null,
-          mediaUrls: followUp.mediaUrls,
-          socialJpegUrls: followUp.mediaUrls,
-          campaignStage: "step_2_all_packages",
-          twoStepDelayMinutes: data.twoStepDelayMinutes,
-          status: "scheduled",
-          scheduledFor: followUpTime,
-          createdByUserId: session.user.id,
-        })
-        .returning({ id: scheduledPosts.id })
-
-      pairedPostId = insertedFollowUp.id
-
-      // Link both posts
-      await db
-        .update(scheduledPosts)
-        .set({ pairedFollowUpPostId: pairedPostId })
-        .where(eq(scheduledPosts.id, primaryPostId))
-
-      // Insert targets for paired post
-      for (const integration of integrations) {
-        const idempotencyKey = `soc-pub-${pairedPostId}-${integration.id}-1`
-        await db.insert(scheduledPostTargets).values({
-          scheduledPostId: pairedPostId,
-          integrationId: integration.id,
-          status: "pending",
-          idempotencyKey,
-        })
-      }
-    }
-
-    // 6. Dispatch durable Trigger.dev Cloud run (immediate or future wait.until), with inline dev fallback
+    // 6. Dispatch durable Trigger.dev Cloud run (immediate or future wait.until), with worker-safe inline fallback
     const isFutureScheduled =
-      !data.publishNow && data.scheduledFor.getTime() > Date.now()
+      !data.publishNow && finalScheduledFor.getTime() > Date.now()
 
     const dispatchRes = await triggerByIdBackgroundOrInline({
       taskId: "publish-social-post",
       payload: { scheduledPostId: primaryPostId },
       isFutureScheduled,
       inlineRunner: async ({ scheduledPostId }) =>
-        executeScheduledPostNowAction({ scheduledPostId }),
+        executeScheduledPostNowInternal({ scheduledPostId }),
       options: {
         idempotencyKey: `soc-post-run-${primaryPostId}`,
         tags: [`social-post:${primaryPostId}`],
@@ -1185,14 +1682,13 @@ export async function createScheduledSocialPostAction(
         .where(eq(scheduledPosts.id, primaryPostId))
     }
 
-    // If Step 1 ran inline in local dev and there is a future Step 2 follow-up post, register Step 2 on Trigger.dev Cloud
     if (dispatchRes.mode === "inline" && pairedPostId) {
       const followUpDispatch = await triggerByIdBackgroundOrInline({
         taskId: "publish-social-post",
         payload: { scheduledPostId: pairedPostId },
         isFutureScheduled: true,
         inlineRunner: async ({ scheduledPostId }) =>
-          executeScheduledPostNowAction({ scheduledPostId }),
+          executeScheduledPostNowInternal({ scheduledPostId }),
         options: {
           idempotencyKey: `soc-post-run-${pairedPostId}`,
           tags: [`social-post:${pairedPostId}`],
@@ -1210,6 +1706,23 @@ export async function createScheduledSocialPostAction(
       }
     }
 
+    await recordAuditLog({
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      action: data.publishNow
+        ? "social.post.published_now"
+        : "social.post.scheduled",
+      entityType: "scheduled_post",
+      entityId: primaryPostId,
+      after: {
+        scheduledFor: finalScheduledFor.toISOString(),
+        publishNow: data.publishNow,
+        targetCount: integrations.length,
+        providers: integrations.map((i) => i.provider),
+        pairedPostId: pairedPostId ?? null,
+      },
+    })
+
     revalidatePath("/admin/campaigns")
     revalidatePath("/admin/marketing")
 
@@ -1217,13 +1730,15 @@ export async function createScheduledSocialPostAction(
       success: true,
       postId: primaryPostId,
       pairedPostId,
+      scheduledForUtc: finalScheduledFor.toISOString(),
+      triggerRunId: dispatchRes.runId ?? null,
     }
   } catch (err: unknown) {
     const error =
       err instanceof Error
         ? err.message
         : "Failed to schedule social media post"
-    console.error("[Create Scheduled Post Error]:", err)
+    logger.error("createScheduledSocialPostAction failed", { error: err })
     return { success: false, error }
   }
 }
@@ -1233,212 +1748,9 @@ export async function scheduleSocialPostAction(rawInput: unknown) {
 }
 
 /**
- * Internal publishing dispatcher. Supports:
- * 1. Zero-Config Composio Managed OAuth for Instagram & Facebook Pages.
- * 2. Native Direct OAuth publishing with proactive token refresh within 5 min of expiry.
- */
-async function dispatchPostToIntegration(params: {
-  integration: typeof socialIntegrations.$inferSelect
-  postPayload: SocialPostPayload
-  idempotencyKey: string
-}): Promise<{ publishResult: SocialPublishResult; activeAccessToken: string }> {
-  const { integration, postPayload, idempotencyKey } = params
-  const decryptedToken = decryptToken(integration.encryptedAccessToken)
-
-  const metaRecord =
-    (integration.metadata as Record<string, unknown> | null) ?? {}
-  const isComposioConnection =
-    metaRecord.authSource === "composio" ||
-    decryptedToken.startsWith("composio:")
-
-  // 1. Composio Managed OAuth branch
-  if (
-    isComposioConnection &&
-    (integration.provider === "instagram" ||
-      integration.provider === "facebook")
-  ) {
-    const connectedAccountId =
-      typeof metaRecord.composioConnectedAccountId === "string"
-        ? metaRecord.composioConnectedAccountId
-        : decryptedToken.startsWith("composio:")
-        ? decryptedToken.slice("composio:".length)
-        : undefined
-
-    const publishResult = await publishViaComposio(integration.provider, {
-      externalAccountId: integration.internalAccountId,
-      connectedAccountId,
-      handle: integration.handle,
-      payload: postPayload,
-    })
-
-    return {
-      publishResult,
-      activeAccessToken: decryptedToken,
-    }
-  }
-
-  // 2. Direct Native OAuth branch with proactive token refresh
-  const adapter = getSocialProvider(integration.provider as SocialProviderId)
-  let activeAccessToken = decryptedToken
-
-  const isExpiredOrNearExpiry =
-    integration.tokenExpiresAt &&
-    integration.tokenExpiresAt.getTime() - Date.now() < 5 * 60 * 1000
-
-  if (
-    isExpiredOrNearExpiry &&
-    integration.encryptedRefreshToken &&
-    adapter.refreshAccessToken
-  ) {
-    try {
-      const decryptedRefreshToken = decryptToken(
-        integration.encryptedRefreshToken
-      )
-      const refreshed = await adapter.refreshAccessToken(decryptedRefreshToken)
-
-      activeAccessToken = refreshed.accessToken
-      const newEncryptedAccess = encryptToken(refreshed.accessToken)
-      const newEncryptedRefresh = refreshed.refreshToken
-        ? encryptToken(refreshed.refreshToken)
-        : integration.encryptedRefreshToken
-      const newExpiresAt = refreshed.expiresIn
-        ? new Date(Date.now() + refreshed.expiresIn * 1000)
-        : integration.tokenExpiresAt
-
-      await db
-        .update(socialIntegrations)
-        .set({
-          encryptedAccessToken: newEncryptedAccess,
-          encryptedRefreshToken: newEncryptedRefresh,
-          tokenExpiresAt: newExpiresAt,
-          status: "ACTIVE",
-          lastSyncedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(socialIntegrations.id, integration.id))
-    } catch (refreshErr) {
-      console.warn(
-        `[Token Refresh Warning] Could not refresh token for ${integration.provider} (${integration.id}):`,
-        refreshErr
-      )
-    }
-  }
-
-  const publishResult = await adapter.publishPost({
-    account: {
-      internalAccountId: integration.internalAccountId,
-      accessToken: activeAccessToken,
-      metadata: integration.metadata,
-    },
-    post: postPayload,
-    idempotencyKey,
-  })
-
-  return {
-    publishResult,
-    activeAccessToken,
-  }
-}
-
-/**
- * Executes first-comment auto-plug if configured on the scheduled post.
- * Fault-isolated: never throws or rolls back primary post publication.
- */
-async function tryPublishFirstCommentForTarget(params: {
-  post: typeof scheduledPosts.$inferSelect
-  target: typeof scheduledPostTargets.$inferSelect
-  integration: typeof socialIntegrations.$inferSelect
-  externalPostId: string
-  accessToken: string
-  customFirstComment?: string | null
-}): Promise<{
-  firstCommentExternalId: string | null
-  firstCommentPostedAt: Date | null
-  analyticsData: SocialPostAnalyticsData | null
-}> {
-  const {
-    post,
-    target,
-    integration,
-    externalPostId,
-    accessToken,
-    customFirstComment,
-  } = params
-  const commentText = (
-    customFirstComment !== undefined ? customFirstComment : post.firstComment
-  )?.trim()
-  const effectiveFormat: SocialPostFormat =
-    (post.postFormat as SocialPostFormat) ||
-    (post.postType === "story" ? "STORY" : "FEED")
-
-  if (!commentText || effectiveFormat === "STORY") {
-    return {
-      firstCommentExternalId: target.firstCommentExternalId ?? null,
-      firstCommentPostedAt: target.firstCommentPostedAt ?? null,
-      analyticsData: target.analyticsData ?? null,
-    }
-  }
-
-  const adapter = getSocialProvider(integration.provider as SocialProviderId)
-  if (!adapter.publishComment) {
-    return {
-      firstCommentExternalId: target.firstCommentExternalId ?? null,
-      firstCommentPostedAt: target.firstCommentPostedAt ?? null,
-      analyticsData: target.analyticsData ?? null,
-    }
-  }
-
-  const baseAnalytics: SocialPostAnalyticsData = target.analyticsData ?? {
-    impressions: 0,
-    likes: 0,
-    comments: 0,
-    shares: 0,
-    clicks: 0,
-    lastSyncedAt: new Date().toISOString(),
-  }
-
-  try {
-    const commentRes = await adapter.publishComment({
-      accessToken,
-      externalPostId,
-      commentText,
-      accountId: integration.internalAccountId,
-      metadata: integration.metadata,
-    })
-
-    const postedAt = new Date()
-    return {
-      firstCommentExternalId: commentRes.commentId,
-      firstCommentPostedAt: postedAt,
-      analyticsData: {
-        ...baseAnalytics,
-        firstCommentId: commentRes.commentId,
-        firstCommentPostedAt: postedAt.toISOString(),
-      },
-    }
-  } catch (commentErr: unknown) {
-    const errMsg =
-      commentErr instanceof Error
-        ? commentErr.message
-        : "Failed to publish first comment"
-    console.warn(
-      `[First-Comment Warning] Post ${post.id} -> ${integration.provider} (${externalPostId}):`,
-      errMsg
-    )
-    return {
-      firstCommentExternalId: null,
-      firstCommentPostedAt: null,
-      analyticsData: {
-        ...baseAnalytics,
-        firstCommentError: errMsg,
-      },
-    }
-  }
-}
-
-/**
- * Executes post publication to targeted channels.
- * Idempotent: safe to be called inline, upon retry, or from Trigger.dev durable workers.
+ * Executes post publication immediately for an authorized Admin caller (`T-033` `P0`).
+ * Enforces mandatory `await requireAdmin()`, strict Zod UUID validation, and `recordAuditLog`.
+ * (Background Trigger.dev workers invoke `executeScheduledPostNowInternal` from `@/lib/social/publish-executor`.)
  */
 export async function executeScheduledPostNowAction(params: {
   scheduledPostId: string
@@ -1449,226 +1761,50 @@ export async function executeScheduledPostNowAction(params: {
   failedTargets: number
   error?: string
 }> {
-  const { scheduledPostId } = params
+  const session = await requireAdmin()
 
-  try {
-    // 1. Fetch post and verify status
-    const [post] = await db
-      .select()
-      .from(scheduledPosts)
-      .where(eq(scheduledPosts.id, scheduledPostId))
-      .limit(1)
-
-    if (!post) {
-      return {
-        success: false,
-        postStatus: "failed",
-        completedTargets: 0,
-        failedTargets: 0,
-        error: `Scheduled post ${scheduledPostId} not found`,
-      }
-    }
-
-    if (post.status === "completed" || post.status === "cancelled") {
-      return {
-        success: true,
-        postStatus: post.status,
-        completedTargets: 0,
-        failedTargets: 0,
-      }
-    }
-
-    // Mark post publishing
-    await db
-      .update(scheduledPosts)
-      .set({ status: "publishing", updatedAt: new Date() })
-      .where(eq(scheduledPosts.id, scheduledPostId))
-
-    // 2. Fetch targets with integration secrets
-    const targets = await db
-      .select({
-        target: scheduledPostTargets,
-        integration: socialIntegrations,
-      })
-      .from(scheduledPostTargets)
-      .innerJoin(
-        socialIntegrations,
-        eq(scheduledPostTargets.integrationId, socialIntegrations.id)
-      )
-      .where(eq(scheduledPostTargets.scheduledPostId, scheduledPostId))
-
-    let completedTargets = 0
-    let failedTargets = 0
-
-    // Prefer normalized 1080x1520 social JPEG URLs if populated
-    const mediaSources =
-      post.socialJpegUrls && post.socialJpegUrls.length > 0
-        ? post.socialJpegUrls
-        : post.mediaUrls || []
-
-    const mediaItems: SocialMediaItem[] = mediaSources.map((url: string) => ({
-      url,
-      type: url.toLowerCase().endsWith(".mp4") ? "video" : "image",
-    }))
-
-    const postPayload: SocialPostPayload = {
-      id: post.id,
-      caption: post.caption,
-      media: mediaItems,
-      postType: post.postType,
-      postFormat: (post.postFormat as SocialPostFormat) || "FEED",
-      firstComment: post.firstComment,
-    }
-
-    // 3. Publish to each target channel
-    for (const item of targets) {
-      const { target, integration } = item
-
-      // Idempotency: skip targets that are already published
-      if (target.status === "published") {
-        completedTargets++
-        continue
-      }
-
-      // Mark target publishing and increment attempt
-      const nextAttempt = target.attemptCount + 1
-      await db
-        .update(scheduledPostTargets)
-        .set({
-          status: "publishing",
-          attemptCount: nextAttempt,
-          updatedAt: new Date(),
-        })
-        .where(eq(scheduledPostTargets.id, target.id))
-
-      // Check per-platform overrides from platformCaptions
-      const provider = integration.provider as SocialProviderId
-      const platformOverride = (
-        post.platformCaptions as PlatformCaptionsMap | null
-      )?.[provider]
-      const effectiveCaption = platformOverride?.caption?.trim() || post.caption
-      const effectiveFirstComment =
-        platformOverride?.firstComment !== undefined
-          ? platformOverride.firstComment?.trim()
-          : post.firstComment
-
-      const targetPostPayload: SocialPostPayload = {
-        ...postPayload,
-        caption: effectiveCaption,
-        firstComment: effectiveFirstComment,
-      }
-
-      try {
-        const { publishResult, activeAccessToken } =
-          await dispatchPostToIntegration({
-            integration,
-            postPayload: targetPostPayload,
-            idempotencyKey: target.idempotencyKey,
-          })
-
-        // Attempt First-Comment auto-plug (fault-isolated)
-        const commentOutcome = await tryPublishFirstCommentForTarget({
-          post,
-          target,
-          integration,
-          externalPostId: publishResult.externalPostId,
-          accessToken: activeAccessToken,
-          customFirstComment: effectiveFirstComment,
-        })
-
-        // Success: update target record
-        await db
-          .update(scheduledPostTargets)
-          .set({
-            status: "published",
-            publishedUrl: publishResult.publishedUrl,
-            externalPostId: publishResult.externalPostId,
-            firstCommentExternalId: commentOutcome.firstCommentExternalId,
-            firstCommentPostedAt: commentOutcome.firstCommentPostedAt,
-            analyticsData: commentOutcome.analyticsData,
-            publishedAt: new Date(),
-            errorMessage: null,
-            updatedAt: new Date(),
-          })
-          .where(eq(scheduledPostTargets.id, target.id))
-
-        completedTargets++
-      } catch (pubErr: unknown) {
-        const errMsg =
-          pubErr instanceof Error
-            ? pubErr.message
-            : "Unknown social provider publishing error"
-
-        console.error(
-          `[Target Publish Error] Post ${post.id} -> Integration ${integration.provider}:`,
-          errMsg
-        )
-
-        await db
-          .update(scheduledPostTargets)
-          .set({
-            status: "failed",
-            errorMessage: errMsg,
-            updatedAt: new Date(),
-          })
-          .where(eq(scheduledPostTargets.id, target.id))
-
-        failedTargets++
-      }
-    }
-
-    // 4. Update overall post state
-    let finalStatus:
-      | "completed"
-      | "partially_failed"
-      | "failed"
-      | "publishing" = "completed"
-
-    if (failedTargets > 0 && completedTargets > 0) {
-      finalStatus = "partially_failed"
-    } else if (failedTargets > 0 && completedTargets === 0) {
-      finalStatus = "failed"
-    } else if (completedTargets === 0 && targets.length > 0) {
-      finalStatus = "failed"
-    }
-
-    await db
-      .update(scheduledPosts)
-      .set({
-        status: finalStatus,
-        updatedAt: new Date(),
-      })
-      .where(eq(scheduledPosts.id, scheduledPostId))
-
-    return {
-      success: finalStatus === "completed",
-      postStatus: finalStatus,
-      completedTargets,
-      failedTargets,
-    }
-  } catch (err: unknown) {
-    const error =
-      err instanceof Error
-        ? err.message
-        : "Failed to execute scheduled post publication"
+  const parsed = executeScheduledPostNowSchema.safeParse(params)
+  if (!parsed.success) {
     return {
       success: false,
       postStatus: "failed",
       completedTargets: 0,
       failedTargets: 0,
-      error,
+      error:
+        parsed.error.issues[0]?.message ||
+        "Valid scheduledPostId UUID is required",
     }
   }
+
+  const { scheduledPostId } = parsed.data
+  const result = await executeScheduledPostNowInternal({ scheduledPostId })
+
+  await recordAuditLog({
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    action: "social.post.executed_now",
+    entityType: "scheduled_post",
+    entityId: scheduledPostId,
+    after: {
+      postStatus: result.postStatus,
+      completedTargets: result.completedTargets,
+      failedTargets: result.failedTargets,
+    },
+  })
+
+  revalidatePath("/admin/campaigns")
+  return result
 }
 
 /**
- * Cancels a pending or scheduled post before publishing begins.
+ * Cancels a pending or scheduled post before publishing begins (`T-033`).
  */
 export async function cancelScheduledPostAction(
   rawInput: unknown
 ): Promise<{ success: boolean; error?: string }> {
+  const session = await requireAdmin()
+
   try {
-    await requireAdmin()
     const parsed = cancelScheduledPostSchema.safeParse(rawInput)
     if (!parsed.success) {
       return {
@@ -1719,7 +1855,6 @@ export async function cancelScheduledPostAction(
 
     await cancelTriggerRunIfActive(post.triggerRunId)
 
-    // Also cancel paired Step 2 follow-up post if still scheduled
     if (post.pairedFollowUpPostId) {
       const [paired] = await db
         .select({
@@ -1753,6 +1888,16 @@ export async function cancelScheduledPostAction(
       }
     }
 
+    await recordAuditLog({
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      action: "social.post.cancelled",
+      entityType: "scheduled_post",
+      entityId: postId,
+      before: { status: post.status },
+      after: { status: "cancelled" },
+    })
+
     revalidatePath("/admin/campaigns")
     return { success: true }
   } catch (err: unknown) {
@@ -1763,13 +1908,15 @@ export async function cancelScheduledPostAction(
 }
 
 /**
- * Retries publication for an individual failed target channel.
+ * Retries publication for an individual failed target channel (`T-033`, `T-070`),
+ * preserving per-platform caption/firstComment overrides AND `_meta` fields (GMB CTA, YouTube title, TikTok settings).
  */
 export async function retryFailedPostTargetAction(
   rawInput: unknown
 ): Promise<{ success: boolean; error?: string }> {
+  const session = await requireAdmin()
+
   try {
-    await requireAdmin()
     const parsed = retryFailedPostTargetSchema.safeParse(rawInput)
     if (!parsed.success) {
       return {
@@ -1806,7 +1953,6 @@ export async function retryFailedPostTargetAction(
       return { success: false, error: "Target is already published" }
     }
 
-    // Bump attempt and generate fresh idempotency key for this retry
     const newAttempt = item.target.attemptCount + 1
     const newIdempotencyKey = `soc-pub-${item.post.id}-${item.integration.id}-${newAttempt}`
 
@@ -1820,24 +1966,9 @@ export async function retryFailedPostTargetAction(
       })
       .where(eq(scheduledPostTargets.id, targetId))
 
-    const mediaSources =
-      item.post.socialJpegUrls && item.post.socialJpegUrls.length > 0
-        ? item.post.socialJpegUrls
-        : item.post.mediaUrls || []
-
-    const mediaItems: SocialMediaItem[] = mediaSources.map((url: string) => ({
-      url,
-      type: url.toLowerCase().endsWith(".mp4") ? "video" : "image",
-    }))
-
-    const postPayload: SocialPostPayload = {
-      id: item.post.id,
-      caption: item.post.caption,
-      media: mediaItems,
-      postType: item.post.postType,
-      postFormat: (item.post.postFormat as SocialPostFormat) || "FEED",
-      firstComment: item.post.firstComment,
-    }
+    const provider = item.integration.provider as SocialProviderId
+    const { payload: postPayload, effectiveFirstComment } =
+      buildTargetSocialPostPayload(item.post, provider)
 
     try {
       const { publishResult, activeAccessToken } =
@@ -1853,6 +1984,7 @@ export async function retryFailedPostTargetAction(
         integration: item.integration,
         externalPostId: publishResult.externalPostId,
         accessToken: activeAccessToken,
+        customFirstComment: effectiveFirstComment,
       })
 
       await db
@@ -1898,6 +2030,21 @@ export async function retryFailedPostTargetAction(
         })
         .where(eq(scheduledPosts.id, item.post.id))
 
+      await recordAuditLog({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        action: "social.post_target.retried",
+        entityType: "scheduled_post_target",
+        entityId: targetId,
+        after: {
+          scheduledPostId: item.post.id,
+          provider,
+          attemptCount: newAttempt,
+          status: "published",
+          externalPostId: publishResult.externalPostId,
+        },
+      })
+
       revalidatePath("/admin/campaigns")
       revalidatePath("/admin/distribution")
       return { success: true }
@@ -1916,6 +2063,20 @@ export async function retryFailedPostTargetAction(
         })
         .where(eq(scheduledPostTargets.id, targetId))
 
+      await recordAuditLog({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        action: "social.post_target.retry_failed",
+        entityType: "scheduled_post_target",
+        entityId: targetId,
+        after: {
+          scheduledPostId: item.post.id,
+          provider,
+          attemptCount: newAttempt,
+          status: "failed",
+        },
+      })
+
       return { success: false, error: errMsg }
     }
   } catch (err: unknown) {
@@ -1926,13 +2087,12 @@ export async function retryFailedPostTargetAction(
 }
 
 // ==========================================
-// 8. PHASE 3 SERVER ACTIONS (Spec 0020)
+// 3. PHASE 3 SERVER ACTIONS (Spec 0020)
 // ==========================================
 
 /**
- * AI Social Caption & Hashtag Copilot action.
- * Generates platform-tailored captions across Instagram, Facebook, TikTok, YouTube Shorts,
- * and Google Business Profile alongside 3 viral hooks and first-comment text.
+ * AI Social Caption & Hashtag Copilot action (`T-089`, `OD-10`).
+ * Hydrates verified Askari 10 Lahore HQ address and helpline from `getCompanyInfo()`.
  */
 export async function generateSocialCaptionsCopilotAction(
   rawInput: GenerateSocialCaptionsCopilotInput
@@ -1945,34 +2105,52 @@ export async function generateSocialCaptionsCopilotAction(
 
   try {
     const validated = generateSocialCaptionsCopilotSchema.parse(rawInput)
-    const result = await generateSocialCaptionsCopilot(validated)
+    const companyInfo = await loadVerifiedCompanyInfo()
+    const result = await generateSocialCaptionsCopilot({
+      ...validated,
+      officeAddress: companyInfo.officeAddress,
+      whatsappNumber: companyInfo.normalizedWhatsapp,
+      helplineDisplay: companyInfo.hotlineDisplay,
+    })
     return { success: true, result }
   } catch (err: unknown) {
     const error =
       err instanceof Error
         ? err.message
         : "Failed to generate social captions with AI copilot"
-    console.error("[generateSocialCaptionsCopilotAction Error]:", err)
+    logger.error("generateSocialCaptionsCopilotAction failed", { error: err })
     return { success: false, error }
   }
 }
 
 /**
- * Reschedules a draft or scheduled social post to a new timestamp.
+ * Reschedules a draft or scheduled social post to a new timestamp (`T-033`, `T-070`, `T-089`),
+ * cancels any previous active Trigger.dev run, re-dispatches `publish-social-post` for the
+ * updated schedule, and shifts any paired Step-2 follow-up post accordingly.
  */
 export async function rescheduleSocialPostAction(
-  rawInput: RescheduleSocialPostInput
+  rawInput: RescheduleSocialPostInput & { newScheduledForPktLocal?: string }
 ): Promise<{
   success: boolean
   postId?: string
   newScheduledFor?: string
   error?: string
 }> {
-  await requireAdmin()
+  const session = await requireAdmin()
 
   try {
+    const normalizedInput =
+      rawInput?.newScheduledForPktLocal?.trim()
+        ? {
+            ...rawInput,
+            newScheduledFor: parsePktDateTimeLocal(
+              rawInput.newScheduledForPktLocal
+            ),
+          }
+        : rawInput
+
     const { postId, newScheduledFor } =
-      rescheduleSocialPostSchema.parse(rawInput)
+      rescheduleSocialPostSchema.parse(normalizedInput)
 
     const [post] = await db
       .select()
@@ -1991,20 +2169,96 @@ export async function rescheduleSocialPostAction(
       }
     }
 
-    // Cancel existing Trigger.dev Cloud run if active
     if (post.triggerRunId) {
       await cancelTriggerRunIfActive(post.triggerRunId)
     }
 
-    // Update scheduledFor in DB
+    const previousScheduledFor = post.scheduledFor
+    const isFutureScheduled = newScheduledFor.getTime() > Date.now()
+
     await db
       .update(scheduledPosts)
       .set({
         scheduledFor: newScheduledFor,
+        status: "scheduled",
         triggerRunId: null,
         updatedAt: new Date(),
       })
       .where(eq(scheduledPosts.id, postId))
+
+    const dispatchRes = await triggerByIdBackgroundOrInline({
+      taskId: "publish-social-post",
+      payload: { scheduledPostId: postId },
+      isFutureScheduled,
+      inlineRunner: async ({ scheduledPostId }) =>
+        executeScheduledPostNowInternal({ scheduledPostId }),
+      options: {
+        idempotencyKey: `soc-post-run-${postId}-${newScheduledFor.getTime()}`,
+        tags: [`social-post:${postId}`],
+      },
+    })
+
+    if (dispatchRes.runId) {
+      await db
+        .update(scheduledPosts)
+        .set({ triggerRunId: dispatchRes.runId, updatedAt: new Date() })
+        .where(eq(scheduledPosts.id, postId))
+    }
+
+    // Shift paired Step 2 follow-up post if still scheduled
+    if (post.pairedFollowUpPostId) {
+      const [paired] = await db
+        .select()
+        .from(scheduledPosts)
+        .where(eq(scheduledPosts.id, post.pairedFollowUpPostId))
+        .limit(1)
+
+      if (paired && paired.status === "scheduled") {
+        if (paired.triggerRunId) {
+          await cancelTriggerRunIfActive(paired.triggerRunId)
+        }
+        const shiftedFollowUpTime = new Date(
+          newScheduledFor.getTime() + post.twoStepDelayMinutes * 60 * 1000
+        )
+        await db
+          .update(scheduledPosts)
+          .set({
+            scheduledFor: shiftedFollowUpTime,
+            triggerRunId: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(scheduledPosts.id, paired.id))
+
+        const pairedDispatch = await triggerByIdBackgroundOrInline({
+          taskId: "publish-social-post",
+          payload: { scheduledPostId: paired.id },
+          isFutureScheduled: shiftedFollowUpTime.getTime() > Date.now(),
+          inlineRunner: async ({ scheduledPostId }) =>
+            executeScheduledPostNowInternal({ scheduledPostId }),
+          options: {
+            idempotencyKey: `soc-post-run-${paired.id}-${shiftedFollowUpTime.getTime()}`,
+            tags: [`social-post:${paired.id}`],
+          },
+        })
+
+        if (pairedDispatch.runId) {
+          await db
+            .update(scheduledPosts)
+            .set({ triggerRunId: pairedDispatch.runId, updatedAt: new Date() })
+            .where(eq(scheduledPosts.id, paired.id))
+        }
+      }
+    }
+
+    await recordAuditLog({
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      action: "social.post.rescheduled",
+      entityType: "scheduled_post",
+      entityId: postId,
+      before: { scheduledFor: previousScheduledFor.toISOString() },
+      after: { scheduledFor: newScheduledFor.toISOString() },
+    })
 
     revalidatePath("/admin/campaigns")
     revalidatePath("/admin/marketing")
@@ -2019,20 +2273,20 @@ export async function rescheduleSocialPostAction(
       err instanceof Error
         ? err.message
         : "Failed to reschedule social media post"
-    console.error("[rescheduleSocialPostAction Error]:", err)
+    logger.error("rescheduleSocialPostAction failed", { error: err })
     return { success: false, error }
   }
 }
 
 /**
- * Computes the next free posting slot based on Pakistan Standard Time (PKT, UTC+5).
- * Inspects future active posts and returns the first open peak window (11:00, 16:00, 21:00 PKT).
+ * Computes the next free posting slot based on Pakistan Standard Time (PKT, UTC+5) (`T-089`).
  */
 export async function getNextFreeSocialSlotAction(input?: {
   customSlots?: string[]
 }): Promise<{
   success: boolean
   nextSlotUtc?: string
+  pktDateTimeLocal?: string
   pktLabel?: string
   error?: string
 }> {
@@ -2045,8 +2299,11 @@ export async function getNextFreeSocialSlotAction(input?: {
       .from(scheduledPosts)
       .where(
         and(
-          eq(scheduledPosts.status, "scheduled"),
-          gte(scheduledPosts.scheduledFor, now)
+          inArray(scheduledPosts.status, ["scheduled", "publishing"]),
+          gte(
+            scheduledPosts.scheduledFor,
+            new Date(now.getTime() - 60 * 60 * 1000)
+          )
         )
       )
 
@@ -2060,6 +2317,7 @@ export async function getNextFreeSocialSlotAction(input?: {
     return {
       success: true,
       nextSlotUtc: nextSlot.toISOString(),
+      pktDateTimeLocal: formatPktDateTimeLocal(nextSlot),
       pktLabel: formatPktDate(nextSlot, "full"),
     }
   } catch (err: unknown) {
@@ -2069,9 +2327,13 @@ export async function getNextFreeSocialSlotAction(input?: {
   }
 }
 
+export const getNextOptimalSocialSlotAction = getNextFreeSocialSlotAction
+
 /**
- * Lists rendered 4K posters and supplier flyers from the Multimodal Studio
- * for 1-click media attachment in the social post composer.
+ * Lists rendered 4K posters and supplier flyers from the Multimodal Studio (`T-070`):
+ * - Strict Zod enum filtering (`zero any`)
+ * - Preserves distinct `r.asset.imageUrl` on `single_package_spotlight` assets so Spotlights
+ *   never display the parent `multi_package_sheet` image!
  */
 export async function listStudioMediaLibraryAssetsAction(filter?: {
   kind?: string
@@ -2094,11 +2356,14 @@ export async function listStudioMediaLibraryAssetsAction(filter?: {
   await requireAdmin()
 
   try {
-    const limit = filter?.limit || 50
+    const limit = Math.max(1, Math.min(filter?.limit || 50, 100))
     const conditions = []
 
     if (filter?.kind && filter.kind !== "all") {
-      conditions.push(eq(postAssets.kind, filter.kind as any))
+      const parsedKind = postAssetKindFilterSchema.safeParse(filter.kind)
+      if (parsedKind.success) {
+        conditions.push(eq(postAssets.kind, parsedKind.data))
+      }
     }
 
     if (filter?.search?.trim()) {
@@ -2126,7 +2391,10 @@ export async function listStudioMediaLibraryAssetsAction(filter?: {
       postCode: r.asset.postCode,
       kind: r.asset.kind,
       title: r.asset.title,
-      imageUrl: r.flyer?.socialReadySheetJpegUrl || r.asset.imageUrl,
+      imageUrl:
+        r.asset.kind === "multi_package_sheet"
+          ? r.flyer?.socialReadySheetJpegUrl || r.asset.imageUrl
+          : r.asset.imageUrl,
       pdfUrl: r.asset.pdfUrl,
       supplierName: r.supplier?.name || null,
       createdAt: r.asset.createdAt.toISOString(),
@@ -2144,5 +2412,3 @@ export async function listStudioMediaLibraryAssetsAction(filter?: {
     return { success: false, error }
   }
 }
-
-

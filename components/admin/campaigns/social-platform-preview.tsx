@@ -13,7 +13,6 @@ import {
   Globe,
   Heart,
   Image as ImageIcon,
-  Layers,
   MapPin,
   MessageCircle,
   MessageSquare,
@@ -73,6 +72,7 @@ export interface SocialPlatformPreviewProps {
     handle?: string | null
     avatarUrl?: string | null
   }>
+  officeLocationLabel?: string
   defaultProvider?: SocialProviderId
   className?: string
 }
@@ -215,6 +215,7 @@ export function SocialPlatformPreview({
   whatsappNumber = "923274029701",
   selectedProviders = ["instagram", "facebook", "tiktok", "youtube", "gmb"],
   connectedAccounts = [],
+  officeLocationLabel = "Askari 10, Lahore Cantt",
   defaultProvider = "instagram",
   className,
 }: SocialPlatformPreviewProps) {
@@ -567,7 +568,7 @@ export function SocialPlatformPreview({
                         <CheckCircle2 className="size-3 text-sky-500 fill-sky-500/20" />
                       </div>
                       <p className="text-[9px] text-slate-500">
-                        Askari 10 &amp; DHA Lahore
+                        {officeLocationLabel}
                       </p>
                     </div>
                   </div>
@@ -654,7 +655,7 @@ export function SocialPlatformPreview({
                       <div className="flex items-center gap-1 text-[9px] text-slate-500">
                         <span>Just now</span>
                         <span>•</span>
-                        <span>Askari 10, Lahore</span>
+                        <span>{officeLocationLabel}</span>
                         <span>•</span>
                         <Globe className="size-2.5" />
                       </div>
@@ -916,7 +917,7 @@ export function SocialPlatformPreview({
                         <MapPin className="size-2.5 text-emerald-700" />
                         <span>
                           {snapshot.gmbCallToAction?.verifiedBadgeLabel ||
-                            "Verified • Askari 10 & DHA Lahore"}
+                            `Verified • ${officeLocationLabel}`}
                         </span>
                       </p>
                     </div>

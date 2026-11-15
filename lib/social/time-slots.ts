@@ -1,11 +1,15 @@
 /**
  * Al Ramlah Travels — Social Publishing Time-Slot Queue & PKT Calendar Engine
- * Spec 0020 (Slice 39)
+ * Spec 0020 (Slice 39) + Audit Hardening (`T-089`)
  *
  * All scheduling and visual calendar bucketing strictly operates in
  * Pakistan Standard Time (PKT, Asia/Karachi, UTC+5).
  * No Daylight Saving Time (DST) exists in Pakistan.
  */
+
+import { and, gte, inArray, sql } from "drizzle-orm"
+import type { DbOrTx } from "@/db"
+import { scheduledPosts } from "@/db/schema/social-scheduler"
 
 export const PKT_TIMEZONE = "Asia/Karachi"
 export const PKT_UTC_OFFSET_HOURS = 5
@@ -33,9 +37,24 @@ export interface CalendarDayCell {
  * into the corresponding UTC Date object.
  */
 export function parsePktSlotToUtc(dateKey: string, timeSlot: string): Date {
-  const [hours, minutes] = timeSlot.split(":").map(Number)
-  const [year, month, day] = dateKey.split("-").map(Number)
-  // PKT is UTC+5, so UTC hours = hours - 5
+  const [hoursRaw, minutesRaw] = timeSlot.split(":")
+  const [yearRaw, monthRaw, dayRaw] = dateKey.split("-")
+  const hours = Number(hoursRaw)
+  const minutes = Number(minutesRaw ?? 0)
+  const year = Number(yearRaw)
+  const month = Number(monthRaw)
+  const day = Number(dayRaw)
+
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hours) ||
+    !Number.isFinite(minutes)
+  ) {
+    throw new Error(`Invalid PKT slot input: "${dateKey}" "${timeSlot}"`)
+  }
+
   return new Date(
     Date.UTC(year, month - 1, day, hours - PKT_UTC_OFFSET_HOURS, minutes, 0, 0)
   )
@@ -65,7 +84,79 @@ export function formatPktTime(date: Date): string {
 }
 
 /**
- * Formats a Date object into human-readable PKT string with optional 12-hour AM/PM label.
+ * Formats a UTC Date into a `<input type="datetime-local">` value (`YYYY-MM-DDTHH:mm`)
+ * anchored strictly to Pakistan Standard Time (`UTC+5`) regardless of the operator's browser OS timezone (`T-089`).
+ */
+export function formatPktDateTimeLocal(date: Date): string {
+  if (Number.isNaN(date.getTime())) {
+    return ""
+  }
+  return `${formatPktDateKey(date)}T${formatPktTime(date)}`
+}
+
+const LOCAL_DATETIME_NAIVE_REGEX =
+  /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?$/
+
+/**
+ * Parses a `<input type="datetime-local">` string (`YYYY-MM-DDTHH:mm`) explicitly as
+ * Pakistan Standard Time (`+05:00`), returning the exact UTC `Date` (`T-089`).
+ * Also accepts full ISO-8601 strings that already carry an explicit `Z` or `±HH:MM` offset.
+ */
+export function parsePktDateTimeLocal(raw: string): Date {
+  const trimmed = raw.trim()
+  if (!trimmed) {
+    throw new Error("Scheduled PKT date-time string cannot be empty.")
+  }
+
+  const naiveMatch = LOCAL_DATETIME_NAIVE_REGEX.exec(trimmed)
+  if (naiveMatch) {
+    const year = Number(naiveMatch[1])
+    const month = Number(naiveMatch[2])
+    const day = Number(naiveMatch[3])
+    const hour = Number(naiveMatch[4])
+    const minute = Number(naiveMatch[5])
+    const second = Number(naiveMatch[6] ?? "0")
+
+    if (
+      month < 1 ||
+      month > 12 ||
+      day < 1 ||
+      day > 31 ||
+      hour < 0 ||
+      hour > 23 ||
+      minute < 0 ||
+      minute > 59 ||
+      second < 0 ||
+      second > 59
+    ) {
+      throw new Error(`Out-of-range PKT date-time value: "${raw}"`)
+    }
+
+    // Verify calendar day didn't overflow (e.g. Feb 30)
+    const verify = new Date(Date.UTC(year, month - 1, day))
+    if (
+      verify.getUTCFullYear() !== year ||
+      verify.getUTCMonth() !== month - 1 ||
+      verify.getUTCDate() !== day
+    ) {
+      throw new Error(`Invalid calendar date in PKT date-time: "${raw}"`)
+    }
+
+    return new Date(
+      Date.UTC(year, month - 1, day, hour - PKT_UTC_OFFSET_HOURS, minute, second, 0)
+    )
+  }
+
+  // Full ISO string with explicit timezone (Z or +/-HH:MM)
+  const parsed = new Date(trimmed)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid scheduled date-time string: "${raw}"`)
+  }
+  return parsed
+}
+
+/**
+ * Formats a Date object into human-readable PKT string with 12-hour AM/PM label.
  */
 export function formatPktTime12h(date: Date): string {
   const pktMs = date.getTime() + PKT_UTC_OFFSET_HOURS * 3600 * 1000
@@ -121,38 +212,52 @@ export function formatPktDate(
 }
 
 /**
- * Finds the next available posting slot from DEFAULT_PKT_POSTING_SLOTS.
- * Ensures a minimum 15-minute future buffer and prevents collision within +/- 30 minutes
- * of any existing scheduled post.
+ * Finds the next available posting slot from `DEFAULT_PKT_POSTING_SLOTS` (`T-089`).
+ * - Ensures a minimum 15-minute future buffer
+ * - Prevents collision within +/- 30 minutes of any existing scheduled post
+ * - Smoothly advances beyond Day 14 (up to `maxLookaheadDays`, default 365) instead of
+ *   wrapping back to tomorrow and colliding when a 2-week campaign calendar is full!
  */
 export function findNextFreePostingSlot(
   existingScheduledDates: Date[],
   now: Date = new Date(),
-  customSlots: readonly string[] = DEFAULT_PKT_POSTING_SLOTS
+  customSlots: readonly string[] = DEFAULT_PKT_POSTING_SLOTS,
+  maxLookaheadDays: number = 365
 ): Date {
-  const minLeadMs = 15 * 60 * 1000 // 15 mins minimum lead time
+  const slots =
+    customSlots.length > 0 ? customSlots : DEFAULT_PKT_POSTING_SLOTS
+  const lookahead = Math.max(15, Math.min(maxLookaheadDays, 730))
+  const minLeadMs = 15 * 60 * 1000
   const minLeadTime = new Date(now.getTime() + minLeadMs)
-  const collisionToleranceMs = 30 * 60 * 1000 // 30 mins collision window
+  const collisionToleranceMs = 30 * 60 * 1000
 
-  // Check up to 14 days ahead
-  for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
-    const checkDateMs = now.getTime() + dayOffset * 24 * 3600 * 1000
-    const dateKey = formatPktDateKey(new Date(checkDateMs))
+  const validExistingMs = existingScheduledDates
+    .map((d) => d.getTime())
+    .filter((ms) => Number.isFinite(ms))
 
-    for (const slot of customSlots) {
+  // Anchor day iteration in PKT calendar days to avoid any sub-day drift
+  const basePktKey = formatPktDateKey(now)
+  const [baseY, baseM, baseD] = basePktKey.split("-").map(Number)
+
+  for (let dayOffset = 0; dayOffset < lookahead; dayOffset++) {
+    const pktCalendarDate = new Date(
+      Date.UTC(baseY!, baseM! - 1, baseD! + dayOffset)
+    )
+    const dateKey = `${pktCalendarDate.getUTCFullYear()}-${String(
+      pktCalendarDate.getUTCMonth() + 1
+    ).padStart(2, "0")}-${String(pktCalendarDate.getUTCDate()).padStart(2, "0")}`
+
+    for (const slot of slots) {
       const candidateUtc = parsePktSlotToUtc(dateKey, slot)
 
       if (candidateUtc.getTime() <= minLeadTime.getTime()) {
-        continue // Slot is in the past or within 15 mins
+        continue
       }
 
-      // Check collision
-      const hasCollision = existingScheduledDates.some((existing) => {
-        return (
-          Math.abs(existing.getTime() - candidateUtc.getTime()) <
-          collisionToleranceMs
-        )
-      })
+      const candidateMs = candidateUtc.getTime()
+      const hasCollision = validExistingMs.some(
+        (existingMs) => Math.abs(existingMs - candidateMs) < collisionToleranceMs
+      )
 
       if (!hasCollision) {
         return candidateUtc
@@ -160,18 +265,54 @@ export function findNextFreePostingSlot(
     }
   }
 
-  // Fallback: 24h from now at 11:00 AM PKT
-  const fallbackKey = formatPktDateKey(
-    new Date(now.getTime() + 24 * 3600 * 1000)
+  // Overflow beyond lookahead window: place after the latest scheduled timestamp + 1 day at first slot
+  const latestMs =
+    validExistingMs.length > 0 ? Math.max(...validExistingMs) : now.getTime()
+  const overflowKey = formatPktDateKey(new Date(latestMs + 24 * 3600 * 1000))
+  return parsePktSlotToUtc(overflowKey, slots[0] ?? "11:00")
+}
+
+/**
+ * Reserves the next collision-free PKT posting slot atomically inside an active PostgreSQL
+ * transaction using `pg_advisory_xact_lock` so two concurrent schedule requests never pick
+ * the exact same PKT slot (`T-089`).
+ */
+export async function reserveNextFreePostingSlotInTx(
+  tx: DbOrTx,
+  options?: {
+    now?: Date
+    customSlots?: readonly string[]
+    additionalReservedDates?: Date[]
+  }
+): Promise<Date> {
+  const now = options?.now ?? new Date()
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext('al_ramlah_social_pkt_slot_v1'))`
   )
-  return parsePktSlotToUtc(fallbackKey, "11:00")
+
+  const upcomingRows = await tx
+    .select({ scheduledFor: scheduledPosts.scheduledFor })
+    .from(scheduledPosts)
+    .where(
+      and(
+        inArray(scheduledPosts.status, ["scheduled", "publishing"]),
+        gte(scheduledPosts.scheduledFor, new Date(now.getTime() - 60 * 60 * 1000))
+      )
+    )
+
+  const existingDates = [
+    ...upcomingRows.map((r) => r.scheduledFor),
+    ...(options?.additionalReservedDates ?? []),
+  ]
+
+  return findNextFreePostingSlot(existingDates, now, options?.customSlots)
 }
 
 /**
  * Groups an array of posts by their "YYYY-MM-DD" date key in PKT.
  */
 export function bucketPostsByPktDate<
-  T extends { scheduledFor: Date | string }
+  T extends { scheduledFor: Date | string },
 >(posts: T[]): Map<string, T[]> {
   const map = new Map<string, T[]>()
 
@@ -180,7 +321,7 @@ export function bucketPostsByPktDate<
       typeof post.scheduledFor === "string"
         ? new Date(post.scheduledFor)
         : post.scheduledFor
-    if (isNaN(d.getTime())) continue
+    if (Number.isNaN(d.getTime())) continue
     const key = formatPktDateKey(d)
     const existing = map.get(key)
     if (existing) {
@@ -205,14 +346,9 @@ export function generateCalendarGridDays(
   const normalizedMonth = Math.max(1, Math.min(12, month))
   const todayKey = formatPktDateKey(new Date())
 
-  // First day of current month in UTC
   const firstDay = new Date(Date.UTC(year, normalizedMonth - 1, 1))
-  const firstDayOfWeek = firstDay.getUTCDay() // 0=Sun, 1=Mon, ..., 6=Sat
-
-  // Monday offset (0 if Monday, 6 if Sunday)
+  const firstDayOfWeek = firstDay.getUTCDay()
   const mondayOffset = (firstDayOfWeek + 6) % 7
-
-  // Days in current month
   const daysInMonth = new Date(Date.UTC(year, normalizedMonth, 0)).getUTCDate()
 
   const totalCells = mondayOffset + daysInMonth <= 35 ? 35 : 42
@@ -257,7 +393,7 @@ export function generateWeekGridDays(anchorDate: Date): CalendarDayCell[] {
   const pktMs = anchorDate.getTime() + PKT_UTC_OFFSET_HOURS * 3600 * 1000
   const d = new Date(pktMs)
 
-  const dayOfWeek = d.getUTCDay() // 0=Sun, 1=Mon, ..., 6=Sat
+  const dayOfWeek = d.getUTCDay()
   const mondayOffset = (dayOfWeek + 6) % 7
 
   const year = d.getUTCFullYear()

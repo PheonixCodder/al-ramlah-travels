@@ -1,6 +1,7 @@
 import * as React from "react"
 import {
   TrendingUp,
+  Wallet,
   DollarSign,
   FileText,
   Clock,
@@ -13,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { TabularPrice } from "@/components/layout/status-badge"
 
 export interface ExecutiveKpiData {
+  collectedRevenuePkr?: number
   approvedRevenuePkr: number
   paidRevenuePkr: number
   unpaidRevenuePkr: number
@@ -21,35 +23,56 @@ export interface ExecutiveKpiData {
   customCount: number
   groupCount: number
   hajjCount: number
+  whatsappIntakeCount?: number
   pendingActionCount: number
   overdueSlaCount: number
+  slaOverdueHours?: number
   approvalRatePercent: number
   totalDecidedCount: number
   approvedPilgrimsCount: number
 }
 
 export function ExecutiveKpiCards({ data }: { data: ExecutiveKpiData }) {
+  const collectedPkr = data.collectedRevenuePkr ?? data.paidRevenuePkr
+  const slaHours =
+    typeof data.slaOverdueHours === "number" &&
+    Number.isFinite(data.slaOverdueHours) &&
+    data.slaOverdueHours >= 1
+      ? Math.floor(data.slaOverdueHours)
+      : 24
+
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-      {/* 1. Approved Revenue */}
+      {/* 1. Collected Revenue (Verified Cash Ledger) + Approved Bookings */}
       <Card className="border-border bg-card shadow-xs">
         <CardContent className="flex flex-col justify-between p-4 h-full">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Approved Revenue
+              Collected Revenue
             </span>
             <div className="flex size-8 items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700">
-              <TrendingUp className="size-4" />
+              <Wallet className="size-4" />
             </div>
           </div>
 
           <div className="mt-3">
             <div className="truncate font-display text-lg font-bold text-emerald-950 sm:text-xl">
-              <TabularPrice amount={data.approvedRevenuePkr} />
+              <TabularPrice amount={collectedPkr} />
             </div>
             <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>Paid: PKR {new Intl.NumberFormat("en-PK", { notation: "compact" }).format(data.paidRevenuePkr)}</span>
-              <span>Due: PKR {new Intl.NumberFormat("en-PK", { notation: "compact" }).format(data.unpaidRevenuePkr)}</span>
+              <span className="inline-flex items-center gap-1">
+                <TrendingUp className="size-3 text-emerald-700" />
+                Booked: PKR{" "}
+                {new Intl.NumberFormat("en-PK", { notation: "compact" }).format(
+                  data.approvedRevenuePkr
+                )}
+              </span>
+              <span>
+                Due: PKR{" "}
+                {new Intl.NumberFormat("en-PK", { notation: "compact" }).format(
+                  data.unpaidRevenuePkr
+                )}
+              </span>
             </div>
           </div>
         </CardContent>
@@ -72,7 +95,7 @@ export function ExecutiveKpiCards({ data }: { data: ExecutiveKpiData }) {
               <TabularPrice amount={data.quotedPipelinePkr} />
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Awaiting pilgrim confirmation
+              Open proposals awaiting pilgrim decision
             </p>
           </div>
         </CardContent>
@@ -91,40 +114,61 @@ export function ExecutiveKpiCards({ data }: { data: ExecutiveKpiData }) {
           </div>
 
           <div className="mt-3">
-            <span className="font-display text-2xl font-bold text-foreground">
+            <span className="font-display text-2xl font-bold text-foreground tabular-nums">
               {data.totalApplicationsCount}
             </span>
-            <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
               <span>{data.customCount} Custom</span>
               <span>•</span>
               <span>{data.groupCount} Group</span>
               <span>•</span>
               <span>{data.hajjCount} Hajj</span>
+              {(data.whatsappIntakeCount ?? 0) > 0 && (
+                <>
+                  <span>•</span>
+                  <span>{data.whatsappIntakeCount} WA</span>
+                </>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* 4. Awaiting Action (24h SLA) */}
-      <Card className={`border shadow-xs ${data.overdueSlaCount > 0 ? "border-red-300 bg-red-50/40" : "border-border bg-card"}`}>
+      {/* 4. Awaiting Action (Configurable SLA) */}
+      <Card
+        className={`border shadow-xs ${
+          data.overdueSlaCount > 0
+            ? "border-red-300 bg-red-50/40"
+            : "border-border bg-card"
+        }`}
+      >
         <CardContent className="flex flex-col justify-between p-4 h-full">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Awaiting Action
             </span>
-            <div className={`flex size-8 items-center justify-center rounded-lg border ${data.overdueSlaCount > 0 ? "border-red-300 bg-red-100 text-red-700" : "border-amber-300 bg-amber-50 text-amber-700"}`}>
+            <div
+              className={`flex size-8 items-center justify-center rounded-lg border ${
+                data.overdueSlaCount > 0
+                  ? "border-red-300 bg-red-100 text-red-700"
+                  : "border-amber-300 bg-amber-50 text-amber-700"
+              }`}
+            >
               <Clock className="size-4" />
             </div>
           </div>
 
           <div className="mt-3">
             <div className="flex items-baseline gap-2">
-              <span className="font-display text-2xl font-bold text-foreground">
+              <span className="font-display text-2xl font-bold text-foreground tabular-nums">
                 {data.pendingActionCount}
               </span>
               {data.overdueSlaCount > 0 && (
-                <Badge variant="destructive" className="animate-pulse text-[10px] px-1.5 py-0">
-                  {data.overdueSlaCount} &gt; 24h SLA
+                <Badge
+                  variant="destructive"
+                  className="animate-pulse text-[10px] px-1.5 py-0 motion-reduce:animate-none"
+                >
+                  {data.overdueSlaCount} &gt; {slaHours}h SLA
                 </Badge>
               )}
             </div>
@@ -148,8 +192,11 @@ export function ExecutiveKpiCards({ data }: { data: ExecutiveKpiData }) {
           </div>
 
           <div className="mt-3">
-            <span className="font-display text-2xl font-bold text-foreground font-mono">
-              {data.approvalRatePercent.toFixed(1)}%
+            <span className="font-display text-2xl font-bold text-foreground font-mono tabular-nums">
+              {Number.isFinite(data.approvalRatePercent)
+                ? data.approvalRatePercent.toFixed(1)
+                : "0.0"}
+              %
             </span>
             <p className="mt-1 text-[11px] text-muted-foreground">
               Across {data.totalDecidedCount} decided proposals
@@ -171,7 +218,7 @@ export function ExecutiveKpiCards({ data }: { data: ExecutiveKpiData }) {
           </div>
 
           <div className="mt-3">
-            <span className="font-display text-2xl font-bold text-foreground font-mono">
+            <span className="font-display text-2xl font-bold text-foreground font-mono tabular-nums">
               {data.approvedPilgrimsCount}
             </span>
             <p className="mt-1 text-[11px] text-muted-foreground">

@@ -74,9 +74,20 @@ export function extractClientIp(
     return direct
   }
 
-  const cfIp = readHeader("cf-connecting-ip")?.trim()
-  if (cfIp) {
-    return cfIp
+  if (process.env.CLOUDFLARE_PROXY === "true") {
+    const cfIp = readHeader("cf-connecting-ip")?.trim()
+    if (cfIp) {
+      return cfIp
+    }
+  }
+
+  if (process.env.VERCEL === "1") {
+    const vercelForwarded = readHeader("x-vercel-forwarded-for")
+      ?.split(",")[0]
+      ?.trim()
+    if (vercelForwarded) {
+      return vercelForwarded
+    }
   }
 
   const realIp = readHeader("x-real-ip")?.trim()

@@ -130,16 +130,48 @@ function isExplicitLabelDateExpired(
   return parsed < todayPktIso
 }
 
+function splitPackageBundleIntoQuotePillars(params: {
+  grandTotalPkr: number
+  totalPassportCount: number
+  includeVisa: boolean
+  makkahNightsNum: number
+  madinahNightsNum: number
+}) {
+  const visaTotalPkr = params.includeVisa
+    ? Math.min(params.grandTotalPkr, params.totalPassportCount * 42_000)
+    : 0
+  const afterVisa = Math.max(0, params.grandTotalPkr - visaTotalPkr)
+  const flightsTotalPkr = Math.round(afterVisa * 0.45)
+  const hotelPool = Math.max(0, afterVisa - flightsTotalPkr)
+  const totalNights = Math.max(
+    1,
+    params.makkahNightsNum + params.madinahNightsNum
+  )
+  const makkahHotelTotalPkr = Math.round(
+    (hotelPool * params.makkahNightsNum) / totalNights
+  )
+  const madinahHotelTotalPkr = Math.max(0, hotelPool - makkahHotelTotalPkr)
+
+  return {
+    visaTotalPkr,
+    flightsTotalPkr,
+    makkahHotelTotalPkr,
+    madinahHotelTotalPkr,
+  }
+}
+
 /**
  * Global Command+K (`Cmd+K`) Post & Package Reverse-Lookup Action (`T-024`, `T-061`).
  * Pushes `ILIKE` (with escaped `%`, `_`, `\`) and exact `postCode` priority matching
  * directly into PostgreSQL across active published `supplier_flyer_packages` AND
  * active upcoming `group_departures` so packages beyond row 200 remain searchable.
+ * Redacts `netSharingPkr` and `commissionPkr` for non-`super_admin` (`staff`) sessions.
  */
 export async function searchPostPackagesCommandAction(
   query: string
 ): Promise<CommandLookupItem[]> {
-  await requireAdmin()
+  const session = await requireAdmin()
+  const isSuperAdmin = session.user.role === "super_admin"
 
   const parsedQuery = searchQuerySchema.safeParse(query ?? "")
   const q = (parsedQuery.success ? parsedQuery.data : "").trim()
@@ -296,8 +328,8 @@ export async function searchPostPackagesCommandAction(
       retailTriplePkr: row.pkg.retailTriplePkr,
       retailDoublePkr: row.pkg.retailDoublePkr,
       infantPricePkr: row.linkedGroupPkg?.infantPricePkr ?? 65000,
-      netSharingPkr: row.pkg.netSharingPkr,
-      commissionPkr: row.pkg.commissionPkr,
+      netSharingPkr: isSuperAdmin ? row.pkg.netSharingPkr : 0,
+      commissionPkr: isSuperAdmin ? row.pkg.commissionPkr : 0,
       spotlightPosterUrl: row.pkg.spotlightPosterUrl,
       multiSheetImageUrl: row.flyer.multiSheetImageUrl,
       availableSeats: row.linkedGroupDep
@@ -404,7 +436,7 @@ export async function searchPostPackagesCommandAction(
       retailTriplePkr: triplePkr,
       retailDoublePkr: doublePkr,
       infantPricePkr: row.pkg.infantPricePkr,
-      netSharingPkr: sharingPkr,
+      netSharingPkr: isSuperAdmin ? sharingPkr : 0,
       commissionPkr: 0,
       spotlightPosterUrl: row.pkg.bannerUrl,
       multiSheetImageUrl: row.pkg.bannerUrl,
@@ -568,13 +600,21 @@ export async function convertCommandLookupToApplicationAction(
           })
           .returning({ id: schema.applications.id })
 
+        const groupPillars = splitPackageBundleIntoQuotePillars({
+          grandTotalPkr,
+          totalPassportCount,
+          includeVisa: depRow.pkg.includesVisa,
+          makkahNightsNum: depRow.pkg.makkahNights || 7,
+          madinahNightsNum: depRow.pkg.madinahNights || 7,
+        })
+
         await tx.insert(schema.applicationQuotes).values({
           applicationId: app.id,
           version: 1,
-          visaTotalPkr: 0,
-          flightsTotalPkr: grandTotalPkr,
-          makkahHotelTotalPkr: 0,
-          madinahHotelTotalPkr: 0,
+          visaTotalPkr: groupPillars.visaTotalPkr,
+          flightsTotalPkr: groupPillars.flightsTotalPkr,
+          makkahHotelTotalPkr: groupPillars.makkahHotelTotalPkr,
+          madinahHotelTotalPkr: groupPillars.madinahHotelTotalPkr,
           transportTotalPkr: 0,
           ziyaratTotalPkr: 0,
           discountPkr: 0,
@@ -804,13 +844,25 @@ export async function convertCommandLookupToApplicationAction(
         })
         .returning({ id: schema.applications.id })
 
+      const makkahNightsNum =
+        Number.parseInt(pkgRow.pkg.makkahNights.replace(/\D/g, ""), 10) || 8
+      const madinahNightsNum =
+        Number.parseInt(pkgRow.pkg.madinahNights.replace(/\D/g, ""), 10) || 7
+      const flyerPillars = splitPackageBundleIntoQuotePillars({
+        grandTotalPkr,
+        totalPassportCount,
+        includeVisa: true,
+        makkahNightsNum,
+        madinahNightsNum,
+      })
+
       await tx.insert(schema.applicationQuotes).values({
         applicationId: app.id,
         version: 1,
-        visaTotalPkr: 0,
-        flightsTotalPkr: grandTotalPkr,
-        makkahHotelTotalPkr: 0,
-        madinahHotelTotalPkr: 0,
+        visaTotalPkr: flyerPillars.visaTotalPkr,
+        flightsTotalPkr: flyerPillars.flightsTotalPkr,
+        makkahHotelTotalPkr: flyerPillars.makkahHotelTotalPkr,
+        madinahHotelTotalPkr: flyerPillars.madinahHotelTotalPkr,
         transportTotalPkr: 0,
         ziyaratTotalPkr: 0,
         discountPkr: 0,

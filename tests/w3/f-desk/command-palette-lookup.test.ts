@@ -19,7 +19,10 @@ import { closeDatabasePool, db } from "../../../db"
 import * as schema from "../../../db/schema"
 import { provisionStaffAccountInternal } from "../../../lib/auth"
 import { POST as authPostHandler } from "../../../app/api/auth/[...all]/route"
-import { convertCommandLookupToApplicationAction } from "../../../app/actions/command-lookup"
+import {
+  convertCommandLookupToApplicationAction,
+  searchPostPackagesCommandAction,
+} from "../../../app/actions/command-lookup"
 
 if (process.env.NODE_ENV === "test") {
   for (const key of [
@@ -273,6 +276,42 @@ describe("F-DESK T-024: Cmd+K Lookup 1-Click Conversion Passenger Invariants & U
       assert.equal(unpricedRes.code, "UNPRICED_TIER")
     }
 
+    // 1b. W4 T-061 regression: staff receives zeroed wholesale netSharingPkr & commissionPkr, while super_admin sees real margins
+    const superEmail = `fdesk.t024.super.${tag}@audit.local`
+    const superPass = `SuperPass!${tag}88`
+    const superAdmin = await provisionStaffAccountInternal({
+      name: `CmdK Super ${tag}`,
+      email: superEmail,
+      password: superPass,
+      role: "super_admin",
+    })
+    createdUserIds.push(superAdmin.id)
+    const superCookie = await signInAndExtractCookie(superEmail, superPass)
+
+    const staffLookupRows = await runAs(cookie, () =>
+      searchPostPackagesCommandAction(activeCard.postCode)
+    )
+    const staffCardHit = staffLookupRows.find((r) => r.id === activeCard.id)
+    assert.ok(staffCardHit, "staff must find active card via Cmd+K search")
+    assert.equal(
+      staffCardHit.netSharingPkr,
+      0,
+      "staff must never receive wholesale netSharingPkr in Cmd+K search payload"
+    )
+    assert.equal(
+      staffCardHit.commissionPkr,
+      0,
+      "staff must never receive commissionPkr margin in Cmd+K search payload"
+    )
+
+    const superLookupRows = await runAs(superCookie, () =>
+      searchPostPackagesCommandAction(activeCard.postCode)
+    )
+    const superCardHit = superLookupRows.find((r) => r.id === activeCard.id)
+    assert.ok(superCardHit, "super_admin must find active card via Cmd+K search")
+    assert.equal(superCardHit.netSharingPkr, 260000)
+    assert.equal(superCardHit.commissionPkr, 20000)
+
     // 2. Convert 2 adults + 2 children + 1 infant on Quad (PKR 300,000 * 4 beds + PKR 70,000 * 1 infant = 1,270,000)
     const convRes = await runAs(cookie, () =>
       convertCommandLookupToApplicationAction({
@@ -292,6 +331,11 @@ describe("F-DESK T-024: Cmd+K Lookup 1-Click Conversion Passenger Invariants & U
       assert.equal(convRes.bedAndSeatCount, 4, "Beds/seats = adults (2) + children (2)")
       assert.equal(convRes.totalPassportCount, 5, "Passports/visas = 2 + 2 + 1 infant")
       assert.equal(convRes.grandTotalPkr, 1270000)
+      assert.equal(
+        "supplierNetCostPkr" in convRes,
+        false,
+        "conversion response must never leak supplierNetCostPkr to staff"
+      )
 
       const [savedApp] = await db
         .select()
@@ -302,6 +346,31 @@ describe("F-DESK T-024: Cmd+K Lookup 1-Click Conversion Passenger Invariants & U
       assert.equal(savedApp.infants, 1)
       assert.equal(savedApp.bedAndSeatCount, 4)
       assert.equal(savedApp.totalPassportCount, 5)
+
+      // W4 T-061 regression: 4-pillar quote itemization sums to grandTotalPkr without dumping 100% into flightsTotalPkr
+      const [savedQuote] = await db
+        .select()
+        .from(schema.applicationQuotes)
+        .where(eq(schema.applicationQuotes.applicationId, convRes.applicationId))
+      assert.ok(savedQuote, "converted dossier must create version 1 application_quotes row")
+      assert.ok(savedQuote.visaTotalPkr > 0, "visaTotalPkr must be itemized (> 0)")
+      assert.ok(savedQuote.flightsTotalPkr > 0, "flightsTotalPkr must be itemized (> 0)")
+      assert.ok(
+        savedQuote.makkahHotelTotalPkr > 0,
+        "makkahHotelTotalPkr must be itemized (> 0)"
+      )
+      assert.ok(
+        savedQuote.madinahHotelTotalPkr > 0,
+        "madinahHotelTotalPkr must be itemized (> 0)"
+      )
+      assert.equal(
+        savedQuote.visaTotalPkr +
+          savedQuote.flightsTotalPkr +
+          savedQuote.makkahHotelTotalPkr +
+          savedQuote.madinahHotelTotalPkr,
+        savedQuote.grandTotalPkr,
+        "4-pillar breakdown must sum identically to grandTotalPkr"
+      )
     }
 
     // 3. Block draft_extracted (unpublished) flyer card

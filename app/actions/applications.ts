@@ -1820,6 +1820,18 @@ export async function lookupApplicationStatus(
   const cleanRef = parsed.data.referenceNumber.trim().toUpperCase()
   const rawPhone = parsed.data.customerPhone
 
+  const refRl = await enforceRateLimit("status-tracker:ref", cleanRef, {
+    max: 12,
+    windowSec: 900, // Secondary per-reference anti-brute-force cap independent of client IP
+  })
+  if (!refRl.allowed) {
+    return {
+      success: false,
+      error:
+        "Too many lookup attempts. Please wait 15 minutes before trying again.",
+    }
+  }
+
   const [app, settingsRows] = await Promise.all([
     db.query.applications.findFirst({
       where: eq(schema.applications.referenceNumber, cleanRef),

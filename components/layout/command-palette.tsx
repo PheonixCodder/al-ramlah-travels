@@ -491,19 +491,23 @@ export function CommandPalette({
                           })}
                         </div>
 
-                        {/* Internal Supplier Net & Margin Strip */}
-                        <div className="flex items-center justify-between rounded-lg border border-dashed border-gold/40 bg-gold/8 px-3 py-1.5 text-[11px]">
-                          <span className="text-muted-foreground">
-                            Wholesale Net (Sharing):{" "}
-                            <strong className="font-mono text-foreground">
-                              PKR {selectedItem.netSharingPkr.toLocaleString()}
-                            </strong>
-                          </span>
-                          <span className="text-emerald-800 font-semibold">
-                            Margin: PKR{" "}
-                            {selectedItem.commissionPkr.toLocaleString()}/pax
-                          </span>
-                        </div>
+                        {/* Internal Supplier Net & Margin Strip (super_admin only; zeroed for staff) */}
+                        {(selectedItem.netSharingPkr > 0 ||
+                          selectedItem.commissionPkr > 0) && (
+                          <div className="flex items-center justify-between rounded-lg border border-dashed border-gold/40 bg-gold/8 px-3 py-1.5 text-[11px]">
+                            <span className="text-muted-foreground">
+                              Wholesale Net (Sharing):{" "}
+                              <strong className="font-mono text-foreground">
+                                PKR{" "}
+                                {selectedItem.netSharingPkr.toLocaleString()}
+                              </strong>
+                            </span>
+                            <span className="text-emerald-800 font-semibold">
+                              Margin: PKR{" "}
+                              {selectedItem.commissionPkr.toLocaleString()}/pax
+                            </span>
+                          </div>
+                        )}
 
                         {/* Optional Inline 1-Click Quote Conversion Form */}
                         {showConvertForm && (

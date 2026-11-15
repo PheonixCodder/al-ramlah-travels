@@ -28,6 +28,7 @@ import {
   sendPasswordResetEmail,
   sendQuotationEmail,
 } from "../../../lib/security/mailer"
+import { extractClientIp } from "../../../lib/rate-limit"
 
 describe("F-PLAT: Security Primitives & Transactional Mailer (T-008, T-043)", () => {
   it("T-008: escapes HTML/attributes and strips javascript:/data: XSS URLs", () => {
@@ -233,5 +234,51 @@ describe("F-PLAT: Security Primitives & Transactional Mailer (T-008, T-043)", ()
     assert.ok(!outbox[0]!.html.includes("<img src=x"))
     assert.ok(outbox[0]!.html.includes("&lt;img src=x onerror=alert(1)&gt;"))
     assert.equal(outbox[1]!.attachments?.length, 1)
+  })
+
+  it("W4 V01-NEW-01: extractClientIp ignores spoofed cf-connecting-ip unless CLOUDFLARE_PROXY=true and prefers x-vercel-forwarded-for on Vercel", () => {
+    const prevCf = process.env.CLOUDFLARE_PROXY
+    const prevVercel = process.env.VERCEL
+    try {
+      delete process.env.CLOUDFLARE_PROXY
+      delete process.env.VERCEL
+
+      // Without CLOUDFLARE_PROXY=true, spoofed cf-connecting-ip is ignored in favor of x-real-ip / rightmost x-forwarded-for
+      assert.equal(
+        extractClientIp({
+          "cf-connecting-ip": "198.51.100.99",
+          "x-real-ip": "203.0.113.10",
+          "x-forwarded-for": "198.51.100.1, 203.0.113.10",
+        }),
+        "203.0.113.10"
+      )
+
+      // With CLOUDFLARE_PROXY=true, cf-connecting-ip is trusted
+      process.env.CLOUDFLARE_PROXY = "true"
+      assert.equal(
+        extractClientIp({
+          "cf-connecting-ip": "198.51.100.99",
+          "x-real-ip": "203.0.113.10",
+        }),
+        "198.51.100.99"
+      )
+
+      // On Vercel (VERCEL=1 without Cloudflare), x-vercel-forwarded-for takes precedence
+      delete process.env.CLOUDFLARE_PROXY
+      process.env.VERCEL = "1"
+      assert.equal(
+        extractClientIp({
+          "cf-connecting-ip": "198.51.100.88",
+          "x-vercel-forwarded-for": "203.0.113.55",
+          "x-real-ip": "10.0.0.2",
+        }),
+        "203.0.113.55"
+      )
+    } finally {
+      if (prevCf === undefined) delete process.env.CLOUDFLARE_PROXY
+      else process.env.CLOUDFLARE_PROXY = prevCf
+      if (prevVercel === undefined) delete process.env.VERCEL
+      else process.env.VERCEL = prevVercel
+    }
   })
 })

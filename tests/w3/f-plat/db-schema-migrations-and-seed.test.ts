@@ -412,7 +412,7 @@ describe("F-PLAT: Transactional DB, Schema Constraints, Audit/RateLimit & Seed I
     assert.ok(logged.includes("[REDACTED_JID]"))
     assert.ok(logged.includes("[REDACTED_SQL_PARAMS]"))
 
-    // 2. Trusted IP extraction (prefers CF-Connecting-IP / X-Real-IP / rightmost X-Forwarded-For hop)
+    // 2. Trusted IP extraction (gates CF-Connecting-IP behind CLOUDFLARE_PROXY=true, prefers X-Real-IP / rightmost X-Forwarded-For hop)
     assert.equal(
       extractClientIp({
         "x-forwarded-for": "1.1.1.1, 203.0.113.99",
@@ -424,8 +424,22 @@ describe("F-PLAT: Transactional DB, Schema Constraints, Audit/RateLimit & Seed I
         "cf-connecting-ip": "198.51.100.42",
         "x-forwarded-for": "1.1.1.1",
       }),
-      "198.51.100.42"
+      "1.1.1.1"
     )
+    const prevCfProxy = process.env.CLOUDFLARE_PROXY
+    process.env.CLOUDFLARE_PROXY = "true"
+    try {
+      assert.equal(
+        extractClientIp({
+          "cf-connecting-ip": "198.51.100.42",
+          "x-forwarded-for": "1.1.1.1",
+        }),
+        "198.51.100.42"
+      )
+    } finally {
+      if (prevCfProxy === undefined) delete process.env.CLOUDFLARE_PROXY
+      else process.env.CLOUDFLARE_PROXY = prevCfProxy
+    }
     assert.equal(hashIp("198.51.100.42").length, 32)
 
     // 3. Postgres rate_limit_buckets enforcement

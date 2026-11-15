@@ -24,11 +24,16 @@ test.describe("J1–J5 Public Pilgrim Journeys, Legal Truth, Mobile & WCAG 2.2 A
     const plannerSection = page.locator("#custom-journey")
     await expect(plannerSection).toBeVisible()
 
-    // Select "Visa Only" preset
-    await plannerSection
-      .getByRole("button", { name: /Visa Only/i })
-      .first()
-      .click()
+    // Select "Visa Only" preset (retry click until React client hydration attaches handler on cold server boot)
+    await expect(async () => {
+      await plannerSection
+        .getByRole("button", { name: /Visa Only/i })
+        .first()
+        .click()
+      await expect(plannerSection.locator("#travel-arrival-date")).toBeVisible({
+        timeout: 2_000,
+      })
+    }).toPass({ timeout: 15_000 })
 
     // Never expose a manual visa-tier dropdown/selector to customers
     await expect(
@@ -36,7 +41,6 @@ test.describe("J1–J5 Public Pilgrim Journeys, Legal Truth, Mobile & WCAG 2.2 A
     ).toHaveCount(0)
 
     // Default window (<= 30 days) shows short_term fixed PKR total
-    await expect(plannerSection.locator("#travel-arrival-date")).toBeVisible()
     await expect(plannerSection.locator("#travel-departure-date")).toBeVisible()
 
     // Jump to Review step to inspect initial short_term fixed PKR total
@@ -120,16 +124,16 @@ test.describe("J1–J5 Public Pilgrim Journeys, Legal Truth, Mobile & WCAG 2.2 A
     const planner = page.locator("#custom-journey")
     await expect(planner).toBeVisible()
 
-    // Ensure "Complete Umrah" volatile mode is active
-    await planner.getByRole("button", { name: /Complete Umrah/i }).first().click()
-
-    // Makkah-first locks Entry Airport to Jeddah (JED)
-    await planner
-      .getByRole("button", { name: /^Makkah → Madinah Land/i })
-      .click()
-    await expect(
-      planner.getByText(/Entry Airport \(Makkah-First Locked\)/i)
-    ).toBeVisible()
+    // Ensure "Complete Umrah" volatile mode is active & Makkah-first locks Entry Airport to Jeddah (JED)
+    await expect(async () => {
+      await planner.getByRole("button", { name: /Complete Umrah/i }).first().click()
+      await planner
+        .getByRole("button", { name: /^Makkah → Madinah Land/i })
+        .click()
+      await expect(
+        planner.getByText(/Entry Airport \(Makkah-First Locked\)/i)
+      ).toBeVisible({ timeout: 2_000 })
+    }).toPass({ timeout: 15_000 })
     await expect(planner.getByText("Jeddah Airport (JED)").first()).toBeVisible()
 
     // Switch to Madinah -> Makkah (`MED` entry -> `JED` exit preserved)
@@ -205,10 +209,11 @@ test.describe("J1–J5 Public Pilgrim Journeys, Legal Truth, Mobile & WCAG 2.2 A
       .getByRole("button", { name: /Book Package Seats/i })
       .first()
     await openBatchBtn.scrollIntoViewIfNeeded()
-    await openBatchBtn.click()
-
     const dialog = page.getByRole("dialog")
-    await expect(dialog).toBeVisible()
+    await expect(async () => {
+      await openBatchBtn.click()
+      await expect(dialog).toBeVisible({ timeout: 2_000 })
+    }).toPass({ timeout: 15_000 })
 
     // Ensure sold-out batch (`BATCH-E2E-SOLDOUT`) is filtered out of available batch selector
     await expect(dialog.getByText("BATCH-E2E-SOLDOUT")).toHaveCount(0)

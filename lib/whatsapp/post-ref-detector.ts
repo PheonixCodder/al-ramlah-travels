@@ -12,10 +12,12 @@ import {
   normalizePakistaniPhone,
   type PhoneNormalizationResult,
 } from "./phone-utils"
+import { buildExactPhoneVariants, isStopOptOutMessage } from "./outbox"
 
 export {
   extractPostRefCodes,
   normalizePakistaniPhone,
+  isStopOptOutMessage,
   type PhoneNormalizationResult,
 }
 
@@ -37,7 +39,6 @@ export async function resolvePostRefCode(
   const normalized = code.trim().toUpperCase()
   if (!normalized) return null
 
-  // 1. Check supplier flyer packages
   const [flyerPkg] = await db
     .select({
       id: supplierFlyerPackages.id,
@@ -57,7 +58,6 @@ export async function resolvePostRefCode(
     }
   }
 
-  // 2. Check standalone post assets
   const [asset] = await db
     .select({
       id: postAssets.id,
@@ -79,7 +79,6 @@ export async function resolvePostRefCode(
     }
   }
 
-  // 3. Check customer applications
   const [app] = await db
     .select({
       id: applications.id,
@@ -100,24 +99,25 @@ export async function resolvePostRefCode(
   return null
 }
 
-
-
-
 export interface UnlockCooldownResult {
   unlocked: boolean
   contactId: string | null
   contactName: string | null
+  optedOut?: boolean
 }
 
 /**
- * Unlocks the 14-day personal outreach cooldown for a contact upon an inbound WhatsApp message.
- * Sets `outreachContacts.lastInboundReplyAt = now` and updates status to `replied_active`.
+ * Unlocks the 14-day personal outreach cooldown for a contact upon a non-opt-out inbound WhatsApp message (`T-030`).
+ * - NEVER unlocks cooldown or overwrites `do_not_contact` when the pilgrim sends `STOP` / `UNSUBSCRIBE` / `OPT OUT` / `RUKO`
+ *   or when the contact has already opted out (`interestStatus === "do_not_contact"` or `optedOutAt !== null`).
  */
 export async function unlockOutreachCooldownForPhone(
-  phone: string
+  phone: string,
+  inboundBodyText?: string | null,
+  interactiveReplyId?: string | null
 ): Promise<UnlockCooldownResult> {
-  const norm = normalizePakistaniPhone(phone)
-  if (norm.variants.length === 0) {
+  const { variants } = buildExactPhoneVariants(phone)
+  if (variants.length === 0) {
     return { unlocked: false, contactId: null, contactName: null }
   }
 
@@ -126,12 +126,13 @@ export async function unlockOutreachCooldownForPhone(
       id: outreachContacts.id,
       fullName: outreachContacts.fullName,
       interestStatus: outreachContacts.interestStatus,
+      optedOutAt: outreachContacts.optedOutAt,
     })
     .from(outreachContacts)
     .where(
       or(
-        inArray(outreachContacts.whatsappNumber, norm.variants),
-        inArray(outreachContacts.secondaryPhone, norm.variants)
+        inArray(outreachContacts.whatsappNumber, variants),
+        inArray(outreachContacts.secondaryPhone, variants)
       )
     )
     .limit(1)
@@ -141,6 +142,37 @@ export async function unlockOutreachCooldownForPhone(
   }
 
   const now = new Date()
+
+  if (isStopOptOutMessage(inboundBodyText, interactiveReplyId)) {
+    await db
+      .update(outreachContacts)
+      .set({
+        interestStatus: "do_not_contact",
+        optedOutAt: contact.optedOutAt ?? now,
+        updatedAt: now,
+      })
+      .where(eq(outreachContacts.id, contact.id))
+
+    return {
+      unlocked: false,
+      contactId: contact.id,
+      contactName: contact.fullName,
+      optedOut: true,
+    }
+  }
+
+  if (
+    contact.interestStatus === "do_not_contact" ||
+    contact.optedOutAt !== null
+  ) {
+    return {
+      unlocked: false,
+      contactId: contact.id,
+      contactName: contact.fullName,
+      optedOut: true,
+    }
+  }
+
   const currentStatus = contact.interestStatus
   const shouldUpdateStatus =
     currentStatus === "prospect" ||

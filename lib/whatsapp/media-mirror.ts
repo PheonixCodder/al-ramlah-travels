@@ -5,12 +5,13 @@ import {
   whatsappConversations,
   whatsappMessages,
 } from "@/db/schema/whatsapp-crm"
+import { uploadAssetToR2 } from "@/lib/storage/r2"
 import { decrypt } from "@/lib/whatsapp/encryption"
 import {
-  getWhatsAppMediaMetadata,
   downloadWhatsAppMediaBinary,
+  getWhatsAppMediaMetadata,
 } from "@/lib/whatsapp/meta-api"
-import { uploadAssetToR2 } from "@/lib/storage/r2"
+import { markWhatsappAccountNeedsReauthIfAuthError } from "./outbox"
 
 export interface MirrorInboundWhatsAppMediaInput {
   messageId: string
@@ -24,6 +25,7 @@ export interface MirrorInboundWhatsAppMediaInput {
 export interface MirrorInboundWhatsAppMediaResult {
   success: boolean
   messageId: string
+  media_status: "mirrored" | "failed"
   mediaUrl?: string
   mediaMimeType?: string
   mediaFileSize?: number
@@ -33,8 +35,7 @@ export interface MirrorInboundWhatsAppMediaResult {
 }
 
 /**
- * Deterministically maps a MIME type string (e.g. `image/jpeg`, `audio/ogg; codecs=opus`)
- * to a clean file extension for R2 storage keys.
+ * Deterministically maps a MIME type string to a clean file extension for private R2 storage keys.
  */
 export function resolveExtensionFromMimeType(
   mimeType: string | null | undefined,
@@ -79,18 +80,45 @@ export function resolveExtensionFromMimeType(
 }
 
 /**
- * Sanitizes a WhatsApp `wamid` so it is safe to use inside an R2 object key.
+ * Sanitizes a WhatsApp `wamid` so it is safe to use inside an R2 object key (preventing path traversal).
  */
 export function sanitizeWamidForR2Key(wamid: string): string {
-  return wamid.replace(/[^a-zA-Z0-9._-]/g, "_")
+  return wamid.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.{2,}/g, "_")
+}
+
+async function markMessageMediaMirrorFailed(
+  msgRow: typeof whatsappMessages.$inferSelect,
+  errorMessage: string
+): Promise<void> {
+  const existingRaw =
+    msgRow.rawPayload && typeof msgRow.rawPayload === "object"
+      ? (msgRow.rawPayload as Record<string, unknown>)
+      : {}
+
+  await db
+    .update(whatsappMessages)
+    .set({
+      mediaUrl: null,
+      errorCode: "MEDIA_MIRROR_FAILED",
+      errorMessage,
+      rawPayload: {
+        ...existingRaw,
+        mediaStatus: "failed",
+        media_status: "failed",
+        mediaError: errorMessage,
+        mediaFailedAt: new Date().toISOString(),
+      },
+    })
+    .where(eq(whatsappMessages.id, msgRow.id))
 }
 
 /**
  * Resolves a volatile Meta `mediaId` (`rawMediaId`) for an inbound WhatsApp message,
  * downloads its binary stream with `Authorization: Bearer <accessToken>`, uploads it
- * to Cloudflare R2 (`whatsapp-media/{accountId}/{conversationId}/{wamid}.{ext}`),
- * and updates `whatsappMessages.mediaUrl`, `mediaMimeType`, `mediaType`, `mediaSha256`,
- * and `mediaFileSize`.
+ * to the PRIVATE Cloudflare R2 prefix `whatsapp-media/{accountId}/{conversationId}/{wamid}.{ext}`
+ * (`OD-06`, `T-065`), and updates `whatsappMessages` with authenticated `/api/media/whatsapp-media/...` proxy URL.
+ *
+ * Fails closed (`media_status: "failed"`, `mediaUrl: null`) if token decryption, Meta download, or R2 upload fails.
  */
 export async function mirrorInboundWhatsAppMediaToR2(
   input: MirrorInboundWhatsAppMediaInput
@@ -105,6 +133,7 @@ export async function mirrorInboundWhatsAppMediaToR2(
     return {
       success: false,
       messageId: input.messageId,
+      media_status: "failed",
       error: `WhatsApp message ${input.messageId} not found`,
     }
   }
@@ -118,10 +147,13 @@ export async function mirrorInboundWhatsAppMediaToR2(
 
   const accountId = input.accountId || convRow?.accountId
   if (!accountId) {
+    const err = `Unable to resolve WhatsApp account for message ${input.messageId}`
+    await markMessageMediaMirrorFailed(msgRow, err)
     return {
       success: false,
       messageId: input.messageId,
-      error: `Unable to resolve WhatsApp account for message ${input.messageId}`,
+      media_status: "failed",
+      error: err,
     }
   }
 
@@ -132,80 +164,142 @@ export async function mirrorInboundWhatsAppMediaToR2(
     .limit(1)
 
   if (!account) {
+    const err = `WhatsApp account ${accountId} not found`
+    await markMessageMediaMirrorFailed(msgRow, err)
     return {
       success: false,
       messageId: input.messageId,
-      error: `WhatsApp account ${accountId} not found`,
+      media_status: "failed",
+      error: err,
     }
   }
 
   const rawMediaId = input.rawMediaId || msgRow.rawMediaId
   if (!rawMediaId) {
+    const err = `No Meta rawMediaId present on message ${input.messageId}`
+    await markMessageMediaMirrorFailed(msgRow, err)
     return {
       success: false,
       messageId: input.messageId,
-      error: `No Meta rawMediaId present on message ${input.messageId}`,
+      media_status: "failed",
+      error: err,
     }
   }
 
-  let accessToken = "mock_offline_token"
+  let accessToken = ""
   try {
     accessToken = decrypt(account.encryptedAccessToken)
   } catch {
-    accessToken = account.encryptedAccessToken || "mock_offline_token"
+    const err = "Failed to decrypt Meta WABA access token for media download"
+    await db
+      .update(whatsappAccounts)
+      .set({ qualityRating: "NEEDS_REAUTH", updatedAt: new Date() })
+      .where(eq(whatsappAccounts.id, account.id))
+      .catch(() => null)
+    await markMessageMediaMirrorFailed(msgRow, err)
+    return {
+      success: false,
+      messageId: msgRow.id,
+      media_status: "failed",
+      error: err,
+    }
+  }
+
+  if (!accessToken) {
+    const err = "Meta WABA access token is empty"
+    await markMessageMediaMirrorFailed(msgRow, err)
+    return {
+      success: false,
+      messageId: msgRow.id,
+      media_status: "failed",
+      error: err,
+    }
   }
 
   const initialMime =
     input.fallbackMimeType || msgRow.mediaMimeType || msgRow.mediaType || null
 
-  // 1. Fetch Meta media metadata (temporary download URL, mime_type, sha256, file_size)
-  const metadata = await getWhatsAppMediaMetadata({
-    mediaId: rawMediaId,
-    accessToken,
-    fallbackMimeType: initialMime,
-  })
+  try {
+    const metadata = await getWhatsAppMediaMetadata({
+      mediaId: rawMediaId,
+      accessToken,
+      fallbackMimeType: initialMime,
+    })
 
-  // 2. Download binary payload from temporary URL with Bearer token
-  const downloaded = await downloadWhatsAppMediaBinary({
-    mediaUrl: metadata.url,
-    mediaId: rawMediaId,
-    accessToken,
-    expectedMimeType: metadata.mime_type || initialMime,
-  })
+    const downloaded = await downloadWhatsAppMediaBinary({
+      mediaUrl: metadata.url,
+      mediaId: rawMediaId,
+      accessToken,
+      expectedMimeType: metadata.mime_type || initialMime,
+    })
 
-  const finalMimeType =
-    metadata.mime_type || downloaded.mimeType || initialMime || "application/octet-stream"
-  const ext = resolveExtensionFromMimeType(finalMimeType, msgRow.mediaFilename)
-  const sanitizedWamid = sanitizeWamidForR2Key(input.wamid || msgRow.wamid)
-  const r2Key = `whatsapp-media/${accountId}/${conversationId}/${sanitizedWamid}.${ext}`
+    const finalMimeType =
+      metadata.mime_type ||
+      downloaded.mimeType ||
+      initialMime ||
+      "application/octet-stream"
+    const ext = resolveExtensionFromMimeType(finalMimeType, msgRow.mediaFilename)
+    const sanitizedAccount = sanitizeWamidForR2Key(accountId)
+    const sanitizedConv = sanitizeWamidForR2Key(conversationId)
+    const sanitizedWamid = sanitizeWamidForR2Key(input.wamid || msgRow.wamid)
+    const r2Key = `whatsapp-media/${sanitizedAccount}/${sanitizedConv}/${sanitizedWamid}.${ext}`
 
-  // 3. Upload binary buffer to Cloudflare R2 (or local public fallback in dev/test)
-  const uploaded = await uploadAssetToR2(r2Key, downloaded.buffer, finalMimeType)
+    const uploaded = await uploadAssetToR2(
+      r2Key,
+      downloaded.buffer,
+      finalMimeType
+    )
 
-  const finalFileSize = metadata.file_size ?? downloaded.fileSize
-  const finalSha256 = metadata.sha256 ?? downloaded.sha256 ?? msgRow.mediaSha256 ?? null
+    const finalFileSize = metadata.file_size ?? downloaded.fileSize
+    const finalSha256 =
+      metadata.sha256 ?? downloaded.sha256 ?? msgRow.mediaSha256 ?? null
+    const existingRaw =
+      msgRow.rawPayload && typeof msgRow.rawPayload === "object"
+        ? (msgRow.rawPayload as Record<string, unknown>)
+        : {}
 
-  // 4. Persist R2 URL and metadata on whatsappMessages
-  await db
-    .update(whatsappMessages)
-    .set({
-      rawMediaId,
+    await db
+      .update(whatsappMessages)
+      .set({
+        rawMediaId,
+        mediaUrl: uploaded.url,
+        mediaMimeType: finalMimeType,
+        mediaType: finalMimeType,
+        mediaSha256: finalSha256,
+        mediaFileSize: finalFileSize,
+        errorCode: null,
+        errorMessage: null,
+        rawPayload: {
+          ...existingRaw,
+          mediaStatus: "mirrored",
+          media_status: "mirrored",
+          r2Key: uploaded.key,
+          mirroredAt: new Date().toISOString(),
+        },
+      })
+      .where(eq(whatsappMessages.id, msgRow.id))
+
+    return {
+      success: true,
+      messageId: msgRow.id,
+      media_status: "mirrored",
       mediaUrl: uploaded.url,
       mediaMimeType: finalMimeType,
-      mediaType: finalMimeType,
-      mediaSha256: finalSha256,
       mediaFileSize: finalFileSize,
-    })
-    .where(eq(whatsappMessages.id, msgRow.id))
-
-  return {
-    success: true,
-    messageId: msgRow.id,
-    mediaUrl: uploaded.url,
-    mediaMimeType: finalMimeType,
-    mediaFileSize: finalFileSize,
-    r2Key: uploaded.key,
-    provider: uploaded.provider,
+      r2Key: uploaded.key,
+      provider: uploaded.provider,
+    }
+  } catch (err: unknown) {
+    await markWhatsappAccountNeedsReauthIfAuthError(account.id, err)
+    const errMsg =
+      err instanceof Error ? err.message : "Inbound WhatsApp media mirror failed"
+    await markMessageMediaMirrorFailed(msgRow, errMsg)
+    return {
+      success: false,
+      messageId: msgRow.id,
+      media_status: "failed",
+      error: errMsg,
+    }
   }
 }
 

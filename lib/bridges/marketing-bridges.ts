@@ -1,4 +1,5 @@
-import { and, eq } from "drizzle-orm"
+import crypto from "node:crypto"
+import { and, eq, sql } from "drizzle-orm"
 import { db } from "@/db"
 import {
   socialIntegrations,
@@ -8,14 +9,29 @@ import {
 import {
   whatsappAccounts,
   whatsappConversations,
-  whatsappMessages,
 } from "@/db/schema/whatsapp-crm"
-import { sendTextMessage, sendImageMessage } from "@/lib/whatsapp/meta-api"
+import { parsePhoneE164, toWaMeUrl } from "@/lib/phone"
 import { decrypt } from "@/lib/whatsapp/encryption"
+import {
+  isNonIndividualWhatsAppTarget,
+  sendImageMessage,
+  sendTextMessage,
+} from "@/lib/whatsapp/meta-api"
+import {
+  dispatchTrackedOutboundMessage,
+  isWhatsappContactOptedOut,
+  isWithin24HourServiceWindow,
+} from "@/lib/whatsapp/outbox"
 import { triggerByIdBackgroundOrInline } from "@/trigger/dispatch"
 
 export interface SocialBridgeDispatchInput {
-  platform: "instagram" | "facebook" | "tiktok" | "youtube"
+  platform:
+    | "instagram"
+    | "facebook"
+    | "tiktok"
+    | "youtube"
+    | "gmb"
+    | "google_business"
   channelName: string
   handle?: string | null
   imageUrl: string
@@ -25,11 +41,12 @@ export interface SocialBridgeDispatchInput {
 
 export interface WhatsAppBridgeDispatchInput {
   mode: "group" | "community" | "status" | "direct_1on1"
-  senderLine: string // "03274029701" | "03190462638"
+  senderLine: string
   recipientIdOrPhone: string
   recipientName: string
   imageUrl?: string | null
   captionText: string
+  idempotencyKey?: string
 }
 
 export interface BridgeDispatchResult {
@@ -38,33 +55,45 @@ export interface BridgeDispatchResult {
   externalJobId: string
   statusMessage: string
   whatsappClickUrl?: string
+  errorCode?: string
+  channelMode?: "cloud_api" | "manual_assisted"
 }
 
 export function buildWhatsAppDirectUrl(phone: string, message: string): string {
-  const digits = phone.replace(/[^\d]/g, "")
-  const normalized = digits.startsWith("03")
-    ? `92${digits.slice(1)}`
-    : digits.startsWith("92")
-    ? digits
-    : `92${digits}`
-  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`
+  const waUrl = toWaMeUrl(phone, message)
+  if (waUrl) return waUrl
+  const digits = (phone || "").replace(/\D/g, "")
+  if (!digits) return ""
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
 }
+
+export function normalizeSocialProvider(
+  platform: SocialBridgeDispatchInput["platform"]
+): "instagram" | "facebook" | "tiktok" | "youtube" | "gmb" {
+  if (platform === "google_business") {
+    return "gmb"
+  }
+  return platform
+}
+
+export { normalizeSocialProvider as normalizeSocialBridgePlatform }
 
 /**
  * Dispatches a social post directly into native `scheduledPosts` & `scheduledPostTargets`
- * when active integrations exist, triggering durable Trigger.dev background publication,
- * before falling back to `local_queue`.
+ * when active integrations exist, normalizing `google_business` -> `gmb` (`T-067`).
  */
 export async function dispatchViaSocialBridge(
   input: SocialBridgeDispatchInput
 ): Promise<BridgeDispatchResult> {
+  const normalizedProvider = normalizeSocialProvider(input.platform)
+
   try {
     const [integration] = await db
       .select()
       .from(socialIntegrations)
       .where(
         and(
-          eq(socialIntegrations.provider, input.platform),
+          eq(socialIntegrations.provider, normalizedProvider),
           eq(socialIntegrations.isActive, true)
         )
       )
@@ -86,6 +115,10 @@ export async function dispatchViaSocialBridge(
         })
         .returning()
 
+      if (!post) {
+        throw new Error("Failed to insert scheduledPosts row")
+      }
+
       await db.insert(scheduledPostTargets).values({
         scheduledPostId: post.id,
         integrationId: integration.id,
@@ -100,7 +133,10 @@ export async function dispatchViaSocialBridge(
         isFutureScheduled,
         options: {
           idempotencyKey: `soc-post-run-${post.id}`,
-          tags: [`social-post:${post.id}`, `platform:${input.platform}`],
+          tags: [
+            `social-post:${post.id}`,
+            `platform:${normalizedProvider}`,
+          ],
         },
         inlineRunner: async (p) => {
           const { runPublishSocialPostInline } = await import(
@@ -121,158 +157,277 @@ export async function dispatchViaSocialBridge(
         dispatched: true,
         provider: "postiz",
         externalJobId: post.id,
-        statusMessage: `Queued on native social scheduler for ${input.platform.toUpperCase()} (${integration.name})`,
+        statusMessage: `Queued on native social scheduler for ${normalizedProvider.toUpperCase()} (${integration.name})`,
       }
     }
   } catch (err) {
     console.warn(
-      `[SocialBridge] Native routing warning for ${input.platform}:`,
+      `[SocialBridge] Native routing warning for ${normalizedProvider}:`,
       err
     )
+    return {
+      dispatched: false,
+      provider: "local_queue",
+      externalJobId: "",
+      errorCode: "SOCIAL_BRIDGE_DISPATCH_FAILED",
+      statusMessage:
+        err instanceof Error
+          ? err.message
+          : `Failed to dispatch social post for ${normalizedProvider.toUpperCase()}`,
+    }
   }
 
   return {
-    dispatched: true,
+    dispatched: false,
     provider: "local_queue",
-    externalJobId: `local-social-${input.platform}-${Date.now().toString(36)}`,
-    statusMessage: `Queued in local fallback queue for ${input.platform.toUpperCase()} (${input.channelName})`,
+    externalJobId: "",
+    errorCode: "NO_ACTIVE_SOCIAL_INTEGRATION",
+    statusMessage: `No active ${normalizedProvider.toUpperCase()} OAuth integration connected (${input.channelName})`,
   }
 }
 
 /**
- * Dispatches a WhatsApp message directly into native `whatsappConversations` & `whatsappMessages`
- * when active WhatsApp accounts exist, before falling back to `local_queue` with wa.me click URL.
+ * Dispatches a 1:1 WhatsApp Cloud API message (`T-030`, `T-031`, `T-067`, `OD-01`):
+ * - Hard-rejects `@g.us`, `@newsletter`, `status@broadcast`, and non-`direct_1on1` modes (Meta Cloud API supports 1:1 E.164 only).
+ * - Enforces `do_not_contact` opt-out and the 24-hour Meta customer care window for freeform sends.
+ * - Pre-inserts outbound `whatsapp_messages` (`status = "pending"`, `deliveryState = "sending"`) with idempotency key BEFORE calling Meta Graph API.
+ * - Never fabricates `wamid.bridge_*` `"sent"` rows on failure.
  */
 export async function dispatchViaWhatsAppBridge(
   input: WhatsAppBridgeDispatchInput
 ): Promise<BridgeDispatchResult> {
-  const clickUrl =
-    input.mode === "direct_1on1"
-      ? buildWhatsAppDirectUrl(input.recipientIdOrPhone, input.captionText)
-      : undefined
+  const rawRecipient = (input.recipientIdOrPhone || "").trim()
 
+  if (
+    input.mode !== "direct_1on1" ||
+    isNonIndividualWhatsAppTarget(rawRecipient)
+  ) {
+    return {
+      dispatched: false,
+      provider: "local_queue",
+      externalJobId: "",
+      channelMode: "manual_assisted",
+      errorCode: "UNSUPPORTED_NON_1ON1_TARGET",
+      statusMessage:
+        "Meta WhatsApp Cloud API supports 1:1 E.164 recipients only; @g.us groups and status@broadcast must use the Ban-Safe Manual Assisted Share Queue.",
+    }
+  }
+
+  const parsedRecipient = parsePhoneE164(rawRecipient)
+  if (!parsedRecipient.valid) {
+    return {
+      dispatched: false,
+      provider: "local_queue",
+      externalJobId: "",
+      channelMode: "manual_assisted",
+      errorCode: "INVALID_RECIPIENT_PHONE",
+      statusMessage: `Invalid E.164 recipient phone "${rawRecipient}".`,
+    }
+  }
+
+  const clickUrl = buildWhatsAppDirectUrl(
+    parsedRecipient.e164,
+    input.captionText
+  )
+
+  const accounts = await db
+    .select()
+    .from(whatsappAccounts)
+    .where(
+      and(
+        eq(whatsappAccounts.isActive, true),
+        eq(whatsappAccounts.platformType, "CLOUD_API")
+      )
+    )
+
+  const parsedSender = parsePhoneE164(input.senderLine)
+  const cleanSenderDigits = parsedSender.valid
+    ? parsedSender.e164Digits
+    : (input.senderLine || "").replace(/\D/g, "")
+
+  const matchingAccount =
+    accounts.find((a) => {
+      if (a.phoneNumberId === input.senderLine) return true
+      const acctParsed = parsePhoneE164(a.displayPhoneNumber)
+      if (acctParsed.valid && cleanSenderDigits) {
+        return acctParsed.e164Digits === cleanSenderDigits
+      }
+      return false
+    }) ||
+    accounts.find((a) => a.isDefault) ||
+    accounts[0] ||
+    null
+
+  if (!matchingAccount) {
+    return {
+      dispatched: false,
+      provider: "local_queue",
+      externalJobId: "",
+      channelMode: "manual_assisted",
+      errorCode: "NO_ACTIVE_CLOUD_API_ACCOUNT",
+      statusMessage:
+        "No active Official Meta Cloud API account configured; use wa.me manual assisted link.",
+      whatsappClickUrl: clickUrl || undefined,
+    }
+  }
+
+  const contactPhone = parsedRecipient.e164Digits
+  const [existingConv] = await db
+    .select()
+    .from(whatsappConversations)
+    .where(
+      and(
+        eq(whatsappConversations.accountId, matchingAccount.id),
+        orPhoneMatch(whatsappConversations.contactPhone, parsedRecipient)
+      )
+    )
+    .limit(1)
+
+  const optedOut = await isWhatsappContactOptedOut({
+    conversation: existingConv,
+    contactPhone: parsedRecipient.e164,
+  })
+  if (optedOut) {
+    return {
+      dispatched: false,
+      provider: "wacrm",
+      externalJobId: "",
+      channelMode: "cloud_api",
+      errorCode: "DO_NOT_CONTACT",
+      statusMessage:
+        "Recipient has opted out (`do_not_contact`); outbound WhatsApp dispatch suppressed.",
+    }
+  }
+
+  const now = new Date()
+  if (!isWithin24HourServiceWindow(existingConv?.lastCustomerMessageAt, now)) {
+    return {
+      dispatched: false,
+      provider: "wacrm",
+      externalJobId: "",
+      channelMode: "cloud_api",
+      errorCode: "WINDOW_CLOSED_TEMPLATE_REQUIRED",
+      statusMessage:
+        "WINDOW_CLOSED_TEMPLATE_REQUIRED: Outside Meta 24-hour customer service window. Use an approved Meta template or the wa.me manual assisted link.",
+      whatsappClickUrl: clickUrl || undefined,
+    }
+  }
+
+  let accessToken = ""
   try {
-    const accounts = await db
-      .select()
-      .from(whatsappAccounts)
-      .where(eq(whatsappAccounts.isActive, true))
+    accessToken = decrypt(matchingAccount.encryptedAccessToken)
+  } catch {
+    await db
+      .update(whatsappAccounts)
+      .set({ qualityRating: "NEEDS_REAUTH", updatedAt: now })
+      .where(eq(whatsappAccounts.id, matchingAccount.id))
+      .catch(() => null)
+    return {
+      dispatched: false,
+      provider: "wacrm",
+      externalJobId: "",
+      channelMode: "cloud_api",
+      errorCode: "TOKEN_DECRYPTION_FAILED",
+      statusMessage:
+        "Meta WABA access token could not be decrypted (`NEEDS_REAUTH`).",
+      whatsappClickUrl: clickUrl || undefined,
+    }
+  }
 
-    const cleanSenderLine = input.senderLine.replace(/\D/g, "")
-    const matchingAccount =
-      accounts.find(
-        (a) =>
-          a.displayPhoneNumber?.replace(/\D/g, "").endsWith(cleanSenderLine) ||
-          cleanSenderLine.endsWith(a.displayPhoneNumber?.replace(/\D/g, "") || "NOMATCH") ||
-          a.phoneNumberId === input.senderLine
-      ) ||
-      accounts.find((a) => a.isDefault) ||
-      accounts[0] ||
-      null
+  let conv = existingConv
+  if (!conv) {
+    const [created] = await db
+      .insert(whatsappConversations)
+      .values({
+        accountId: matchingAccount.id,
+        contactPhone,
+        contactName: input.recipientName || parsedRecipient.e164,
+        lastMessageAt: now,
+        unreadCount: 0,
+        intentCategory: "MARKETING_DISTRIBUTION",
+        intentConfidence: 100,
+      })
+      .returning()
+    conv = created
+  }
 
-    if (matchingAccount) {
-      const contactPhone = input.recipientIdOrPhone
-      let [conv] = await db
-        .select()
-        .from(whatsappConversations)
-        .where(
-          and(
-            eq(whatsappConversations.accountId, matchingAccount.id),
-            eq(whatsappConversations.contactPhone, contactPhone)
-          )
-        )
-        .limit(1)
+  if (!conv) {
+    return {
+      dispatched: false,
+      provider: "wacrm",
+      externalJobId: "",
+      channelMode: "cloud_api",
+      errorCode: "CONVERSATION_UPSERT_FAILED",
+      statusMessage: "Failed to resolve WhatsApp conversation row.",
+      whatsappClickUrl: clickUrl || undefined,
+    }
+  }
 
-      const now = new Date()
-      if (!conv) {
-        const [created] = await db
-          .insert(whatsappConversations)
-          .values({
-            accountId: matchingAccount.id,
-            contactPhone,
-            contactName: input.recipientName || contactPhone,
-            lastMessageAt: now,
-            unreadCount: 0,
-            intentCategory: "MARKETING_DISTRIBUTION",
-            intentConfidence: 100,
-          })
-          .returning()
-        conv = created
-      } else {
-        await db
-          .update(whatsappConversations)
-          .set({ lastMessageAt: now, updatedAt: now })
-          .where(eq(whatsappConversations.id, conv.id))
-      }
+  const derivedIdempotencyKey =
+    input.idempotencyKey?.trim() ||
+    `bridge:${matchingAccount.id}:${contactPhone}:${crypto
+      .createHash("sha256")
+      .update(`${input.imageUrl || ""}|${input.captionText}|${Math.floor(now.getTime() / 60000)}`)
+      .digest("hex")
+      .slice(0, 24)}`
 
-      let wamid = `wamid.bridge_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      let accessToken = "mock_offline_token"
-      try {
-        accessToken = decrypt(matchingAccount.encryptedAccessToken)
-      } catch {
-        accessToken = matchingAccount.encryptedAccessToken || "mock_offline_token"
-      }
-
-      if (input.imageUrl) {
-        try {
-          const sendRes = await sendImageMessage({
+  const sendOutcome = await dispatchTrackedOutboundMessage({
+    accountId: matchingAccount.id,
+    conversationId: conv.id,
+    idempotencyKey: derivedIdempotencyKey,
+    messageType: input.imageUrl ? "image" : "text",
+    body: input.captionText,
+    mediaUrl: input.imageUrl ?? null,
+    sendFn: () =>
+      input.imageUrl
+        ? sendImageMessage({
             phoneNumberId: matchingAccount.phoneNumberId,
             accessToken,
             to: contactPhone,
             imageUrl: input.imageUrl,
             caption: input.captionText,
           })
-          wamid = sendRes.messageId
-        } catch {
-          // simulation wamid retained on offline dev
-        }
-      } else {
-        try {
-          const sendRes = await sendTextMessage({
+        : sendTextMessage({
             phoneNumberId: matchingAccount.phoneNumberId,
             accessToken,
             to: contactPhone,
             text: input.captionText,
-          })
-          wamid = sendRes.messageId
-        } catch {
-          // simulation wamid retained on offline dev
-        }
-      }
+          }),
+  })
 
-      const [insertedMsg] = await db
-        .insert(whatsappMessages)
-        .values({
-          conversationId: conv.id,
-          wamid,
-          direction: "outbound",
-          status: "sent",
-          messageType: input.imageUrl ? "image" : "text",
-          body: input.captionText,
-          mediaUrl: input.imageUrl,
-          sentAt: now,
-        })
-        .returning()
-
-      return {
-        dispatched: true,
-        provider: "wacrm",
-        externalJobId: insertedMsg.id,
-        statusMessage: `Sent via native WhatsApp line ${matchingAccount.displayPhoneNumber || matchingAccount.phoneNumberId}`,
-        whatsappClickUrl: clickUrl,
-      }
+  if (!sendOutcome.ok) {
+    return {
+      dispatched: false,
+      provider: "wacrm",
+      externalJobId: sendOutcome.message.id,
+      channelMode: "cloud_api",
+      errorCode: sendOutcome.errorCode,
+      statusMessage: `Meta Cloud API send failed (${sendOutcome.errorCode}): ${sendOutcome.error}`,
+      whatsappClickUrl: clickUrl || undefined,
     }
-  } catch (err) {
-    console.warn(
-      `[WhatsAppBridge] Native routing warning for ${input.recipientIdOrPhone}:`,
-      err
-    )
   }
+
+  await db
+    .update(whatsappConversations)
+    .set({ lastMessageAt: now, updatedAt: now })
+    .where(eq(whatsappConversations.id, conv.id))
 
   return {
     dispatched: true,
-    provider: "local_queue",
-    externalJobId: `local-wa-${(input.senderLine || "03274029701").slice(-4)}-${Date.now().toString(36)}`,
-    statusMessage: `Queued on local WhatsApp queue (${input.recipientName})`,
-    whatsappClickUrl: clickUrl,
+    provider: "wacrm",
+    externalJobId: sendOutcome.message.id,
+    channelMode: "cloud_api",
+    statusMessage: `Sent via Official Meta Cloud API line ${matchingAccount.displayPhoneNumber || matchingAccount.phoneNumberId}`,
+    whatsappClickUrl: clickUrl || undefined,
   }
+}
+
+function orPhoneMatch(
+  column: typeof whatsappConversations.contactPhone,
+  parsed: ReturnType<typeof parsePhoneE164>
+) {
+  if (parsed.e164 && parsed.e164Digits && parsed.e164 !== parsed.e164Digits) {
+    return sql`${column} IN (${parsed.e164Digits}, ${parsed.e164})`
+  }
+  return eq(column, parsed.e164Digits || parsed.e164)
 }

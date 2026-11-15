@@ -1,4 +1,4 @@
-import { normalizePakistaniPhone } from "./phone-utils"
+import { parsePhoneE164 } from "@/lib/phone"
 
 export interface ParsedBroadcastRecipient {
   phone: string
@@ -11,6 +11,14 @@ export interface ParseCsvResult {
   validCount: number
   invalidCount: number
   errors: string[]
+}
+
+export interface BroadcastBatchConfirmationSummary {
+  recipientCount: number
+  category: "MARKETING" | "UTILITY" | "AUTHENTICATION"
+  isPaidMarketing: boolean
+  requiresExplicitConfirmation: boolean
+  warningMessage: string
 }
 
 /**
@@ -128,7 +136,8 @@ export function interpolateTemplateVariables(
     for (const [k, v] of Object.entries(variables)) {
       const strVal = v != null ? String(v) : ""
       const cleanKey = k.replace(/^\{\{|\}\}$/g, "").trim()
-      const pattern = new RegExp(`\\{\\{${cleanKey}\\}\\}`, "gi")
+      const escapedKey = cleanKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      const pattern = new RegExp(`\\{\\{${escapedKey}\\}\\}`, "gi")
       result = result.replace(pattern, strVal)
     }
   }
@@ -137,68 +146,144 @@ export function interpolateTemplateVariables(
 }
 
 /**
- * Splits a CSV line taking quoted commas into account (e.g., `"Malik, Muhammad", 03001234567`).
+ * RFC-4180 compliant single-line CSV/TSV splitter (`T-088`):
+ * - Only double quotes (`"`) act as field delimiters (`""` unescapes to literal `"`).
+ * - Single-quote apostrophes (`O'Connor`, `Ma'am Ayesha`) are preserved verbatim as characters!
+ * - Commas, semicolons, and tabs inside `"quoted, fields"` are preserved without splitting.
  */
-function splitCsvLine(line: string): string[] {
+export function splitRfc4180CsvLine(line: string): string[] {
   const cells: string[] = []
   let current = ""
-  let inQuotes = false
+  let inDoubleQuotes = false
+  let fieldStartedWithQuote = false
 
   for (let i = 0; i < line.length; i++) {
-    const char = line[i]
-    if (char === '"' || char === "'") {
-      inQuotes = !inQuotes
-    } else if ((char === "," || char === "\t" || char === ";") && !inQuotes) {
-      cells.push(current.trim())
-      current = ""
-    } else {
-      current += char
+    const char = line[i]!
+
+    if (inDoubleQuotes) {
+      if (char === '"') {
+        if (line[i + 1] === '"') {
+          current += '"'
+          i++
+        } else {
+          inDoubleQuotes = false
+        }
+      } else {
+        current += char
+      }
+      continue
     }
+
+    if (char === '"' && current.trim().length === 0) {
+      inDoubleQuotes = true
+      fieldStartedWithQuote = true
+      current = ""
+      continue
+    }
+
+    if (char === "," || char === "\t" || char === ";") {
+      cells.push(fieldStartedWithQuote ? current.trim() : current.trim())
+      current = ""
+      fieldStartedWithQuote = false
+      continue
+    }
+
+    current += char
   }
+
   cells.push(current.trim())
-
-  return cells.map((cell) => cell.replace(/^["']|["']$/g, "").trim())
+  return cells
 }
 
-/**
- * Checks whether a candidate cell string looks like a telephone number.
- */
-function isPotentialPhoneNumber(cell: string): boolean {
-  const digitsOnly = cell.replace(/\D/g, "")
-  return digitsOnly.length >= 10 && digitsOnly.length <= 15
+const PHONE_HEADER_TOKENS = new Set([
+  "phone",
+  "phone_number",
+  "phone number",
+  "phonenumber",
+  "whatsapp",
+  "whatsapp_number",
+  "whatsapp number",
+  "whatsapp no",
+  "wa",
+  "wa_id",
+  "wa number",
+  "mobile",
+  "mobile_number",
+  "mobile number",
+  "mobile no",
+  "cell",
+  "cell_number",
+  "cell number",
+  "contact",
+  "contact_number",
+  "contact number",
+  "msisdn",
+  "number",
+  "tel",
+  "telephone",
+])
+
+const NAME_HEADER_TOKENS = new Set([
+  "name",
+  "full_name",
+  "full name",
+  "fullname",
+  "pilgrim",
+  "pilgrim_name",
+  "pilgrim name",
+  "customer",
+  "customer_name",
+  "customer name",
+  "recipient",
+  "recipient_name",
+  "recipient name",
+  "first_name",
+  "first name",
+])
+
+function normalizeHeaderToken(raw: string): string {
+  return raw
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[#*:]/g, "")
+    .replace(/\s+/g, " ")
 }
 
-/**
- * Normalizes phone number into E.164 standard with or without leading `+`.
- */
+function isPhoneHeaderCell(cell: string): boolean {
+  const token = normalizeHeaderToken(cell)
+  if (!token) return false
+  if (PHONE_HEADER_TOKENS.has(token)) return true
+  return (
+    token.includes("whatsapp") ||
+    token.includes("phone") ||
+    token.includes("mobile") ||
+    token.includes("msisdn")
+  )
+}
+
+function isNameHeaderCell(cell: string): boolean {
+  const token = normalizeHeaderToken(cell)
+  if (!token) return false
+  if (NAME_HEADER_TOKENS.has(token)) return true
+  return token.includes("name") || token === "pilgrim" || token === "customer"
+}
+
 function normalizeRecipientPhone(candidate: string): string | null {
-  const clean = candidate.trim()
+  const clean = candidate.replace(/^\uFEFF/, "").trim()
   if (!clean) return null
-
-  const pkrNorm = normalizePakistaniPhone(clean)
-  if (pkrNorm.normalizedE164 && pkrNorm.normalizedE164.length >= 10) {
-    return pkrNorm.normalizedE164.startsWith("+")
-      ? pkrNorm.normalizedE164
-      : `+${pkrNorm.normalizedE164}`
-  }
-
-  const digits = clean.replace(/\D/g, "")
-  if (digits.length >= 10 && digits.length <= 15) {
-    return clean.startsWith("+") ? `+${digits}` : `+${digits}`
-  }
-
-  return null
+  const parsed = parsePhoneE164(clean)
+  return parsed.valid ? parsed.e164 : null
 }
 
 /**
- * Pure parser for CSV / multi-line broadcast contacts.
+ * Pure RFC-4180 parser for CSV / multi-line WhatsApp broadcast contacts (`T-088`).
  * Supports:
- * - `name,phone` (e.g. `Hamza Malik, +92 300 1234567`)
- * - `phone,name` (e.g. `+923001234567, Hamza Malik`)
- * - Plain phone list (one per line)
- * - Additional columns treated as customParams (`[param1, param2, ...]`)
- * - Automatically skips header rows (`name,phone`, `mobile`, `contact`, etc.)
- * - Normalizes numbers and deduplicates duplicate entries.
+ * - Apostrophes and UTF-8 / Urdu / Arabic names (`O'Connor`, `محمد طارق`)
+ * - Quoted fields containing commas (`"Malik, Muhammad"`, `"Askari 10, Lahore"`)
+ * - Explicit column headers in any order (`WhatsApp`, `Mobile`, `Phone`, `Name`, `Param1`, ...)
+ * - Headerless `name,phone` or `phone,name` or single-column phone lists
+ * - Strict canonical E.164 normalization via `parsePhoneE164` and phone deduplication
  */
 export function parseWhatsappBroadcastCsv(csvText: string): ParseCsvResult {
   const result: ParseCsvResult = {
@@ -212,51 +297,42 @@ export function parseWhatsappBroadcastCsv(csvText: string): ParseCsvResult {
     return result
   }
 
-  const lines = csvText.split(/\r?\n/)
+  const cleanedText = csvText.replace(/^\uFEFF/, "")
+  const lines = cleanedText.split(/\r?\n/)
   const seenPhones = new Set<string>()
 
+  let headerPhoneCol: number | null = null
+  let headerNameCol: number | null = null
+  let headerChecked = false
+
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    const rawLine = lines[lineIndex].trim()
+    const rawLine = lines[lineIndex]?.trim() ?? ""
     if (!rawLine) continue
 
-    const cells = splitCsvLine(rawLine)
+    const cells = splitRfc4180CsvLine(rawLine)
     if (cells.length === 0 || cells.every((c) => !c)) continue
 
-    // Detect header row (e.g., contains 'name', 'phone', 'mobile', 'contact', 'msisdn')
-    const firstCellLower = cells[0].toLowerCase().trim()
-    const secondCellLower = (cells[1] || "").toLowerCase().trim()
+    if (!headerChecked) {
+      headerChecked = true
+      const detectedPhoneIdx = cells.findIndex((cell) => isPhoneHeaderCell(cell))
+      const detectedNameIdx = cells.findIndex((cell) => isNameHeaderCell(cell))
 
-    const isSingleCellHeader =
-      cells.length === 1 &&
-      [
-        "name",
-        "phone",
-        "mobile",
-        "contact",
-        "msisdn",
-        "number",
-        "phone_number",
-        "phone number",
-        "cell",
-        "customer",
-        "recipient",
-      ].includes(firstCellLower)
+      const firstCellNormalizedPhone = normalizeRecipientPhone(cells[0] ?? "")
+      const secondCellNormalizedPhone =
+        cells.length > 1 ? normalizeRecipientPhone(cells[1] ?? "") : null
 
-    const isMultiCellHeader =
-      cells.length > 1 &&
-      (firstCellLower.includes("name") ||
-        firstCellLower.includes("phone") ||
-        firstCellLower.includes("mobile") ||
-        firstCellLower.includes("contact") ||
-        firstCellLower.includes("msisdn")) &&
-      (secondCellLower.includes("name") ||
-        secondCellLower.includes("phone") ||
-        secondCellLower.includes("mobile") ||
-        secondCellLower.includes("contact") ||
-        secondCellLower.includes("msisdn"))
+      const looksLikeHeaderRow =
+        !firstCellNormalizedPhone &&
+        !secondCellNormalizedPhone &&
+        (detectedPhoneIdx !== -1 || detectedNameIdx !== -1)
 
-    if (isSingleCellHeader || isMultiCellHeader) {
-      continue
+      if (looksLikeHeaderRow) {
+        if (detectedPhoneIdx !== -1) headerPhoneCol = detectedPhoneIdx
+        if (detectedNameIdx !== -1 && detectedNameIdx !== detectedPhoneIdx) {
+          headerNameCol = detectedNameIdx
+        }
+        continue
+      }
     }
 
     let phoneStr: string | null = null
@@ -264,40 +340,65 @@ export function parseWhatsappBroadcastCsv(csvText: string): ParseCsvResult {
     const customParams: string[] = []
 
     if (cells.length === 1) {
-      phoneStr = cells[0]
+      phoneStr = cells[0] ?? null
+    } else if (headerPhoneCol !== null && headerPhoneCol < cells.length) {
+      phoneStr = cells[headerPhoneCol] ?? null
+      const resolvedNameIdx =
+        headerNameCol !== null && headerNameCol < cells.length
+          ? headerNameCol
+          : headerPhoneCol === 0
+            ? 1
+            : 0
+      if (resolvedNameIdx !== headerPhoneCol && cells[resolvedNameIdx]) {
+        nameStr = cells[resolvedNameIdx] || undefined
+      }
+      cells.forEach((cell, idx) => {
+        if (idx !== headerPhoneCol && idx !== resolvedNameIdx && cell) {
+          customParams.push(cell)
+        }
+      })
     } else {
-      // Determine which column is phone
-      const col0IsPhone = isPotentialPhoneNumber(cells[0])
-      const col1IsPhone = isPotentialPhoneNumber(cells[1])
+      const col0Phone = normalizeRecipientPhone(cells[0] ?? "")
+      const col1Phone = normalizeRecipientPhone(cells[1] ?? "")
 
-      if (col0IsPhone && !col1IsPhone) {
-        // phone, name, ...
-        phoneStr = cells[0]
+      if (col0Phone && !col1Phone) {
+        phoneStr = cells[0] ?? null
         nameStr = cells[1] || undefined
         if (cells.length > 2) {
           customParams.push(...cells.slice(2).filter(Boolean))
         }
-      } else if (!col0IsPhone && col1IsPhone) {
-        // name, phone, ...
+      } else if (!col0Phone && col1Phone) {
         nameStr = cells[0] || undefined
-        phoneStr = cells[1]
+        phoneStr = cells[1] ?? null
         if (cells.length > 2) {
           customParams.push(...cells.slice(2).filter(Boolean))
         }
-      } else if (col0IsPhone && col1IsPhone) {
-        // Both look numeric, treat column 0 as phone
-        phoneStr = cells[0]
-        nameStr = cells[1]
+      } else if (col0Phone && col1Phone) {
+        phoneStr = cells[0] ?? null
+        nameStr = cells[1] || undefined
         if (cells.length > 2) {
           customParams.push(...cells.slice(2).filter(Boolean))
         }
       } else {
-        // Neither looks like a valid phone
-        result.invalidCount++
-        result.errors.push(
-          `Line ${lineIndex + 1}: No valid phone number found in row ("${rawLine.slice(0, 40)}")`
+        // Attempt remaining columns if phone is in column >= 2
+        const fallbackPhoneIdx = cells.findIndex(
+          (cell) => normalizeRecipientPhone(cell) !== null
         )
-        continue
+        if (fallbackPhoneIdx !== -1) {
+          phoneStr = cells[fallbackPhoneIdx] ?? null
+          nameStr = cells[0] || undefined
+          cells.forEach((cell, idx) => {
+            if (idx !== fallbackPhoneIdx && idx !== 0 && cell) {
+              customParams.push(cell)
+            }
+          })
+        } else {
+          result.invalidCount++
+          result.errors.push(
+            `Line ${lineIndex + 1}: No valid phone number found in row ("${rawLine.slice(0, 60)}")`
+          )
+          continue
+        }
       }
     }
 
@@ -305,25 +406,49 @@ export function parseWhatsappBroadcastCsv(csvText: string): ParseCsvResult {
     if (!normalizedPhone) {
       result.invalidCount++
       result.errors.push(
-        `Line ${lineIndex + 1}: Invalid phone number format "${phoneStr || ""}"`
+        `Line ${lineIndex + 1}: Invalid phone number "${phoneStr ?? ""}"`
       )
       continue
     }
 
-    const digitsOnly = normalizedPhone.replace(/\D/g, "")
-    if (seenPhones.has(digitsOnly)) {
-      // Skip duplicate
+    if (seenPhones.has(normalizedPhone)) {
       continue
     }
-    seenPhones.add(digitsOnly)
 
+    seenPhones.add(normalizedPhone)
     result.recipients.push({
       phone: normalizedPhone,
-      ...(nameStr && nameStr.trim() ? { name: nameStr.trim() } : {}),
+      ...(nameStr ? { name: nameStr } : {}),
       ...(customParams.length > 0 ? { customParams } : {}),
     })
-    result.validCount++
   }
 
+  result.validCount = result.recipients.length
   return result
+}
+
+/**
+ * Computes pre-launch batch confirmation metadata for paid Meta WhatsApp broadcasts (`T-088`).
+ */
+export function buildBroadcastBatchConfirmationSummary(args: {
+  recipientCount: number
+  category?: string | null
+}): BroadcastBatchConfirmationSummary {
+  const normalizedCategory =
+    args.category === "UTILITY" || args.category === "AUTHENTICATION"
+      ? args.category
+      : "MARKETING"
+  const isPaidMarketing = normalizedCategory === "MARKETING"
+  const requiresExplicitConfirmation =
+    isPaidMarketing && args.recipientCount >= 25
+
+  return {
+    recipientCount: args.recipientCount,
+    category: normalizedCategory,
+    isPaidMarketing,
+    requiresExplicitConfirmation,
+    warningMessage: isPaidMarketing
+      ? `Launching paid Meta MARKETING template broadcast to ${args.recipientCount} verified E.164 recipient(s). Meta per-delivered-template charges apply.`
+      : `Launching Meta ${normalizedCategory} template broadcast to ${args.recipientCount} verified E.164 recipient(s).`,
+  }
 }

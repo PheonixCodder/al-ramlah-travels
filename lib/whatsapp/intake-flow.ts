@@ -1,6 +1,7 @@
 import crypto from "node:crypto"
-import { eq } from "drizzle-orm"
-import { db } from "@/db"
+import { and, desc, eq, gte } from "drizzle-orm"
+import { db, withTransaction } from "@/db"
+import { applications } from "@/db/schema/applications"
 import {
   whatsappAccounts,
   whatsappConversations,
@@ -8,13 +9,19 @@ import {
   type WhatsappIntakeFlowState,
   type WhatsappIntakeStep,
 } from "@/db/schema/whatsapp-crm"
-import { applications } from "@/db/schema/applications"
+import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
 import { decrypt } from "@/lib/whatsapp/encryption"
 import {
   markWhatsAppMessageAsRead,
   sendInteractiveButtonsMessage,
   sendTextMessage,
 } from "@/lib/whatsapp/meta-api"
+import {
+  applyWhatsappStopOptOut,
+  dispatchTrackedOutboundMessage,
+  isStopOptOutMessage,
+  loadVerifiedCompanyInfo,
+} from "./outbox"
 
 export interface IntakeFlowInput {
   accountId: string
@@ -29,6 +36,8 @@ export interface IntakeFlowResult {
   handled: boolean
   step: WhatsappIntakeStep
   cancelled?: boolean
+  handoffToHuman?: boolean
+  reason?: string
   referenceNumber?: string
   applicationId?: string
   sentMessageIds: string[]
@@ -36,6 +45,10 @@ export interface IntakeFlowResult {
   error?: string
 }
 
+export const MAX_CONSECUTIVE_INTAKE_REPROMPTS = 2
+export const COMPLETED_INTAKE_COOLDOWN_MS = 60 * 60 * 1000
+
+// Note: `"hajj inquiry"` intentionally excluded so Hajj inquiries route to Hajj Maktab A/B/C guide (`T-066`).
 export const INTAKE_TRIGGER_KEYWORDS = [
   "plan umrah",
   "custom quote",
@@ -47,7 +60,6 @@ export const INTAKE_TRIGGER_KEYWORDS = [
   "new booking",
   "create inquiry",
   "umrah rates",
-  "hajj inquiry",
 ]
 
 export const INTAKE_TRIGGER_BUTTON_IDS = [
@@ -57,6 +69,77 @@ export const INTAKE_TRIGGER_BUTTON_IDS = [
   "rule_loc_umrah",
 ]
 
+const ESCAPE_CANCEL_KEYWORDS = new Set([
+  "cancel",
+  "reset",
+  "exit",
+  "quit",
+  "back",
+  "nevermind",
+  "never mind",
+])
+
+const ESCAPE_HUMAN_KEYWORDS = [
+  "human",
+  "agent",
+  "consultant",
+  "representative",
+  "person",
+  "call me",
+  "talk to agent",
+  "talk to consultant",
+  "speak to human",
+]
+
+const ESCAPE_HAJJ_KEYWORDS = ["hajj", "maktab", "mina", "arafat", "hajj 2027"]
+
+export type IntakeEscapeKind = "stop_opt_out" | "cancel" | "human" | "hajj"
+
+export function detectIntakeEscapeHatch(
+  text?: string | null,
+  buttonId?: string | null
+): IntakeEscapeKind | null {
+  if (isStopOptOutMessage(text, buttonId)) {
+    return "stop_opt_out"
+  }
+
+  const cleanBtn = (buttonId || "").trim().toLowerCase()
+  if (
+    cleanBtn === "rule_loc_call" ||
+    cleanBtn === "talk_to_agent" ||
+    cleanBtn.startsWith("art_agent:")
+  ) {
+    return "human"
+  }
+
+  const normalized = (text || "").trim().toLowerCase().replace(/\s+/g, " ")
+  if (!normalized) return null
+
+  if (ESCAPE_CANCEL_KEYWORDS.has(normalized)) {
+    return "cancel"
+  }
+
+  if (
+    ESCAPE_HUMAN_KEYWORDS.some(
+      (kw) =>
+        normalized === kw ||
+        new RegExp(`\\b${kw.replace(/\s+/g, "\\s+")}\\b`, "i").test(normalized)
+    )
+  ) {
+    return "human"
+  }
+
+  if (
+    ESCAPE_HAJJ_KEYWORDS.some((kw) =>
+      new RegExp(`\\b${kw.replace(/\s+/g, "\\s+")}\\b`, "i").test(normalized)
+    )
+  ) {
+    return "hajj"
+  }
+
+  return null
+}
+
 /**
  * Checks whether an incoming text message or button reply matches the Umrah intake flow trigger.
  */
@@ -64,6 +147,10 @@ export function isIntakeFlowTrigger(
   text: string | null | undefined,
   buttonId?: string | null
 ): boolean {
+  if (detectIntakeEscapeHatch(text, buttonId) !== null) {
+    return false
+  }
+
   if (buttonId) {
     const cleanBtn = buttonId.trim().toLowerCase()
     if (INTAKE_TRIGGER_BUTTON_IDS.includes(cleanBtn)) {
@@ -77,166 +164,238 @@ export function isIntakeFlowTrigger(
   return INTAKE_TRIGGER_KEYWORDS.some((kw) => normalized.includes(kw))
 }
 
-/**
- * Spec alias for isIntakeFlowTrigger.
- */
 export const matchesIntakeTrigger = isIntakeFlowTrigger
 
 /**
- * Generates an application reference number: `ART-WA-YYYYMMDD-XXXX`.
+ * Generates a collision-resistant CSPRNG application reference number: `ART-WA-YYYYMMDD-XXXXXXXX` (32-bit hex).
  */
 export function generateReferenceNumber(): string {
   const now = new Date()
   const yyyy = now.getFullYear()
   const mm = String(now.getMonth() + 1).padStart(2, "0")
   const dd = String(now.getDate()).padStart(2, "0")
-  const random4 = crypto.randomBytes(2).toString("hex").toUpperCase()
-  return `ART-WA-${yyyy}${mm}${dd}-${random4}`
+  const random8 = crypto.randomBytes(4).toString("hex").toUpperCase()
+  return `ART-WA-${yyyy}${mm}${dd}-${random8}`
 }
 
+const VALID_MONTH_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
+  { pattern: /\b(jan|january)\b/i, label: "January" },
+  { pattern: /\b(feb|february)\b/i, label: "February" },
+  { pattern: /\b(mar|march)\b/i, label: "March" },
+  { pattern: /\b(apr|april)\b/i, label: "April" },
+  { pattern: /\b(may)\b/i, label: "May" },
+  { pattern: /\b(jun|june)\b/i, label: "June" },
+  { pattern: /\b(jul|july)\b/i, label: "July" },
+  { pattern: /\b(aug|august)\b/i, label: "August" },
+  { pattern: /\b(sep|sept|september)\b/i, label: "September" },
+  { pattern: /\b(oct|october)\b/i, label: "October" },
+  { pattern: /\b(nov|november)\b/i, label: "Nov - Dec" },
+  { pattern: /\b(dec|december|winter)\b/i, label: "Nov - Dec" },
+  { pattern: /\b(ramadan|ramzan|ramazan)\b/i, label: "Ramadan 2027" },
+  { pattern: /\b(shawwal|shawal|spring|eid)\b/i, label: "Shawwal / Spring" },
+  { pattern: /\b(rabi|rajab|shaban|muharram|safar|dhul|zil)\b/i, label: "Islamic Hijri Season" },
+  { pattern: /\b(next\s+month|this\s+month|asap|urgent)\b/i, label: "Immediate / Next Month" },
+]
+
 /**
- * Resolves Travel Season from button ID or user text.
+ * Resolves Travel Season strictly from button ID or recognized calendar/Hijri season words (`T-066`).
+ * Rejects unrelated questions (e.g. `"What is visa cost?"`) so reprompt/escape logic works properly.
  */
 export function resolveMonthSelection(
   text: string,
   buttonId?: string | null
 ): string | null {
   const b = (buttonId || "").trim().toLowerCase()
-  const t = (text || "").trim().toLowerCase()
+  const t = (text || "").trim()
+  const lower = t.toLowerCase()
 
-  if (b === "intake_m_novdec" || t.includes("nov") || t.includes("dec")) {
+  if (b === "intake_m_novdec") return "Nov - Dec 2026"
+  if (b === "intake_m_ramadan") return "Ramadan 2027"
+  if (b === "intake_m_shawwal") return "Shawwal / Spring"
+
+  if (!t || t.includes("?")) return null
+
+  if (lower.includes("nov") || lower.includes("dec")) {
     return "Nov - Dec 2026"
   }
-  if (b === "intake_m_ramadan" || t.includes("ramadan")) {
+  if (lower.includes("ramadan") || lower.includes("ramzan")) {
     return "Ramadan 2027"
   }
-  if (
-    b === "intake_m_shawwal" ||
-    t.includes("shawwal") ||
-    t.includes("spring")
-  ) {
+  if (lower.includes("shawwal") || lower.includes("spring")) {
     return "Shawwal / Spring"
   }
 
-  if (t.length > 0 && t.length <= 40) {
-    return text.trim()
+  for (const entry of VALID_MONTH_PATTERNS) {
+    if (entry.pattern.test(t)) {
+      return t.length <= 36 ? t : entry.label
+    }
   }
 
   return null
 }
 
 /**
- * Resolves Party Size from button ID or user text.
+ * Resolves Party Size strictly from button ID or explicit pilgrim counts (`T-066`).
  */
 export function resolvePilgrimSelection(
   text: string,
   buttonId?: string | null
 ): { label: string; adults: number } | null {
   const b = (buttonId || "").trim().toLowerCase()
-  const t = (text || "").trim().toLowerCase()
+  const t = (text || "").trim()
+  const lower = t.toLowerCase()
 
-  if (
-    b === "intake_p_couple" ||
-    t.includes("couple") ||
-    t.includes("1-2") ||
-    t === "2" ||
-    t === "1"
-  ) {
-    return { label: "1-2 Adults (Couple)", adults: 2 }
+  if (b === "intake_p_couple") {
+    return { label: "2 Adults (Couple)", adults: 2 }
   }
-  if (
-    b === "intake_p_family" ||
-    t.includes("family") ||
-    t.includes("3-5") ||
-    t === "3" ||
-    t === "4" ||
-    t === "5"
-  ) {
+  if (b === "intake_p_family") {
     return { label: "Family 3-5 Persons", adults: 4 }
   }
-  if (
-    b === "intake_p_group" ||
-    t.includes("group") ||
-    t.includes("6+") ||
-    parseInt(t, 10) >= 6
-  ) {
-    const parsed = parseInt(t, 10)
-    return {
-      label: "Group 6+ Persons",
-      adults: Number.isNaN(parsed) || parsed < 6 ? 6 : parsed,
+  if (b === "intake_p_group") {
+    return { label: "Group 6+ Persons", adults: 6 }
+  }
+
+  if (!t || t.includes("?")) return null
+
+  if (lower === "solo" || lower === "single" || lower === "just me" || lower === "1") {
+    return { label: "1 Adult (Solo)", adults: 1 }
+  }
+  if (lower.includes("couple") || lower === "1-2" || lower === "2") {
+    return { label: "2 Adults (Couple)", adults: 2 }
+  }
+  if (lower.includes("family") && !/\d+/.test(lower)) {
+    return { label: "Family 3-5 Persons", adults: 4 }
+  }
+  if ((lower.includes("group") || lower.includes("6+")) && !/\d+/.test(lower)) {
+    return { label: "Group 6+ Persons", adults: 6 }
+  }
+
+  const explicitCountMatch = lower.match(
+    /^(\d{1,2})(?:\s*(?:adults?|persons?|people|pax|pilgrims?|members?))?$/i
+  )
+  if (explicitCountMatch?.[1]) {
+    const parsed = parseInt(explicitCountMatch[1], 10)
+    if (parsed >= 1 && parsed <= 50) {
+      return {
+        label: parsed === 1 ? "1 Adult (Solo)" : `${parsed} Pilgrims`,
+        adults: parsed,
+      }
     }
   }
 
-  if (t.length > 0 && t.length <= 40) {
-    const numMatch = t.match(/\d+/)
-    const count = numMatch ? parseInt(numMatch[0], 10) : 2
-    return { label: text.trim(), adults: Math.max(1, count) }
+  const embeddedPaxMatch = lower.match(
+    /\b(\d{1,2})\s*(?:adults?|persons?|people|pax|pilgrims?|members?)\b/i
+  )
+  if (embeddedPaxMatch?.[1]) {
+    const parsed = parseInt(embeddedPaxMatch[1], 10)
+    if (parsed >= 1 && parsed <= 50) {
+      return {
+        label: `${parsed} Pilgrims`,
+        adults: parsed,
+      }
+    }
   }
 
   return null
 }
 
 /**
- * Resolves Hotel Category from button ID or user text.
+ * Resolves Hotel Category strictly from button ID or recognized hospitality keywords (`T-066`).
  */
 export function resolveHotelSelection(
   text: string,
   buttonId?: string | null
 ): string | null {
   const b = (buttonId || "").trim().toLowerCase()
-  const t = (text || "").trim().toLowerCase()
+  const t = (text || "").trim()
+  const lower = t.toLowerCase()
 
   if (
     b === "intake_h_5star" ||
-    t.includes("5★") ||
-    t.includes("5 star") ||
-    t.includes("clock") ||
-    t.includes("tower")
+    lower.includes("5★") ||
+    lower.includes("5 star") ||
+    lower.includes("5-star") ||
+    lower.includes("five star") ||
+    lower.includes("clock") ||
+    lower.includes("tower") ||
+    lower.includes("jabal omar") ||
+    lower === "vip" ||
+    lower === "luxury"
   ) {
     return "5★ Clock Tower"
   }
   if (
     b === "intake_h_4star" ||
-    t.includes("4★") ||
-    t.includes("4 star") ||
-    t.includes("walking")
+    lower.includes("4★") ||
+    lower.includes("4 star") ||
+    lower.includes("4-star") ||
+    lower.includes("four star") ||
+    lower.includes("walking") ||
+    lower.includes("markazia") ||
+    lower === "executive"
   ) {
     return "4★ Walking Distance"
   }
   if (
     b === "intake_h_economy" ||
-    t.includes("economy") ||
-    t.includes("shuttle") ||
-    t.includes("3 star")
+    lower.includes("economy") ||
+    lower.includes("shuttle") ||
+    lower.includes("3★") ||
+    lower.includes("3 star") ||
+    lower.includes("3-star") ||
+    lower.includes("budget")
   ) {
     return "Economy Shuttle"
-  }
-
-  if (t.length > 0 && t.length <= 40) {
-    return text.trim()
   }
 
   return null
 }
 
+function parseAdultsFromStoredLabel(label?: string): number {
+  if (!label) return 2
+  const lower = label.toLowerCase()
+  if (lower.includes("couple") || lower.startsWith("1-2 ")) {
+    return 2
+  }
+  const match = label.match(/\b(\d{1,2})\b/)
+  if (match?.[1]) {
+    const parsed = parseInt(match[1], 10)
+    if (parsed >= 1 && parsed <= 50) return parsed
+  }
+  return 2
+}
+
 /**
- * Pure state machine transition evaluator for test assertions and offline verification.
+ * Pure state machine transition evaluator for test assertions (`T-066`).
  */
 export function evaluateIntakeTransition(
   currentStep: WhatsappIntakeStep,
-  input: { text?: string; buttonId?: string | null }
+  input: {
+    text?: string
+    buttonId?: string | null
+    invalidCount?: number
+  }
 ): {
   nextStep: WhatsappIntakeStep
   month?: string
   pilgrims?: { label: string; adults: number }
   hotelTier?: string
   cancelled?: boolean
+  handoffToHuman?: boolean
+  escapeKind?: IntakeEscapeKind
   rePrompt?: boolean
+  nextInvalidCount?: number
 } {
   const rawText = (input.text || "").trim()
-  const lower = rawText.toLowerCase()
-  if (lower === "cancel" || lower === "reset" || lower === "stop") {
-    return { nextStep: "IDLE", cancelled: true }
+  const escapeKind = detectIntakeEscapeHatch(rawText, input.buttonId)
+  if (escapeKind) {
+    return {
+      nextStep: "IDLE",
+      cancelled: true,
+      handoffToHuman: escapeKind === "human" || escapeKind === "hajj",
+      escapeKind,
+      nextInvalidCount: 0,
+    }
   }
 
   if (
@@ -244,32 +403,122 @@ export function evaluateIntakeTransition(
     currentStep === "COMPLETED" ||
     isIntakeFlowTrigger(rawText, input.buttonId)
   ) {
-    return { nextStep: "AWAITING_MONTH" }
+    return { nextStep: "AWAITING_MONTH", nextInvalidCount: 0 }
   }
+
+  const prevInvalid = input.invalidCount ?? 0
 
   if (currentStep === "AWAITING_MONTH") {
     const month = resolveMonthSelection(rawText, input.buttonId)
-    if (!month) return { nextStep: "AWAITING_MONTH", rePrompt: true }
-    return { nextStep: "AWAITING_PILGRIMS", month }
+    if (!month) {
+      if (prevInvalid >= MAX_CONSECUTIVE_INTAKE_REPROMPTS) {
+        return {
+          nextStep: "IDLE",
+          cancelled: true,
+          handoffToHuman: true,
+          nextInvalidCount: 0,
+        }
+      }
+      return {
+        nextStep: "AWAITING_MONTH",
+        rePrompt: true,
+        nextInvalidCount: prevInvalid + 1,
+      }
+    }
+    return { nextStep: "AWAITING_PILGRIMS", month, nextInvalidCount: 0 }
   }
 
   if (currentStep === "AWAITING_PILGRIMS") {
     const pilgrims = resolvePilgrimSelection(rawText, input.buttonId)
-    if (!pilgrims) return { nextStep: "AWAITING_PILGRIMS", rePrompt: true }
-    return { nextStep: "AWAITING_HOTEL_TIER", pilgrims }
+    if (!pilgrims) {
+      if (prevInvalid >= MAX_CONSECUTIVE_INTAKE_REPROMPTS) {
+        return {
+          nextStep: "IDLE",
+          cancelled: true,
+          handoffToHuman: true,
+          nextInvalidCount: 0,
+        }
+      }
+      return {
+        nextStep: "AWAITING_PILGRIMS",
+        rePrompt: true,
+        nextInvalidCount: prevInvalid + 1,
+      }
+    }
+    return { nextStep: "AWAITING_HOTEL_TIER", pilgrims, nextInvalidCount: 0 }
   }
 
   if (currentStep === "AWAITING_HOTEL_TIER") {
     const hotelTier = resolveHotelSelection(rawText, input.buttonId)
-    if (!hotelTier) return { nextStep: "AWAITING_HOTEL_TIER", rePrompt: true }
-    return { nextStep: "COMPLETED", hotelTier }
+    if (!hotelTier) {
+      if (prevInvalid >= MAX_CONSECUTIVE_INTAKE_REPROMPTS) {
+        return {
+          nextStep: "IDLE",
+          cancelled: true,
+          handoffToHuman: true,
+          nextInvalidCount: 0,
+        }
+      }
+      return {
+        nextStep: "AWAITING_HOTEL_TIER",
+        rePrompt: true,
+        nextInvalidCount: prevInvalid + 1,
+      }
+    }
+    return { nextStep: "COMPLETED", hotelTier, nextInvalidCount: 0 }
   }
 
   return { nextStep: currentStep }
 }
 
+async function countRecentConsecutiveReprompts(
+  conversationId: string,
+  step: WhatsappIntakeStep,
+  sinceIso?: string
+): Promise<number> {
+  const sinceDate = sinceIso
+    ? new Date(sinceIso)
+    : new Date(Date.now() - 2 * 60 * 60 * 1000)
+  const validSince = Number.isNaN(sinceDate.getTime())
+    ? new Date(Date.now() - 2 * 60 * 60 * 1000)
+    : sinceDate
+
+  const recentAutoMsgs = await db
+    .select({
+      interactivePayload: whatsappMessages.interactivePayload,
+    })
+    .from(whatsappMessages)
+    .where(
+      and(
+        eq(whatsappMessages.conversationId, conversationId),
+        eq(whatsappMessages.direction, "outbound"),
+        eq(whatsappMessages.isAutoReply, true),
+        gte(whatsappMessages.createdAt, validSince)
+      )
+    )
+    .orderBy(desc(whatsappMessages.createdAt))
+    .limit(6)
+
+  let count = 0
+  for (const row of recentAutoMsgs) {
+    const payload = row.interactivePayload as Record<string, unknown> | null
+    if (
+      payload?.autoReplyKind === "intake_reprompt" &&
+      payload?.flowStep === step
+    ) {
+      count++
+    } else {
+      break
+    }
+  }
+  return count
+}
+
 /**
- * Advances the Guided Umrah Intake Flow state machine for an inbound message.
+ * Advances the Guided Umrah Intake Flow state machine (`T-066`):
+ * - Supports `cancel` / `human` / `hajj` / `STOP` escape hatches out of any active step.
+ * - Caps consecutive invalid-input reprompts at `MAX_CONSECUTIVE_INTAKE_REPROMPTS` (`2`) before human handoff.
+ * - Uses `SELECT ... FOR UPDATE` inside `withTransaction()` at `AWAITING_HOTEL_TIER` completion so concurrent double-taps create at most ONE `ART-WA-...` dossier.
  */
 export async function advanceUmrahIntakeFlow(
   input: IntakeFlowInput
@@ -310,25 +559,57 @@ export async function advanceUmrahIntakeFlow(
     }
   }
 
-  let accessToken = "mock_offline_token"
-  try {
-    accessToken = decrypt(account.encryptedAccessToken)
-  } catch {
-    accessToken = account.encryptedAccessToken || "mock_offline_token"
-  }
-
+  const companyInfo = await loadVerifiedCompanyInfo()
   const currentState: WhatsappIntakeFlowState = conv.intakeFlowState || {
     step: "IDLE",
   }
 
-  // 1. Cancellation check
-  const lowerText = rawText.toLowerCase()
+  const escapeKind = detectIntakeEscapeHatch(rawText, buttonId)
+
+  // Handle STOP opt-out immediately if invoked directly
+  if (escapeKind === "stop_opt_out") {
+    await applyWhatsappStopOptOut({
+      accountId: account.id,
+      conversationId: conv.id,
+      contactPhone: input.contactPhone,
+      contactName: conv.contactName,
+      now,
+    })
+    return {
+      handled: true,
+      step: "IDLE",
+      cancelled: true,
+      reason: "opted_out",
+      sentMessageIds: [],
+      sentWamids: [],
+    }
+  }
+
+  let accessToken = ""
+  try {
+    accessToken = decrypt(account.encryptedAccessToken)
+  } catch {
+    await db
+      .update(whatsappAccounts)
+      .set({ qualityRating: "NEEDS_REAUTH", updatedAt: now })
+      .where(eq(whatsappAccounts.id, account.id))
+      .catch(() => null)
+    return {
+      handled: false,
+      step: currentState.step,
+      error: "token_decryption_failed",
+      sentMessageIds: [],
+      sentWamids: [],
+    }
+  }
+
+  // 1. Escape hatches (`cancel`, `human`, `hajj`) while in active intake
   if (
-    (lowerText === "cancel" || lowerText === "reset" || lowerText === "stop") &&
+    escapeKind &&
     currentState.step !== "IDLE" &&
     currentState.step !== "COMPLETED"
   ) {
-    const updatedState: WhatsappIntakeFlowState = {
+    const idleState: WhatsappIntakeFlowState = {
       step: "IDLE",
       updatedAt: now.toISOString(),
     }
@@ -336,128 +617,272 @@ export async function advanceUmrahIntakeFlow(
     await db
       .update(whatsappConversations)
       .set({
-        intakeFlowState: updatedState,
+        intakeFlowState: idleState,
         updatedAt: now,
       })
       .where(eq(whatsappConversations.id, conv.id))
 
-    const cancelNotice =
-      "Umrah intake has been cancelled. Feel free to type *Plan Umrah* whenever you wish to restart or ask any question directly!"
+    // For `"hajj"`, return `handled: false` after resetting intake to `IDLE` when called from `auto-responder.ts`?
+    // Even better: send clear Hajj / human consultant guidance directly so both standalone `advanceUmrahIntakeFlow` callers and `auto-responder.ts` get immediate accurate assistance!
+    const escapeReplyText =
+      escapeKind === "hajj"
+        ? [
+            `🕋 *${companyInfo.agencyName} — Hajj 2027 Maktab A, B & C Desk*`,
+            ``,
+            `We have exited the Umrah intake wizard and routed your thread to our *Hajj 2027 (1448 AH)* specialist desk (${companyInfo.hotlineDisplay}).`,
+            `• *Maktab A*: VIP Haram View & Kidana Towers near Jamarat`,
+            `• *Maktab B*: 5★/4★ Markazia + Executive Mina camps`,
+            `• *Maktab C*: Dedicated Aziziya building + Haram shuttle`,
+            ``,
+            `Our Askari 10 Lahore Cantt Hajj consultant will share availability & pricing with you shortly, Insha'Allah.`,
+          ].join("\n")
+        : escapeKind === "human"
+          ? [
+              `👤 *Connected to ${companyInfo.agencyName} Haramain Desk*`,
+              ``,
+              `Automated intake has been paused. A human Umrah/Hajj consultant at our Askari 10 Lahore Cantt office (${companyInfo.hotlineDisplay}) will assist you directly in this chat.`,
+            ].join("\n")
+          : `Umrah intake has been cancelled. Feel free to type *Plan Umrah* whenever you wish to restart, or message our consultant directly (${companyInfo.hotlineDisplay}).`
 
-    let cancelWamid: string
-    try {
-      const res = await sendTextMessage({
-        phoneNumberId: account.phoneNumberId,
-        accessToken,
-        to: input.contactPhone,
-        text: cancelNotice,
-        contextMessageId: input.inboundWamid,
-      })
-      cancelWamid = res.messageId
-    } catch {
-      cancelWamid = `wamid.sim_intake_cancel_${crypto.randomBytes(12).toString("hex")}`
-    }
-
-    const [insertedMsg] = await db
-      .insert(whatsappMessages)
-      .values({
-        conversationId: conv.id,
-        wamid: cancelWamid,
-        direction: "outbound",
-        status: "sent",
-        messageType: "text",
-        body: cancelNotice,
-        contextMessageId: input.inboundWamid,
-        isAutoReply: true,
-        sentAt: now,
-      })
-      .returning()
+    const escapeSend = await dispatchTrackedOutboundMessage({
+      accountId: account.id,
+      conversationId: conv.id,
+      idempotencyKey: `intake-escape:${input.inboundWamid}:${escapeKind}`,
+      messageType: "text",
+      body: escapeReplyText,
+      contextMessageId: input.inboundWamid,
+      isAutoReply: true,
+      interactivePayload: {
+        autoReplyKind: `intake_escape_${escapeKind}`,
+        flowStep: "IDLE",
+      },
+      sendFn: () =>
+        sendTextMessage({
+          phoneNumberId: account.phoneNumberId,
+          accessToken,
+          to: input.contactPhone,
+          text: escapeReplyText,
+          contextMessageId: input.inboundWamid,
+        }),
+    })
 
     return {
       handled: true,
       step: "IDLE",
       cancelled: true,
-      sentMessageIds: insertedMsg ? [insertedMsg.id] : [],
-      sentWamids: [cancelWamid],
+      handoffToHuman: escapeKind === "human" || escapeKind === "hajj",
+      reason: `intake_escaped:${escapeKind}`,
+      sentMessageIds: escapeSend.ok ? [escapeSend.message.id] : [],
+      sentWamids: escapeSend.ok ? [escapeSend.wamid] : [],
     }
   }
 
-  // Mark inbound as read
+  // Guard post-COMPLETED conversations from accidentally re-entering intake on "JazakAllah" unless explicitly triggered
+  if (
+    currentState.step === "COMPLETED" &&
+    !isIntakeFlowTrigger(rawText, buttonId)
+  ) {
+    return {
+      handled: false,
+      step: "COMPLETED",
+      sentMessageIds: [],
+      sentWamids: [],
+    }
+  }
+
+  if (
+    currentState.step === "COMPLETED" &&
+    currentState.updatedAt &&
+    now.getTime() - new Date(currentState.updatedAt).getTime() <
+      COMPLETED_INTAKE_COOLDOWN_MS &&
+    !buttonId
+  ) {
+    // Allow explicit restart only if user explicitly sends a trigger phrase after completion;
+    // if within 5s duplicate webhook, skip.
+    if (now.getTime() - new Date(currentState.updatedAt).getTime() < 5_000) {
+      return {
+        handled: false,
+        step: "COMPLETED",
+        sentMessageIds: [],
+        sentWamids: [],
+      }
+    }
+  }
+
   if (input.inboundWamid) {
-    try {
-      await markWhatsAppMessageAsRead({
-        phoneNumberId: account.phoneNumberId,
-        accessToken,
-        messageId: input.inboundWamid,
+    await markWhatsAppMessageAsRead({
+      phoneNumberId: account.phoneNumberId,
+      accessToken,
+      messageId: input.inboundWamid,
+    }).catch(() => null)
+  }
+
+  // Helper to handle invalid selection with `MAX_CONSECUTIVE_INTAKE_REPROMPTS = 2` cap
+  const handleInvalidStepInput = async (
+    step: WhatsappIntakeStep,
+    repromptBody: string,
+    buttons: Array<{ id: string; title: string }>
+  ): Promise<IntakeFlowResult> => {
+    const priorReprompts = await countRecentConsecutiveReprompts(
+      conv.id,
+      step,
+      currentState.updatedAt
+    )
+
+    if (priorReprompts >= MAX_CONSECUTIVE_INTAKE_REPROMPTS) {
+      const resetState: WhatsappIntakeFlowState = {
+        step: "IDLE",
+        updatedAt: now.toISOString(),
+      }
+      await db
+        .update(whatsappConversations)
+        .set({
+          intakeFlowState: resetState,
+          updatedAt: now,
+        })
+        .where(eq(whatsappConversations.id, conv.id))
+
+      const handoffText = [
+        `Thank you for your message! I have paused the automated wizard so a senior Haramain consultant at *${companyInfo.agencyName}* (${companyInfo.hotlineDisplay}) can answer your question personally.`,
+      ].join("\n")
+
+      const handoffSend = await dispatchTrackedOutboundMessage({
+        accountId: account.id,
+        conversationId: conv.id,
+        idempotencyKey: `intake-handoff:${input.inboundWamid}:${step}`,
+        messageType: "text",
+        body: handoffText,
+        contextMessageId: input.inboundWamid,
+        isAutoReply: true,
+        interactivePayload: {
+          autoReplyKind: "intake_max_reprompt_handoff",
+          flowStep: "IDLE",
+        },
+        sendFn: () =>
+          sendTextMessage({
+            phoneNumberId: account.phoneNumberId,
+            accessToken,
+            to: input.contactPhone,
+            text: handoffText,
+            contextMessageId: input.inboundWamid,
+          }),
       })
-    } catch {
-      // ignore
+
+      return {
+        handled: true,
+        step: "IDLE",
+        cancelled: true,
+        handoffToHuman: true,
+        reason: "max_reprompts_exceeded_human_handoff",
+        sentMessageIds: handoffSend.ok ? [handoffSend.message.id] : [],
+        sentWamids: handoffSend.ok ? [handoffSend.wamid] : [],
+      }
+    }
+
+    const repromptSend = await dispatchTrackedOutboundMessage({
+      accountId: account.id,
+      conversationId: conv.id,
+      idempotencyKey: `intake-reprompt:${input.inboundWamid}:${step}:${priorReprompts + 1}`,
+      messageType: "interactive",
+      body: repromptBody,
+      contextMessageId: input.inboundWamid,
+      isAutoReply: true,
+      interactivePayload: {
+        autoReplyKind: "intake_reprompt",
+        flowStep: step,
+        repromptAttempt: priorReprompts + 1,
+        buttons,
+      },
+      sendFn: () =>
+        sendInteractiveButtonsMessage({
+          phoneNumberId: account.phoneNumberId,
+          accessToken,
+          to: input.contactPhone,
+          bodyText: repromptBody,
+          footerText: "Type 'Human' or 'Cancel' anytime",
+          buttons,
+          contextMessageId: input.inboundWamid,
+        }),
+    })
+
+    return {
+      handled: true,
+      step,
+      reason: `reprompt_${priorReprompts + 1}`,
+      sentMessageIds: repromptSend.ok ? [repromptSend.message.id] : [],
+      sentWamids: repromptSend.ok ? [repromptSend.wamid] : [],
     }
   }
 
-  const sentMessageIds: string[] = []
-  const sentWamids: string[] = []
-
-  // 2. Start flow if IDLE or triggered
+  // 2. Start flow if IDLE or explicitly triggered
   if (
     currentState.step === "IDLE" ||
     currentState.step === "COMPLETED" ||
     isIntakeFlowTrigger(rawText, buttonId)
   ) {
-    // Send Step 1: Awaiting Month
-    const headerText = "Al Ramlah Travels • Umrah Planning (1/3)"
+    if (
+      currentState.step === "IDLE" &&
+      !isIntakeFlowTrigger(rawText, buttonId)
+    ) {
+      return {
+        handled: false,
+        step: "IDLE",
+        sentMessageIds: [],
+        sentWamids: [],
+      }
+    }
+
+    const headerText = `${DEFAULT_COMPANY_INFO.agencyName} • Umrah (1/3)`.slice(
+      0,
+      60
+    )
     const bodyText =
-      "Assalam-o-Alaikum! Let's tailor your sacred journey to the Haramain. Which travel season or month do you plan to perform Umrah?"
-    const footerText = "Al Ramlah Travels • Askari 10 Lahore"
+      "Assalam-o-Alaikum! Let's tailor your sacred journey to the Haramain. Which travel season or month do you plan to perform Umrah? (Reply *Human* or *Cancel* anytime)."
+    const footerText = `${companyInfo.agencyName} • Askari 10 Lahore`
     const buttons = [
       { id: "intake_m_novdec", title: "Nov - Dec 2026" },
       { id: "intake_m_ramadan", title: "Ramadan 2027" },
       { id: "intake_m_shawwal", title: "Shawwal / Spring" },
     ]
 
-    let wamid: string
-    try {
-      const res = await sendInteractiveButtonsMessage({
-        phoneNumberId: account.phoneNumberId,
-        accessToken,
-        to: input.contactPhone,
+    const step1Send = await dispatchTrackedOutboundMessage({
+      accountId: account.id,
+      conversationId: conv.id,
+      idempotencyKey: `intake-step1:${input.inboundWamid}`,
+      messageType: "interactive",
+      body: bodyText,
+      contextMessageId: input.inboundWamid,
+      isAutoReply: true,
+      interactivePayload: {
+        type: "button",
+        autoReplyKind: "intake_step",
+        flowStep: "AWAITING_MONTH",
         headerText,
         bodyText,
         footerText,
         buttons,
-        contextMessageId: input.inboundWamid,
-      })
-      wamid = res.messageId
-    } catch {
-      wamid = `wamid.sim_intake_m_${crypto.randomBytes(12).toString("hex")}`
-    }
-
-    const [inserted] = await db
-      .insert(whatsappMessages)
-      .values({
-        conversationId: conv.id,
-        wamid,
-        direction: "outbound",
-        status: "sent",
-        messageType: "interactive",
-        body: bodyText,
-        contextMessageId: input.inboundWamid,
-        isAutoReply: true,
-        interactivePayload: {
-          type: "button",
-          flowStep: "AWAITING_MONTH",
+      },
+      sendFn: () =>
+        sendInteractiveButtonsMessage({
+          phoneNumberId: account.phoneNumberId,
+          accessToken,
+          to: input.contactPhone,
           headerText,
           bodyText,
           footerText,
           buttons,
-        },
-        sentAt: now,
-      })
-      .returning()
+          contextMessageId: input.inboundWamid,
+        }),
+    })
 
-    if (inserted) {
-      sentMessageIds.push(inserted.id)
-      sentWamids.push(wamid)
+    if (!step1Send.ok) {
+      return {
+        handled: false,
+        step: "IDLE",
+        error: step1Send.error,
+        sentMessageIds: [],
+        sentWamids: [],
+      }
     }
 
     const nextState: WhatsappIntakeFlowState = {
@@ -479,8 +904,8 @@ export async function advanceUmrahIntakeFlow(
     return {
       handled: true,
       step: "AWAITING_MONTH",
-      sentMessageIds,
-      sentWamids,
+      sentMessageIds: [step1Send.message.id],
+      sentWamids: [step1Send.wamid],
     }
   }
 
@@ -488,92 +913,68 @@ export async function advanceUmrahIntakeFlow(
   if (currentState.step === "AWAITING_MONTH") {
     const selectedMonth = resolveMonthSelection(rawText, buttonId)
     if (!selectedMonth) {
-      // Re-prompt if not recognized
-      const bodyText =
-        "Please select one of the upcoming Umrah travel seasons below to continue your custom quote:"
-      const buttons = [
-        { id: "intake_m_novdec", title: "Nov - Dec 2026" },
-        { id: "intake_m_ramadan", title: "Ramadan 2027" },
-        { id: "intake_m_shawwal", title: "Shawwal / Spring" },
-      ]
-
-      let wamid: string
-      try {
-        const res = await sendInteractiveButtonsMessage({
-          phoneNumberId: account.phoneNumberId,
-          accessToken,
-          to: input.contactPhone,
-          bodyText,
-          buttons,
-          contextMessageId: input.inboundWamid,
-        })
-        wamid = res.messageId
-      } catch {
-        wamid = `wamid.sim_intake_m_rep_${crypto.randomBytes(12).toString("hex")}`
-      }
-
-      return {
-        handled: true,
-        step: "AWAITING_MONTH",
-        sentMessageIds: [],
-        sentWamids: [wamid],
-      }
+      return handleInvalidStepInput(
+        "AWAITING_MONTH",
+        "Please tap one of the upcoming Umrah travel seasons below (or reply with a month like *January* / *Ramadan*, or type *Human* for a consultant):",
+        [
+          { id: "intake_m_novdec", title: "Nov - Dec 2026" },
+          { id: "intake_m_ramadan", title: "Ramadan 2027" },
+          { id: "intake_m_shawwal", title: "Shawwal / Spring" },
+        ]
+      )
     }
 
-    // Advance to AWAITING_PILGRIMS
-    const headerText = "Al Ramlah Travels • Umrah Planning (2/3)"
+    const headerText = `${DEFAULT_COMPANY_INFO.agencyName} • Umrah (2/3)`.slice(
+      0,
+      60
+    )
     const bodyText =
       "Masha'Allah. How many pilgrims will be traveling in your party? (Children and infants will be verified during visa issuance)."
-    const footerText = "Al Ramlah Travels • Askari 10 Lahore"
+    const footerText = `${companyInfo.agencyName} • Askari 10 Lahore`
     const buttons = [
-      { id: "intake_p_couple", title: "1-2 Adults (Couple)" },
+      { id: "intake_p_couple", title: "2 Adults (Couple)" },
       { id: "intake_p_family", title: "Family 3-5 Persons" },
       { id: "intake_p_group", title: "Group 6+ Persons" },
     ]
 
-    let wamid: string
-    try {
-      const res = await sendInteractiveButtonsMessage({
-        phoneNumberId: account.phoneNumberId,
-        accessToken,
-        to: input.contactPhone,
+    const step2Send = await dispatchTrackedOutboundMessage({
+      accountId: account.id,
+      conversationId: conv.id,
+      idempotencyKey: `intake-step2:${input.inboundWamid}`,
+      messageType: "interactive",
+      body: bodyText,
+      contextMessageId: input.inboundWamid,
+      isAutoReply: true,
+      interactivePayload: {
+        type: "button",
+        autoReplyKind: "intake_step",
+        flowStep: "AWAITING_PILGRIMS",
         headerText,
         bodyText,
         footerText,
         buttons,
-        contextMessageId: input.inboundWamid,
-      })
-      wamid = res.messageId
-    } catch {
-      wamid = `wamid.sim_intake_p_${crypto.randomBytes(12).toString("hex")}`
-    }
-
-    const [inserted] = await db
-      .insert(whatsappMessages)
-      .values({
-        conversationId: conv.id,
-        wamid,
-        direction: "outbound",
-        status: "sent",
-        messageType: "interactive",
-        body: bodyText,
-        contextMessageId: input.inboundWamid,
-        isAutoReply: true,
-        interactivePayload: {
-          type: "button",
-          flowStep: "AWAITING_PILGRIMS",
+      },
+      sendFn: () =>
+        sendInteractiveButtonsMessage({
+          phoneNumberId: account.phoneNumberId,
+          accessToken,
+          to: input.contactPhone,
           headerText,
           bodyText,
           footerText,
           buttons,
-        },
-        sentAt: now,
-      })
-      .returning()
+          contextMessageId: input.inboundWamid,
+        }),
+    })
 
-    if (inserted) {
-      sentMessageIds.push(inserted.id)
-      sentWamids.push(wamid)
+    if (!step2Send.ok) {
+      return {
+        handled: false,
+        step: "AWAITING_MONTH",
+        error: step2Send.error,
+        sentMessageIds: [],
+        sentWamids: [],
+      }
     }
 
     const nextState: WhatsappIntakeFlowState = {
@@ -596,8 +997,8 @@ export async function advanceUmrahIntakeFlow(
     return {
       handled: true,
       step: "AWAITING_PILGRIMS",
-      sentMessageIds,
-      sentWamids,
+      sentMessageIds: [step2Send.message.id],
+      sentWamids: [step2Send.wamid],
     }
   }
 
@@ -605,91 +1006,68 @@ export async function advanceUmrahIntakeFlow(
   if (currentState.step === "AWAITING_PILGRIMS") {
     const selectedPilgrims = resolvePilgrimSelection(rawText, buttonId)
     if (!selectedPilgrims) {
-      const bodyText =
-        "Please select your party size to proceed with your Umrah quote:"
-      const buttons = [
-        { id: "intake_p_couple", title: "1-2 Adults (Couple)" },
-        { id: "intake_p_family", title: "Family 3-5 Persons" },
-        { id: "intake_p_group", title: "Group 6+ Persons" },
-      ]
-
-      let wamid: string
-      try {
-        const res = await sendInteractiveButtonsMessage({
-          phoneNumberId: account.phoneNumberId,
-          accessToken,
-          to: input.contactPhone,
-          bodyText,
-          buttons,
-          contextMessageId: input.inboundWamid,
-        })
-        wamid = res.messageId
-      } catch {
-        wamid = `wamid.sim_intake_p_rep_${crypto.randomBytes(12).toString("hex")}`
-      }
-
-      return {
-        handled: true,
-        step: "AWAITING_PILGRIMS",
-        sentMessageIds: [],
-        sentWamids: [wamid],
-      }
+      return handleInvalidStepInput(
+        "AWAITING_PILGRIMS",
+        "Please select your party size below (or type a number such as *4 adults*, or *Human* to speak with our consultant):",
+        [
+          { id: "intake_p_couple", title: "2 Adults (Couple)" },
+          { id: "intake_p_family", title: "Family 3-5 Persons" },
+          { id: "intake_p_group", title: "Group 6+ Persons" },
+        ]
+      )
     }
 
-    // Advance to AWAITING_HOTEL_TIER
-    const headerText = "Al Ramlah Travels • Umrah Planning (3/3)"
+    const headerText = `${DEFAULT_COMPANY_INFO.agencyName} • Umrah (3/3)`.slice(
+      0,
+      60
+    )
     const bodyText =
       "What accommodation standard do you prefer for Makkah & Madinah?"
-    const footerText = "Al Ramlah Travels • Askari 10 Lahore"
+    const footerText = `${companyInfo.agencyName} • Askari 10 Lahore`
     const buttons = [
       { id: "intake_h_5star", title: "5★ Clock Tower" },
       { id: "intake_h_4star", title: "4★ Walking Distance" },
       { id: "intake_h_economy", title: "Economy Shuttle" },
     ]
 
-    let wamid: string
-    try {
-      const res = await sendInteractiveButtonsMessage({
-        phoneNumberId: account.phoneNumberId,
-        accessToken,
-        to: input.contactPhone,
+    const step3Send = await dispatchTrackedOutboundMessage({
+      accountId: account.id,
+      conversationId: conv.id,
+      idempotencyKey: `intake-step3:${input.inboundWamid}`,
+      messageType: "interactive",
+      body: bodyText,
+      contextMessageId: input.inboundWamid,
+      isAutoReply: true,
+      interactivePayload: {
+        type: "button",
+        autoReplyKind: "intake_step",
+        flowStep: "AWAITING_HOTEL_TIER",
         headerText,
         bodyText,
         footerText,
         buttons,
-        contextMessageId: input.inboundWamid,
-      })
-      wamid = res.messageId
-    } catch {
-      wamid = `wamid.sim_intake_h_${crypto.randomBytes(12).toString("hex")}`
-    }
-
-    const [inserted] = await db
-      .insert(whatsappMessages)
-      .values({
-        conversationId: conv.id,
-        wamid,
-        direction: "outbound",
-        status: "sent",
-        messageType: "interactive",
-        body: bodyText,
-        contextMessageId: input.inboundWamid,
-        isAutoReply: true,
-        interactivePayload: {
-          type: "button",
-          flowStep: "AWAITING_HOTEL_TIER",
+      },
+      sendFn: () =>
+        sendInteractiveButtonsMessage({
+          phoneNumberId: account.phoneNumberId,
+          accessToken,
+          to: input.contactPhone,
           headerText,
           bodyText,
           footerText,
           buttons,
-        },
-        sentAt: now,
-      })
-      .returning()
+          contextMessageId: input.inboundWamid,
+        }),
+    })
 
-    if (inserted) {
-      sentMessageIds.push(inserted.id)
-      sentWamids.push(wamid)
+    if (!step3Send.ok) {
+      return {
+        handled: false,
+        step: "AWAITING_PILGRIMS",
+        error: step3Send.error,
+        sentMessageIds: [],
+        sentWamids: [],
+      }
     }
 
     const nextState: WhatsappIntakeFlowState = {
@@ -712,172 +1090,196 @@ export async function advanceUmrahIntakeFlow(
     return {
       handled: true,
       step: "AWAITING_HOTEL_TIER",
-      sentMessageIds,
-      sentWamids,
+      sentMessageIds: [step3Send.message.id],
+      sentWamids: [step3Send.wamid],
     }
   }
 
-  // 5. Step 3 -> COMPLETED (Hotel Tier -> Create Application Lead)
+  // 5. Step 3 -> COMPLETED with Row-Level Lock (`SELECT ... FOR UPDATE`) (`T-066`)
   if (currentState.step === "AWAITING_HOTEL_TIER") {
     const selectedHotelTier = resolveHotelSelection(rawText, buttonId)
     if (!selectedHotelTier) {
-      const bodyText =
-        "Please select your preferred hotel accommodation category to finalize your inquiry:"
-      const buttons = [
-        { id: "intake_h_5star", title: "5★ Clock Tower" },
-        { id: "intake_h_4star", title: "4★ Walking Distance" },
-        { id: "intake_h_economy", title: "Economy Shuttle" },
-      ]
+      return handleInvalidStepInput(
+        "AWAITING_HOTEL_TIER",
+        "Please choose your preferred Makkah & Madinah hotel category below (or type *Human* for personal assistance):",
+        [
+          { id: "intake_h_5star", title: "5★ Clock Tower" },
+          { id: "intake_h_4star", title: "4★ Walking Distance" },
+          { id: "intake_h_economy", title: "Economy Shuttle" },
+        ]
+      )
+    }
 
-      let wamid: string
-      try {
-        const res = await sendInteractiveButtonsMessage({
-          phoneNumberId: account.phoneNumberId,
-          accessToken,
-          to: input.contactPhone,
-          bodyText,
-          buttons,
-          contextMessageId: input.inboundWamid,
-        })
-        wamid = res.messageId
-      } catch {
-        wamid = `wamid.sim_intake_h_rep_${crypto.randomBytes(12).toString("hex")}`
+    const dossierOutcome = await withTransaction(async (tx) => {
+      const [lockedConv] = await tx
+        .select()
+        .from(whatsappConversations)
+        .where(eq(whatsappConversations.id, conv.id))
+        .for("update")
+        .limit(1)
+
+      if (!lockedConv) {
+        throw new Error("Conversation disappeared during intake completion")
       }
+
+      const lockedState: WhatsappIntakeFlowState =
+        lockedConv.intakeFlowState || { step: "IDLE" }
+
+      // Concurrent double-tap protection: if another worker already transitioned out of `AWAITING_HOTEL_TIER`, reuse existing dossier!
+      if (lockedState.step !== "AWAITING_HOTEL_TIER") {
+        if (lockedState.applicationId) {
+          const [existingApp] = await tx
+            .select({
+              id: applications.id,
+              referenceNumber: applications.referenceNumber,
+            })
+            .from(applications)
+            .where(eq(applications.id, lockedState.applicationId))
+            .limit(1)
+
+          return {
+            alreadyCompleted: true,
+            applicationId: existingApp?.id ?? lockedState.applicationId,
+            referenceNumber: existingApp?.referenceNumber ?? "",
+            month: lockedState.month || "Upcoming",
+            pilgrimCount: lockedState.pilgrimCount || "2 Adults (Couple)",
+          }
+        }
+        return {
+          alreadyCompleted: true,
+          applicationId: lockedConv.applicationId ?? undefined,
+          referenceNumber: "",
+          month: lockedState.month || "Upcoming",
+          pilgrimCount: lockedState.pilgrimCount || "2 Adults (Couple)",
+        }
+      }
+
+      const referenceNumber = generateReferenceNumber()
+      const pilgrimStr = lockedState.pilgrimCount || "2 Adults (Couple)"
+      const adults = parseAdultsFromStoredLabel(pilgrimStr)
+
+      const [newApp] = await tx
+        .insert(applications)
+        .values({
+          referenceNumber,
+          source: "custom_builder",
+          status: "pending_quote",
+          presetMode: "complete_umrah",
+          customerName:
+            lockedConv.contactName ||
+            lockedConv.contactPhone ||
+            "WhatsApp Pilgrim",
+          customerPhone: lockedConv.contactPhone,
+          customerWhatsapp: lockedConv.contactPhone,
+          customerCity: "Lahore",
+          adults: Math.max(1, adults),
+          children: 0,
+          infants: 0,
+          totalPassportCount: Math.max(1, adults),
+          bedAndSeatCount: Math.max(1, adults),
+          includeVisa: true,
+          includeFlights: true,
+          includeHotels: true,
+          includeTransport: true,
+          includeZiyarat: false,
+          sourcePostCode: "WA-INTAKE",
+          specialRequests: `[WhatsApp Guided Intake]\nSeason: ${lockedState.month || "Upcoming"}\nParty Size: ${pilgrimStr}\nHotel Tier: ${selectedHotelTier}`,
+        })
+        .returning({ id: applications.id })
+
+      const finalState: WhatsappIntakeFlowState = {
+        ...lockedState,
+        step: "COMPLETED",
+        hotelTier: selectedHotelTier,
+        applicationId: newApp?.id,
+        updatedAt: now.toISOString(),
+      }
+
+      await tx
+        .update(whatsappConversations)
+        .set({
+          applicationId: newApp?.id || lockedConv.applicationId,
+          intakeFlowState: finalState,
+          lastAutoRepliedAt: now,
+          lastMessageAt: now,
+          updatedAt: now,
+        })
+        .where(eq(whatsappConversations.id, lockedConv.id))
 
       return {
+        alreadyCompleted: false,
+        applicationId: newApp?.id,
+        referenceNumber,
+        month: lockedState.month || "Upcoming",
+        pilgrimCount: pilgrimStr,
+      }
+    })
+
+    if (dossierOutcome.alreadyCompleted) {
+      return {
         handled: true,
-        step: "AWAITING_HOTEL_TIER",
+        step: "COMPLETED",
+        reason: "deduplicated_concurrent_completion",
+        ...(dossierOutcome.referenceNumber
+          ? { referenceNumber: dossierOutcome.referenceNumber }
+          : {}),
+        ...(dossierOutcome.applicationId
+          ? { applicationId: dossierOutcome.applicationId }
+          : {}),
         sentMessageIds: [],
-        sentWamids: [wamid],
+        sentWamids: [],
       }
     }
 
-    const referenceNumber = generateReferenceNumber()
-    const pilgrimStr = currentState.pilgrimCount || "1-2 Adults (Couple)"
-    const numPilgrimsMatch = pilgrimStr.match(/\d+/)
-    const adults = numPilgrimsMatch ? parseInt(numPilgrimsMatch[0], 10) : 2
-
-    // Insert tracked lead into `applications`
-    const [newApp] = await db
-      .insert(applications)
-      .values({
-        referenceNumber,
-        source: "custom_builder",
-        status: "pending_quote",
-        presetMode: "complete_umrah",
-        customerName: conv.contactName || conv.contactPhone || "WhatsApp Pilgrim",
-        customerPhone: conv.contactPhone,
-        customerWhatsapp: conv.contactPhone,
-        customerCity: "Lahore",
-        adults: Math.max(1, adults),
-        children: 0,
-        infants: 0,
-        totalPassportCount: Math.max(1, adults),
-        bedAndSeatCount: Math.max(1, adults),
-        includeVisa: true,
-        includeFlights: true,
-        includeHotels: true,
-        includeTransport: true,
-        includeZiyarat: false,
-        sourcePostCode: "WA-INTAKE",
-        specialRequests: `[WhatsApp Guided Intake]\nSeason: ${currentState.month || "Upcoming"}\nParty Size: ${currentState.pilgrimCount || "Couple"}\nHotel Tier: ${selectedHotelTier}`,
-      })
-      .returning()
-
-    const finalState: WhatsappIntakeFlowState = {
-      ...currentState,
-      step: "COMPLETED",
-      hotelTier: selectedHotelTier,
-      applicationId: newApp?.id,
-      updatedAt: now.toISOString(),
-    }
-
-    await db
-      .update(whatsappConversations)
-      .set({
-        applicationId: newApp?.id || conv.applicationId,
-        intakeFlowState: finalState,
-        lastAutoRepliedAt: now,
-        lastMessageAt: now,
-        updatedAt: now,
-      })
-      .where(eq(whatsappConversations.id, conv.id))
-
-    // Send confirmation message
-    const confirmationLines = [
+    const confirmationText = [
       `*Alhamdulillah! Your customized Umrah inquiry dossier has been registered.* 🕋✨`,
       ``,
-      `📌 *Reference*: \`${referenceNumber}\``,
-      `🗓 *Season*: ${currentState.month || "Upcoming"}`,
-      `👥 *Party*: ${currentState.pilgrimCount || "Couple"}`,
+      `📌 *Reference*: \`${dossierOutcome.referenceNumber}\``,
+      `🗓 *Season*: ${dossierOutcome.month}`,
+      `👥 *Party*: ${dossierOutcome.pilgrimCount}`,
       `🏨 *Category*: ${selectedHotelTier}`,
       ``,
-      `A dedicated Al Ramlah Haramain consultant from our Askari 10 Lahore desk has been assigned to prepare your itemized proposal and will follow up shortly.`,
+      `A dedicated ${companyInfo.agencyName} Haramain consultant at our Askari 10 Lahore Cantt desk (${companyInfo.hotlineDisplay}) has been assigned to prepare your itemized proposal (“Live Rate — Confirmed upon submission”) and will follow up shortly.`,
       ``,
-      `_JazakAllah Khair for placing your trust in Al Ramlah Travels._`,
-    ]
-    const confirmationText = confirmationLines.join("\n")
+      `_JazakAllah Khair for placing your trust in ${companyInfo.agencyName}._`,
+    ].join("\n")
 
-    let confirmWamid: string
-    try {
-      const res = await sendInteractiveButtonsMessage({
-        phoneNumberId: account.phoneNumberId,
-        accessToken,
-        to: input.contactPhone,
-        headerText: `Dossier Created • ${referenceNumber}`.slice(0, 60),
-        bodyText: confirmationText,
-        footerText: "Al Ramlah Travels • Askari 10 Lahore",
-        buttons: [{ id: "rule_loc_call", title: "Talk to Consultant" }],
-        contextMessageId: input.inboundWamid,
-      })
-      confirmWamid = res.messageId
-    } catch {
-      try {
-        const textRes = await sendTextMessage({
+    const doneSend = await dispatchTrackedOutboundMessage({
+      accountId: account.id,
+      conversationId: conv.id,
+      idempotencyKey: `intake-done:${dossierOutcome.applicationId || dossierOutcome.referenceNumber}`,
+      messageType: "interactive",
+      body: confirmationText,
+      contextMessageId: input.inboundWamid,
+      isAutoReply: true,
+      interactivePayload: {
+        flowStep: "COMPLETED",
+        referenceNumber: dossierOutcome.referenceNumber,
+        applicationId: dossierOutcome.applicationId,
+      },
+      sendFn: () =>
+        sendInteractiveButtonsMessage({
           phoneNumberId: account.phoneNumberId,
           accessToken,
           to: input.contactPhone,
-          text: confirmationText,
+          headerText: `Dossier Created • ${dossierOutcome.referenceNumber}`.slice(
+            0,
+            60
+          ),
+          bodyText: confirmationText,
+          footerText: `${companyInfo.agencyName} • Askari 10 Lahore`,
+          buttons: [{ id: "rule_loc_call", title: "Talk to Consultant" }],
           contextMessageId: input.inboundWamid,
-        })
-        confirmWamid = textRes.messageId
-      } catch {
-        confirmWamid = `wamid.sim_intake_done_${crypto.randomBytes(12).toString("hex")}`
-      }
-    }
-
-    const [insertedDone] = await db
-      .insert(whatsappMessages)
-      .values({
-        conversationId: conv.id,
-        wamid: confirmWamid,
-        direction: "outbound",
-        status: "sent",
-        messageType: "interactive",
-        body: confirmationText,
-        contextMessageId: input.inboundWamid,
-        isAutoReply: true,
-        interactivePayload: {
-          flowStep: "COMPLETED",
-          referenceNumber,
-          applicationId: newApp?.id,
-        },
-        sentAt: now,
-      })
-      .returning()
-
-    if (insertedDone) {
-      sentMessageIds.push(insertedDone.id)
-      sentWamids.push(confirmWamid)
-    }
+        }),
+    })
 
     return {
       handled: true,
       step: "COMPLETED",
-      referenceNumber,
-      applicationId: newApp?.id,
-      sentMessageIds,
-      sentWamids,
+      referenceNumber: dossierOutcome.referenceNumber,
+      applicationId: dossierOutcome.applicationId,
+      sentMessageIds: doneSend.ok ? [doneSend.message.id] : [],
+      sentWamids: doneSend.ok ? [doneSend.wamid] : [],
     }
   }
 
@@ -889,12 +1291,5 @@ export async function advanceUmrahIntakeFlow(
   }
 }
 
-/**
- * Spec alias for advanceUmrahIntakeFlow.
- */
 export const runGuidedUmrahIntakeStep = advanceUmrahIntakeFlow
-
-/**
- * Spec alias for advanceUmrahIntakeFlow.
- */
 export const handleIntakeFlowInbound = advanceUmrahIntakeFlow

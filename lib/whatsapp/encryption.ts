@@ -1,37 +1,53 @@
 import crypto from "node:crypto"
-import { env } from "@/lib/env"
+import {
+  decryptVaultSecret,
+  encryptVaultSecret,
+  isVaultCiphertext,
+} from "@/lib/security/vault"
 
 /**
- * WhatsApp token authenticated encryption using AES-256-GCM.
+ * WhatsApp token authenticated encryption delegating to the shared
+ * Versioned Authenticated Token Vault (`lib/security/vault.ts` — `T-067` / `T-008`).
  *
- * Current Format:
- *   `<iv-hex>:<ciphertext-hex>:<authTag-hex>` (3 parts)
- *
- * Legacy Format (decrypt-only backwards compatibility):
- *   `<iv-hex>:<ciphertext-hex>` (2 parts, AES-256-CBC)
+ * - Primary write format: `v2:<kid>:<ivHex>:<tagHex>:<ctHex>` (HKDF-SHA256 + AES-256-GCM)
+ * - Keyring rotation: supports `ENCRYPTION_KEY` + `ENCRYPTION_KEY_PREVIOUS`
+ * - Legacy migration: decrypts legacy 3-part AES-256-GCM tokens (`iv:ct:tag` & `iv:tag:ct`)
+ *   while hard-rejecting unauthenticated 2-part AES-CBC ciphertexts.
  */
 
 export const GCM_IV_LENGTH = 12
 export const CBC_IV_LENGTH = 16
 export const AUTH_TAG_LENGTH = 16
 
+const MASKED_SECRET_PATTERNS: ReadonlyArray<RegExp> = [
+  /^[•*·]{4,}/u,
+  /[•]{3,}/u,
+  /\*{4,}/,
+  /^REDACTED$/i,
+  /^UNCHANGED$/i,
+  /^\[REDACTED\]$/i,
+]
+
 /**
- * Derives a 32-byte key for AES-256.
- * - In production: strictly enforces `ENCRYPTION_KEY`.
- * - In non-production: falls back to `SHA-256(BETTER_AUTH_SECRET)` for developer convenience.
+ * Derives a 32-byte key for callers inspecting key availability.
+ * Production strictly requires a 64-hex `ENCRYPTION_KEY`.
  */
 export function getDerivedEncryptionKey(): Buffer {
-  const rawKey = process.env.ENCRYPTION_KEY || env.ENCRYPTION_KEY
-  if (rawKey && rawKey.trim().length > 0) {
-    const trimmed = rawKey.trim()
-    if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
-      return Buffer.from(trimmed, "hex")
+  const isProd = process.env.NODE_ENV === "production"
+  const rawKey = process.env.ENCRYPTION_KEY?.trim()
+
+  if (rawKey) {
+    if (/^[0-9a-fA-F]{64}$/.test(rawKey)) {
+      return Buffer.from(rawKey, "hex")
     }
-    return crypto.createHash("sha256").update(trimmed, "utf8").digest()
+    if (isProd) {
+      throw new Error(
+        "ENCRYPTION_KEY must be a 64-character hexadecimal string (32 bytes) in production."
+      )
+    }
+    return crypto.createHash("sha256").update(rawKey, "utf8").digest()
   }
 
-  const isProd =
-    process.env.NODE_ENV === "production" || env.NODE_ENV === "production"
   if (isProd) {
     throw new Error(
       "ENCRYPTION_KEY is strictly required in production environment for Meta token security."
@@ -39,84 +55,79 @@ export function getDerivedEncryptionKey(): Buffer {
   }
 
   const fallbackSecret =
-    process.env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET
-  if (!fallbackSecret) {
-    throw new Error(
-      "Cannot derive encryption key: neither ENCRYPTION_KEY nor BETTER_AUTH_SECRET is configured."
-    )
-  }
-
+    process.env.BETTER_AUTH_SECRET?.trim() ||
+    "al-ramlah-travels-non-prod-vault-fallback-secret"
   return crypto.createHash("sha256").update(fallbackSecret, "utf8").digest()
 }
 
 /**
- * Encrypts a sensitive string (such as a Meta WABA access token) using AES-256-GCM.
- * Produces `<iv-hex>:<ciphertext-hex>:<authTag-hex>`.
+ * Detects whether a token string submitted from an admin settings form is a UI mask,
+ * placeholder, or an already-encrypted vault envelope that must NOT be re-encrypted.
  */
-export function encrypt(text: string): string {
-  if (!text) return ""
-  const iv = crypto.randomBytes(GCM_IV_LENGTH)
-  const key = getDerivedEncryptionKey()
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv)
-  let encrypted = cipher.update(text, "utf8", "hex")
-  encrypted += cipher.final("hex")
-  const authTag = cipher.getAuthTag()
-  return `${iv.toString("hex")}:${encrypted}:${authTag.toString("hex")}`
+export function isMaskedOrEncryptedToken(
+  value: string | null | undefined
+): boolean {
+  if (!value) return true
+  const trimmed = value.trim()
+  if (!trimmed) return true
+  if (isVaultCiphertext(trimmed)) return true
+  if (isLegacyThreePartGcmCiphertext(trimmed)) return true
+  return MASKED_SECRET_PATTERNS.some((pattern) => pattern.test(trimmed))
 }
 
-/**
- * Decrypts a token ciphertext produced by `encrypt` (or legacy CBC).
- * Throws an Error if tampered or invalid.
- */
-export function decrypt(encryptedText: string): string {
-  if (!encryptedText) return ""
-  const parts = encryptedText.split(":")
-
-  if (parts.length === 3) {
-    // AES-256-GCM
-    const [ivHex, ctHex, tagHex] = parts
-    const iv = Buffer.from(ivHex, "hex")
-    if (iv.length !== GCM_IV_LENGTH) {
-      throw new Error(`Encrypted token has invalid GCM IV length (${iv.length} bytes)`)
-    }
-    const authTag = Buffer.from(tagHex, "hex")
-    if (authTag.length !== AUTH_TAG_LENGTH) {
-      throw new Error(
-        `Encrypted token has invalid GCM auth tag length (${authTag.length} bytes)`
-      )
-    }
-
-    const key = getDerivedEncryptionKey()
-    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv)
-    decipher.setAuthTag(authTag)
-    let decrypted = decipher.update(ctHex, "hex", "utf8")
-    decrypted += decipher.final("utf8")
-    return decrypted
-  }
-
-  if (parts.length === 2) {
-    // Legacy AES-256-CBC
-    const [ivHex, ctHex] = parts
-    const iv = Buffer.from(ivHex, "hex")
-    if (iv.length !== CBC_IV_LENGTH) {
-      throw new Error(`Encrypted token has invalid CBC IV length (${iv.length} bytes)`)
-    }
-    const key = getDerivedEncryptionKey()
-    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv)
-    let decrypted = decipher.update(ctHex, "hex", "utf8")
-    decrypted += decipher.final("utf8")
-    return decrypted
-  }
-
-  throw new Error(
-    `Encrypted token has unrecognised format (expected 2 or 3 parts separated by colons, got ${parts.length})`
+function isLegacyThreePartGcmCiphertext(value: string): boolean {
+  const parts = value.split(":")
+  if (parts.length !== 3) return false
+  const [p0, p1, p2] = parts
+  if (!p0 || !p1 || !p2) return false
+  return (
+    /^[0-9a-fA-F]{24}$/.test(p0) &&
+    /^[0-9a-fA-F]+$/.test(p1) &&
+    /^[0-9a-fA-F]+$/.test(p2) &&
+    (p1.length === 32 || p2.length === 32)
   )
 }
 
 /**
- * Checks if ciphertext is stored in the legacy 2-part format.
+ * Produces a safe UI display mask for an access token without exposing secret material.
+ */
+export function maskAccessToken(token: string | null | undefined): string {
+  if (!token) return ""
+  const trimmed = token.trim()
+  if (trimmed.length <= 8) return "••••••••"
+  return `${trimmed.slice(0, 4)}••••••••${trimmed.slice(-4)}`
+}
+
+/**
+ * Encrypts a sensitive string (such as a Meta WABA access token) using the shared v2 AES-256-GCM vault.
+ */
+export function encrypt(text: string): string {
+  if (!text) return ""
+  const trimmed = text.trim()
+  if (!trimmed) return ""
+  if (MASKED_SECRET_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+    throw new Error(
+      "Refusing to encrypt a masked or redacted placeholder token."
+    )
+  }
+  return encryptVaultSecret(trimmed)
+}
+
+/**
+ * Decrypts a token ciphertext using the shared v2 vault (with legacy 3-part GCM read support).
+ * Throws an Error on authentication tag mismatch, unauthenticated 2-part CBC, or malformed input.
+ */
+export function decrypt(encryptedText: string): string {
+  if (!encryptedText) return ""
+  return decryptVaultSecret(encryptedText, { legacyFormat: "auto" })
+}
+
+/**
+ * Checks if ciphertext is stored in a pre-v2 legacy format (2-part CBC or 3-part un-keyed GCM).
  */
 export function isLegacyFormat(encryptedText: string): boolean {
   if (!encryptedText) return false
-  return encryptedText.split(":").length === 2
+  if (isVaultCiphertext(encryptedText)) return false
+  const partCount = encryptedText.split(":").length
+  return partCount === 2 || partCount === 3
 }

@@ -2,8 +2,10 @@
 
 import crypto from "node:crypto"
 import { revalidatePath } from "next/cache"
-import { and, desc, eq, ilike, or } from "drizzle-orm"
+import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm"
+import { z } from "zod"
 import { db } from "@/db"
+import { user as userTable } from "@/db/schema/auth"
 import {
   whatsappAccounts,
   whatsappConversations,
@@ -17,6 +19,7 @@ import {
 } from "@/db/schema/whatsapp-crm"
 import { applications, applicationQuotes } from "@/db/schema/applications"
 import { outreachContacts } from "@/db/schema/suppliers-and-marketing"
+import { recordAuditLog } from "@/lib/audit-log"
 import { requireAdmin, requireSuperAdmin } from "@/lib/auth-guard"
 import {
   upsertWhatsappAccountSchema,
@@ -44,18 +47,20 @@ import {
   retryFailedWhatsappBroadcastSchema,
   getWhatsappBroadcastDetailsSchema,
 } from "@/lib/validations/whatsapp-crm"
-import { DEFAULT_AL_RAMLAH_AUTO_REPLY_RULES } from "@/lib/whatsapp/auto-responder"
 import {
+  DEFAULT_AL_RAMLAH_AUTO_REPLY_RULES,
+  isSafeAutoReplyRegex,
+} from "@/lib/whatsapp/auto-responder"
+import {
+  buildBroadcastBatchConfirmationSummary,
   parseWhatsappBroadcastCsv,
   resolveRecipientTemplateParams,
 } from "@/lib/whatsapp/template-variables"
-import { encrypt, decrypt } from "@/lib/whatsapp/encryption"
 import {
-  isAnyLinkedDeviceConnected,
-  isLinkedDeviceConnected,
-  resolveLinkedDeviceSessionForChannel,
-  sendLinkedDeviceMessage,
-} from "@/lib/whatsapp/linked-device"
+  decrypt,
+  encrypt,
+  isMaskedOrEncryptedToken,
+} from "@/lib/whatsapp/encryption"
 import {
   sendTextMessage,
   sendImageMessage,
@@ -75,7 +80,18 @@ import {
   deleteMetaMessageTemplate,
   exchangeEmbeddedSignupCode,
   syncCoexistenceSmbAppData,
+  type MetaTemplateHeaderFormat,
 } from "@/lib/whatsapp/meta-api"
+import {
+  buildExactPhoneVariants,
+  dispatchTrackedOutboundMessage,
+  isWhatsappContactOptedOut,
+  isWithin24HourServiceWindow,
+  loadVerifiedCompanyInfo,
+  markWhatsappAccountNeedsReauthIfAuthError,
+  sanitizeAutoReplyBrandTruth,
+} from "@/lib/whatsapp/outbox"
+import { buildSendComponents } from "@/lib/whatsapp/template-send-builder"
 import { idempotencyKeys } from "@trigger.dev/sdk"
 import { dispatchMirrorWhatsAppMedia } from "@/trigger/mirror-whatsapp-media.task"
 import { generateApplicationLuxuryPdf } from "@/app/actions/quotes"
@@ -84,12 +100,96 @@ import {
   triggerByIdBackgroundOrInline,
 } from "@/trigger/dispatch"
 
+function safeRevalidatePaths(paths: string[]): void {
+  for (const p of paths) {
+    try {
+      revalidatePath(p)
+    } catch {
+      // Safe no-op outside Next.js static generation store (e.g. unit/integration tests)
+    }
+  }
+}
+
+function isWeakVerifyToken(token: string | null | undefined): boolean {
+  if (!token) return true
+  const trimmed = token.trim()
+  if (trimmed.length < 16) return true
+  const lower = trimmed.toLowerCase()
+  return (
+    lower.startsWith("linked_device") ||
+    lower === "art_wa_token_verified" ||
+    lower === "default" ||
+    lower === "verify_token" ||
+    lower === "changeme"
+  )
+}
+
+function ensureStrongWebhookVerifyToken(
+  candidate?: string | null,
+  existing?: string | null
+): string {
+  if (candidate && !isWeakVerifyToken(candidate)) {
+    return candidate.trim()
+  }
+  if (existing && !isWeakVerifyToken(existing)) {
+    return existing.trim()
+  }
+  return `art_wa_${crypto.randomBytes(24).toString("hex")}`
+}
+
+async function recomputeBroadcastAggregates(broadcastId: string): Promise<{
+  totalRecipients: number
+  sentCount: number
+  deliveredCount: number
+  readCount: number
+  failedCount: number
+  pendingCount: number
+}> {
+  const [agg] = await db
+    .select({
+      totalRecipients: sql<number>`count(*)::int`,
+      sentCount: sql<number>`count(*) filter (where ${whatsappBroadcastRecipients.status} in ('sent', 'delivered', 'read'))::int`,
+      deliveredCount: sql<number>`count(*) filter (where ${whatsappBroadcastRecipients.status} in ('delivered', 'read'))::int`,
+      readCount: sql<number>`count(*) filter (where ${whatsappBroadcastRecipients.status} = 'read')::int`,
+      failedCount: sql<number>`count(*) filter (where ${whatsappBroadcastRecipients.status} = 'failed')::int`,
+      pendingCount: sql<number>`count(*) filter (where ${whatsappBroadcastRecipients.status} = 'pending')::int`,
+    })
+    .from(whatsappBroadcastRecipients)
+    .where(eq(whatsappBroadcastRecipients.broadcastId, broadcastId))
+
+  return {
+    totalRecipients: agg?.totalRecipients ?? 0,
+    sentCount: agg?.sentCount ?? 0,
+    deliveredCount: agg?.deliveredCount ?? 0,
+    readCount: agg?.readCount ?? 0,
+    failedCount: agg?.failedCount ?? 0,
+    pendingCount: agg?.pendingCount ?? 0,
+  }
+}
+
+const createWhatsappTemplateExtendedSchema = createWhatsappTemplateSchema.extend(
+  {
+    headerType: z
+      .enum(["NONE", "TEXT", "IMAGE", "VIDEO", "DOCUMENT"])
+      .optional(),
+    headerExample: z.string().max(120).optional(),
+    headerHandle: z.string().max(2048).optional(),
+    headerMediaUrl: z.string().max(2048).optional(),
+    bodyExamples: z.array(z.string().max(256)).max(20).optional(),
+  }
+)
+
+const broadcastConfirmationOverlaySchema = z.object({
+  confirmedRecipientCount: z.number().int().nonnegative().optional(),
+  confirmPaidMarketingBroadcast: z.boolean().optional(),
+})
+
 // ==========================================
 // 1. Account Configuration & Template Sync
 // ==========================================
 
 export async function upsertWhatsappAccountAction(rawInput: unknown) {
-  await requireAdmin()
+  const session = await requireSuperAdmin()
   const validated = upsertWhatsappAccountSchema.parse(rawInput)
 
   let existingAccount = null
@@ -109,29 +209,50 @@ export async function upsertWhatsappAccountAction(rawInput: unknown) {
     existingAccount = found ?? null
   }
 
-  let plainAccessToken = validated.accessToken?.trim() || ""
-  if (!plainAccessToken && existingAccount?.encryptedAccessToken) {
-    try {
-      plainAccessToken = decrypt(existingAccount.encryptedAccessToken)
-    } catch {
-      plainAccessToken = existingAccount.encryptedAccessToken
-    }
+  const submittedToken = validated.accessToken?.trim() || ""
+  const shouldKeepExistingEncryptedToken =
+    isMaskedOrEncryptedToken(submittedToken) &&
+    Boolean(existingAccount?.encryptedAccessToken)
+
+  let plainAccessToken = ""
+  let encryptedAccessToken = ""
+
+  if (shouldKeepExistingEncryptedToken && existingAccount?.encryptedAccessToken) {
+    encryptedAccessToken = existingAccount.encryptedAccessToken
+    plainAccessToken = decrypt(existingAccount.encryptedAccessToken)
+  } else if (submittedToken && !isMaskedOrEncryptedToken(submittedToken)) {
+    plainAccessToken = submittedToken
+    encryptedAccessToken = encrypt(plainAccessToken)
+  } else if (existingAccount?.encryptedAccessToken) {
+    encryptedAccessToken = existingAccount.encryptedAccessToken
+    plainAccessToken = decrypt(existingAccount.encryptedAccessToken)
   }
 
-  if (!plainAccessToken) {
-    throw new Error("Meta System User Access Token is required")
+  if (!plainAccessToken || !encryptedAccessToken) {
+    throw new Error(
+      "A valid unmasked Meta System User Access Token is required."
+    )
   }
 
-  const encryptedAccessToken = encrypt(plainAccessToken)
+  const webhookVerifyToken = ensureStrongWebhookVerifyToken(
+    validated.webhookVerifyToken,
+    existingAccount?.webhookVerifyToken
+  )
 
   let verifiedName: string | null = existingAccount?.verifiedName ?? null
-  let qualityRating = existingAccount?.qualityRating || "GREEN"
+  let qualityRating =
+    existingAccount?.qualityRating === "NEEDS_REAUTH" && !shouldKeepExistingEncryptedToken
+      ? "GREEN"
+      : existingAccount?.qualityRating || "GREEN"
   let messagingLimit: string | null = existingAccount?.messagingLimit ?? null
   let isOnBizApp =
     validated.isOnBizApp ?? existingAccount?.isOnBizApp ?? false
   let platformType = existingAccount?.platformType || "CLOUD_API"
+  if (platformType === "LINKED_DEVICE") {
+    platformType = "CLOUD_API"
+  }
 
-  // Verify credentials live against Meta Graph API
+  // Verify credentials live against Meta Graph API when reachable
   try {
     const info = await verifyPhoneNumber({
       phoneNumberId: validated.phoneNumberId,
@@ -152,6 +273,9 @@ export async function upsertWhatsappAccountAction(rawInput: unknown) {
     })
     messagingLimit = health.whatsapp_business_manager_messaging_limit ?? null
   } catch (err) {
+    if (existingAccount?.id) {
+      await markWhatsappAccountNeedsReauthIfAuthError(existingAccount.id, err)
+    }
     console.warn(
       "[whatsapp-account] Could not verify with Meta API (saving configuration locally):",
       err instanceof Error ? err.message : String(err)
@@ -163,7 +287,6 @@ export async function upsertWhatsappAccountAction(rawInput: unknown) {
     existingAccount?.accountRole ||
     (isOnBizApp ? "COEXISTENCE_FOUNDER" : "DEDICATED_AGENT")
 
-  // Subscribe WABA to app webhooks; only call /register if NOT a Coexistence SMB number
   try {
     await subscribeWabaToApp({
       wabaId: validated.wabaId,
@@ -194,7 +317,6 @@ export async function upsertWhatsappAccountAction(rawInput: unknown) {
 
   const now = new Date()
 
-  // If this account is set to default, unset other defaults
   if (validated.isDefault) {
     await db
       .update(whatsappAccounts)
@@ -217,7 +339,7 @@ export async function upsertWhatsappAccountAction(rawInput: unknown) {
         qualityRating,
         messagingLimit,
         encryptedAccessToken,
-        webhookVerifyToken: validated.webhookVerifyToken,
+        webhookVerifyToken,
         isActive: validated.isActive,
         isDefault: validated.isDefault,
         accountRole: effectiveRole,
@@ -252,7 +374,7 @@ export async function upsertWhatsappAccountAction(rawInput: unknown) {
         qualityRating,
         messagingLimit,
         encryptedAccessToken,
-        webhookVerifyToken: validated.webhookVerifyToken,
+        webhookVerifyToken,
         isActive: validated.isActive,
         isDefault: validated.isDefault,
         accountRole: effectiveRole,
@@ -274,9 +396,22 @@ export async function upsertWhatsappAccountAction(rawInput: unknown) {
     accountId = inserted.id
   }
 
-  revalidatePath("/admin/settings")
-  revalidatePath("/admin/desk")
-  revalidatePath("/admin/whatsapp")
+  await recordAuditLog({
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    action: targetId ? "whatsapp.account.update" : "whatsapp.account.create",
+    entityType: "whatsapp_account",
+    entityId: accountId,
+    after: {
+      name: validated.name,
+      phoneNumberId: validated.phoneNumberId,
+      wabaId: validated.wabaId,
+      isActive: validated.isActive,
+      tokenPreservedWithoutReencrypt: shouldKeepExistingEncryptedToken,
+    },
+  })
+
+  safeRevalidatePaths(["/admin/settings", "/admin/desk", "/admin/whatsapp"])
   return { success: true, accountId }
 }
 
@@ -293,7 +428,21 @@ export async function syncWhatsappTemplatesAction(accountId: string) {
     return { success: false, error: "WhatsApp account not found" }
   }
 
-  const accessToken = decrypt(account.encryptedAccessToken)
+  let accessToken: string
+  try {
+    accessToken = decrypt(account.encryptedAccessToken)
+  } catch {
+    await db
+      .update(whatsappAccounts)
+      .set({ qualityRating: "NEEDS_REAUTH", updatedAt: new Date() })
+      .where(eq(whatsappAccounts.id, account.id))
+    return {
+      success: false,
+      error:
+        "Stored WhatsApp access token could not be decrypted. Please reconnect the account in Settings.",
+    }
+  }
+
   let templates
   try {
     templates = await fetchMessageTemplates({
@@ -301,6 +450,7 @@ export async function syncWhatsappTemplatesAction(accountId: string) {
       accessToken,
     })
   } catch (err) {
+    await markWhatsappAccountNeedsReauthIfAuthError(account.id, err)
     return {
       success: false,
       error:
@@ -323,7 +473,7 @@ export async function syncWhatsappTemplatesAction(accountId: string) {
     if (t.components) {
       for (const c of t.components) {
         if (c.type === "HEADER") {
-          headerType = c.format?.toLowerCase() ?? "text"
+          headerType = c.format?.toUpperCase() ?? "TEXT"
           headerContent = c.text ?? null
         } else if (c.type === "BODY") {
           bodyText = c.text ?? ""
@@ -386,15 +536,17 @@ export async function syncWhatsappTemplatesAction(accountId: string) {
     syncedCount++
   }
 
-  revalidatePath("/admin/settings")
-  revalidatePath("/admin/campaigns")
-  revalidatePath("/admin/desk")
-  revalidatePath("/admin/whatsapp")
+  safeRevalidatePaths([
+    "/admin/settings",
+    "/admin/campaigns",
+    "/admin/desk",
+    "/admin/whatsapp",
+  ])
   return { success: true, count: syncedCount }
 }
 
 // ==========================================
-// 2. Conversations & Timeline
+// 2. Conversations & Timeline (Read-Only Poll Safe — T-068)
 // ==========================================
 
 export async function listWhatsappConversationsAction(params?: {
@@ -405,8 +557,8 @@ export async function listWhatsappConversationsAction(params?: {
   offset?: number
 }) {
   await requireAdmin()
-  const limit = params?.limit ?? 50
-  const offset = params?.offset ?? 0
+  const limit = Math.min(Math.max(params?.limit ?? 50, 1), 200)
+  const offset = Math.max(params?.offset ?? 0, 0)
 
   const conditions = []
   if (params?.accountId) {
@@ -439,7 +591,14 @@ export async function listWhatsappConversationsAction(params?: {
       accountId: whatsappConversations.accountId,
       contactPhone: whatsappConversations.contactPhone,
       contactName: whatsappConversations.contactName,
+      outreachContactId: whatsappConversations.outreachContactId,
+      applicationId: whatsappConversations.applicationId,
       detectedPostCode: whatsappConversations.detectedPostCode,
+      intentCategory: whatsappConversations.intentCategory,
+      intentConfidence: whatsappConversations.intentConfidence,
+      intentReason: whatsappConversations.intentReason,
+      forwardedToAgentConversationId:
+        whatsappConversations.forwardedToAgentConversationId,
       lastAutoRepliedPostCode: whatsappConversations.lastAutoRepliedPostCode,
       lastAutoRepliedAt: whatsappConversations.lastAutoRepliedAt,
       lastCustomerMessageAt: whatsappConversations.lastCustomerMessageAt,
@@ -456,6 +615,12 @@ export async function listWhatsappConversationsAction(params?: {
         id: whatsappAccounts.id,
         name: whatsappAccounts.name,
         displayPhoneNumber: whatsappAccounts.displayPhoneNumber,
+        phoneNumberId: whatsappAccounts.phoneNumberId,
+        platformType: whatsappAccounts.platformType,
+        accountRole: whatsappAccounts.accountRole,
+        isOnBizApp: whatsappAccounts.isOnBizApp,
+        qualityRating: whatsappAccounts.qualityRating,
+        intentFilterEnabled: whatsappAccounts.intentFilterEnabled,
         autoReplyEnabled: whatsappAccounts.autoReplyEnabled,
         autoReplyCooldownMinutes: whatsappAccounts.autoReplyCooldownMinutes,
         welcomeGreetingEnabled: whatsappAccounts.welcomeGreetingEnabled,
@@ -477,6 +642,8 @@ export async function listWhatsappConversationsAction(params?: {
         referenceNumber: applications.referenceNumber,
         customerName: applications.customerName,
         status: applications.status,
+        totalPassportCount: applications.totalPassportCount,
+        bedAndSeatCount: applications.bedAndSeatCount,
       },
     })
     .from(whatsappConversations)
@@ -503,26 +670,34 @@ export async function listWhatsappConversationsAction(params?: {
   return { success: true, conversations }
 }
 
+/**
+ * Loads the newest `limit` messages (`ORDER BY created_at DESC LIMIT N`, reversed in memory)
+ * and is **100% read-only by default** (`T-068` / `OD-07` — zero SQL writes during background polling).
+ * Pass `options: { markRead: true }` ONLY when explicitly clearing unread count.
+ */
 export async function getConversationMessagesAction(
   conversationId: string,
-  limit = 50
+  limit = 50,
+  options?: { markRead?: boolean }
 ) {
   await requireAdmin()
+  const safeLimit = Math.min(Math.max(limit, 1), 200)
 
   const messages = await db
     .select()
     .from(whatsappMessages)
     .where(eq(whatsappMessages.conversationId, conversationId))
     .orderBy(desc(whatsappMessages.createdAt))
-    .limit(limit)
+    .limit(safeLimit)
 
-  // Mark unread count as 0
-  await db
-    .update(whatsappConversations)
-    .set({ unreadCount: 0, updatedAt: new Date() })
-    .where(eq(whatsappConversations.id, conversationId))
+  if (options?.markRead === true) {
+    await db
+      .update(whatsappConversations)
+      .set({ unreadCount: 0, updatedAt: new Date() })
+      .where(eq(whatsappConversations.id, conversationId))
+  }
 
-  return { success: true, messages: messages.reverse() }
+  return { success: true, messages: [...messages].reverse() }
 }
 
 export async function getWhatsappConversationThreadAction(
@@ -533,7 +708,7 @@ export async function getWhatsappConversationThreadAction(
 }
 
 // ==========================================
-// Phase 3 (Spec 0019): Conversation Pin, Archive, Agent Assignment & Notes
+// Phase 3 (Spec 0019): Conversation Pin, Archive, Real Staff Assignment & Notes
 // ==========================================
 
 export async function toggleWhatsappConversationPinAction(rawInput: unknown) {
@@ -553,11 +728,17 @@ export async function toggleWhatsappConversationPinAction(rawInput: unknown) {
     return { success: false, error: "Conversation not found" }
   }
 
-  revalidatePath("/admin/desk")
-  return { success: true, conversationId: updated.id, isPinned: updated.isPinned }
+  safeRevalidatePaths(["/admin/desk"])
+  return {
+    success: true,
+    conversationId: updated.id,
+    isPinned: updated.isPinned,
+  }
 }
 
-export async function toggleWhatsappConversationArchiveAction(rawInput: unknown) {
+export async function toggleWhatsappConversationArchiveAction(
+  rawInput: unknown
+) {
   await requireAdmin()
   const validated = toggleWhatsappConversationArchiveSchema.parse(rawInput)
 
@@ -574,13 +755,41 @@ export async function toggleWhatsappConversationArchiveAction(rawInput: unknown)
     return { success: false, error: "Conversation not found" }
   }
 
-  revalidatePath("/admin/desk")
-  return { success: true, conversationId: updated.id, isArchived: updated.isArchived }
+  safeRevalidatePaths(["/admin/desk"])
+  return {
+    success: true,
+    conversationId: updated.id,
+    isArchived: updated.isArchived,
+  }
 }
 
 export async function assignWhatsappConversationAgentAction(rawInput: unknown) {
   await requireAdmin()
   const validated = assignWhatsappConversationAgentSchema.parse(rawInput)
+
+  if (validated.assignedUserId) {
+    const [activeStaff] = await db
+      .select({
+        id: userTable.id,
+        name: userTable.name,
+      })
+      .from(userTable)
+      .where(
+        and(
+          eq(userTable.id, validated.assignedUserId),
+          eq(userTable.isActive, true)
+        )
+      )
+      .limit(1)
+
+    if (!activeStaff) {
+      return {
+        success: false,
+        error:
+          "Selected staff consultant was not found or is inactive. Please choose an active Al Ramlah staff account.",
+      }
+    }
+  }
 
   const [updated] = await db
     .update(whatsappConversations)
@@ -595,7 +804,7 @@ export async function assignWhatsappConversationAgentAction(rawInput: unknown) {
     return { success: false, error: "Conversation not found" }
   }
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
     success: true,
     conversationId: updated.id,
@@ -603,7 +812,9 @@ export async function assignWhatsappConversationAgentAction(rawInput: unknown) {
   }
 }
 
-export async function addWhatsappConversationInternalNoteAction(rawInput: unknown) {
+export async function addWhatsappConversationInternalNoteAction(
+  rawInput: unknown
+) {
   const session = await requireAdmin()
   const validated = addWhatsappConversationInternalNoteSchema.parse(rawInput)
 
@@ -620,7 +831,9 @@ export async function addWhatsappConversationInternalNoteAction(rawInput: unknow
     return { success: false, error: "Conversation not found" }
   }
 
-  const existingNotes: WhatsappInternalNote[] = Array.isArray(existing.internalNotes)
+  const existingNotes: WhatsappInternalNote[] = Array.isArray(
+    existing.internalNotes
+  )
     ? (existing.internalNotes as WhatsappInternalNote[])
     : []
 
@@ -642,16 +855,16 @@ export async function addWhatsappConversationInternalNoteAction(rawInput: unknow
     })
     .where(eq(whatsappConversations.id, validated.conversationId))
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return { success: true, note: newNote, internalNotes: updatedNotes }
 }
 
 // ==========================================
-// 3. Conversation Reply (24h Window Check)
+// 3. Conversation Reply (Strict 24h Window + Outbox Pre-Insert — T-067, OD-01)
 // ==========================================
 
 export async function sendWhatsappConversationReplyAction(rawInput: unknown) {
-  await requireAdmin()
+  const session = await requireAdmin()
   const validated = sendWhatsappConversationReplySchema.parse(rawInput)
 
   const [convRow] = await db
@@ -668,104 +881,171 @@ export async function sendWhatsappConversationReplyAction(rawInput: unknown) {
     .limit(1)
 
   if (!convRow) {
-    return { success: false, error: "Conversation or WhatsApp account not found" }
-  }
-
-  const conversation = convRow.conversation
-  const account = convRow.account
-  const now = Date.now()
-
-  // 24-hour customer service window rule
-  const lastCustomerMessageTime = conversation.lastCustomerMessageAt
-    ? conversation.lastCustomerMessageAt.getTime()
-    : 0
-  const isInside24hWindow =
-    lastCustomerMessageTime > 0 && now - lastCustomerMessageTime <= 24 * 60 * 60 * 1000
-
-  const isLinkedAccount = account.platformType === "LINKED_DEVICE"
-  const anyLinkedConnected = isAnyLinkedDeviceConnected()
-
-  let targetSessionKey = "default"
-  if (isLinkedAccount && account.phoneNumberId.startsWith("linked-")) {
-    targetSessionKey = account.phoneNumberId.replace(/^linked-/, "")
-  } else {
-    targetSessionKey = await resolveLinkedDeviceSessionForChannel(
-      account.displayPhoneNumber,
-      "auto"
-    )
-  }
-
-  const isTargetSocketConnected = isLinkedDeviceConnected(targetSessionKey)
-  const effectiveSessionKey = isTargetSocketConnected
-    ? targetSessionKey
-    : await resolveLinkedDeviceSessionForChannel(account.displayPhoneNumber, "auto")
-
-  const shouldUseLinkedDevice =
-    isLinkedAccount ||
-    (!isInside24hWindow && validated.messageType !== "template" && anyLinkedConnected)
-
-  if (isLinkedAccount && !anyLinkedConnected) {
     return {
       success: false,
-      error:
-        "WhatsApp Linked Device line is currently disconnected. Please link your phone in Settings.",
+      error: "Conversation or WhatsApp account not found",
     }
   }
+
+  const { conversation, account } = convRow
+
+  if (account.platformType === "LINKED_DEVICE") {
+    return {
+      success: false,
+      code: "BAILEYS_SUNSET_MANUAL_QUEUE",
+      error:
+        "Unofficial Linked Device sockets are retired (OD-01 Option A). Please reply via an Official Meta WhatsApp Cloud API line.",
+    }
+  }
+
+  const optedOut = await isWhatsappContactOptedOut({
+    conversation,
+    contactPhone: conversation.contactPhone,
+  })
+  if (optedOut) {
+    return {
+      success: false,
+      code: "DO_NOT_CONTACT",
+      error:
+        "Contact has opted out (DO_NOT_CONTACT). Outbound WhatsApp messaging is blocked.",
+    }
+  }
+
+  const isInside24hWindow = isWithin24HourServiceWindow(
+    conversation.lastCustomerMessageAt
+  )
 
   if (!isInside24hWindow && validated.messageType !== "template") {
-    if (!shouldUseLinkedDevice) {
-      return {
-        success: false,
-        error:
-          "Outside 24-hour customer service window. Free-form messages are forbidden by Meta. You must send an approved template message to re-engage the pilgrim, or connect your WhatsApp Linked Device in Settings.",
-      }
+    return {
+      success: false,
+      code: "WINDOW_CLOSED_TEMPLATE_REQUIRED",
+      error:
+        "WINDOW_CLOSED_TEMPLATE_REQUIRED: Outside 24-hour customer service window. Free-form messages are forbidden by Meta; please send an approved template message.",
     }
   }
 
-  let wamid: string
-  const accessToken = decrypt(account.encryptedAccessToken)
-
+  let accessToken: string
   try {
-    if (shouldUseLinkedDevice) {
-      // Direct reply via native Baileys Linked Device SIM for this line
-      const res = await sendLinkedDeviceMessage({
-        sessionKey: effectiveSessionKey,
-        jid: conversation.contactPhone,
-        text: validated.text,
-        imageUrl:
-          validated.messageType === "image" && validated.mediaUrl
-            ? validated.mediaUrl
-            : undefined,
-        documentUrl:
-          validated.messageType === "document" && validated.mediaUrl
-            ? validated.mediaUrl
-            : undefined,
-        filename: validated.mediaFilename,
-        caption: validated.caption,
-        simulatePresence: true,
-      })
-      wamid = res.wamid
-    } else if (validated.messageType === "text") {
-      const res = await sendTextMessage({
-        phoneNumberId: account.phoneNumberId,
-        accessToken,
-        to: conversation.contactPhone,
-        text: validated.text!,
-        contextMessageId: validated.contextMessageId,
-      })
-      wamid = res.messageId
-    } else if (validated.messageType === "image") {
-      const res = await sendImageMessage({
-        phoneNumberId: account.phoneNumberId,
-        accessToken,
-        to: conversation.contactPhone,
-        imageUrl: validated.mediaUrl!,
-        caption: validated.caption,
-        contextMessageId: validated.contextMessageId,
-      })
-      wamid = res.messageId
-    } else if (validated.messageType === "document") {
-      const res = await sendDocumentMessage({
+    accessToken = decrypt(account.encryptedAccessToken)
+  } catch {
+    await db
+      .update(whatsappAccounts)
+      .set({ qualityRating: "NEEDS_REAUTH", updatedAt: new Date() })
+      .where(eq(whatsappAccounts.id, account.id))
+    return {
+      success: false,
+      code: "TOKEN_DECRYPT_FAILED",
+      error:
+        "WhatsApp account token decryption failed. Please reconnect the Meta WABA token in Settings.",
+    }
+  }
+
+  if (validated.messageType === "template") {
+    const [templateRow] = await db
+      .select()
+      .from(whatsappTemplates)
+      .where(
+        and(
+          eq(whatsappTemplates.accountId, account.id),
+          eq(whatsappTemplates.name, validated.templateName!)
+        )
+      )
+      .limit(1)
+
+    if (templateRow && templateRow.status !== "APPROVED") {
+      return {
+        success: false,
+        code: "TEMPLATE_NOT_APPROVED",
+        error: `Template '${validated.templateName}' has status '${templateRow.status}'. Only APPROVED Meta templates can be sent.`,
+      }
+    }
+
+    const paramsArray = Array.isArray(validated.templateParams)
+      ? validated.templateParams
+      : typeof validated.templateParams === "object" &&
+          validated.templateParams !== null
+        ? Object.values(
+            validated.templateParams as Record<string, unknown>
+          ).map(String)
+        : undefined
+
+    const dispatchRes = await dispatchTrackedOutboundMessage({
+      accountId: account.id,
+      conversationId: conversation.id,
+      messageType: "template",
+      body: validated.templateName ?? "",
+      mediaUrl: validated.headerMediaUrl ?? null,
+      templateName: validated.templateName ?? null,
+      templateLanguage: validated.templateLanguage || "en_US",
+      templateParams: paramsArray,
+      contextMessageId: validated.contextMessageId ?? null,
+      sentByUserId: session.user.id,
+      sendFn: () =>
+        sendTemplateMessage({
+          phoneNumberId: account.phoneNumberId,
+          accessToken,
+          to: conversation.contactPhone,
+          templateName: validated.templateName!,
+          language: validated.templateLanguage || "en_US",
+          params: paramsArray,
+          template: templateRow ?? undefined,
+          contextMessageId: validated.contextMessageId,
+          messageParams: {
+            body: paramsArray,
+            headerMediaUrl: validated.headerMediaUrl || undefined,
+          },
+        }),
+    })
+
+    if (!dispatchRes.ok) {
+      return {
+        success: false,
+        code: dispatchRes.errorCode,
+        error: dispatchRes.error,
+      }
+    }
+
+    safeRevalidatePaths([
+      "/admin/desk",
+      `/admin/whatsapp/${conversation.id}`,
+    ])
+    return {
+      success: true,
+      messageId: dispatchRes.message.id,
+      wamid: dispatchRes.wamid,
+    }
+  }
+
+  const dispatchRes = await dispatchTrackedOutboundMessage({
+    accountId: account.id,
+    conversationId: conversation.id,
+    messageType: validated.messageType,
+    body: validated.text ?? validated.caption ?? "",
+    mediaUrl: validated.mediaUrl ?? null,
+    mediaFilename: validated.mediaFilename ?? null,
+    contextMessageId: validated.contextMessageId ?? null,
+    sentByUserId: session.user.id,
+    sendFn: () => {
+      if (validated.messageType === "text") {
+        return sendTextMessage({
+          phoneNumberId: account.phoneNumberId,
+          accessToken,
+          to: conversation.contactPhone,
+          text: validated.text!,
+          contextMessageId: validated.contextMessageId,
+        })
+      }
+      if (validated.messageType === "image") {
+        return sendImageMessage({
+          phoneNumberId: account.phoneNumberId,
+          accessToken,
+          to: conversation.contactPhone,
+          imageUrl: validated.mediaUrl!,
+          caption: validated.caption,
+          contextMessageId: validated.contextMessageId,
+        })
+      }
+      return sendDocumentMessage({
         phoneNumberId: account.phoneNumberId,
         accessToken,
         to: conversation.contactPhone,
@@ -774,102 +1054,33 @@ export async function sendWhatsappConversationReplyAction(rawInput: unknown) {
         caption: validated.caption,
         contextMessageId: validated.contextMessageId,
       })
-      wamid = res.messageId
-    } else {
-      // Template message
-      const [templateRow] = await db
-        .select()
-        .from(whatsappTemplates)
-        .where(
-          and(
-            eq(whatsappTemplates.accountId, account.id),
-            eq(whatsappTemplates.name, validated.templateName!)
-          )
-        )
-        .limit(1)
+    },
+  })
 
-      const paramsArray = Array.isArray(validated.templateParams)
-        ? validated.templateParams
-        : typeof validated.templateParams === "object" && validated.templateParams !== null
-        ? Object.values(validated.templateParams as Record<string, unknown>).map(String)
-        : undefined
-
-      const res = await sendTemplateMessage({
-        phoneNumberId: account.phoneNumberId,
-        accessToken,
-        to: conversation.contactPhone,
-        templateName: validated.templateName!,
-        language: validated.templateLanguage || "en_US",
-        params: paramsArray,
-        template: templateRow ?? undefined,
-        contextMessageId: validated.contextMessageId,
-        messageParams: {
-          body: paramsArray,
-          headerMediaUrl: validated.headerMediaUrl || undefined,
-        },
-      })
-      wamid = res.messageId
-    }
-  } catch (err) {
-    // If running in development without live Meta credentials, gracefully simulate
-    const isDev = process.env.NODE_ENV !== "production"
-    if (isDev) {
-      console.warn(
-        "[whatsapp-send] Simulating WhatsApp dispatch in dev mode due to Meta API error:",
-        err instanceof Error ? err.message : String(err)
-      )
-      wamid = `wamid.sim_${crypto.randomBytes(16).toString("hex")}`
-    } else {
-      return {
-        success: false,
-        error:
-          err instanceof Error
-            ? err.message
-            : "Failed to dispatch WhatsApp message via Meta Cloud API",
-      }
+  if (!dispatchRes.ok) {
+    return {
+      success: false,
+      code: dispatchRes.errorCode,
+      error: dispatchRes.error,
     }
   }
 
-  const sentTimestamp = new Date()
-
-  // Insert outbound message
-  const [createdMessage] = await db
-    .insert(whatsappMessages)
-    .values({
-      conversationId: conversation.id,
-      wamid,
-      direction: "outbound",
-      status: "sent",
-      messageType: validated.messageType,
-      body: validated.text ?? validated.caption ?? validated.templateName ?? "",
-      mediaUrl: validated.mediaUrl ?? validated.headerMediaUrl,
-      mediaFilename: validated.mediaFilename,
-      templateName: validated.templateName,
-      contextMessageId: validated.contextMessageId,
-      sentAt: sentTimestamp,
-    })
-    .returning()
-
-  // Update conversation
-  await db
-    .update(whatsappConversations)
-    .set({
-      lastMessageAt: sentTimestamp,
-      updatedAt: sentTimestamp,
-    })
-    .where(eq(whatsappConversations.id, conversation.id))
-
-  revalidatePath("/admin/desk")
-  revalidatePath(`/admin/whatsapp/${conversation.id}`)
-  return { success: true, messageId: createdMessage.id, wamid }
+  safeRevalidatePaths(["/admin/desk", `/admin/whatsapp/${conversation.id}`])
+  return {
+    success: true,
+    messageId: dispatchRes.message.id,
+    wamid: dispatchRes.wamid,
+  }
 }
 
 // ==========================================
-// 4. One-Click Luxury Quotation PDF Dispatch
+// 4. One-Click Luxury Quotation PDF Dispatch (24h Window Checked — T-067)
 // ==========================================
 
-export async function sendApplicationLuxuryPdfViaWhatsappAction(rawInput: unknown) {
-  await requireAdmin()
+export async function sendApplicationLuxuryPdfViaWhatsappAction(
+  rawInput: unknown
+) {
+  const session = await requireAdmin()
   const validated = sendApplicationLuxuryPdfSchema.parse(rawInput)
 
   const app = await db.query.applications.findFirst({
@@ -886,19 +1097,6 @@ export async function sendApplicationLuxuryPdfViaWhatsappAction(rawInput: unknow
     return { success: false, error: "Application dossier not found" }
   }
 
-  // Reuse existing luxury PDF or generate a fresh one
-  let pdfUrl = app.quotes?.[0]?.quotationPdfUrl
-  if (!pdfUrl) {
-    const renderRes = await generateApplicationLuxuryPdf(validated.applicationId)
-    if (!renderRes.success || !renderRes.pdfUrl) {
-      return {
-        success: false,
-        error: renderRes.error || "Failed to render 3-page luxury quotation PDF",
-      }
-    }
-    pdfUrl = renderRes.pdfUrl
-  }
-
   const rawRecipientPhone =
     validated.phoneNumberOverride || app.customerWhatsapp || app.customerPhone
   const recipientPhone = rawRecipientPhone
@@ -911,11 +1109,16 @@ export async function sendApplicationLuxuryPdfViaWhatsappAction(rawInput: unknow
     }
   }
 
-  // Resolve active default account
   const [account] = await db
     .select()
     .from(whatsappAccounts)
-    .where(eq(whatsappAccounts.isDefault, true))
+    .where(
+      and(
+        eq(whatsappAccounts.isActive, true),
+        eq(whatsappAccounts.platformType, "CLOUD_API")
+      )
+    )
+    .orderBy(desc(whatsappAccounts.isDefault), desc(whatsappAccounts.createdAt))
     .limit(1)
 
   if (!account) {
@@ -925,51 +1128,74 @@ export async function sendApplicationLuxuryPdfViaWhatsappAction(rawInput: unknow
     }
   }
 
-  const now = new Date()
-  let wamid: string
-  const accessToken = decrypt(account.encryptedAccessToken)
-  const filename = "Al_Ramlah_Umrah_Quotation.pdf"
-  const caption = `Assalam-o-Alaikum ${app.customerName},\n\nPlease find attached your official 3-page luxury Umrah itinerary & quotation (Ref: ${app.referenceNumber}) from Al Ramlah Travels Askari 10 Lahore.`
+  const { variants } = buildExactPhoneVariants(recipientPhone)
+  const phoneLookupList =
+    variants.length > 0 ? variants : [recipientPhone]
 
-  try {
-    const res = await sendDocumentMessage({
-      phoneNumberId: account.phoneNumberId,
-      accessToken,
-      to: recipientPhone,
-      documentUrl: pdfUrl,
-      filename,
-      caption,
-    })
-    wamid = res.messageId
-  } catch (err) {
-    const isDev = process.env.NODE_ENV !== "production"
-    if (isDev) {
-      wamid = `wamid.sim_${crypto.randomBytes(16).toString("hex")}`
-    } else {
-      return {
-        success: false,
-        error:
-          err instanceof Error
-            ? err.message
-            : "Failed to dispatch luxury quotation PDF via WhatsApp",
-      }
-    }
-  }
-
-  // Find or create conversation
   const [existingConv] = await db
     .select()
     .from(whatsappConversations)
     .where(
       and(
         eq(whatsappConversations.accountId, account.id),
-        eq(whatsappConversations.contactPhone, recipientPhone)
+        inArray(whatsappConversations.contactPhone, phoneLookupList)
       )
     )
     .limit(1)
 
-  let convId: string
+  const optedOut = await isWhatsappContactOptedOut({
+    conversation: existingConv,
+    contactPhone: recipientPhone,
+  })
+  if (optedOut) {
+    return {
+      success: false,
+      code: "DO_NOT_CONTACT",
+      error:
+        "Contact has opted out (DO_NOT_CONTACT). Freeform PDF dispatch is blocked.",
+    }
+  }
 
+  if (!isWithin24HourServiceWindow(existingConv?.lastCustomerMessageAt)) {
+    return {
+      success: false,
+      code: "WINDOW_CLOSED_TEMPLATE_REQUIRED",
+      error:
+        "WINDOW_CLOSED_TEMPLATE_REQUIRED: Outside 24-hour customer service window. Please send an approved Meta template with a document header or re-open the session first.",
+    }
+  }
+
+  let pdfUrl = app.quotes?.[0]?.quotationPdfUrl
+  if (!pdfUrl) {
+    const renderRes = await generateApplicationLuxuryPdf(validated.applicationId)
+    if (!renderRes.success || !renderRes.pdfUrl) {
+      return {
+        success: false,
+        error:
+          renderRes.error || "Failed to render 3-page luxury quotation PDF",
+      }
+    }
+    pdfUrl = renderRes.pdfUrl
+  }
+
+  let accessToken: string
+  try {
+    accessToken = decrypt(account.encryptedAccessToken)
+  } catch {
+    await db
+      .update(whatsappAccounts)
+      .set({ qualityRating: "NEEDS_REAUTH", updatedAt: new Date() })
+      .where(eq(whatsappAccounts.id, account.id))
+    return {
+      success: false,
+      code: "TOKEN_DECRYPT_FAILED",
+      error:
+        "WhatsApp account token decryption failed. Please reconnect the Meta WABA token in Settings.",
+    }
+  }
+
+  const now = new Date()
+  let convId = existingConv?.id ?? ""
   if (!existingConv) {
     const [created] = await db
       .insert(whatsappConversations)
@@ -983,43 +1209,57 @@ export async function sendApplicationLuxuryPdfViaWhatsappAction(rawInput: unknow
       })
       .returning()
     convId = created.id
-  } else {
+  } else if (existingConv.applicationId !== app.id) {
     await db
       .update(whatsappConversations)
       .set({
         applicationId: app.id,
-        lastMessageAt: now,
         updatedAt: now,
       })
       .where(eq(whatsappConversations.id, existingConv.id))
-    convId = existingConv.id
   }
 
-  // Record outbound message
-  const [createdMessage] = await db
-    .insert(whatsappMessages)
-    .values({
-      conversationId: convId,
-      wamid,
-      direction: "outbound",
-      status: "sent",
-      messageType: "document",
-      body: caption,
-      mediaUrl: pdfUrl,
-      mediaFilename: filename,
-      sentAt: now,
-    })
-    .returning()
+  const filename = "Al_Ramlah_Umrah_Quotation.pdf"
+  const caption = `Assalam-o-Alaikum ${app.customerName},\n\nPlease find attached your official 3-page luxury Umrah itinerary & quotation (Ref: ${app.referenceNumber}) from Al Ramlah Travels (Askari 10, Lahore Cantt).`
 
-  revalidatePath("/admin/desk")
-  revalidatePath(`/admin/applications/${app.id}`)
-  revalidatePath(`/admin/whatsapp/${convId}`)
+  const dispatchRes = await dispatchTrackedOutboundMessage({
+    accountId: account.id,
+    conversationId: convId,
+    messageType: "document",
+    body: caption,
+    mediaUrl: pdfUrl,
+    mediaFilename: filename,
+    sentByUserId: session.user.id,
+    sendFn: () =>
+      sendDocumentMessage({
+        phoneNumberId: account.phoneNumberId,
+        accessToken,
+        to: recipientPhone,
+        documentUrl: pdfUrl!,
+        filename,
+        caption,
+      }),
+  })
+
+  if (!dispatchRes.ok) {
+    return {
+      success: false,
+      code: dispatchRes.errorCode,
+      error: dispatchRes.error,
+    }
+  }
+
+  safeRevalidatePaths([
+    "/admin/desk",
+    `/admin/applications/${app.id}`,
+    `/admin/whatsapp/${convId}`,
+  ])
 
   return {
     success: true,
     pdfUrl,
-    messageId: createdMessage.id,
-    wamid,
+    messageId: dispatchRes.message.id,
+    wamid: dispatchRes.wamid,
   }
 }
 
@@ -1052,7 +1292,7 @@ export async function upsertQuickReplyAction(rawInput: unknown) {
       .where(eq(whatsappQuickReplies.id, validated.id))
       .returning()
 
-    revalidatePath("/admin/desk")
+    safeRevalidatePaths(["/admin/desk"])
     return {
       success: true,
       quickReplyId: updated.id,
@@ -1092,7 +1332,7 @@ export async function upsertQuickReplyAction(rawInput: unknown) {
     })
     .returning()
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
     success: true,
     quickReplyId: inserted.id,
@@ -1112,7 +1352,7 @@ export async function deleteQuickReplyAction(rawInput: unknown) {
     .delete(whatsappQuickReplies)
     .where(eq(whatsappQuickReplies.id, validated.id))
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return { success: true, deletedId: validated.id }
 }
 
@@ -1121,21 +1361,38 @@ export async function deleteWhatsappQuickReplyAction(rawInput: unknown) {
 }
 
 // ==========================================
-// 6. Broadcasts
+// 6. Broadcasts (SuperAdmin, Opt-Out Exclusion, Count Confirmation & SQL Aggregate Retry)
 // ==========================================
 
 export async function createAndQueueWhatsappBroadcastAction(rawInput: unknown) {
   const session = await requireSuperAdmin()
   const validated = createWhatsappBroadcastSchema.parse(rawInput)
+  const confirmationOverlay = broadcastConfirmationOverlaySchema.safeParse(
+    typeof rawInput === "object" && rawInput !== null ? rawInput : {}
+  )
+  const confirmedRecipientCount = confirmationOverlay.success
+    ? confirmationOverlay.data.confirmedRecipientCount
+    : undefined
+  const confirmPaidMarketingBroadcast = confirmationOverlay.success
+    ? confirmationOverlay.data.confirmPaidMarketingBroadcast
+    : undefined
 
   const [template] = await db
     .select()
     .from(whatsappTemplates)
-    .where(eq(whatsappTemplates.id, validated.templateId))
+    .where(
+      and(
+        eq(whatsappTemplates.id, validated.templateId),
+        eq(whatsappTemplates.accountId, validated.accountId)
+      )
+    )
     .limit(1)
 
   if (!template) {
-    return { success: false, error: "Template not found" }
+    return {
+      success: false,
+      error: "Template not found for the selected WhatsApp Business account",
+    }
   }
 
   if (template.status !== "APPROVED") {
@@ -1153,7 +1410,6 @@ export async function createAndQueueWhatsappBroadcastAction(rawInput: unknown) {
     scheduledDate && scheduledDate.getTime() > now.getTime()
   )
 
-  // Aggregate candidate recipients from validated.recipients, recipientPhones, and csvText
   interface PreparedRecipient {
     phone: string
     name?: string | null
@@ -1162,7 +1418,6 @@ export async function createAndQueueWhatsappBroadcastAction(rawInput: unknown) {
 
   const recipientMap = new Map<string, PreparedRecipient>()
 
-  // 1. From explicit structured recipients array
   if (Array.isArray(validated.recipients)) {
     for (const item of validated.recipients) {
       const sanitized = sanitizePhoneForMeta(item.phone)
@@ -1176,7 +1431,6 @@ export async function createAndQueueWhatsappBroadcastAction(rawInput: unknown) {
     }
   }
 
-  // 2. From recipientPhones array
   if (Array.isArray(validated.recipientPhones)) {
     for (const rawPhone of validated.recipientPhones) {
       const sanitized = sanitizePhoneForMeta(rawPhone)
@@ -1189,7 +1443,6 @@ export async function createAndQueueWhatsappBroadcastAction(rawInput: unknown) {
     }
   }
 
-  // 3. From csvText if provided
   if (validated.csvText && validated.csvText.trim()) {
     const parsedCsv = parseWhatsappBroadcastCsv(validated.csvText)
     for (const parsed of parsedCsv.recipients) {
@@ -1207,12 +1460,161 @@ export async function createAndQueueWhatsappBroadcastAction(rawInput: unknown) {
     }
   }
 
-  const finalRecipients = Array.from(recipientMap.values())
+  const candidateRecipients = Array.from(recipientMap.values())
+  if (candidateRecipients.length === 0) {
+    return {
+      success: false,
+      error:
+        "No valid recipient phone numbers found after parsing and deduplication",
+    }
+  }
+
+  // Exclude opted-out (`do_not_contact`) recipients across outreach_contacts & whatsapp_conversations (`T-030` / `T-067`)
+  const allPhoneVariants = new Set<string>()
+  for (const rec of candidateRecipients) {
+    const { variants } = buildExactPhoneVariants(rec.phone)
+    for (const v of variants) {
+      allPhoneVariants.add(v)
+    }
+    allPhoneVariants.add(rec.phone)
+  }
+  const lookupVariants = Array.from(allPhoneVariants)
+
+  const [optedOutContacts, optedOutConversations] = await Promise.all([
+    lookupVariants.length > 0
+      ? db
+          .select({
+            whatsappNumber: outreachContacts.whatsappNumber,
+            secondaryPhone: outreachContacts.secondaryPhone,
+          })
+          .from(outreachContacts)
+          .where(
+            and(
+              or(
+                inArray(outreachContacts.whatsappNumber, lookupVariants),
+                inArray(outreachContacts.secondaryPhone, lookupVariants)
+              ),
+              or(
+                eq(outreachContacts.interestStatus, "do_not_contact"),
+                sql`${outreachContacts.optedOutAt} is not null`
+              )
+            )
+          )
+      : Promise.resolve([]),
+    lookupVariants.length > 0
+      ? db
+          .select({
+            contactPhone: whatsappConversations.contactPhone,
+          })
+          .from(whatsappConversations)
+          .where(
+            and(
+              inArray(whatsappConversations.contactPhone, lookupVariants),
+              eq(whatsappConversations.intentCategory, "DO_NOT_CONTACT")
+            )
+          )
+      : Promise.resolve([]),
+  ])
+
+  const optedOutDigits = new Set<string>()
+  for (const c of optedOutContacts) {
+    if (c.whatsappNumber) {
+      optedOutDigits.add(sanitizePhoneForMeta(c.whatsappNumber))
+    }
+    if (c.secondaryPhone) {
+      optedOutDigits.add(sanitizePhoneForMeta(c.secondaryPhone))
+    }
+  }
+  for (const conv of optedOutConversations) {
+    if (conv.contactPhone) {
+      optedOutDigits.add(sanitizePhoneForMeta(conv.contactPhone))
+    }
+  }
+
+  const finalRecipients = candidateRecipients.filter(
+    (rec) => !optedOutDigits.has(rec.phone)
+  )
+  const excludedOptOutCount =
+    candidateRecipients.length - finalRecipients.length
 
   if (finalRecipients.length === 0) {
     return {
       success: false,
-      error: "No valid recipient phone numbers found after parsing and deduplication",
+      excludedOptOutCount,
+      error:
+        "All candidate recipients have opted out (DO_NOT_CONTACT). No broadcast was queued.",
+    }
+  }
+
+  const batchSummary = buildBroadcastBatchConfirmationSummary({
+    recipientCount: finalRecipients.length,
+    category: template.category,
+  })
+
+  if (confirmPaidMarketingBroadcast === false) {
+    return {
+      success: false,
+      code: "CONFIRMATION_REQUIRED",
+      requiresConfirmation: true,
+      expectedRecipientCount: finalRecipients.length,
+      excludedOptOutCount,
+      batchSummary,
+      error: batchSummary.warningMessage,
+    }
+  }
+
+  if (
+    typeof confirmedRecipientCount === "number" &&
+    confirmedRecipientCount !== finalRecipients.length
+  ) {
+    return {
+      success: false,
+      code: "CONFIRMATION_COUNT_MISMATCH",
+      requiresConfirmation: true,
+      expectedRecipientCount: finalRecipients.length,
+      excludedOptOutCount,
+      batchSummary,
+      error: `Recipient count confirmation mismatch: expected ${finalRecipients.length} eligible recipients (excluded ${excludedOptOutCount} opted-out), received ${confirmedRecipientCount}.`,
+    }
+  }
+
+  const recipientValues = finalRecipients.map((rec) => {
+    const rawParams = rec.templateParams ?? validated.defaultTemplateParams
+    const resolvedParams = resolveRecipientTemplateParams(rawParams, {
+      name: rec.name ?? null,
+      phone: rec.phone,
+    })
+
+    return {
+      contactPhone: rec.phone,
+      status: "pending" as const,
+      templateParams:
+        typeof resolvedParams === "object" && resolvedParams !== null
+          ? (resolvedParams as Record<string, unknown>)
+          : {},
+    }
+  })
+
+  // Pre-flight validate template header media / body variables before inserting broadcast rows
+  try {
+    const sampleResolved = recipientValues[0]?.templateParams
+    const sampleBodyList = Array.isArray(sampleResolved)
+      ? sampleResolved.map(String)
+      : sampleResolved
+        ? Object.values(sampleResolved).map(String)
+        : undefined
+    buildSendComponents(template, {
+      body: sampleBodyList,
+      headerMediaUrl: validated.headerMediaUrl || undefined,
+    })
+  } catch (err) {
+    return {
+      success: false,
+      code: "INVALID_TEMPLATE_COMPONENTS",
+      error:
+        err instanceof Error
+          ? err.message
+          : "Template component validation failed prior to broadcast launch.",
     }
   }
 
@@ -1236,29 +1638,31 @@ export async function createAndQueueWhatsappBroadcastAction(rawInput: unknown) {
     })
     .returning()
 
-  // Create recipient records with interpolated params
-  const recipientValues = finalRecipients.map((rec) => {
-    const rawParams = rec.templateParams ?? validated.defaultTemplateParams
-    const resolvedParams = resolveRecipientTemplateParams(rawParams, {
-      name: rec.name ?? null,
-      phone: rec.phone,
-    })
-
-    return {
-      broadcastId: broadcast.id,
-      contactPhone: rec.phone,
-      status: "pending" as const,
-      templateParams:
-        typeof resolvedParams === "object" && resolvedParams !== null
-          ? (resolvedParams as Record<string, unknown>)
-          : {},
-    }
-  })
-
   const recipients = await db
     .insert(whatsappBroadcastRecipients)
-    .values(recipientValues)
+    .values(
+      recipientValues.map((rv) => ({
+        ...rv,
+        broadcastId: broadcast.id,
+      }))
+    )
     .returning()
+
+  await recordAuditLog({
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    action: "whatsapp.broadcast.launch",
+    entityType: "whatsapp_broadcast",
+    entityId: broadcast.id,
+    after: {
+      name: broadcast.name,
+      templateName: template.name,
+      category: template.category,
+      totalRecipients: finalRecipients.length,
+      excludedOptOutCount,
+      scheduledAt: scheduledDate?.toISOString() ?? null,
+    },
+  })
 
   const rawKey = `wa-broadcast-${broadcast.id}`
   let idempotencyKey: string = rawKey
@@ -1272,8 +1676,6 @@ export async function createAndQueueWhatsappBroadcastAction(rawInput: unknown) {
     }
   }
 
-  // Dispatch paced broadcast via Trigger.dev Cloud durable worker (concurrencyLimit: 1, 200ms pacing),
-  // falling back to inline execution only in local dev when no `trigger:dev` worker is attached.
   const dispatchRes = await triggerByIdBackgroundOrInline({
     taskId: "send-whatsapp-broadcast",
     payload: { broadcastId: broadcast.id, paceMs: 200 },
@@ -1293,57 +1695,88 @@ export async function createAndQueueWhatsappBroadcastAction(rawInput: unknown) {
 
       await db
         .update(whatsappBroadcasts)
-        .set({ status: "processing", startedAt: new Date(), updatedAt: new Date() })
+        .set({
+          status: "processing",
+          startedAt: new Date(),
+          updatedAt: new Date(),
+        })
         .where(eq(whatsappBroadcasts.id, broadcast.id))
 
-      const accessToken = decrypt(account.encryptedAccessToken)
-      let sentCount = 0
-      let failedCount = 0
+      let accessToken: string
+      try {
+        accessToken = decrypt(account.encryptedAccessToken)
+      } catch (err) {
+        await db
+          .update(whatsappAccounts)
+          .set({ qualityRating: "NEEDS_REAUTH", updatedAt: new Date() })
+          .where(eq(whatsappAccounts.id, account.id))
+        const errMsg =
+          err instanceof Error ? err.message : "Token decryption failed"
+        await db
+          .update(whatsappBroadcastRecipients)
+          .set({ status: "failed", errorMessage: errMsg })
+          .where(eq(whatsappBroadcastRecipients.broadcastId, broadcast.id))
+        const agg = await recomputeBroadcastAggregates(broadcast.id)
+        await db
+          .update(whatsappBroadcasts)
+          .set({
+            status: "failed",
+            sentCount: agg.sentCount,
+            deliveredCount: agg.deliveredCount,
+            readCount: agg.readCount,
+            failedCount: agg.failedCount,
+            completedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(whatsappBroadcasts.id, broadcast.id))
+        return { sentCount: agg.sentCount, failedCount: agg.failedCount }
+      }
 
       for (const rec of recipients) {
+        if (rec.status !== "pending" || rec.wamid) {
+          continue
+        }
         try {
-          let wamid: string
-          const resolvedParams = rec.templateParams as Record<string, unknown> | undefined
+          const resolvedParams = rec.templateParams as
+            | Record<string, unknown>
+            | undefined
           const paramsList = Array.isArray(resolvedParams)
-            ? resolvedParams
+            ? resolvedParams.map(String)
             : resolvedParams
-            ? Object.values(resolvedParams).map(String)
-            : undefined
+              ? Object.values(resolvedParams).map(String)
+              : undefined
 
-          try {
-            const res = await sendTemplateMessage({
-              phoneNumberId: account.phoneNumberId,
-              accessToken,
-              to: rec.contactPhone,
-              templateName: template.name,
-              language: template.language,
-              template,
-              params: paramsList,
-              messageParams: {
-                body: paramsList,
-                headerMediaUrl: broadcast.headerMediaUrl || undefined,
-              },
-            })
-            wamid = res.messageId
-          } catch (err) {
-            if (process.env.NODE_ENV !== "production") {
-              wamid = `wamid.sim_${crypto.randomBytes(16).toString("hex")}`
-            } else {
-              throw err
-            }
-          }
+          const res = await sendTemplateMessage({
+            phoneNumberId: account.phoneNumberId,
+            accessToken,
+            to: rec.contactPhone,
+            templateName: template.name,
+            language: template.language,
+            template,
+            params: paramsList,
+            messageParams: {
+              body: paramsList,
+              headerMediaUrl: broadcast.headerMediaUrl || undefined,
+            },
+          })
 
           await db
             .update(whatsappBroadcastRecipients)
             .set({
               status: "sent",
-              wamid,
+              wamid: res.messageId,
+              errorCode: null,
+              errorMessage: null,
               sentAt: new Date(),
             })
-            .where(eq(whatsappBroadcastRecipients.id, rec.id))
-          sentCount++
+            .where(
+              and(
+                eq(whatsappBroadcastRecipients.id, rec.id),
+                eq(whatsappBroadcastRecipients.status, "pending")
+              )
+            )
         } catch (err) {
-          failedCount++
+          await markWhatsappAccountNeedsReauthIfAuthError(account.id, err)
           await db
             .update(whatsappBroadcastRecipients)
             .set({
@@ -1355,29 +1788,35 @@ export async function createAndQueueWhatsappBroadcastAction(rawInput: unknown) {
         }
       }
 
+      const agg = await recomputeBroadcastAggregates(broadcast.id)
       await db
         .update(whatsappBroadcasts)
         .set({
-          status: sentCount === 0 && failedCount > 0 ? "failed" : "completed",
-          sentCount,
-          failedCount,
+          status:
+            agg.sentCount === 0 && agg.failedCount > 0 ? "failed" : "completed",
+          totalRecipients: agg.totalRecipients,
+          sentCount: agg.sentCount,
+          deliveredCount: agg.deliveredCount,
+          readCount: agg.readCount,
+          failedCount: agg.failedCount,
           completedAt: new Date(),
           updatedAt: new Date(),
         })
         .where(eq(whatsappBroadcasts.id, broadcast.id))
 
-      return { sentCount, failedCount }
+      return { sentCount: agg.sentCount, failedCount: agg.failedCount }
     },
   })
 
-  revalidatePath("/admin/campaigns")
-  revalidatePath("/admin/whatsapp/broadcasts")
+  safeRevalidatePaths(["/admin/campaigns", "/admin/whatsapp/broadcasts"])
   return {
     success: true,
     broadcastId: broadcast.id,
     executionMode: dispatchRes.mode,
     triggerRunId: dispatchRes.runId,
     totalRecipients: finalRecipients.length,
+    excludedOptOutCount,
+    batchSummary,
   }
 }
 
@@ -1399,26 +1838,33 @@ export async function getWhatsappBroadcastDetailsAction(rawInput: unknown) {
     .select()
     .from(whatsappBroadcastRecipients)
     .where(eq(whatsappBroadcastRecipients.broadcastId, broadcast.id))
-    .orderBy(desc(whatsappBroadcastRecipients.sentAt), desc(whatsappBroadcastRecipients.id))
+    .orderBy(
+      desc(whatsappBroadcastRecipients.sentAt),
+      desc(whatsappBroadcastRecipients.id)
+    )
 
-  const total = broadcast.totalRecipients || recipients.length
-  const sent =
-    broadcast.sentCount ||
-    recipients.filter(
-      (r) => r.status === "sent" || r.status === "delivered" || r.status === "read"
-    ).length
-  const delivered =
-    broadcast.deliveredCount ||
-    recipients.filter((r) => r.status === "delivered" || r.status === "read").length
-  const read =
-    broadcast.readCount || recipients.filter((r) => r.status === "read").length
-  const failed =
-    broadcast.failedCount || recipients.filter((r) => r.status === "failed").length
+  const total = recipients.length > 0 ? recipients.length : broadcast.totalRecipients
+  const sent = recipients.filter(
+    (r) =>
+      r.status === "sent" || r.status === "delivered" || r.status === "read"
+  ).length
+  const delivered = recipients.filter(
+    (r) => r.status === "delivered" || r.status === "read"
+  ).length
+  const read = recipients.filter((r) => r.status === "read").length
+  const failed = recipients.filter((r) => r.status === "failed").length
   const pending = recipients.filter((r) => r.status === "pending").length
 
   return {
     success: true,
-    broadcast,
+    broadcast: {
+      ...broadcast,
+      totalRecipients: total,
+      sentCount: sent,
+      deliveredCount: delivered,
+      readCount: read,
+      failedCount: failed,
+    },
     recipients,
     metrics: {
       totalRecipients: total,
@@ -1434,8 +1880,10 @@ export async function getWhatsappBroadcastDetailsAction(rawInput: unknown) {
   }
 }
 
-export async function retryFailedWhatsappBroadcastRecipientsAction(rawInput: unknown) {
-  await requireSuperAdmin()
+export async function retryFailedWhatsappBroadcastRecipientsAction(
+  rawInput: unknown
+) {
+  const session = await requireSuperAdmin()
   const validated = retryFailedWhatsappBroadcastSchema.parse(rawInput)
 
   const [broadcast] = await db
@@ -1448,11 +1896,12 @@ export async function retryFailedWhatsappBroadcastRecipientsAction(rawInput: unk
     return { success: false, error: "Broadcast not found" }
   }
 
-  // Reset all failed recipient records to 'pending'
+  // Atomically reset ONLY `failed` recipients lacking a delivered/sent wamid to `pending`
   const resetRes = await db
     .update(whatsappBroadcastRecipients)
     .set({
       status: "pending",
+      wamid: null,
       errorMessage: null,
       errorCode: null,
     })
@@ -1466,10 +1915,27 @@ export async function retryFailedWhatsappBroadcastRecipientsAction(rawInput: unk
 
   const retriedCount = resetRes.length
   if (retriedCount === 0) {
-    return { success: true, retriedCount: 0, message: "No failed recipients to retry" }
+    const agg = await recomputeBroadcastAggregates(broadcast.id)
+    await db
+      .update(whatsappBroadcasts)
+      .set({
+        totalRecipients: agg.totalRecipients,
+        sentCount: agg.sentCount,
+        deliveredCount: agg.deliveredCount,
+        readCount: agg.readCount,
+        failedCount: agg.failedCount,
+        updatedAt: new Date(),
+      })
+      .where(eq(whatsappBroadcasts.id, broadcast.id))
+
+    return {
+      success: true,
+      retriedCount: 0,
+      message: "No failed recipients to retry",
+      metrics: agg,
+    }
   }
 
-  // Set broadcast status back to 'scheduled' or 'processing'
   await db
     .update(whatsappBroadcasts)
     .set({
@@ -1478,7 +1944,18 @@ export async function retryFailedWhatsappBroadcastRecipientsAction(rawInput: unk
     })
     .where(eq(whatsappBroadcasts.id, broadcast.id))
 
-  const retryRawKey = `wa-broadcast-retry-${broadcast.id}-${Date.now()}`
+  await recordAuditLog({
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    action: "whatsapp.broadcast.retry_failed",
+    entityType: "whatsapp_broadcast",
+    entityId: broadcast.id,
+    after: { retriedCount },
+  })
+
+  // Minute-bucketed idempotency key prevents rapid double-click duplicate retries (`T-067`)
+  const minuteBucket = Math.floor(Date.now() / 60_000)
+  const retryRawKey = `wa-broadcast-retry-${broadcast.id}-${minuteBucket}`
   let idempotencyKey: string = retryRawKey
   if (isTriggerCloudConfigured()) {
     try {
@@ -1504,7 +1981,18 @@ export async function retryFailedWhatsappBroadcastRecipientsAction(rawInput: unk
         .where(eq(whatsappAccounts.id, broadcast.accountId))
         .limit(1)
 
-      if (!account) return { sentCount: 0, failedCount: 0 }
+      if (!account) {
+        const agg = await recomputeBroadcastAggregates(broadcast.id)
+        return { sentCount: agg.sentCount, failedCount: agg.failedCount }
+      }
+
+      const [templateRow] = broadcast.templateId
+        ? await db
+            .select()
+            .from(whatsappTemplates)
+            .where(eq(whatsappTemplates.id, broadcast.templateId))
+            .limit(1)
+        : []
 
       const pendingRecipients = await db
         .select()
@@ -1516,53 +2004,88 @@ export async function retryFailedWhatsappBroadcastRecipientsAction(rawInput: unk
           )
         )
 
-      const accessToken = decrypt(account.encryptedAccessToken)
-      let sentCount = 0
-      let failedCount = 0
+      let accessToken: string
+      try {
+        accessToken = decrypt(account.encryptedAccessToken)
+      } catch (err) {
+        await db
+          .update(whatsappAccounts)
+          .set({ qualityRating: "NEEDS_REAUTH", updatedAt: new Date() })
+          .where(eq(whatsappAccounts.id, account.id))
+        const errMsg =
+          err instanceof Error ? err.message : "Token decryption failed"
+        await db
+          .update(whatsappBroadcastRecipients)
+          .set({ status: "failed", errorMessage: errMsg })
+          .where(
+            and(
+              eq(whatsappBroadcastRecipients.broadcastId, broadcast.id),
+              eq(whatsappBroadcastRecipients.status, "pending")
+            )
+          )
+        const agg = await recomputeBroadcastAggregates(broadcast.id)
+        await db
+          .update(whatsappBroadcasts)
+          .set({
+            status:
+              agg.sentCount === 0 && agg.failedCount > 0
+                ? "failed"
+                : "completed",
+            totalRecipients: agg.totalRecipients,
+            sentCount: agg.sentCount,
+            deliveredCount: agg.deliveredCount,
+            readCount: agg.readCount,
+            failedCount: agg.failedCount,
+            completedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(whatsappBroadcasts.id, broadcast.id))
+        return { sentCount: agg.sentCount, failedCount: agg.failedCount }
+      }
 
       for (const rec of pendingRecipients) {
+        if (rec.wamid) continue
         try {
-          let wamid: string
-          const resolvedParams = rec.templateParams as Record<string, unknown> | undefined
+          const resolvedParams = rec.templateParams as
+            | Record<string, unknown>
+            | undefined
           const paramsList = Array.isArray(resolvedParams)
-            ? resolvedParams
+            ? resolvedParams.map(String)
             : resolvedParams
-            ? Object.values(resolvedParams).map(String)
-            : undefined
+              ? Object.values(resolvedParams).map(String)
+              : undefined
 
-          try {
-            const res = await sendTemplateMessage({
-              phoneNumberId: account.phoneNumberId,
-              accessToken,
-              to: rec.contactPhone,
-              templateName: broadcast.templateName,
-              language: broadcast.templateLanguage || "en_US",
-              params: paramsList,
-              messageParams: {
-                body: paramsList,
-                headerMediaUrl: broadcast.headerMediaUrl || undefined,
-              },
-            })
-            wamid = res.messageId
-          } catch (err) {
-            if (process.env.NODE_ENV !== "production") {
-              wamid = `wamid.sim_${crypto.randomBytes(16).toString("hex")}`
-            } else {
-              throw err
-            }
-          }
+          const res = await sendTemplateMessage({
+            phoneNumberId: account.phoneNumberId,
+            accessToken,
+            to: rec.contactPhone,
+            templateName: broadcast.templateName,
+            language: broadcast.templateLanguage || "en_US",
+            template: templateRow ?? undefined,
+            params: paramsList,
+            messageParams: {
+              body: paramsList,
+              headerMediaUrl: broadcast.headerMediaUrl || undefined,
+            },
+          })
 
           await db
             .update(whatsappBroadcastRecipients)
             .set({
               status: "sent",
-              wamid,
+              wamid: res.messageId,
+              errorCode: null,
+              errorMessage: null,
               sentAt: new Date(),
             })
-            .where(eq(whatsappBroadcastRecipients.id, rec.id))
-          sentCount++
+            .where(
+              and(
+                eq(whatsappBroadcastRecipients.id, rec.id),
+                eq(whatsappBroadcastRecipients.status, "pending")
+              )
+            )
         } catch (err) {
-          failedCount++
+          await markWhatsappAccountNeedsReauthIfAuthError(account.id, err)
           await db
             .update(whatsappBroadcastRecipients)
             .set({
@@ -1574,29 +2097,36 @@ export async function retryFailedWhatsappBroadcastRecipientsAction(rawInput: unk
         }
       }
 
+      // Recompute exact counts from SQL recipient aggregates — NEVER `broadcast.sentCount + sentCount` (`T-067`)
+      const agg = await recomputeBroadcastAggregates(broadcast.id)
       await db
         .update(whatsappBroadcasts)
         .set({
-          status: "completed",
-          sentCount: (broadcast.sentCount || 0) + sentCount,
-          failedCount: Math.max(0, (broadcast.failedCount || 0) - sentCount),
+          status:
+            agg.sentCount === 0 && agg.failedCount > 0 ? "failed" : "completed",
+          totalRecipients: agg.totalRecipients,
+          sentCount: agg.sentCount,
+          deliveredCount: agg.deliveredCount,
+          readCount: agg.readCount,
+          failedCount: agg.failedCount,
           completedAt: new Date(),
           updatedAt: new Date(),
         })
         .where(eq(whatsappBroadcasts.id, broadcast.id))
 
-      return { sentCount, failedCount }
+      return { sentCount: agg.sentCount, failedCount: agg.failedCount }
     },
   })
 
-  revalidatePath("/admin/campaigns")
-  revalidatePath("/admin/whatsapp/broadcasts")
+  const latestAgg = await recomputeBroadcastAggregates(broadcast.id)
+  safeRevalidatePaths(["/admin/campaigns", "/admin/whatsapp/broadcasts"])
 
   return {
     success: true,
     retriedCount,
     executionMode: dispatchRes.mode,
     triggerRunId: dispatchRes.runId,
+    metrics: latestAgg,
   }
 }
 
@@ -1631,7 +2161,6 @@ export async function markConversationMessagesAsReadAction(rawInput: unknown) {
   const { conversation, account } = convRow
   const now = new Date()
 
-  // Find target inbound message to mark read on Meta (explicit messageId or latest inbound message)
   let targetWamid = input.messageId || null
   if (!targetWamid) {
     const [latestInbound] = await db
@@ -1652,21 +2181,16 @@ export async function markConversationMessagesAsReadAction(rawInput: unknown) {
     targetWamid = latestInbound?.wamid ?? null
   }
 
-  if (targetWamid) {
-    let accessToken = "mock_offline_token"
+  if (targetWamid && account.platformType !== "LINKED_DEVICE") {
     try {
-      accessToken = decrypt(account.encryptedAccessToken)
-    } catch {
-      accessToken = account.encryptedAccessToken || "mock_offline_token"
-    }
-
-    try {
+      const accessToken = decrypt(account.encryptedAccessToken)
       await markWhatsAppMessageAsRead({
         phoneNumberId: account.phoneNumberId,
         accessToken,
         messageId: targetWamid,
       })
     } catch (err) {
+      await markWhatsappAccountNeedsReauthIfAuthError(account.id, err)
       console.warn(
         "[whatsapp-read-receipt] Could not dispatch blue-tick read receipt to Meta:",
         err instanceof Error ? err.message : String(err)
@@ -1695,7 +2219,7 @@ export async function markConversationMessagesAsReadAction(rawInput: unknown) {
     })
     .where(eq(whatsappConversations.id, conversation.id))
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
     success: true,
     conversationId: conversation.id,
@@ -1708,7 +2232,7 @@ export async function markConversationReadAction(rawInput: unknown) {
 }
 
 export async function sendWhatsAppInteractiveButtonsAction(rawInput: unknown) {
-  await requireAdmin()
+  const session = await requireAdmin()
   const validated = sendInteractiveButtonsSchema.parse(rawInput)
 
   const [convRow] = await db
@@ -1725,99 +2249,96 @@ export async function sendWhatsAppInteractiveButtonsAction(rawInput: unknown) {
     .limit(1)
 
   if (!convRow) {
-    return { success: false, error: "Conversation or WhatsApp account not found" }
-  }
-
-  const { conversation, account } = convRow
-  const nowMs = Date.now()
-  const lastCustomerMessageTime = conversation.lastCustomerMessageAt
-    ? conversation.lastCustomerMessageAt.getTime()
-    : 0
-  const isInside24hWindow =
-    lastCustomerMessageTime > 0 && nowMs - lastCustomerMessageTime <= 24 * 60 * 60 * 1000
-
-  if (!isInside24hWindow) {
     return {
       success: false,
-      error:
-        "Outside 24-hour customer service window. Interactive messages require an active 24h customer session.",
+      error: "Conversation or WhatsApp account not found",
     }
   }
 
-  let accessToken = "mock_offline_token"
+  const { conversation, account } = convRow
+
+  const optedOut = await isWhatsappContactOptedOut({
+    conversation,
+    contactPhone: conversation.contactPhone,
+  })
+  if (optedOut) {
+    return {
+      success: false,
+      code: "DO_NOT_CONTACT",
+      error:
+        "Contact has opted out (DO_NOT_CONTACT). Interactive messages are blocked.",
+    }
+  }
+
+  if (!isWithin24HourServiceWindow(conversation.lastCustomerMessageAt)) {
+    return {
+      success: false,
+      code: "WINDOW_CLOSED_TEMPLATE_REQUIRED",
+      error:
+        "WINDOW_CLOSED_TEMPLATE_REQUIRED: Outside 24-hour customer service window. Interactive messages require an active 24h customer session.",
+    }
+  }
+
+  let accessToken: string
   try {
     accessToken = decrypt(account.encryptedAccessToken)
   } catch {
-    accessToken = account.encryptedAccessToken || "mock_offline_token"
+    await db
+      .update(whatsappAccounts)
+      .set({ qualityRating: "NEEDS_REAUTH", updatedAt: new Date() })
+      .where(eq(whatsappAccounts.id, account.id))
+    return {
+      success: false,
+      code: "TOKEN_DECRYPT_FAILED",
+      error: "WhatsApp account token decryption failed.",
+    }
   }
 
-  let wamid: string
-  try {
-    const res = await sendInteractiveButtonsMessage({
-      phoneNumberId: account.phoneNumberId,
-      accessToken,
-      to: conversation.contactPhone,
+  const dispatchRes = await dispatchTrackedOutboundMessage({
+    accountId: account.id,
+    conversationId: conversation.id,
+    messageType: "interactive",
+    body: validated.bodyText,
+    contextMessageId: validated.contextMessageId ?? null,
+    sentByUserId: session.user.id,
+    interactivePayload: {
+      type: "button",
       headerText: validated.headerText,
       bodyText: validated.bodyText,
       footerText: validated.footerText,
       buttons: validated.buttons,
-      contextMessageId: validated.contextMessageId,
-    })
-    wamid = res.messageId
-  } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      wamid = `wamid.sim_btn_${crypto.randomBytes(12).toString("hex")}`
-    } else {
-      return {
-        success: false,
-        error:
-          err instanceof Error
-            ? err.message
-            : "Failed to send interactive buttons message",
-      }
-    }
-  }
-
-  const sentAt = new Date()
-  const [createdMessage] = await db
-    .insert(whatsappMessages)
-    .values({
-      conversationId: conversation.id,
-      wamid,
-      direction: "outbound",
-      status: "sent",
-      messageType: "interactive",
-      body: validated.bodyText,
-      contextMessageId: validated.contextMessageId,
-      interactivePayload: {
-        type: "button",
+    },
+    sendFn: () =>
+      sendInteractiveButtonsMessage({
+        phoneNumberId: account.phoneNumberId,
+        accessToken,
+        to: conversation.contactPhone,
         headerText: validated.headerText,
         bodyText: validated.bodyText,
         footerText: validated.footerText,
         buttons: validated.buttons,
-      },
-      sentAt,
-    })
-    .returning()
+        contextMessageId: validated.contextMessageId,
+      }),
+  })
 
-  await db
-    .update(whatsappConversations)
-    .set({
-      lastMessageAt: sentAt,
-      updatedAt: sentAt,
-    })
-    .where(eq(whatsappConversations.id, conversation.id))
+  if (!dispatchRes.ok) {
+    return {
+      success: false,
+      code: dispatchRes.errorCode,
+      error: dispatchRes.error,
+    }
+  }
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
     success: true,
-    messageId: createdMessage.id,
-    wamid,
+    messageId: dispatchRes.message.id,
+    wamid: dispatchRes.wamid,
   }
 }
 
 export async function sendWhatsAppInteractiveListAction(rawInput: unknown) {
-  await requireAdmin()
+  const session = await requireAdmin()
   const validated = sendInteractiveListSchema.parse(rawInput)
 
   const [convRow] = await db
@@ -1834,101 +2355,98 @@ export async function sendWhatsAppInteractiveListAction(rawInput: unknown) {
     .limit(1)
 
   if (!convRow) {
-    return { success: false, error: "Conversation or WhatsApp account not found" }
-  }
-
-  const { conversation, account } = convRow
-  const nowMs = Date.now()
-  const lastCustomerMessageTime = conversation.lastCustomerMessageAt
-    ? conversation.lastCustomerMessageAt.getTime()
-    : 0
-  const isInside24hWindow =
-    lastCustomerMessageTime > 0 && nowMs - lastCustomerMessageTime <= 24 * 60 * 60 * 1000
-
-  if (!isInside24hWindow) {
     return {
       success: false,
-      error:
-        "Outside 24-hour customer service window. Interactive list menus require an active 24h customer session.",
+      error: "Conversation or WhatsApp account not found",
     }
   }
 
-  let accessToken = "mock_offline_token"
+  const { conversation, account } = convRow
+
+  const optedOut = await isWhatsappContactOptedOut({
+    conversation,
+    contactPhone: conversation.contactPhone,
+  })
+  if (optedOut) {
+    return {
+      success: false,
+      code: "DO_NOT_CONTACT",
+      error:
+        "Contact has opted out (DO_NOT_CONTACT). Interactive list menus are blocked.",
+    }
+  }
+
+  if (!isWithin24HourServiceWindow(conversation.lastCustomerMessageAt)) {
+    return {
+      success: false,
+      code: "WINDOW_CLOSED_TEMPLATE_REQUIRED",
+      error:
+        "WINDOW_CLOSED_TEMPLATE_REQUIRED: Outside 24-hour customer service window. Interactive list menus require an active 24h customer session.",
+    }
+  }
+
+  let accessToken: string
   try {
     accessToken = decrypt(account.encryptedAccessToken)
   } catch {
-    accessToken = account.encryptedAccessToken || "mock_offline_token"
+    await db
+      .update(whatsappAccounts)
+      .set({ qualityRating: "NEEDS_REAUTH", updatedAt: new Date() })
+      .where(eq(whatsappAccounts.id, account.id))
+    return {
+      success: false,
+      code: "TOKEN_DECRYPT_FAILED",
+      error: "WhatsApp account token decryption failed.",
+    }
   }
 
-  let wamid: string
-  try {
-    const res = await sendInteractiveListMessage({
-      phoneNumberId: account.phoneNumberId,
-      accessToken,
-      to: conversation.contactPhone,
+  const dispatchRes = await dispatchTrackedOutboundMessage({
+    accountId: account.id,
+    conversationId: conversation.id,
+    messageType: "interactive",
+    body: validated.bodyText,
+    contextMessageId: validated.contextMessageId ?? null,
+    sentByUserId: session.user.id,
+    interactivePayload: {
+      type: "list",
       headerText: validated.headerText,
       bodyText: validated.bodyText,
       footerText: validated.footerText,
       buttonText: validated.buttonText,
       sections: validated.sections,
-      contextMessageId: validated.contextMessageId,
-    })
-    wamid = res.messageId
-  } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      wamid = `wamid.sim_list_${crypto.randomBytes(12).toString("hex")}`
-    } else {
-      return {
-        success: false,
-        error:
-          err instanceof Error
-            ? err.message
-            : "Failed to send interactive list message",
-      }
-    }
-  }
-
-  const sentAt = new Date()
-  const [createdMessage] = await db
-    .insert(whatsappMessages)
-    .values({
-      conversationId: conversation.id,
-      wamid,
-      direction: "outbound",
-      status: "sent",
-      messageType: "interactive",
-      body: validated.bodyText,
-      contextMessageId: validated.contextMessageId,
-      interactivePayload: {
-        type: "list",
+    },
+    sendFn: () =>
+      sendInteractiveListMessage({
+        phoneNumberId: account.phoneNumberId,
+        accessToken,
+        to: conversation.contactPhone,
         headerText: validated.headerText,
         bodyText: validated.bodyText,
         footerText: validated.footerText,
         buttonText: validated.buttonText,
         sections: validated.sections,
-      },
-      sentAt,
-    })
-    .returning()
+        contextMessageId: validated.contextMessageId,
+      }),
+  })
 
-  await db
-    .update(whatsappConversations)
-    .set({
-      lastMessageAt: sentAt,
-      updatedAt: sentAt,
-    })
-    .where(eq(whatsappConversations.id, conversation.id))
+  if (!dispatchRes.ok) {
+    return {
+      success: false,
+      code: dispatchRes.errorCode,
+      error: dispatchRes.error,
+    }
+  }
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
     success: true,
-    messageId: createdMessage.id,
-    wamid,
+    messageId: dispatchRes.message.id,
+    wamid: dispatchRes.wamid,
   }
 }
 
 export async function sendWhatsAppReactionAction(rawInput: unknown) {
-  await requireAdmin()
+  const session = await requireAdmin()
   const validated = sendWhatsappReactionSchema.parse(rawInput)
 
   const [convRow] = await db
@@ -1945,40 +2463,79 @@ export async function sendWhatsAppReactionAction(rawInput: unknown) {
     .limit(1)
 
   if (!convRow) {
-    return { success: false, error: "Conversation or WhatsApp account not found" }
-  }
-
-  const { conversation, account } = convRow
-  let accessToken = "mock_offline_token"
-  try {
-    accessToken = decrypt(account.encryptedAccessToken)
-  } catch {
-    accessToken = account.encryptedAccessToken || "mock_offline_token"
-  }
-
-  let wamid: string
-  try {
-    const res = await sendWhatsAppReactionMessage({
-      phoneNumberId: account.phoneNumberId,
-      accessToken,
-      to: conversation.contactPhone,
-      messageId: validated.messageId,
-      emoji: validated.emoji,
-    })
-    wamid = res.messageId
-  } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      wamid = `wamid.sim_react_${crypto.randomBytes(12).toString("hex")}`
-    } else {
-      return {
-        success: false,
-        error:
-          err instanceof Error ? err.message : "Failed to send WhatsApp reaction",
-      }
+    return {
+      success: false,
+      error: "Conversation or WhatsApp account not found",
     }
   }
 
-  // Also stamp reactionEmoji on the target message if it exists in DB
+  const { conversation, account } = convRow
+
+  const optedOut = await isWhatsappContactOptedOut({
+    conversation,
+    contactPhone: conversation.contactPhone,
+  })
+  if (optedOut) {
+    return {
+      success: false,
+      code: "DO_NOT_CONTACT",
+      error: "Contact has opted out (DO_NOT_CONTACT). Reactions are blocked.",
+    }
+  }
+
+  if (!isWithin24HourServiceWindow(conversation.lastCustomerMessageAt)) {
+    return {
+      success: false,
+      code: "WINDOW_CLOSED_TEMPLATE_REQUIRED",
+      error:
+        "WINDOW_CLOSED_TEMPLATE_REQUIRED: Outside 24-hour customer service window. Emoji reactions require an active 24h customer session.",
+    }
+  }
+
+  let accessToken: string
+  try {
+    accessToken = decrypt(account.encryptedAccessToken)
+  } catch {
+    await db
+      .update(whatsappAccounts)
+      .set({ qualityRating: "NEEDS_REAUTH", updatedAt: new Date() })
+      .where(eq(whatsappAccounts.id, account.id))
+    return {
+      success: false,
+      code: "TOKEN_DECRYPT_FAILED",
+      error: "WhatsApp account token decryption failed.",
+    }
+  }
+
+  const dispatchRes = await dispatchTrackedOutboundMessage({
+    accountId: account.id,
+    conversationId: conversation.id,
+    messageType: "reaction",
+    body: validated.emoji ? `Reacted ${validated.emoji}` : "Removed reaction",
+    contextMessageId: validated.messageId,
+    sentByUserId: session.user.id,
+    interactivePayload: {
+      reactionEmoji: validated.emoji,
+      reactedToWabaMessageId: validated.messageId,
+    },
+    sendFn: () =>
+      sendWhatsAppReactionMessage({
+        phoneNumberId: account.phoneNumberId,
+        accessToken,
+        to: conversation.contactPhone,
+        messageId: validated.messageId,
+        emoji: validated.emoji,
+      }),
+  })
+
+  if (!dispatchRes.ok) {
+    return {
+      success: false,
+      code: dispatchRes.errorCode,
+      error: dispatchRes.error,
+    }
+  }
+
   await db
     .update(whatsappMessages)
     .set({
@@ -1986,30 +2543,19 @@ export async function sendWhatsAppReactionAction(rawInput: unknown) {
     })
     .where(eq(whatsappMessages.wamid, validated.messageId))
 
-  const sentAt = new Date()
-  const [createdMessage] = await db
-    .insert(whatsappMessages)
-    .values({
-      conversationId: conversation.id,
-      wamid,
-      direction: "outbound",
-      status: "sent",
-      messageType: "reaction",
-      body: validated.emoji
-        ? `Reacted ${validated.emoji}`
-        : "Removed reaction",
-      reactionEmoji: validated.emoji,
+  await db
+    .update(whatsappMessages)
+    .set({
+      reactionEmoji: validated.emoji || null,
       reactedToWabaMessageId: validated.messageId,
-      contextMessageId: validated.messageId,
-      sentAt,
     })
-    .returning()
+    .where(eq(whatsappMessages.id, dispatchRes.message.id))
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
     success: true,
-    messageId: createdMessage.id,
-    wamid,
+    messageId: dispatchRes.message.id,
+    wamid: dispatchRes.wamid,
   }
 }
 
@@ -2018,8 +2564,8 @@ export async function sendWhatsAppReactionAction(rawInput: unknown) {
 // ==========================================
 
 export async function createWhatsAppTemplateAction(rawInput: unknown) {
-  await requireAdmin()
-  const validated = createWhatsappTemplateSchema.parse(rawInput)
+  const session = await requireSuperAdmin()
+  const validated = createWhatsappTemplateExtendedSchema.parse(rawInput)
 
   let account
   if (validated.accountId) {
@@ -2042,25 +2588,62 @@ export async function createWhatsAppTemplateAction(rawInput: unknown) {
     return { success: false, error: "WhatsApp account not found" }
   }
 
-  let accessToken = "mock_offline_token"
+  let accessToken: string
   try {
     accessToken = decrypt(account.encryptedAccessToken)
   } catch {
-    accessToken = account.encryptedAccessToken || "mock_offline_token"
+    await db
+      .update(whatsappAccounts)
+      .set({ qualityRating: "NEEDS_REAUTH", updatedAt: new Date() })
+      .where(eq(whatsappAccounts.id, account.id))
+    return {
+      success: false,
+      error: "WhatsApp account token decryption failed.",
+    }
   }
 
   const normalizedName = validated.name.trim().toLowerCase()
-  const metaResult = await createMetaMessageTemplate({
-    wabaId: account.wabaId,
-    accessToken,
-    name: normalizedName,
-    language: validated.language,
-    category: validated.category,
-    headerText: validated.headerText,
-    bodyText: validated.bodyText,
-    footerText: validated.footerText,
-    buttons: validated.buttons,
-  })
+  const resolvedHeaderType: MetaTemplateHeaderFormat =
+    validated.headerType ||
+    (validated.headerText?.trim() ? "TEXT" : "NONE")
+
+  let metaResult
+  try {
+    metaResult = await createMetaMessageTemplate({
+      wabaId: account.wabaId,
+      accessToken,
+      name: normalizedName,
+      language: validated.language,
+      category: validated.category,
+      headerType: resolvedHeaderType,
+      headerText: validated.headerText,
+      headerExample: validated.headerExample,
+      headerHandle: validated.headerHandle,
+      headerMediaUrl: validated.headerMediaUrl,
+      bodyText: validated.bodyText,
+      bodyExamples: validated.bodyExamples,
+      footerText: validated.footerText,
+      buttons: validated.buttons,
+    })
+  } catch (err) {
+    await markWhatsappAccountNeedsReauthIfAuthError(account.id, err)
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to submit Meta message template",
+    }
+  }
+
+  const storedHeaderType =
+    resolvedHeaderType === "NONE" ? null : resolvedHeaderType
+  const storedHeaderContent =
+    resolvedHeaderType === "TEXT"
+      ? validated.headerText?.trim() ?? null
+      : validated.headerMediaUrl?.trim() ||
+        validated.headerHandle?.trim() ||
+        null
 
   const now = new Date()
   const [existing] = await db
@@ -2083,8 +2666,8 @@ export async function createWhatsAppTemplateAction(rawInput: unknown) {
         metaTemplateId: metaResult.id,
         category: metaResult.category,
         status: metaResult.status,
-        headerType: validated.headerText ? "text" : null,
-        headerContent: validated.headerText ?? null,
+        headerType: storedHeaderType,
+        headerContent: storedHeaderContent,
         bodyText: validated.bodyText,
         footerText: validated.footerText ?? null,
         buttons: (validated.buttons ?? []) as Array<Record<string, unknown>>,
@@ -2104,8 +2687,8 @@ export async function createWhatsAppTemplateAction(rawInput: unknown) {
         language: validated.language,
         category: metaResult.category,
         status: metaResult.status,
-        headerType: validated.headerText ? "text" : null,
-        headerContent: validated.headerText ?? null,
+        headerType: storedHeaderType,
+        headerContent: storedHeaderContent,
         bodyText: validated.bodyText,
         footerText: validated.footerText ?? null,
         buttons: (validated.buttons ?? []) as Array<Record<string, unknown>>,
@@ -2117,9 +2700,21 @@ export async function createWhatsAppTemplateAction(rawInput: unknown) {
     savedTemplate = inserted
   }
 
-  revalidatePath("/admin/settings")
-  revalidatePath("/admin/campaigns")
-  revalidatePath("/admin/desk")
+  await recordAuditLog({
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    action: "whatsapp.template.create",
+    entityType: "whatsapp_template",
+    entityId: savedTemplate.id,
+    after: {
+      name: normalizedName,
+      category: metaResult.category,
+      headerType: storedHeaderType,
+      status: metaResult.status,
+    },
+  })
+
+  safeRevalidatePaths(["/admin/settings", "/admin/campaigns", "/admin/desk"])
   return {
     success: true,
     template: savedTemplate,
@@ -2129,7 +2724,7 @@ export async function createWhatsAppTemplateAction(rawInput: unknown) {
 }
 
 export async function deleteWhatsAppTemplateAction(rawInput: unknown) {
-  await requireAdmin()
+  const session = await requireSuperAdmin()
   const validated = deleteWhatsappTemplateSchema.parse(rawInput)
 
   let templateRow = null
@@ -2172,18 +2767,36 @@ export async function deleteWhatsAppTemplateAction(rawInput: unknown) {
     }
   }
 
-  let accessToken = "mock_offline_token"
+  let accessToken: string
   try {
     accessToken = decrypt(account.encryptedAccessToken)
   } catch {
-    accessToken = account.encryptedAccessToken || "mock_offline_token"
+    await db
+      .update(whatsappAccounts)
+      .set({ qualityRating: "NEEDS_REAUTH", updatedAt: new Date() })
+      .where(eq(whatsappAccounts.id, account.id))
+    return {
+      success: false,
+      error: "WhatsApp account token decryption failed.",
+    }
   }
 
-  await deleteMetaMessageTemplate({
-    wabaId: account.wabaId,
-    accessToken,
-    name: templateName,
-  })
+  try {
+    await deleteMetaMessageTemplate({
+      wabaId: account.wabaId,
+      accessToken,
+      name: templateName,
+    })
+  } catch (err) {
+    await markWhatsappAccountNeedsReauthIfAuthError(account.id, err)
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : `Failed to delete Meta template '${templateName}'`,
+    }
+  }
 
   if (templateRow) {
     await db
@@ -2200,9 +2813,16 @@ export async function deleteWhatsAppTemplateAction(rawInput: unknown) {
       )
   }
 
-  revalidatePath("/admin/settings")
-  revalidatePath("/admin/campaigns")
-  revalidatePath("/admin/desk")
+  await recordAuditLog({
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    action: "whatsapp.template.delete",
+    entityType: "whatsapp_template",
+    entityId: templateRow?.id ?? templateName,
+    before: { name: templateName, accountId: account.id },
+  })
+
+  safeRevalidatePaths(["/admin/settings", "/admin/campaigns", "/admin/desk"])
   return { success: true, deletedName: templateName }
 }
 
@@ -2244,8 +2864,7 @@ export async function toggleWhatsAppAutoResponderAction(rawInput: unknown) {
     .where(eq(whatsappAccounts.id, account.id))
     .returning()
 
-  revalidatePath("/admin/desk")
-  revalidatePath("/admin/settings")
+  safeRevalidatePaths(["/admin/desk", "/admin/settings"])
   return {
     success: true,
     accountId: updated.id,
@@ -2265,9 +2884,10 @@ export async function triggerManualMediaMirrorAction(rawInput: unknown) {
     messageId: input.messageId,
   })
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
-    success: dispatchResult.success && (dispatchResult.output?.success ?? true),
+    success:
+      dispatchResult.success && (dispatchResult.output?.success ?? true),
     mode: dispatchResult.mode,
     runId: dispatchResult.runId,
     result: dispatchResult.output,
@@ -2333,6 +2953,24 @@ export async function upsertWhatsappAutoReplyRuleAction(rawInput: unknown) {
     new Set(validated.keywords.map((k) => k.trim()).filter(Boolean))
   )
 
+  if (validated.matchType === "REGEX") {
+    const unsafePattern = normalizedKeywords.find(
+      (kw) => !isSafeAutoReplyRegex(kw)
+    )
+    if (unsafePattern) {
+      return {
+        success: false,
+        error: `Unsafe or invalid REGEX pattern "${unsafePattern}" rejected (nested quantifiers, backreferences, and patterns > 120 chars are prohibited).`,
+      }
+    }
+  }
+
+  const companyInfo = await loadVerifiedCompanyInfo()
+  const sanitizedResponseText = sanitizeAutoReplyBrandTruth(
+    validated.responseText.trim(),
+    companyInfo
+  )
+
   if (validated.id) {
     const [updated] = await db
       .update(whatsappAutoReplyRules)
@@ -2340,7 +2978,7 @@ export async function upsertWhatsappAutoReplyRuleAction(rawInput: unknown) {
         name: validated.name.trim(),
         matchType: validated.matchType,
         keywords: normalizedKeywords,
-        responseText: validated.responseText.trim(),
+        responseText: sanitizedResponseText,
         mediaUrl: validated.mediaUrl?.trim() ? validated.mediaUrl.trim() : null,
         mediaFilename: validated.mediaFilename?.trim()
           ? validated.mediaFilename.trim()
@@ -2354,7 +2992,7 @@ export async function upsertWhatsappAutoReplyRuleAction(rawInput: unknown) {
       .where(eq(whatsappAutoReplyRules.id, validated.id))
       .returning()
 
-    revalidatePath("/admin/desk")
+    safeRevalidatePaths(["/admin/desk"])
     return {
       success: true,
       ruleId: updated.id,
@@ -2377,7 +3015,7 @@ export async function upsertWhatsappAutoReplyRuleAction(rawInput: unknown) {
       name: validated.name.trim(),
       matchType: validated.matchType,
       keywords: normalizedKeywords,
-      responseText: validated.responseText.trim(),
+      responseText: sanitizedResponseText,
       mediaUrl: validated.mediaUrl?.trim() ? validated.mediaUrl.trim() : null,
       mediaFilename: validated.mediaFilename?.trim()
         ? validated.mediaFilename.trim()
@@ -2391,7 +3029,7 @@ export async function upsertWhatsappAutoReplyRuleAction(rawInput: unknown) {
     })
     .returning()
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
     success: true,
     ruleId: inserted.id,
@@ -2407,7 +3045,7 @@ export async function deleteWhatsappAutoReplyRuleAction(rawInput: unknown) {
     .delete(whatsappAutoReplyRules)
     .where(eq(whatsappAutoReplyRules.id, validated.id))
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
     success: true,
     deletedId: validated.id,
@@ -2428,7 +3066,7 @@ export async function toggleWhatsappAutoReplyRuleAction(rawInput: unknown) {
     .where(eq(whatsappAutoReplyRules.id, validated.id))
     .returning()
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
     success: true,
     rule: updated,
@@ -2488,7 +3126,7 @@ export async function ensureDefaultAutoReplyRulesAction(accountId?: string) {
       desc(whatsappAutoReplyRules.createdAt)
     )
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
     success: true,
     insertedCount: missingPresets.length,
@@ -2508,6 +3146,20 @@ export async function updateWhatsappGreetingSettingsAction(rawInput: unknown) {
     }
   }
 
+  const companyInfo = await loadVerifiedCompanyInfo()
+  const cleanWelcome = validated.welcomeGreetingText?.trim()
+    ? sanitizeAutoReplyBrandTruth(
+        validated.welcomeGreetingText.trim(),
+        companyInfo
+      )
+    : null
+  const cleanAway = validated.awayGreetingText?.trim()
+    ? sanitizeAutoReplyBrandTruth(
+        validated.awayGreetingText.trim(),
+        companyInfo
+      )
+    : null
+
   const now = new Date()
   const [updated] = await db
     .update(whatsappAccounts)
@@ -2515,13 +3167,9 @@ export async function updateWhatsappGreetingSettingsAction(rawInput: unknown) {
       autoReplyEnabled: validated.autoReplyEnabled,
       autoReplyCooldownMinutes: validated.autoReplyCooldownMinutes,
       welcomeGreetingEnabled: validated.welcomeGreetingEnabled,
-      welcomeGreetingText: validated.welcomeGreetingText?.trim()
-        ? validated.welcomeGreetingText.trim()
-        : null,
+      welcomeGreetingText: cleanWelcome,
       awayGreetingEnabled: validated.awayGreetingEnabled,
-      awayGreetingText: validated.awayGreetingText?.trim()
-        ? validated.awayGreetingText.trim()
-        : null,
+      awayGreetingText: cleanAway,
       businessHoursStart: validated.businessHoursStart,
       businessHoursEnd: validated.businessHoursEnd,
       updatedAt: now,
@@ -2529,8 +3177,7 @@ export async function updateWhatsappGreetingSettingsAction(rawInput: unknown) {
     .where(eq(whatsappAccounts.id, account.id))
     .returning()
 
-  revalidatePath("/admin/desk")
-  revalidatePath("/admin/settings")
+  safeRevalidatePaths(["/admin/desk", "/admin/settings"])
   return {
     success: true,
     account: {
@@ -2576,7 +3223,7 @@ export async function updateConversationIntentAction(rawInput: {
     .where(eq(whatsappConversations.id, rawInput.conversationId))
     .returning()
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
     success: true,
     conversation: updated,
@@ -2599,15 +3246,27 @@ export async function handoffConversationToDedicatedAgentAction(rawInput: {
     return { success: false, error: "Source conversation not found" }
   }
 
-  // Locate Dedicated AI Agent account if configured, otherwise fallback to active account
   const allAccounts = await db.select().from(whatsappAccounts)
   const dedicatedAccount =
-    allAccounts.find((a) => a.accountRole === "DEDICATED_AGENT" && a.isActive) ||
-    allAccounts.find((a) => a.id !== conv.accountId && a.isActive) ||
-    allAccounts[0]
+    allAccounts.find(
+      (a) =>
+        a.accountRole === "DEDICATED_AGENT" &&
+        a.isActive &&
+        a.platformType !== "LINKED_DEVICE"
+    ) ||
+    allAccounts.find(
+      (a) =>
+        a.id !== conv.accountId &&
+        a.isActive &&
+        a.platformType !== "LINKED_DEVICE"
+    ) ||
+    allAccounts.find((a) => a.isActive && a.platformType !== "LINKED_DEVICE")
 
   if (!dedicatedAccount) {
-    return { success: false, error: "No WhatsApp account available for handoff" }
+    return {
+      success: false,
+      error: "No active Cloud API WhatsApp account available for handoff",
+    }
   }
 
   let targetConversation = conv
@@ -2629,7 +3288,8 @@ export async function handoffConversationToDedicatedAgentAction(rawInput: {
         .set({
           intentCategory: "FOUNDER_HANDOFF",
           intentConfidence: 100,
-          intentReason: `VIP Lead handed off from Founder line (+92 319 0462638) to Dedicated Agent`,
+          intentReason:
+            "VIP Lead handed off from Founder line (+92 319 0462638) to Dedicated Agent",
           detectedPostCode:
             existingOnAgent.detectedPostCode || conv.detectedPostCode,
           applicationId: existingOnAgent.applicationId || conv.applicationId,
@@ -2653,7 +3313,8 @@ export async function handoffConversationToDedicatedAgentAction(rawInput: {
           unreadCount: 1,
           intentCategory: "FOUNDER_HANDOFF",
           intentConfidence: 100,
-          intentReason: `VIP Lead handed off from Founder line (+92 319 0462638) to Dedicated Agent`,
+          intentReason:
+            "VIP Lead handed off from Founder line (+92 319 0462638) to Dedicated Agent",
         })
         .returning()
       targetConversation = createdAgentConv
@@ -2671,7 +3332,7 @@ export async function handoffConversationToDedicatedAgentAction(rawInput: {
     })
     .where(eq(whatsappConversations.id, conv.id))
 
-  revalidatePath("/admin/desk")
+  safeRevalidatePaths(["/admin/desk"])
   return {
     success: true,
     targetConversationId: targetConversation.id,
@@ -2690,7 +3351,7 @@ export async function completeEmbeddedSignupCoexistenceAction(rawInput: {
   accountRole?: "COEXISTENCE_FOUNDER" | "DEDICATED_AGENT"
   configId?: string
 }) {
-  await requireAdmin()
+  const session = await requireSuperAdmin()
 
   let accessToken = rawInput.accessToken?.trim() || ""
   if (!accessToken && rawInput.code) {
@@ -2698,12 +3359,14 @@ export async function completeEmbeddedSignupCoexistenceAction(rawInput: {
     accessToken = exchanged.accessToken
   }
 
+  let existingVerifyToken: string | null = null
   if (!accessToken) {
     const [existing] = await db
       .select()
       .from(whatsappAccounts)
       .where(eq(whatsappAccounts.phoneNumberId, rawInput.phoneNumberId))
       .limit(1)
+    existingVerifyToken = existing?.webhookVerifyToken ?? null
     if (existing?.encryptedAccessToken) {
       accessToken = decrypt(existing.encryptedAccessToken)
     }
@@ -2712,7 +3375,8 @@ export async function completeEmbeddedSignupCoexistenceAction(rawInput: {
   if (!accessToken) {
     return {
       success: false,
-      error: "Missing OAuth authorization code or System User token for Embedded Signup",
+      error:
+        "Missing OAuth authorization code or System User token for Embedded Signup",
     }
   }
 
@@ -2728,19 +3392,24 @@ export async function completeEmbeddedSignupCoexistenceAction(rawInput: {
     platform_type: "CLOUD_API",
   }))
 
-  // 1. Subscribe WABA to app webhooks (messages + smb_message_echoes + smb_app_state_sync)
   await subscribeWabaToApp({
     wabaId: rawInput.wabaId,
     accessToken,
   }).catch(() => null)
 
-  // 2. Trigger mandatory Coexistence SMB app data sync (contacts + 6m history) within 24h window
   const syncResult = await syncCoexistenceSmbAppData({
     phoneNumberId: rawInput.phoneNumberId,
     accessToken,
   }).catch(() => ({ contactsSynced: false, historySynced: false }))
 
-  const role = rawInput.accountRole || (info.is_on_biz_app ? "COEXISTENCE_FOUNDER" : "DEDICATED_AGENT")
+  const role =
+    rawInput.accountRole ||
+    (info.is_on_biz_app ? "COEXISTENCE_FOUNDER" : "DEDICATED_AGENT")
+
+  const strongVerifyToken = ensureStrongWebhookVerifyToken(
+    null,
+    existingVerifyToken
+  )
 
   const saved = await upsertWhatsappAccountAction({
     name:
@@ -2751,15 +3420,31 @@ export async function completeEmbeddedSignupCoexistenceAction(rawInput: {
     phoneNumberId: rawInput.phoneNumberId,
     wabaId: rawInput.wabaId,
     displayPhoneNumber:
-      info.display_phone_number || rawInput.displayPhoneNumber || "+92 319 0462638",
+      info.display_phone_number ||
+      rawInput.displayPhoneNumber ||
+      "+92 319 0462638",
     accessToken,
-    webhookVerifyToken: "art_wa_token_verified",
+    webhookVerifyToken: strongVerifyToken,
     isActive: true,
     isDefault: role === "COEXISTENCE_FOUNDER",
     accountRole: role,
     isOnBizApp: Boolean(info.is_on_biz_app ?? role === "COEXISTENCE_FOUNDER"),
     intentFilterEnabled: role === "COEXISTENCE_FOUNDER",
     embeddedSignupConfigId: rawInput.configId || null,
+  })
+
+  await recordAuditLog({
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    action: "whatsapp.embedded_signup.complete",
+    entityType: "whatsapp_account",
+    entityId: saved.accountId,
+    after: {
+      phoneNumberId: rawInput.phoneNumberId,
+      wabaId: rawInput.wabaId,
+      accountRole: role,
+      isOnBizApp: Boolean(info.is_on_biz_app ?? true),
+    },
   })
 
   return {
@@ -2771,6 +3456,3 @@ export async function completeEmbeddedSignupCoexistenceAction(rawInput: {
     historySynced: syncResult.historySynced,
   }
 }
-
-
-

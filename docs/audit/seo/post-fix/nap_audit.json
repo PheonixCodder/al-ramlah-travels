@@ -1,0 +1,352 @@
+{
+  "files_scanned": 574,
+  "detected_phones": {
+    "050 123 4567": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "lib/phone.ts"
+    ],
+    "1 050 123 4567": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "lib/phone.ts"
+    ],
+    "+1 (555) 234-5678": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "lib/phone.ts"
+    ],
+    "(312) 555-0199": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "lib/phone.ts"
+    ],
+    "312-555-0199": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "lib/phone.ts"
+    ],
+    "+1 (555) 123-4567": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "lib/validations/whatsapp-linked-device.ts"
+    ],
+    "092 327 4029": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-dom/phone-ssot.test.ts"
+    ],
+    "+1 (312) 555-0199": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-dom/phone-ssot.test.ts"
+    ],
+    "+1-416-555-0198": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-pub/diaspora-and-brand-consistency.test.ts"
+    ],
+    "+1 (416) 555-0198": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-pub/diaspora-and-brand-consistency.test.ts"
+    ]
+  },
+  "detected_emails": {
+    "%@g.us": [
+      "app/actions/whatsapp-linked-device.ts",
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json"
+    ],
+    "name@alramlahtravels.com": [
+      "components/admin/auth/admin-login-client.tsx",
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json"
+    ],
+    "alramlahtravels@gmail.com": [
+      "components/admin/catalog/settings-client.tsx",
+      "db/schema/settings.ts",
+      "db/seed.ts",
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json"
+    ],
+    "tariq@alramlahtravels.com": [
+      "components/admin/catalog/users-client.tsx",
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json"
+    ],
+    "admin@alramlahtravels.com": [
+      "components/layout/admin-topbar.tsx",
+      "db/seed.ts",
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json"
+    ],
+    "staff@alramlahtravels.com": [
+      "db/seed.ts",
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json"
+    ],
+    "info@alramlahtravels.com": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "drizzle/meta/0000_snapshot.json"
+    ],
+    "concierge@alramlahtravels.com": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "lib/env.ts"
+    ],
+    "noreply@alramlahtravels.com": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "lib/security/mailer.ts"
+    ],
+    "923274029701@s.whatsapp.net": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "lib/validations/whatsapp-linked-device.ts"
+    ],
+    "120363024849102938@g.us": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/trigger-v4-webhook-and-realtime-copilot.test.ts"
+    ],
+    "923214629700@s.whatsapp.net": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/whatsapp-multi-number-system.test.ts"
+    ],
+    "923198463538@s.whatsapp.net": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/whatsapp-multi-number-system.test.ts"
+    ],
+    "120363024888888888@g.us": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/whatsapp-multi-number-system.test.ts"
+    ],
+    "923214629700-1612345678@g.us": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/whatsapp-multi-number-system.test.ts"
+    ],
+    "e2e-superadmin@alramlahtravels.com": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/e2e/helpers/db.ts"
+    ],
+    "e2e-staff@alramlahtravels.com": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/e2e/helpers/db.ts"
+    ],
+    "e2e-deactivated@alramlahtravels.com": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/e2e/helpers/db.ts"
+    ],
+    "120363049999999999@g.us": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/unit/contract-fakes.test.ts"
+    ],
+    "pilgrim@alramlahtravels.com": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-admin/catalog-softdelete-and-cms.test.ts"
+    ],
+    "concierge@alramlah.pk": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-desk/quotation-pdf-fidelity.test.ts"
+    ],
+    "care@alramlah.com": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-desk/quotation-pdf-security.test.ts"
+    ],
+    "14@s.whatsapp.net": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-dom/phone-ssot.test.ts"
+    ],
+    "120363041234567890@g.us": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-dom/phone-ssot.test.ts"
+    ],
+    "923190462638@s.whatsapp.net": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-dom/phone-ssot.test.ts"
+    ],
+    "120363044556677889@g.us": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-jobs/wa-group-campaign-task.test.ts"
+    ],
+    "03214629700@s.whatsapp.net": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-jobs/wa-group-campaign-task.test.ts"
+    ],
+    "pass@ep-cool-resonance.ap-southeast-1.aws.neon.tech": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-plat/db-schema-migrations-and-seed.test.ts"
+    ],
+    "strong_secret@ep-calm-pond.ap-southeast-1.aws.neon.tech": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-plat/env-validation.test.ts"
+    ],
+    "strong_secret@ep-calm-pond-pooler.ap-southeast-1.aws.neon.tech": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-plat/env-validation.test.ts"
+    ],
+    "tariq.mahmood@gmail.com": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-studio/quoting-copilot-safety.test.ts"
+    ],
+    "12036304198273645@g.us": [
+      "docs/audit/seo/baseline/nap_audit.json",
+      "docs/audit/seo/baseline/score_report.json",
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w3/f-wa/bridge-and-brand-truth.test.ts"
+    ],
+    "secret@chatgpt.com": [
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "docs/audit/seo/post-fix/score_report.json",
+      "tests/w6/f-seo-plat/utm-attribution.test.ts",
+      "tests/w6/f-seo-shell/shell-and-attribution.test.ts"
+    ],
+    "pass@claude.ai": [
+      "docs/audit/seo/post-fix/nap_audit.json",
+      "tests/integration/seo-utm-attribution.integration.test.ts"
+    ]
+  },
+  "organization_names_detected": [],
+  "social_entity_profiles": {
+    "youtube": [
+      "https://www.youtube.com/shorts/${videoId}`",
+      "https://www.youtube.com/watch?v=${videoId}`",
+      "https://youtube.com/...",
+      "https://youtube.com/@alramlahtravels"
+    ],
+    "instagram": [
+      "https://instagram.com/...",
+      "https://instagram.com/alramlahtravels",
+      "https://instagram.com/p/claim-lock-test",
+      "https://www.instagram.com/${cleanHandle}/`",
+      "https://www.instagram.com/alramlahtravels/",
+      "https://www.instagram.com/p/${entityId}/`,",
+      "https://www.instagram.com/p/${igMediaId}`",
+      "https://www.instagram.com/p/${item.shortcode",
+      "https://www.instagram.com/p/C9RecoveredXYZ/",
+      "https://www.instagram.com/p/C9_${publishedId}/`,",
+      "https://www.instagram.com/p/test/",
+      "https://www.instagram.com/p/viral/",
+      "https://www.instagram.com/reel/E2EReel999/",
+      "https://www.instagram.com/reel/xyz/"
+    ],
+    "tiktok": [
+      "https://tiktok.com/@...",
+      "https://tiktok.com/@alramlahtravels",
+      "https://www.tiktok.com/@${cleanHandle}`",
+      "https://www.tiktok.com/@${userHandle}/video/${publicPostId}`",
+      "https://www.tiktok.com/@alramlahtravels/video/7198765432109876543",
+      "https://www.tiktok.com/@alramlahtravels/video/743000111222333",
+      "https://www.tiktok.com/v2/auth/authorize/?${params.toString("
+    ],
+    "linkedin": [],
+    "x_twitter": []
+  },
+  "nap_consistent": false,
+  "issues": [
+    "Multiple phone number formats found across codebase (['050 123 4567', '1 050 123 4567', '+1 (555) 234-5678', '(312) 555-0199', '312-555-0199', '+1 (555) 123-4567', '092 327 4029', '+1 (312) 555-0199', '+1-416-555-0198', '+1 (416) 555-0198']). Standardize to one exact string everywhere for strict NAP consistency (Lesson 2)."
+  ],
+  "recommendations": []
+}

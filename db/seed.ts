@@ -1,110 +1,117 @@
-import "dotenv/config"
-import fs from "node:fs"
+import crypto from "node:crypto"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { eq, or, sql } from "drizzle-orm"
-import { db } from "./index"
+import { closeDatabasePool, db } from "./index"
 import * as schema from "./schema"
-import { auth } from "../lib/auth"
+import { provisionStaffAccountInternal } from "../lib/auth"
+import { resolveGuardedScriptDatabaseUrl } from "../scripts/_guard"
 
-async function seed() {
+export interface RunSeedOptions {
+  closePool?: boolean
+  argv?: readonly string[]
+}
+
+function resolveBootstrapPassword(): string {
+  const configured = process.env.ADMIN_BOOTSTRAP_PASSWORD?.trim() ?? ""
+  const isProd = process.env.NODE_ENV === "production"
+
+  if (isProd && configured.length < 12) {
+    throw new Error(
+      "ADMIN_BOOTSTRAP_PASSWORD (>= 12 chars) is required when running db/seed.ts in NODE_ENV=production."
+    )
+  }
+
+  if (configured.length >= 12) {
+    return configured
+  }
+
+  return `Art!${crypto.randomBytes(16).toString("base64url")}`
+}
+
+function getTodayPktIso(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date())
+}
+
+function addPktDaysIso(baseIso: string, daysOffset: number): string {
+  const [y, m, d] = baseIso.split("-").map((part) => Number(part))
+  const utcNoon = Date.UTC(y, (m || 1) - 1, d || 1, 12, 0, 0)
+  const shifted = new Date(utcNoon + daysOffset * 86_400_000)
+  const year = shifted.getUTCFullYear()
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, "0")
+  const day = String(shifted.getUTCDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+export async function runSeed(options?: RunSeedOptions): Promise<void> {
+  resolveGuardedScriptDatabaseUrl(options?.argv ?? process.argv)
   console.log("🌱 Starting Al Ramlah Travels database seed...")
+  const todayPktIso = getTodayPktIso()
+  const hotelValidFrom = addPktDaysIso(todayPktIso, -30)
+  const hotelValidUntil = addPktDaysIso(todayPktIso, 400)
 
   // ==========================================
   // 1. ADMIN & STAFF ACCOUNTS (BETTER AUTH)
   // ==========================================
   console.log("👤 Seeding admin & staff accounts...")
+  const bootstrapPassword = resolveBootstrapPassword()
 
-  // Super Admin
-  const existingAdmin = await db.query.user.findFirst({
-    where: eq(schema.user.email, "admin@alramlahtravels.com"),
+  const adminProvisioned = await provisionStaffAccountInternal({
+    email: "admin@alramlahtravels.com",
+    password: bootstrapPassword,
+    name: "Muhammad Tariq (Super Admin)",
+    role: "super_admin",
+    mustChangePassword: true,
   })
+  const adminUserId = adminProvisioned.id
 
-  let adminUserId = existingAdmin?.id
-
-  if (!existingAdmin) {
-    try {
-      const adminRes = await auth.api.signUpEmail({
-        body: {
-          email: "admin@alramlahtravels.com",
-          password: "Admin@123456",
-          name: "Muhammad Tariq (Super Admin)",
-        },
-      })
-      if (adminRes?.user) {
-        adminUserId = adminRes.user.id
-        await db
-          .update(schema.user)
-          .set({ role: "super_admin", isActive: true })
-          .where(eq(schema.user.id, adminUserId))
-        console.log("   ✅ Created Super Admin: admin@alramlahtravels.com")
-      }
-    } catch (err: unknown) {
-      console.log(
-        "   ℹ️ Admin account creation note:",
-        err instanceof Error ? err.message : err
-      )
-    }
+  if (adminProvisioned.created) {
+    console.log(
+      "   ✅ Provisioned Super Admin (admin@alramlahtravels.com) with mustChangePassword=true."
+    )
   } else {
-    await db
-      .update(schema.user)
-      .set({ role: "super_admin", isActive: true })
-      .where(eq(schema.user.id, existingAdmin.id))
-    console.log("   ✅ Super Admin exists and role verified.")
+    console.log("   ✅ Super Admin exists (existing credentials preserved).")
   }
 
-  // Staff Account
-  const existingStaff = await db.query.user.findFirst({
-    where: eq(schema.user.email, "staff@alramlahtravels.com"),
+  const staffProvisioned = await provisionStaffAccountInternal({
+    email: "staff@alramlahtravels.com",
+    password: bootstrapPassword,
+    name: "Bilal Khan (Senior Quoting Agent)",
+    role: "staff",
+    mustChangePassword: true,
   })
 
-  let staffUserId = existingStaff?.id
-
-  if (!existingStaff) {
-    try {
-      const staffRes = await auth.api.signUpEmail({
-        body: {
-          email: "staff@alramlahtravels.com",
-          password: "Staff@123456",
-          name: "Bilal Khan (Senior Quoting Agent)",
-        },
-      })
-      if (staffRes?.user) {
-        staffUserId = staffRes.user.id
-        await db
-          .update(schema.user)
-          .set({ role: "staff", isActive: true })
-          .where(eq(schema.user.id, staffUserId))
-        console.log("   ✅ Created Staff: staff@alramlahtravels.com")
-      }
-    } catch (err: unknown) {
-      console.log(
-        "   ℹ️ Staff account creation note:",
-        err instanceof Error ? err.message : err
-      )
-    }
+  if (staffProvisioned.created) {
+    console.log(
+      "   ✅ Provisioned Staff (staff@alramlahtravels.com) with mustChangePassword=true."
+    )
   } else {
-    await db
-      .update(schema.user)
-      .set({ role: "staff", isActive: true })
-      .where(eq(schema.user.id, existingStaff.id))
-    console.log("   ✅ Staff exists and role verified.")
+    console.log("   ✅ Staff exists (existing credentials preserved).")
   }
 
   // ==========================================
-  // 2. AGENCY SETTINGS (SINGLETON)
+  // 2. AGENCY SETTINGS (SINGLETON — OD-10)
   // ==========================================
   console.log("🏢 Seeding agency settings...")
+  const verifiedOfficeAddress =
+    "Office No. 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt, Pakistan"
+
   await db
     .insert(schema.agencySettings)
     .values({
       id: "default",
       agencyName: "Al Ramlah Travels",
+      legalEntityName: "Al Ramlah Travels",
       tagline: "Where Purpose Meets Excellence",
       primaryWhatsapp: "03274029701",
       secondaryPhone: "03190462638",
       supportEmail: "alramlahtravels@gmail.com",
-      officeAddress:
-        "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
+      officeAddress: verifiedOfficeAddress,
       mapsEmbedUrl:
         "https://maps.google.com/?q=Sector+C+Askari+10+Airport+Road+Lahore+Cantt",
       facebookUrl: "https://facebook.com/alramlahtravels",
@@ -114,28 +121,35 @@ async function seed() {
       workingHours: "Monday to Saturday: 9:00 AM to 8:00 PM PKT",
       slaOverdueHours: 24,
       sarToPkrRate: 75,
+      officialIban: null,
+      ibanVerified: false,
       updatedByUserId: adminUserId,
     })
     .onConflictDoUpdate({
       target: schema.agencySettings.id,
       set: {
+        agencyName: "Al Ramlah Travels",
+        legalEntityName: "Al Ramlah Travels",
         tagline: "Where Purpose Meets Excellence",
         primaryWhatsapp: "03274029701",
         secondaryPhone: "03190462638",
         supportEmail: "alramlahtravels@gmail.com",
-        officeAddress:
-          "House no 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
+        officeAddress: verifiedOfficeAddress,
         mapsEmbedUrl:
           "https://maps.google.com/?q=Sector+C+Askari+10+Airport+Road+Lahore+Cantt",
+        facebookUrl: sql`COALESCE(${schema.agencySettings.facebookUrl}, excluded.facebook_url)`,
+        instagramUrl: sql`COALESCE(${schema.agencySettings.instagramUrl}, excluded.instagram_url)`,
+        youtubeUrl: sql`COALESCE(${schema.agencySettings.youtubeUrl}, excluded.youtube_url)`,
+        tiktokUrl: sql`COALESCE(${schema.agencySettings.tiktokUrl}, excluded.tiktok_url)`,
         workingHours: "Monday to Saturday: 9:00 AM to 8:00 PM PKT",
-        slaOverdueHours: 24,
-        sarToPkrRate: 75,
       },
     })
-  console.log("   ✅ Agency settings configured (SAR to PKR: 75).")
+  console.log(
+    "   ✅ Agency settings configured (Askari 10 Lahore HQ, ibanVerified=false)."
+  )
 
   // ==========================================
-  // 3. DYNAMIC VISA RATES
+  // 3. DYNAMIC VISA RATES (T-007 excluded.* upsert)
   // ==========================================
   console.log("🛂 Seeding visa rates...")
   await db
@@ -175,18 +189,21 @@ async function seed() {
     .onConflictDoUpdate({
       target: schema.visaRates.tier,
       set: {
-        pricePkr: 42500,
-        priceSar: 470,
-        withoutMasarPriceSar: 470,
-        withMasar10DaysSar: 500,
-        withMasar15DaysSar: 515,
-        withMasar21DaysSar: 530,
-        withMasar28DaysSar: 545,
-        maxDays: 30,
+        label: sql`excluded.label`,
+        maxDays: sql`excluded.max_days`,
+        pricePkr: sql`excluded.price_pkr`,
+        priceSar: sql`excluded.price_sar`,
+        withoutMasarPriceSar: sql`excluded.without_masar_price_sar`,
+        withMasar10DaysSar: sql`excluded.with_masar_10_days_sar`,
+        withMasar15DaysSar: sql`excluded.with_masar_15_days_sar`,
+        withMasar21DaysSar: sql`excluded.with_masar_21_days_sar`,
+        withMasar28DaysSar: sql`excluded.with_masar_28_days_sar`,
+        notes: sql`excluded.notes`,
+        updatedAt: new Date(),
       },
     })
   console.log(
-    "   ✅ Visa rates configured (Short: 470 SAR / PKR 42,500, Long: 750 SAR / PKR 68,000)."
+    "   ✅ Visa rates configured idempotently (Short: 30d / 470 SAR / PKR 42,500, Long: 90d / 750 SAR / PKR 68,000)."
   )
 
   // ==========================================
@@ -364,8 +381,8 @@ async function seed() {
       quadPriceSar: 1650,
       triplePriceSar: 1450,
       doublePriceSar: 1250,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Direct Clock Tower Courtyard (Ajyad Gate)",
       isFeatured: true,
       sortOrder: 1,
@@ -399,8 +416,8 @@ async function seed() {
       quadPriceSar: 1350,
       triplePriceSar: 1150,
       doublePriceSar: 980,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Abraj Al Bait Complex - Direct Mall & Courtyard Access",
       isFeatured: true,
       sortOrder: 2,
@@ -434,8 +451,8 @@ async function seed() {
       quadPriceSar: 1200,
       triplePriceSar: 1050,
       doublePriceSar: 900,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Ibrahim Al Khalil Rd, King Fahad Gate Facing",
       isFeatured: true,
       sortOrder: 3,
@@ -464,8 +481,8 @@ async function seed() {
       quadPriceSar: 960,
       triplePriceSar: 820,
       doublePriceSar: 680,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Hajar Tower - Haram Courtyard Frontage",
       isFeatured: false,
       sortOrder: 4,
@@ -497,8 +514,8 @@ async function seed() {
       quadPriceSar: 360,
       triplePriceSar: 310,
       doublePriceSar: 260,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Kudai Side - 24/7 Dedicated Luxury Shuttle to Haram",
       isFeatured: false,
       sortOrder: 5,
@@ -531,8 +548,8 @@ async function seed() {
       quadPriceSar: 170,
       triplePriceSar: 155,
       doublePriceSar: 140,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "At-Taysir Sector - 24/7 Continuous Shuttle Terminal",
       isFeatured: false,
       sortOrder: 6,
@@ -564,8 +581,8 @@ async function seed() {
       quadPriceSar: 220,
       triplePriceSar: 200,
       doublePriceSar: 180,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Ibrahim Al Khalil Road - 750m Direct Walkway",
       isFeatured: false,
       sortOrder: 7,
@@ -578,7 +595,7 @@ async function seed() {
       distanceLabel: "450m Walk to Outer Courtyard (Ajyad Sector)",
       accessType: "walking" as const,
       imageUrl:
-        "https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800",
+        "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=800",
       galleryUrls: [],
       amenities: ["Ajyad Walkway", "Air Conditioned", "Lift Access"],
       allowsSharedRooms: true,
@@ -593,8 +610,8 @@ async function seed() {
       quadPriceSar: 190,
       triplePriceSar: 165,
       doublePriceSar: 140,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Top 10 Side - Ajyad Sector - 450m Walk",
       isFeatured: false,
       sortOrder: 8,
@@ -607,7 +624,7 @@ async function seed() {
       distanceLabel: "650m Walk via Ibrahim Al Khalil Road",
       accessType: "walking" as const,
       imageUrl:
-        "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800",
+        "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?w=800",
       galleryUrls: [],
       amenities: ["Ibrahim Al Khalil Walkway", "Elevator Access"],
       allowsSharedRooms: true,
@@ -622,8 +639,8 @@ async function seed() {
       quadPriceSar: 170,
       triplePriceSar: 150,
       doublePriceSar: 130,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Ibrahim Al Khalil Road - 650m Walk",
       isFeatured: false,
       sortOrder: 9,
@@ -636,7 +653,7 @@ async function seed() {
       distanceLabel: "900m Walk via Misfalah Street",
       accessType: "walking" as const,
       imageUrl:
-        "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800",
+        "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800",
       galleryUrls: [],
       amenities: ["Misfalah Commercial Strip", "Clean Economy Rooms"],
       allowsSharedRooms: true,
@@ -651,8 +668,8 @@ async function seed() {
       quadPriceSar: 140,
       triplePriceSar: 120,
       doublePriceSar: 110,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Misfalah Sector - 900m Walk",
       isFeatured: false,
       sortOrder: 10,
@@ -667,9 +684,9 @@ async function seed() {
       distanceLabel: "50m from Prophet's Mosque Northern Courtyard",
       accessType: "walking" as const,
       imageUrl:
-        "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800",
-      galleryUrls: [
         "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?w=800",
+      galleryUrls: [
+        "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800",
       ],
       amenities: [
         "Unobstructed Green Dome Views",
@@ -688,8 +705,8 @@ async function seed() {
       quadPriceSar: 1900,
       triplePriceSar: 1650,
       doublePriceSar: 1400,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Northern Courtyard - Direct Facing Green Dome",
       isFeatured: true,
       sortOrder: 11,
@@ -721,8 +738,8 @@ async function seed() {
       quadPriceSar: 1600,
       triplePriceSar: 1400,
       doublePriceSar: 1200,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Direct Ladies Gate 25 Entrance",
       isFeatured: true,
       sortOrder: 12,
@@ -754,8 +771,8 @@ async function seed() {
       quadPriceSar: 1280,
       triplePriceSar: 1100,
       doublePriceSar: 950,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "King Fahad Gate - Southern Courtyard",
       isFeatured: true,
       sortOrder: 13,
@@ -788,8 +805,8 @@ async function seed() {
       quadPriceSar: 650,
       triplePriceSar: 560,
       doublePriceSar: 480,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Southern Courtyard - Central Area",
       isFeatured: false,
       sortOrder: 14,
@@ -821,8 +838,8 @@ async function seed() {
       quadPriceSar: 620,
       triplePriceSar: 530,
       doublePriceSar: 450,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Central Area Northern Side - 150m Walk",
       isFeatured: false,
       sortOrder: 15,
@@ -836,7 +853,7 @@ async function seed() {
       distanceLabel: "450m Walk to Southern Courtyard",
       accessType: "walking" as const,
       imageUrl:
-        "https://images.unsplash.com/photo-1568495248636-6432b97bd949?w=800",
+        "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?w=800",
       galleryUrls: [],
       amenities: [
         "Budget Economy Pilgrimage Rooms",
@@ -855,8 +872,8 @@ async function seed() {
       quadPriceSar: 240,
       triplePriceSar: 215,
       doublePriceSar: 190,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Markaziyah Shamaliyah (Northern Central Area)",
       isFeatured: false,
       sortOrder: 16,
@@ -869,7 +886,7 @@ async function seed() {
       distanceLabel: "300m Walk (Masjid Bilal Side)",
       accessType: "walking" as const,
       imageUrl:
-        "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800",
+        "https://images.unsplash.com/photo-1595576508898-0ad5c879a061?w=800",
       galleryUrls: [],
       amenities: ["Masjid Bilal Proximity", "Clean Allotment Rooms"],
       allowsSharedRooms: true,
@@ -884,8 +901,8 @@ async function seed() {
       quadPriceSar: 180,
       triplePriceSar: 160,
       doublePriceSar: 140,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Markaziyah Janubiyah (Masjid Bilal Side) - 300m Walk",
       isFeatured: false,
       sortOrder: 17,
@@ -913,8 +930,8 @@ async function seed() {
       quadPriceSar: 200,
       triplePriceSar: 175,
       doublePriceSar: 150,
-      validFrom: "2026-09-01",
-      validUntil: "2026-12-31",
+      validFrom: hotelValidFrom,
+      validUntil: hotelValidUntil,
       locationNotes: "Behind Bilal Market - 250m Walk",
       isFeatured: false,
       sortOrder: 18,
@@ -934,6 +951,7 @@ async function seed() {
           distanceMeters: h.distanceMeters,
           distanceLabel: h.distanceLabel,
           starRating: h.starRating,
+          imageUrl: h.imageUrl,
           sharingPriceSar: h.sharingPriceSar,
           roomPriceSar: h.roomPriceSar,
           quadPriceSar: h.quadPriceSar,
@@ -1619,9 +1637,9 @@ async function seed() {
       name: "Jabal al-Nour & Cave of Hira",
       arabicName: "جبل النور وغار حراء",
       description:
-        "The Mountain of Light where the first divine revelation of the Holy Quran descended upon Prophet Muhammad (PBUH).",
+        "The Mountain of Light northeast of Masjid al-Haram where the first divine revelation of Surah Al-Alaq descended upon Prophet Muhammad (PBUH). Guided early-morning visits include lower base orientation and scholar commentary.",
       imageUrl:
-        "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=800",
+        "https://images.unsplash.com/photo-1565552645632-d725f8bfc19a?w=800",
       sortOrder: 1,
     },
     {
@@ -1629,9 +1647,9 @@ async function seed() {
       name: "Jabal Thawr & Cave of Thawr",
       arabicName: "جبل ثور وغار ثور",
       description:
-        "The historical sanctuary where the Prophet (PBUH) and Abu Bakr As-Siddiq (RA) took refuge during the Hijrah to Madinah.",
+        "The rugged southern mountain sanctuary where the Prophet (PBUH) and Abu Bakr As-Siddiq (RA) sheltered for three nights during the sacred Hijrah from Makkah to Madinah.",
       imageUrl:
-        "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800",
+        "https://images.unsplash.com/photo-1519817650390-64a93db51149?w=800",
       sortOrder: 2,
     },
     {
@@ -1639,9 +1657,9 @@ async function seed() {
       name: "Sacred Sites of Hajj: Mina, Muzdalifah & Arafat",
       arabicName: "المشاعر المقدسة: منى ومزدلفة وعرفات",
       description:
-        "The expansive ritual plains of Hajj, including the Jamarat tent city, Muzdalifah grounds, and Jabal al-Rahmah (Mount of Mercy).",
+        "Panoramic scholar-led circuit through the Mashair plains of Hajj, viewing the Mina tent valley, Muzdalifah open sanctuary, Masjid Namirah, and Jabal al-Rahmah on the Plain of Arafat.",
       imageUrl:
-        "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800",
+        "https://images.unsplash.com/photo-1580418827493-f2b22c0a76cb?w=800",
       sortOrder: 3,
     },
     {
@@ -1649,9 +1667,9 @@ async function seed() {
       name: "Jannat al-Mu'alla Cemetery",
       arabicName: "مقبرة المعلاة",
       description:
-        "The venerable burial ground holding the resting place of Sayyidah Khadijah (RA) and prominent early Sahabah.",
+        "The historic burial ground north of Masjid al-Haram holding the resting place of Umm al-Mu'minin Sayyidah Khadijah al-Kubra (RA) and early companions.",
       imageUrl:
-        "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800",
+        "https://images.unsplash.com/photo-1537181534458-45dcee76ae90?w=800",
       sortOrder: 4,
     },
     {
@@ -1659,9 +1677,9 @@ async function seed() {
       name: "Masjid al-Jinn & Masjid ash-Shajarah",
       arabicName: "مسجد الجن ومسجد الشجرة",
       description:
-        "Historic mosques commemorating the acceptance of Islam by the Jinn and the miracle of the obedient tree.",
+        "Historic mosques along the northern Haram corridor commemorating the pledge of the Jinn upon hearing the Holy Quran and the miracle of the obedient tree.",
       imageUrl:
-        "https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=800",
+        "https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=800",
       sortOrder: 5,
     },
 
@@ -1671,9 +1689,9 @@ async function seed() {
       name: "Masjid Quba",
       arabicName: "مسجد قباء",
       description:
-        "The first mosque constructed in Islamic history; performing two rak'ats here carries the spiritual reward of an Umrah.",
+        "The first mosque founded upon piety in Islamic history; departing one's Madinah hotel in wudu and praying two rak'ats nafl at Masjid Quba carries the reward of an accepted Umrah.",
       imageUrl:
-        "https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800",
+        "https://images.unsplash.com/photo-1564769625905-50e93615e769?w=800",
       sortOrder: 6,
     },
     {
@@ -1681,9 +1699,9 @@ async function seed() {
       name: "Mount Uhud & Martyrs Cemetery",
       arabicName: "جبل أحد ومقبرة الشهداء",
       description:
-        "The monumental mountain that loves the believers, overlooking the resting place of Sayyid ash-Shuhada Hamza (RA) and 70 martyrs.",
+        "The beloved mountain ridge north of Madinah, visiting Jabal al-Rumat (Archers' Hill) and paying salam at the enclosure of Sayyid ash-Shuhada Hamza ibn Abdul-Muttalib (RA) and the seventy martyrs of Uhud.",
       imageUrl:
-        "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=800",
+        "https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?w=800",
       sortOrder: 7,
     },
     {
@@ -1691,9 +1709,9 @@ async function seed() {
       name: "Masjid al-Qiblatayn",
       arabicName: "مسجد القبلتين",
       description:
-        "The historical sanctuary where the direction of prayer was divinely shifted from Jerusalem to the Holy Kaaba in Makkah.",
+        "The Mosque of the Two Qiblahs in northwestern Madinah where divine revelation commanded the prayer direction to shift toward the Holy Kaaba in Makkah.",
       imageUrl:
-        "https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?w=800",
+        "https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?w=800",
       sortOrder: 8,
     },
     {
@@ -1701,9 +1719,9 @@ async function seed() {
       name: "The Seven Mosques & Battle of the Trench (Khandaq)",
       arabicName: "المساجد السبعة وموقع غزوة الخندق",
       description:
-        "The fortification sites and defensive command posts of the Muslim army during the historic siege of Madinah.",
+        "Historic pavilion mosques along the western Sela' foothills marking the defensive trench dug by the Prophet (PBUH) and Sahabah during the Battle of Ahzab.",
       imageUrl:
-        "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?w=800",
+        "https://images.unsplash.com/photo-1512632578888-169bbbc64f33?w=800",
       sortOrder: 9,
     },
     {
@@ -1711,9 +1729,9 @@ async function seed() {
       name: "Jannat al-Baqi Cemetery",
       arabicName: "مقبرة بقيع الغرقد",
       description:
-        "Adjacent to the Prophet's Mosque, the sacred resting ground of thousands of noble Sahabah and the Prophet's pure family.",
+        "Located immediately east of Masjid an-Nabawi's courtyard, the blessed resting ground of Ahl al-Bayt, the Mothers of the Believers, Uthman ibn Affan (RA), and ten thousand noble Sahabah.",
       imageUrl:
-        "https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=800",
+        "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=800",
       sortOrder: 10,
     },
     {
@@ -1721,9 +1739,9 @@ async function seed() {
       name: "Bir Uthman (Well of Uthman RA)",
       arabicName: "بئر عثمان بن عفان رضي الله عنه",
       description:
-        "The historical sweet water well purchased by Uthman ibn Affan (RA) as a perpetual waqf for all Muslims.",
+        "The historic Bir Rumah freshwater well and palm grove endowed by Uthman ibn Affan (RA) as an enduring charitable waqf for the people and pilgrims of Madinah.",
       imageUrl:
-        "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800",
+        "https://images.unsplash.com/photo-1508964942454-1a56651d54ac?w=800",
       sortOrder: 11,
     },
     {
@@ -1731,9 +1749,9 @@ async function seed() {
       name: "Dates Market of Madinah (Souq at-Tumoor)",
       arabicName: "سوق تمور المدينة",
       description:
-        "The bustling cultural marketplace for blessed Ajwa, Safawi, and Amber dates grown in the blessed orchards of Madinah.",
+        "Madinah's central harvest souq south of the Haram, offering authentic graded Ajwa al-Aliyah, Safawi, Mabroom, and Amber dates directly from local orchards.",
       imageUrl:
-        "https://images.unsplash.com/photo-1568495248636-6432b97bd949?w=800",
+        "https://images.unsplash.com/photo-1590076215667-875d4ef2d7de?w=800",
       sortOrder: 12,
     },
   ]
@@ -1744,6 +1762,17 @@ async function seed() {
     })
     if (!existing) {
       await db.insert(schema.ziyaratPlaces).values(z)
+    } else {
+      await db
+        .update(schema.ziyaratPlaces)
+        .set({
+          city: z.city,
+          arabicName: z.arabicName,
+          description: z.description,
+          imageUrl: z.imageUrl,
+          sortOrder: z.sortOrder,
+        })
+        .where(eq(schema.ziyaratPlaces.id, existing.id))
     }
   }
   console.log("   ✅ 12 sacred ziyarat sites seeded with Arabic names.")
@@ -2083,116 +2112,258 @@ async function seed() {
       .where(eq(schema.groupPackages.id, pkg4.id))
   }
 
-  // Seed Departures for Package 1
-  if (pkg1 && isbCity && lheCity) {
-    await db
-      .insert(schema.groupDepartures)
-      .values([
-        {
-          packageId: pkg1.id,
-          batchCode: "ART-RAM-ISB-01",
-          departureCityId: isbCity.id,
-          departureDate: "2026-11-10",
-          returnDate: "2026-11-25",
-          totalSeats: 30,
-          bookedSeats: 26,
-          status: "filling_fast",
-          sharingPriceOverridePkr: 419999,
-          outboundFlightNumber: "SV-739",
-          returnFlightNumber: "SV-738",
-          flightScheduleSummary: "ISB-JED 03:15–06:20 | JED-ISB 18:30–01:10",
-          routingNote: "Direct Non-Stop (Saudi Airlines)",
-          baggageAllowance: "23-KG Outbound / 46-KG Return",
-        },
-        {
-          packageId: pkg1.id,
-          batchCode: "ART-RAM-LHE-01",
-          departureCityId: lheCity.id,
-          departureDate: "2026-11-18",
-          returnDate: "2026-12-03",
-          totalSeats: 35,
-          bookedSeats: 12,
-          status: "open",
-          sharingPriceOverridePkr: 419999,
-          outboundFlightNumber: "SV-737",
-          returnFlightNumber: "SV-734",
-          flightScheduleSummary: "LHE-RUH-JED 04:00–09:30 | JED-LHE 16:00–22:45",
-          routingNote: "Via Riyadh (Saudi Airlines)",
-          baggageAllowance: "23-KG Outbound / 46-KG Return",
-        },
-      ])
-      .onConflictDoNothing()
+  // Seed Rolling Future PKT Departures across Packages 1–4 covering LHE, KHI & ISB
+  const rollingDepartures: Array<typeof schema.groupDepartures.$inferInsert> = []
+
+  if (pkg1 && isbCity && lheCity && khiCity) {
+    rollingDepartures.push(
+      {
+        packageId: pkg1.id,
+        batchCode: "ART-RAM-ISB-01",
+        departureCityId: isbCity.id,
+        departureDate: addPktDaysIso(todayPktIso, 35),
+        returnDate: addPktDaysIso(todayPktIso, 50),
+        totalSeats: 30,
+        bookedSeats: 24,
+        status: "filling_fast",
+        sharingPriceOverridePkr: 419999,
+        outboundFlightNumber: "SV-739",
+        returnFlightNumber: "SV-738",
+        flightScheduleSummary: "ISB-JED 03:15–06:20 | JED-ISB 18:30–01:10",
+        routingNote: "Direct Non-Stop (Saudi Airlines)",
+        baggageAllowance: "23-KG Outbound / 46-KG Return",
+      },
+      {
+        packageId: pkg1.id,
+        batchCode: "ART-RAM-LHE-01",
+        departureCityId: lheCity.id,
+        departureDate: addPktDaysIso(todayPktIso, 45),
+        returnDate: addPktDaysIso(todayPktIso, 60),
+        totalSeats: 35,
+        bookedSeats: 12,
+        status: "open",
+        sharingPriceOverridePkr: 419999,
+        outboundFlightNumber: "SV-737",
+        returnFlightNumber: "SV-734",
+        flightScheduleSummary: "LHE-JED 04:00–07:20 | JED-LHE 16:00–22:45",
+        routingNote: "Direct Non-Stop (Saudi Airlines)",
+        baggageAllowance: "23-KG Outbound / 46-KG Return",
+      },
+      {
+        packageId: pkg1.id,
+        batchCode: "ART-RAM-KHI-01",
+        departureCityId: khiCity.id,
+        departureDate: addPktDaysIso(todayPktIso, 75),
+        returnDate: addPktDaysIso(todayPktIso, 90),
+        totalSeats: 30,
+        bookedSeats: 10,
+        status: "open",
+        sharingPriceOverridePkr: 419999,
+        outboundFlightNumber: "SV-705",
+        returnFlightNumber: "SV-704",
+        flightScheduleSummary: "KHI-JED 05:30–08:15 | JED-KHI 19:30–01:55",
+        routingNote: "Direct Non-Stop (Saudi Airlines)",
+        baggageAllowance: "23-KG Outbound / 46-KG Return",
+      }
+    )
   }
 
-  // Seed Departures for Package 2
-  if (pkg2 && khiCity && isbCity) {
-    await db
-      .insert(schema.groupDepartures)
-      .values([
-        {
-          packageId: pkg2.id,
-          batchCode: "ART-GLD-KHI-01",
-          departureCityId: khiCity.id,
-          departureDate: "2026-11-15",
-          returnDate: "2026-11-29",
-          totalSeats: 40,
-          bookedSeats: 15,
-          status: "open",
-          sharingPriceOverridePkr: 345000,
-          outboundFlightNumber: "SV-701",
-          returnFlightNumber: "SV-700",
-          flightScheduleSummary: "KHI-JED 06:00–08:45 | JED-KHI 20:00–02:30",
-          routingNote: "Direct Non-Stop (Saudi Airlines)",
-          baggageAllowance: "23-KG Outbound / 46-KG Return",
-        },
-        {
-          packageId: pkg2.id,
-          batchCode: "ART-GLD-ISB-02",
-          departureCityId: isbCity.id,
-          departureDate: "2026-12-01",
-          returnDate: "2026-12-15",
-          totalSeats: 30,
-          bookedSeats: 30,
-          status: "sold_out",
-          sharingPriceOverridePkr: 345000,
-          outboundFlightNumber: "SV-739",
-          returnFlightNumber: "SV-738",
-          flightScheduleSummary: "ISB-JED 03:15–06:20 | JED-ISB 18:30–01:10",
-          routingNote: "Direct Non-Stop (Saudi Airlines)",
-          baggageAllowance: "23-KG Outbound / 46-KG Return",
-        },
-      ])
-      .onConflictDoNothing()
+  if (pkg2 && khiCity && isbCity && lheCity) {
+    rollingDepartures.push(
+      {
+        packageId: pkg2.id,
+        batchCode: "ART-GLD-KHI-01",
+        departureCityId: khiCity.id,
+        departureDate: addPktDaysIso(todayPktIso, 38),
+        returnDate: addPktDaysIso(todayPktIso, 52),
+        totalSeats: 40,
+        bookedSeats: 15,
+        status: "open",
+        sharingPriceOverridePkr: 345000,
+        outboundFlightNumber: "SV-701",
+        returnFlightNumber: "SV-700",
+        flightScheduleSummary: "KHI-JED 06:00–08:45 | JED-KHI 20:00–02:30",
+        routingNote: "Direct Non-Stop (Saudi Airlines)",
+        baggageAllowance: "23-KG Outbound / 46-KG Return",
+      },
+      {
+        packageId: pkg2.id,
+        batchCode: "ART-GLD-LHE-01",
+        departureCityId: lheCity.id,
+        departureDate: addPktDaysIso(todayPktIso, 62),
+        returnDate: addPktDaysIso(todayPktIso, 76),
+        totalSeats: 35,
+        bookedSeats: 14,
+        status: "open",
+        sharingPriceOverridePkr: 345000,
+        outboundFlightNumber: "SV-735",
+        returnFlightNumber: "SV-734",
+        flightScheduleSummary: "LHE-JED 03:45–06:55 | JED-LHE 17:10–23:50",
+        routingNote: "Direct Non-Stop (Saudi Airlines)",
+        baggageAllowance: "23-KG Outbound / 46-KG Return",
+      },
+      {
+        packageId: pkg2.id,
+        batchCode: "ART-GLD-ISB-02",
+        departureCityId: isbCity.id,
+        departureDate: addPktDaysIso(todayPktIso, 95),
+        returnDate: addPktDaysIso(todayPktIso, 109),
+        totalSeats: 30,
+        bookedSeats: 11,
+        status: "open",
+        sharingPriceOverridePkr: 345000,
+        outboundFlightNumber: "SV-739",
+        returnFlightNumber: "SV-738",
+        flightScheduleSummary: "ISB-JED 03:15–06:20 | JED-ISB 18:30–01:10",
+        routingNote: "Direct Non-Stop (Saudi Airlines)",
+        baggageAllowance: "23-KG Outbound / 46-KG Return",
+      }
+    )
   }
 
-  // Seed Departures for Package 4 (21-Day Long Stay with SV-739 / SV-738 Flyer schedule)
-  if (pkg4 && lheCity) {
+  if (pkg3 && lheCity && isbCity && khiCity) {
+    rollingDepartures.push(
+      {
+        packageId: pkg3.id,
+        batchCode: "ART-SLV-LHE-01",
+        departureCityId: lheCity.id,
+        departureDate: addPktDaysIso(todayPktIso, 50),
+        returnDate: addPktDaysIso(todayPktIso, 64),
+        totalSeats: 40,
+        bookedSeats: 16,
+        status: "open",
+        sharingPriceOverridePkr: 289999,
+        outboundFlightNumber: "PK-759",
+        returnFlightNumber: "PK-760",
+        flightScheduleSummary: "LHE-JED 07:30–11:00 | MED-LHE 15:00–21:45",
+        routingNote: "Direct Open-Jaw (PIA)",
+        baggageAllowance: "30-KG Outbound / 40-KG + 5L Zamzam Return",
+      },
+      {
+        packageId: pkg3.id,
+        batchCode: "ART-SLV-ISB-01",
+        departureCityId: isbCity.id,
+        departureDate: addPktDaysIso(todayPktIso, 82),
+        returnDate: addPktDaysIso(todayPktIso, 96),
+        totalSeats: 35,
+        bookedSeats: 12,
+        status: "open",
+        sharingPriceOverridePkr: 289999,
+        outboundFlightNumber: "PK-741",
+        returnFlightNumber: "PK-742",
+        flightScheduleSummary: "ISB-JED 08:15–11:40 | MED-ISB 16:30–23:10",
+        routingNote: "Direct Open-Jaw (PIA)",
+        baggageAllowance: "30-KG Outbound / 40-KG + 5L Zamzam Return",
+      },
+      {
+        packageId: pkg3.id,
+        batchCode: "ART-SLV-KHI-01",
+        departureCityId: khiCity.id,
+        departureDate: addPktDaysIso(todayPktIso, 115),
+        returnDate: addPktDaysIso(todayPktIso, 129),
+        totalSeats: 40,
+        bookedSeats: 9,
+        status: "open",
+        sharingPriceOverridePkr: 289999,
+        outboundFlightNumber: "PK-731",
+        returnFlightNumber: "PK-732",
+        flightScheduleSummary: "KHI-JED 09:00–11:55 | JED-KHI 14:20–20:15",
+        routingNote: "Direct Non-Stop (PIA)",
+        baggageAllowance: "30-KG Outbound / 40-KG + 5L Zamzam Return",
+      }
+    )
+  }
+
+  if (pkg4 && lheCity && khiCity && isbCity) {
+    rollingDepartures.push(
+      {
+        packageId: pkg4.id,
+        batchCode: "ART-BRZ-LHE-21",
+        departureCityId: lheCity.id,
+        departureDate: addPktDaysIso(todayPktIso, 32),
+        returnDate: addPktDaysIso(todayPktIso, 53),
+        totalSeats: 45,
+        bookedSeats: 18,
+        status: "open",
+        sharingPriceOverridePkr: 258299,
+        quadPriceOverridePkr: 262099,
+        triplePriceOverridePkr: 268399,
+        doublePriceOverridePkr: 280999,
+        outboundFlightNumber: "SV-739",
+        returnFlightNumber: "SV-738",
+        flightScheduleSummary: "LHE-JED 02:40–05:45 | JED-LHE 17:15–23:55",
+        routingNote: "Direct Non-Stop (Saudi Airlines 21-Day Schedule)",
+        baggageAllowance: "23-KG Outbound / 46-KG Return",
+      },
+      {
+        packageId: pkg4.id,
+        batchCode: "ART-BRZ-KHI-21",
+        departureCityId: khiCity.id,
+        departureDate: addPktDaysIso(todayPktIso, 68),
+        returnDate: addPktDaysIso(todayPktIso, 89),
+        totalSeats: 45,
+        bookedSeats: 14,
+        status: "open",
+        sharingPriceOverridePkr: 258299,
+        quadPriceOverridePkr: 262099,
+        triplePriceOverridePkr: 268399,
+        doublePriceOverridePkr: 280999,
+        outboundFlightNumber: "PK-731",
+        returnFlightNumber: "PK-732",
+        flightScheduleSummary: "KHI-JED 09:00–11:55 | JED-KHI 14:20–20:15",
+        routingNote: "Direct Non-Stop (PIA 21-Day Long Stay)",
+        baggageAllowance: "30-KG Outbound / 40-KG Return",
+      },
+      {
+        packageId: pkg4.id,
+        batchCode: "ART-BRZ-ISB-21",
+        departureCityId: isbCity.id,
+        departureDate: addPktDaysIso(todayPktIso, 140),
+        returnDate: addPktDaysIso(todayPktIso, 161),
+        totalSeats: 45,
+        bookedSeats: 10,
+        status: "open",
+        sharingPriceOverridePkr: 258299,
+        quadPriceOverridePkr: 262099,
+        triplePriceOverridePkr: 268399,
+        doublePriceOverridePkr: 280999,
+        outboundFlightNumber: "PK-741",
+        returnFlightNumber: "PK-742",
+        flightScheduleSummary: "ISB-JED 08:15–11:40 | JED-ISB 18:10–00:50",
+        routingNote: "Direct Non-Stop (PIA 21-Day Long Stay)",
+        baggageAllowance: "30-KG Outbound / 40-KG Return",
+      }
+    )
+  }
+
+  for (const dep of rollingDepartures) {
     await db
       .insert(schema.groupDepartures)
-      .values([
-        {
-          packageId: pkg4.id,
-          batchCode: "ART-BRZ-LHE-21",
-          departureCityId: lheCity.id,
-          departureDate: "2026-11-05",
-          returnDate: "2026-11-26",
-          totalSeats: 45,
-          bookedSeats: 18,
-          status: "open",
-          sharingPriceOverridePkr: 258299,
-          quadPriceOverridePkr: 262099,
-          triplePriceOverridePkr: 268399,
-          doublePriceOverridePkr: 280999,
-          outboundFlightNumber: "SV-739",
-          returnFlightNumber: "SV-738",
-          flightScheduleSummary: "LHE-JED 02:40–05:45 | JED-LHE 17:15–23:55",
-          routingNote: "Direct Non-Stop (Saudi Airlines 21-Day Schedule)",
-          baggageAllowance: "23-KG Outbound / 46-KG Return",
+      .values(dep)
+      .onConflictDoUpdate({
+        target: schema.groupDepartures.batchCode,
+        set: {
+          packageId: dep.packageId,
+          departureCityId: dep.departureCityId,
+          departureDate: dep.departureDate,
+          returnDate: dep.returnDate,
+          totalSeats: dep.totalSeats,
+          bookedSeats: dep.bookedSeats,
+          status: dep.status,
+          sharingPriceOverridePkr: dep.sharingPriceOverridePkr ?? null,
+          quadPriceOverridePkr: dep.quadPriceOverridePkr ?? null,
+          triplePriceOverridePkr: dep.triplePriceOverridePkr ?? null,
+          doublePriceOverridePkr: dep.doublePriceOverridePkr ?? null,
+          outboundFlightNumber: dep.outboundFlightNumber ?? null,
+          returnFlightNumber: dep.returnFlightNumber ?? null,
+          flightScheduleSummary: dep.flightScheduleSummary ?? null,
+          routingNote: dep.routingNote ?? null,
+          baggageAllowance: dep.baggageAllowance ?? null,
+          updatedAt: new Date(),
         },
-      ])
-      .onConflictDoNothing()
+      })
   }
-  console.log("   ✅ 4 group packages and scheduled departure batches seeded.")
+  console.log("   ✅ 4 group packages and 12 rolling PKT departure batches seeded across LHE, KHI & ISB.")
 
   // ==========================================
   // 11. PUBLIC CMS (HERO, TESTIMONIALS, FAQS)
@@ -2265,63 +2436,16 @@ async function seed() {
     }
   }
 
-  // Testimonials
-  const testimonialsData = [
-    {
-      pilgrimName: "Dr. Farooq Malik",
-      city: "Lahore",
-      quote:
-        "Al Ramlah Travels planned our family's 14-day Umrah with elderly parents. The Fairmont Clock Tower rooms and the GMC Yukon airport transfer made the entire journey effortless and spiritually uplifting.",
-      packageOrJourneyType: "Custom Family Journey (5 Pax)",
-      rating: 5,
-      avatarUrl:
-        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=128",
-      isFeatured: true,
-      sortOrder: 1,
-    },
-    {
-      pilgrimName: "Saima & Tariq Abbasi",
-      city: "Islamabad",
-      quote:
-        "The live quotation on WhatsApp within an hour of submission was remarkably professional. Every hotel voucher, train seat, and visa was issued ahead of time with zero surprises.",
-      packageOrJourneyType: "Royal Ramadan Executive Umrah",
-      rating: 5,
-      avatarUrl:
-        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=128",
-      isFeatured: true,
-      sortOrder: 2,
-    },
-    {
-      pilgrimName: "Salman Siddiqui",
-      city: "Karachi",
-      quote:
-        "Their visa team handled our family's 6 passports in record time. Transparent PKR pricing without hidden conversion fees. Will only travel through Al Ramlah in future.",
-      packageOrJourneyType: "Visa & Ground Transport Package",
-      rating: 5,
-      avatarUrl:
-        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=128",
-      isFeatured: true,
-      sortOrder: 3,
-    },
-  ]
 
-  for (const t of testimonialsData) {
-    const existing = await db.query.testimonials.findFirst({
-      where: eq(schema.testimonials.pilgrimName, t.pilgrimName),
-    })
-    if (!existing) {
-      await db.insert(schema.testimonials).values(t)
-    }
-  }
 
-  // FAQs
+  // FAQs (14 Dynamic-Safe Pilgrimage Q&As across all 6 categories)
   const faqsData = [
     {
       category: "visa" as const,
       question:
         "What is the difference between short-term and long-term Umrah visas?",
       answer:
-        "Visas for stays of 30 days or fewer are categorized as short-term (regulatory rate PKR 42,500), while stays between 31 and 90 days are categorized as long-term (PKR 68,000). Both include mandatory Saudi healthcare and emergency insurance. Our system automatically computes the required tier based on your entry and departure dates.",
+        "Visas for Kingdom of Saudi Arabia stays of 30 days or fewer are categorized as short-term, while stays from 31 up to 90 days are categorized as long-term. Both tiers include mandatory Saudi healthcare and emergency medical insurance, and our Journey Planner automatically calculates the applicable visa tier from your KSA arrival and departure dates using live published PKR rates.",
       sortOrder: 1,
     },
     {
@@ -2355,6 +2479,78 @@ async function seed() {
         "Group packages operate on fixed group departure batches to secure bulk wholesale airline and hotel rates. If you require custom travel dates, our 5-pillar Custom Journey Planner allows you to configure your exact dates and select identical hotels with private transfers.",
       sortOrder: 5,
     },
+    {
+      category: "visa" as const,
+      question:
+        "What documents and Saudi Visa Bio steps are required for Pakistani passport holders?",
+      answer:
+        "Applicants require a machine-readable passport valid for at least 6 months from travel, a CNIC or B-Form copy, a white-background digital photograph, and mobile fingerprint enrollment through the official Saudi Visa Bio smartphone app. Children under 12 and senior citizens over 80 are exempt from app biometrics under current Saudi consular rules.",
+      sortOrder: 6,
+    },
+    {
+      category: "visa" as const,
+      question:
+        "Can overseas Pakistanis (UK, USA, Canada, UAE) book Umrah packages and visas with Al Ramlah Travels?",
+      answer:
+        "Yes. Overseas diaspora families holding NICOP/POC cards or foreign passports can coordinate land-only Haramain hotel suites, private GMC Yukon or Hyundai Staria transfers, and visa processing so overseas relatives and Pakistan-departing family members check into the exact same Makkah and Madinah hotels together.",
+      sortOrder: 7,
+    },
+    {
+      category: "hotels" as const,
+      question:
+        "How do Quad, Triple, Double, and Sharing room allocations work in Makkah and Madinah?",
+      answer:
+        "Double rooms accommodate 2 beds, Triple rooms accommodate 3 beds, and Quad rooms accommodate 4 beds for private family occupancy. Sharing occupancy allocates individual beds in gender-segregated shared rooms for solo pilgrims seeking lower per-person package rates.",
+      sortOrder: 8,
+    },
+    {
+      category: "transport" as const,
+      question:
+        "Should our family choose the Haramain High-Speed Train or a private SUV/van between Makkah and Madinah?",
+      answer:
+        "The Haramain High-Speed Train connects Makkah and Madinah in roughly 2 hours 20 minutes with station-to-hotel transfers and strict per-passenger baggage dimensions. A private GMC Yukon XL, Hyundai Staria, or Toyota HiAce provides door-to-door hotel lobby pickup, flexible Miqat (Bir Ali) stops, and generous luggage capacity for families and elderly pilgrims.",
+      sortOrder: 9,
+    },
+    {
+      category: "packages" as const,
+      question:
+        "Why does Visa-Only show an immediate fixed PKR total while hotel and flight custom itineraries show Live Rate?",
+      answer:
+        "Standalone Umrah visa processing follows published regulatory PKR tiers, allowing immediate fixed pricing. Airline seats, Haramain hotel allotments, and seasonal KSA transport fluctuate daily by date and occupancy, so custom multi-service itineraries are verified by our Lahore quoting desk before issuing a binding itemized PKR proposal.",
+      sortOrder: 10,
+    },
+    {
+      category: "general" as const,
+      question:
+        "How are Nusuk Rawdah (Riyazul Jannah) permits arranged for Madinah stays?",
+      answer:
+        "Once your Umrah visa number is issued, our operations team assists every pilgrim in registering on the official Saudi Nusuk app to reserve timed men's and ladies' Rawdah ash-Sharifah prayer slots corresponding to your confirmed Madinah hotel dates.",
+      sortOrder: 11,
+    },
+    {
+      category: "hajj" as const,
+      question:
+        "How does Hajj 2027 pre-registration work and what do Maktab A+, A, B, and C mean?",
+      answer:
+        "Hajj 2027 pre-registration records your family's preferred Maktab camp zone, room occupancy, and shifting vs non-shifting hotel structure ahead of official Saudi Ministry of Hajj & Umrah and Pakistan MORA quota announcements. Maktab A+ and A offer closer Jamarat camp proximity and gypsum suite upgrades, while Maktab B and C provide structured value-focused Mina allocations with Aziziyah transit stays.",
+      sortOrder: 12,
+    },
+    {
+      category: "general" as const,
+      question:
+        "What wheelchair and senior-citizen assistance is available during Tawaf, Sa'i, and Ziyarat?",
+      answer:
+        "We prioritize zero-step courtyard hotels (such as Clock Tower and Northern/Ladies Gate Madinah properties), low-step private SUVs/vans, airline wheelchair requests at Lahore, Karachi, and Islamabad airports, and electric scooter or push-wheelchair guidance inside Masjid al-Haram.",
+      sortOrder: 13,
+    },
+    {
+      category: "general" as const,
+      question:
+        "Can I bring back 5-liter Zamzam water bottles on return flights to Pakistan?",
+      answer:
+        "Holders of valid Umrah visas departing via Jeddah (JED) or Madinah (MED) on Saudia, PIA, Airblue, and SereneAir are generally permitted one sealed 5-liter official Zamzam container per pilgrim from the airport Zamzam counter, subject to the operating carrier's conditions of carriage.",
+      sortOrder: 14,
+    },
   ]
 
   // Clean up legacy infant FAQ if present
@@ -2378,751 +2574,181 @@ async function seed() {
     }
   }
 
-  console.log(
-    "   ✅ Hero slides, testimonials, and FAQs seeded."
-  )
+  console.log("   ✅ Hero slides and FAQs seeded (0 fake testimonials).")
 
   // ==========================================
-  // 11. B2B SUPPLIERS, WRAPPED FLYERS, 30+ WA GROUPS & 14-DAY OUTREACH CRM
+  // 12. HAJJ 2027 INDICATIVE PACKAGES (OD-09e)
   // ==========================================
-  console.log(
-    "📦 Seeding B2B Suppliers (Ammaar, Upsky Travels, Zahoor Travels), Flyers, 30+ WhatsApp Groups & 14-Day Outreach CRM..."
-  )
+  console.log("🕋 Seeding Hajj 2027 indicative packages...")
+  const hajj2027Disclaimer =
+    "Indicative 2027 package structure — final Maktab tariff & quota subject to Saudi Ministry of Hajj & Umrah and Pakistan MORA announcement."
 
-  const migrationSqlPath = path.join(
-    process.cwd(),
-    "drizzle",
-    "0001_suppliers_marketing_and_meal_plans.sql"
-  )
-  if (fs.existsSync(migrationSqlPath)) {
-    const rawSql = fs.readFileSync(migrationSqlPath, "utf8")
-    const statements = rawSql
-      .replace(/DO \$\$ BEGIN[\s\S]*?END \$\$;/g, (m) =>
-        m.replace(/;/g, "__SEMI__")
-      )
-      .split(";")
-      .map((s) => s.replace(/__SEMI__/g, ";").trim())
-      .filter((s) => s.length > 0 && !s.startsWith("--"))
-    for (const stmt of statements) {
-      await db.execute(sql.raw(stmt))
-    }
-  }
-
-  const suppliersSeed = [
+  const hajjPackagesData: Array<typeof schema.hajjPackages.$inferInsert> = [
     {
-      name: "Ammaar",
-      slug: "ammaar",
-      codePrefix: "AM",
-      category: "group_packages" as const,
-      defaultCommissionMode: "included_in_flyer" as const,
-      defaultCommissionPkr: 22000,
-      contactPerson: "Ammaar Group Desk",
-      whatsappNumber: "03004001122",
-      phone: "04235761122",
-      notes: "21-Day Airblue & SereneAir Umrah Group Consolidator",
+      slug: "hajj-2027-maktab-a-plus-courtyard-vip",
+      title: "Hajj 2027 — Maktab A+ Royal Courtyard Executive (16 Days)",
+      seasonYear: 2027,
+      maktabTier: "A+",
+      durationDays: 16,
+      makkahHotelName: "Fairmont Makkah Clock Royal Tower / Swissôtel Al Maqam",
+      makkahDistanceLabel: "0–50m Direct Haram Courtyard Access",
+      madinahHotelName: "The Oberoi Madina / Dar Al Taqwa",
+      madinahDistanceLabel: "30–50m Facing Masjid an-Nabawi Courtyard",
+      aziziyahStayNotes:
+        "Non-shifting courtyard stay with private VIP Maktab A+ Mina tent near Jamarat & Mashair train pass.",
+      indicativeSharingPkr: 3450000,
+      indicativeQuadPkr: 3650000,
+      indicativeTriplePkr: 3950000,
+      indicativeDoublePkr: 4450000,
+      isIndicative: true,
+      regulatoryDisclaimer: hajj2027Disclaimer,
+      highlights: [
+        "Maktab A+ Gypsum Air-Conditioned Suites Near Jamarat",
+        "Non-Shifting 5-Star Haramain Courtyard Hotels",
+        "Haramain High-Speed Rail & Mashair Metro Access",
+        "Dedicated Resident Scholar & Medical Support",
+      ],
+      isFeatured: true,
       isActive: true,
+      sortOrder: 1,
     },
     {
-      name: "Upsky Travels",
-      slug: "upsky-travels",
-      codePrefix: "UP",
-      category: "group_packages" as const,
-      defaultCommissionMode: "included_in_flyer" as const,
-      defaultCommissionPkr: 23000,
-      contactPerson: "Upsky B2B Desk",
-      whatsappNumber: "03214003344",
-      phone: "04235883344",
-      notes: "15-Day Direct Saudi Airlines (SV) Umrah Group Consolidator",
-      isActive: true,
-    },
-    {
-      name: "Zahoor Travels",
-      slug: "zahoor-travels",
-      codePrefix: "ZH",
-      category: "custom_packages" as const,
-      defaultCommissionMode: "net_plus_markup" as const,
-      defaultCommissionPkr: 25000,
-      contactPerson: "Zahoor VIP Quoting Desk",
-      whatsappNumber: "03334005566",
-      phone: "04235995566",
-      notes: "Custom VIP 5-Star Mövenpick & Clock Tower Umrah Quotations",
-      isActive: true,
-    },
-  ]
-
-  const supplierMap = new Map<string, string>()
-  for (const sup of suppliersSeed) {
-    const existing = await db.query.suppliers.findFirst({
-      where: eq(schema.suppliers.slug, sup.slug),
-    })
-    if (!existing) {
-      const [inserted] = await db
-        .insert(schema.suppliers)
-        .values(sup)
-        .returning()
-      supplierMap.set(sup.slug, inserted.id)
-    } else {
-      await db
-        .update(schema.suppliers)
-        .set(sup)
-        .where(eq(schema.suppliers.id, existing.id))
-      supplierMap.set(sup.slug, existing.id)
-    }
-  }
-
-  const ammaarId = supplierMap.get("ammaar")!
-  const upskyId = supplierMap.get("upsky-travels")!
-  const zahoorId = supplierMap.get("zahoor-travels")!
-
-  // Clear and re-seed sample flyers to keep deterministic Post Codes clean
-  await db.delete(schema.dailyPostDistributions)
-  await db.delete(schema.outreachLogs)
-  await db.delete(schema.postAssets)
-  await db.delete(schema.supplierFlyerPackages)
-  await db.delete(schema.supplierFlyers)
-
-  // Flyer 1: Ammaar 21-Day Airblue Flyer
-  const [ammaarFlyer] = await db
-    .insert(schema.supplierFlyers)
-    .values({
-      supplierId: ammaarId,
-      title: "Ammaar 21 Days Airblue Umrah Packages (PA 470/471)",
-      rawFlyerImageUrl: "/uploads/sample-posts/ammaar-raw-17cards.jpg",
-      airlineName: "Airblue",
-      airlineIataCode: "PA",
-      airlineLogoUrl: "https://images.kiwi.com/airlines/64/PA.png",
+      slug: "hajj-2027-maktab-a-executive-shifting",
+      title: "Hajj 2027 — Maktab A Executive Gold Shifting (21 Days)",
+      seasonYear: 2027,
+      maktabTier: "A",
       durationDays: 21,
-      daysTitle: "21 DAYS",
-      routePill: "LHE - JED | JED - LHE",
-      departureCityCode: "LHE",
-      arrivalAirportCode: "JED",
-      returnAirportCode: "JED",
-      outboundBaggage: "20 Kg + 7 Kg",
-      inboundBaggage: "30 Kg + 7 Kg + 5 Ltr Zamzam",
-      giftedInclusions: ["Visa", "Insurance", "Hotel", "Return Ticket", "Transport"],
-      commissionMode: "included_in_flyer",
-      commissionPkr: 22000,
-      receivedDate: "2026-11-01",
-      multiSheetImageUrl: "/uploads/sample-posts/ammaar-wrapped-sheet.png",
-      extractedCardsCount: 4,
-      status: "wrapped",
-    })
-    .returning()
-
-  const ammaarCards = [
-    {
-      cardNumber: "01",
-      postCode: "ART-AM-21D-01",
-      outboundFlightNo: "PA 470",
-      outboundDateLabel: "03 NOV",
-      outboundRoute: "LHE - JED",
-      outboundDepTime: "06:35",
-      outboundArrTime: "10:35",
-      returnFlightNo: "PA 471",
-      returnDateLabel: "24 NOV",
-      returnRoute: "JED - LHE",
-      returnDepTime: "11:35",
-      returnArrTime: "18:20",
-      makkahNights: "15N",
-      makkahHotelName: "Fajr Al Badea 2",
-      makkahDistanceLabel: "(Shuttle)",
-      madinahNights: "05N",
-      madinahHotelName: "Burj Al Mukhtara",
-      madinahDistanceLabel: "(600M)",
-      mealPlanLabel: "Room Only",
-      sharing: 239899,
-      quad: 245899,
-      triple: 256899,
-      double: 279899,
+      makkahHotelName: "Jabal Omar Hyatt Regency / Mövenpick Hajar Tower",
+      makkahDistanceLabel: "80–100m Walk to Haram Courtyard",
+      madinahHotelName: "Madinah Hilton / Crowne Plaza Madinah",
+      madinahDistanceLabel: "100–200m Southern Courtyard",
+      aziziyahStayNotes:
+        "Dedicated executive building in Aziziyah North during Manasik days (4–13 Dhul Hijjah) with 24/7 catering.",
+      indicativeSharingPkr: 2450000,
+      indicativeQuadPkr: 2590000,
+      indicativeTriplePkr: 2790000,
+      indicativeDoublePkr: 3150000,
+      isIndicative: true,
+      regulatoryDisclaimer: hajj2027Disclaimer,
+      highlights: [
+        "Verified Maktab A Camp Zone with Sofa-Cum-Beds",
+        "5-Star Makkah & Madinah Markaziyah Stays",
+        "3 Buffet Pakistani & Continental Meals Daily",
+        "Pre-Departure Manasik Workshop in Lahore HQ",
+      ],
+      isFeatured: true,
+      isActive: true,
+      sortOrder: 2,
     },
     {
-      cardNumber: "04",
-      postCode: "ART-AM-21D-04",
-      outboundFlightNo: "PA 470",
-      outboundDateLabel: "10 NOV",
-      outboundRoute: "LHE - JED",
-      outboundDepTime: "06:35",
-      outboundArrTime: "10:35",
-      returnFlightNo: "PA 471",
-      returnDateLabel: "01 DEC",
-      returnRoute: "JED - LHE",
-      returnDepTime: "11:35",
-      returnArrTime: "18:20",
-      makkahNights: "15N",
-      makkahHotelName: "Dar Al Khalil Al Rushad",
-      makkahDistanceLabel: "(600M)",
-      madinahNights: "05N",
-      madinahHotelName: "Emaar Taiba",
-      madinahDistanceLabel: "(400M)",
-      mealPlanLabel: "Room Only",
-      sharing: 269899,
-      quad: 279899,
-      triple: 298899,
-      double: 334899,
+      slug: "hajj-2027-maktab-b-classic-long-stay",
+      title: "Hajj 2027 — Maktab B Classic Guided Pilgrimage (30 Days)",
+      seasonYear: 2027,
+      maktabTier: "B",
+      durationDays: 30,
+      makkahHotelName: "Voco Makkah (IHG) / Emaar Grand Makkah",
+      makkahDistanceLabel: "750m Walk or 24/7 Dedicated Shuttle",
+      madinahHotelName: "Emaar Elite Madinah / Leader Al Muna Kareem",
+      madinahDistanceLabel: "150–450m Markaziyah Walk",
+      aziziyahStayNotes:
+        "Furnished Aziziyah transit residence during peak Manasik days with group bus transfers.",
+      indicativeSharingPkr: 1790000,
+      indicativeQuadPkr: 1890000,
+      indicativeTriplePkr: 2020000,
+      indicativeDoublePkr: 2250000,
+      isIndicative: true,
+      regulatoryDisclaimer: hajj2027Disclaimer,
+      highlights: [
+        "Official Maktab B Camp Allocation & Mashair Transport",
+        "Extended Spiritual Stay in Makkah & Madinah",
+        "Scholar-Guided Group Manasik & Ziyarat",
+        "Overseas Diaspora & Pakistan Passport Support",
+      ],
+      isFeatured: false,
+      isActive: true,
+      sortOrder: 3,
     },
     {
-      cardNumber: "08",
-      postCode: "ART-AM-21D-08",
-      outboundFlightNo: "PA 470",
-      outboundDateLabel: "19 NOV",
-      outboundRoute: "LHE - JED",
-      outboundDepTime: "06:35",
-      outboundArrTime: "10:35",
-      returnFlightNo: "PA 471",
-      returnDateLabel: "10 DEC",
-      returnRoute: "JED - LHE",
-      returnDepTime: "11:35",
-      returnArrTime: "18:20",
-      makkahNights: "15N",
-      makkahHotelName: "Voco Makkah IHG",
-      makkahDistanceLabel: "(1300M VIP Shuttle)",
-      madinahNights: "05N",
-      madinahHotelName: "Pullman Zamzam Madinah",
-      madinahDistanceLabel: "(150M)",
-      mealPlanLabel: "Breakfast Included",
-      sharing: 319899,
-      quad: 335899,
-      triple: 365899,
-      double: 419899,
-    },
-    {
-      cardNumber: "10",
-      postCode: "ART-AM-21D-10",
-      outboundFlightNo: "PA 470",
-      outboundDateLabel: "24 NOV",
-      outboundRoute: "LHE - JED",
-      outboundDepTime: "06:35",
-      outboundArrTime: "10:35",
-      returnFlightNo: "PA 471",
-      returnDateLabel: "15 DEC",
-      returnRoute: "JED - LHE",
-      returnDepTime: "11:35",
-      returnArrTime: "18:20",
-      makkahNights: "15N",
-      makkahHotelName: "Swissotel Al Maqam",
-      makkahDistanceLabel: "(0M Clock Tower)",
-      madinahNights: "05N",
-      madinahHotelName: "Anwar Al Madinah Movenpick",
-      madinahDistanceLabel: "(0M Haram Courtyard)",
-      mealPlanLabel: "Breakfast Included",
-      sharing: 439899,
-      quad: 465899,
-      triple: 515899,
-      double: 599899,
+      slug: "hajj-2027-maktab-c-economy-aziziya",
+      title: "Hajj 2027 — Maktab C Economy Aziziya Long-Stay (38 Days)",
+      seasonYear: 2027,
+      maktabTier: "C",
+      durationDays: 38,
+      makkahHotelName: "Al Kiswah Towers / Nada Al Deafah + Aziziyah Building",
+      makkahDistanceLabel: "24/7 Haram Shuttle & Dedicated Aziziyah Residence",
+      madinahHotelName: "Markaz Al Eiman / Worth Elite Madinah",
+      madinahDistanceLabel: "250–300m Walk (Masjid Bilal Sector)",
+      aziziyahStayNotes:
+        "Dedicated air-conditioned Aziziyah apartment residence with full Pakistani half-board catering and group Mashair bus transfers.",
+      indicativeSharingPkr: 1490000,
+      indicativeQuadPkr: 1580000,
+      indicativeTriplePkr: 1690000,
+      indicativeDoublePkr: 1890000,
+      isIndicative: true,
+      regulatoryDisclaimer: hajj2027Disclaimer,
+      highlights: [
+        "Budget-Conscious Official Maktab C Camp Allocation",
+        "Extended 38-Day Spiritual Residence in Haramain & Aziziyah",
+        "Urdu & English Scholar Manasik Sessions Before Departure",
+        "Transparent Pre-Registration Queue Without Binding Deposit",
+      ],
+      isFeatured: false,
+      isActive: true,
+      sortOrder: 4,
     },
   ]
 
-  const insertedAmmaarPkgs = await db
-    .insert(schema.supplierFlyerPackages)
-    .values(
-      ammaarCards.map((c) => ({
-        flyerId: ammaarFlyer.id,
-        supplierId: ammaarId,
-        cardNumber: c.cardNumber,
-        postCode: c.postCode,
-        outboundFlightNo: c.outboundFlightNo,
-        outboundDateLabel: c.outboundDateLabel,
-        outboundRoute: c.outboundRoute,
-        outboundDepTime: c.outboundDepTime,
-        outboundArrTime: c.outboundArrTime,
-        returnFlightNo: c.returnFlightNo,
-        returnDateLabel: c.returnDateLabel,
-        returnRoute: c.returnRoute,
-        returnDepTime: c.returnDepTime,
-        returnArrTime: c.returnArrTime,
-        makkahNights: c.makkahNights,
-        makkahHotelName: c.makkahHotelName,
-        makkahDistanceLabel: c.makkahDistanceLabel,
-        madinahNights: c.madinahNights,
-        madinahHotelName: c.madinahHotelName,
-        madinahDistanceLabel: c.madinahDistanceLabel,
-        mealPlanLabel: c.mealPlanLabel,
-        rawSharingPkr: c.sharing,
-        rawQuadPkr: c.quad,
-        rawTriplePkr: c.triple,
-        rawDoublePkr: c.double,
-        netSharingPkr: c.sharing - 22000,
-        netQuadPkr: c.quad - 22000,
-        netTriplePkr: c.triple - 22000,
-        netDoublePkr: c.double - 22000,
-        retailSharingPkr: c.sharing,
-        retailQuadPkr: c.quad,
-        retailTriplePkr: c.triple,
-        retailDoublePkr: c.double,
-        commissionPkr: 22000,
-        spotlightPosterUrl:
-          c.cardNumber === "04"
-            ? "/uploads/sample-posts/ammaar-spotlight-04.png"
-            : "/uploads/sample-posts/ammaar-wrapped-sheet.png",
-      }))
-    )
-    .returning()
-
-  // Flyer 2: Upsky Travels 15-Day Saudi Airlines Flyer
-  const [upskyFlyer] = await db
-    .insert(schema.supplierFlyers)
-    .values({
-      supplierId: upskyId,
-      title: "Upsky Travels 15 Days Saudi Airlines Umrah Packages (SV 733/732)",
-      rawFlyerImageUrl: "/uploads/sample-posts/upsky-raw-15d.jpeg",
-      airlineName: "Saudi Airlines",
-      airlineIataCode: "SV",
-      airlineLogoUrl: "https://images.kiwi.com/airlines/64/SV.png",
-      durationDays: 15,
-      daysTitle: "15 DAYS",
-      routePill: "LHE - JED | JED - LHE",
-      departureCityCode: "LHE",
-      arrivalAirportCode: "JED",
-      returnAirportCode: "JED",
-      outboundBaggage: "23 Kg × 2 + 7 Kg",
-      inboundBaggage: "23 Kg × 2 + 7 Kg + 5 Ltr Zamzam",
-      giftedInclusions: ["Visa", "Insurance", "Hotel", "Return Ticket", "Transport", "Ziyarat"],
-      commissionMode: "included_in_flyer",
-      commissionPkr: 23000,
-      receivedDate: "2026-11-01",
-      multiSheetImageUrl: "/uploads/sample-posts/upsky-wrapped-15d.jpeg",
-      extractedCardsCount: 2,
-      status: "wrapped",
-    })
-    .returning()
-
-  const insertedUpskyPkgs = await db
-    .insert(schema.supplierFlyerPackages)
-    .values([
-      {
-        flyerId: upskyFlyer.id,
-        supplierId: upskyId,
-        cardNumber: "01",
-        postCode: "ART-UP-15D-01",
-        outboundFlightNo: "SV 733",
-        outboundDateLabel: "15 NOV",
-        outboundRoute: "LHE - JED",
-        outboundDepTime: "11:15",
-        outboundArrTime: "15:10",
-        returnFlightNo: "SV 732",
-        returnDateLabel: "29 NOV",
-        returnRoute: "JED - LHE",
-        returnDepTime: "02:30",
-        returnArrTime: "09:15",
-        makkahNights: "08N",
-        makkahHotelName: "Emaar Al Khalil",
-        makkahDistanceLabel: "(450M)",
-        madinahNights: "06N",
-        madinahHotelName: "Emaar Taiba",
-        madinahDistanceLabel: "(400M)",
-        mealPlanLabel: "Room Only",
-        rawSharingPkr: 289899,
-        rawQuadPkr: 299899,
-        rawTriplePkr: 318899,
-        rawDoublePkr: 352899,
-        netSharingPkr: 266899,
-        netQuadPkr: 276899,
-        netTriplePkr: 295899,
-        netDoublePkr: 329899,
-        retailSharingPkr: 289899,
-        retailQuadPkr: 299899,
-        retailTriplePkr: 318899,
-        retailDoublePkr: 352899,
-        commissionPkr: 23000,
-        spotlightPosterUrl: "/uploads/sample-posts/upsky-wrapped-15d.jpeg",
-      },
-      {
-        flyerId: upskyFlyer.id,
-        supplierId: upskyId,
-        cardNumber: "02",
-        postCode: "ART-UP-15D-02",
-        outboundFlightNo: "SV 733",
-        outboundDateLabel: "22 NOV",
-        outboundRoute: "LHE - JED",
-        outboundDepTime: "11:15",
-        outboundArrTime: "15:10",
-        returnFlightNo: "SV 732",
-        returnDateLabel: "06 DEC",
-        returnRoute: "JED - LHE",
-        returnDepTime: "02:30",
-        returnArrTime: "09:15",
-        makkahNights: "08N",
-        makkahHotelName: "Elaf Kinda Hotel",
-        makkahDistanceLabel: "(50M Haram Yard)",
-        madinahNights: "06N",
-        madinahHotelName: "Taiba Front Hotel",
-        madinahDistanceLabel: "(50M Haram Yard)",
-        mealPlanLabel: "Breakfast Included",
-        rawSharingPkr: 389899,
-        rawQuadPkr: 412899,
-        rawTriplePkr: 454899,
-        rawDoublePkr: 524899,
-        netSharingPkr: 366899,
-        netQuadPkr: 389899,
-        netTriplePkr: 431899,
-        netDoublePkr: 501899,
-        retailSharingPkr: 389899,
-        retailQuadPkr: 412899,
-        retailTriplePkr: 454899,
-        retailDoublePkr: 524899,
-        commissionPkr: 23000,
-        spotlightPosterUrl: "/uploads/sample-posts/upsky-wrapped-15d.jpeg",
-      },
-    ])
-    .returning()
-
-  // Seed Post Assets (Multi-Package Sheets + Single-Package Spotlights)
-  const [ammaarSheetAsset, ammaarSpotAsset, upskySheetAsset, upskySpotAsset] =
+  for (const hp of hajjPackagesData) {
     await db
-      .insert(schema.postAssets)
-      .values([
-        {
-          postCode: "ART-AM-21D-ALL",
-          kind: "multi_package_sheet",
-          title: "Ammaar 21 Days Airblue — All-Packages Sheet",
-          supplierId: ammaarId,
-          flyerId: ammaarFlyer.id,
-          imageUrl: "/uploads/sample-posts/ammaar-wrapped-sheet.png",
-          captionWhatsapp:
-            "*AL RAMLAH TRAVELS — 21 DAYS AIRBLUE UMRAH PACKAGES*\n✈️ Airline: Airblue (LHE-JED-LHE)\n💰 Starting From: PKR 239,899\n📌 Ref: ART-AM-21D-ALL\n📞 Call/WA: 03274029701 | 03190462638",
-          searchableText:
-            "ART-AM-21D-ALL Ammaar Airblue 21 Days Fajr Al Badea Dar Al Khalil Swissotel",
+      .insert(schema.hajjPackages)
+      .values(hp)
+      .onConflictDoUpdate({
+        target: schema.hajjPackages.slug,
+        set: {
+          title: hp.title,
+          seasonYear: hp.seasonYear,
+          maktabTier: hp.maktabTier,
+          durationDays: hp.durationDays,
+          makkahHotelName: hp.makkahHotelName,
+          makkahDistanceLabel: hp.makkahDistanceLabel,
+          madinahHotelName: hp.madinahHotelName,
+          madinahDistanceLabel: hp.madinahDistanceLabel,
+          aziziyahStayNotes: hp.aziziyahStayNotes,
+          indicativeSharingPkr: hp.indicativeSharingPkr,
+          indicativeQuadPkr: hp.indicativeQuadPkr,
+          indicativeTriplePkr: hp.indicativeTriplePkr,
+          indicativeDoublePkr: hp.indicativeDoublePkr,
+          isIndicative: true,
+          regulatoryDisclaimer: hajj2027Disclaimer,
+          highlights: hp.highlights,
+          isFeatured: hp.isFeatured,
+          sortOrder: hp.sortOrder,
+          updatedAt: new Date(),
         },
-        {
-          postCode: "ART-AM-21D-04",
-          kind: "single_package_spotlight",
-          title: "21 Days Spotlight #04 — Dar Al Khalil (600m) + Emaar Taiba",
-          supplierId: ammaarId,
-          flyerId: ammaarFlyer.id,
-          flyerPackageId: insertedAmmaarPkgs[1]!.id,
-          imageUrl: "/uploads/sample-posts/ammaar-spotlight-04.png",
-          captionWhatsapp:
-            "*✨ AL RAMLAH TRAVELS — 21 DAYS UMRAH SPOTLIGHT ✨*\n🔖 Post Ref: ART-AM-21D-04\n✈️ Airblue PA 470 (10 NOV → 01 DEC)\n🕋 Makkah (15N): Dar Al Khalil Al Rushad (600M)\n🕌 Madinah (05N): Emaar Taiba (400M)\n💰 Sharing: PKR 269,899 | Quad: PKR 279,899\n📞 Call/WA: 03274029701 | 03190462638",
-          searchableText:
-            "ART-AM-21D-04 Dar Al Khalil Emaar Taiba 269899 279899 10 NOV",
-        },
-        {
-          postCode: "ART-UP-15D-ALL",
-          kind: "multi_package_sheet",
-          title: "Upsky 15 Days Saudi Airlines — All-Packages Sheet",
-          supplierId: upskyId,
-          flyerId: upskyFlyer.id,
-          imageUrl: "/uploads/sample-posts/upsky-wrapped-15d.jpeg",
-          captionWhatsapp:
-            "*AL RAMLAH TRAVELS — 15 DAYS DIRECT SAUDI AIRLINES UMRAH*\n✈️ Airline: Saudi Airlines SV 733/732\n💰 Starting From: PKR 289,899\n📌 Ref: ART-UP-15D-ALL\n📞 Call/WA: 03274029701 | 03190462638",
-          searchableText:
-            "ART-UP-15D-ALL Upsky Saudi Airlines 15 Days Emaar Al Khalil Elaf Kinda",
-        },
-        {
-          postCode: "ART-UP-15D-01",
-          kind: "single_package_spotlight",
-          title: "15 Days Saudia Spotlight #01 — Emaar Al Khalil + Emaar Taiba",
-          supplierId: upskyId,
-          flyerId: upskyFlyer.id,
-          flyerPackageId: insertedUpskyPkgs[0]!.id,
-          imageUrl: "/uploads/sample-posts/upsky-wrapped-15d.jpeg",
-          captionWhatsapp:
-            "*✨ AL RAMLAH TRAVELS — 15 DAYS SAUDIA SPOTLIGHT ✨*\n🔖 Post Ref: ART-UP-15D-01\n✈️ Saudi Airlines SV 733 (15 NOV → 29 NOV)\n🕋 Makkah (08N): Emaar Al Khalil (450M)\n🕌 Madinah (06N): Emaar Taiba (400M)\n💰 Sharing: PKR 289,899 | Quad: PKR 299,899\n📞 Call/WA: 03274029701 | 03190462638",
-          searchableText:
-            "ART-UP-15D-01 Emaar Al Khalil Emaar Taiba 289899 15 NOV Saudia",
-        },
-      ])
-      .returning()
-
-  // Seed 36 Marketing Channels (30 WhatsApp Groups across Askari 10, DHA, Lahore, Other Cities + 2 Statuses + 4 Social)
-  await db.delete(schema.marketingChannels)
-  const channelsSeed = [
-    // Askari 10 (10 Groups)
-    ...[
-      "Askari 10 Sector A Residents Forum",
-      "Askari 10 Sector B Community",
-      "Askari 10 Sector C Welfare Group",
-      "Askari 10 Sector D & E Residents",
-      "Askari 10 Sector F Executive Hub",
-      "Askari 10 Ladies & Families Circle",
-      "Askari 10 Masjid & Islamic Events",
-      "Askari 10 Business & Trade Directory",
-      "Askari 10 Villas & Apartments Group",
-      "Askari 10 Youth & Families Network",
-    ].map((name, i) => ({
-      name,
-      platform: "whatsapp_group" as const,
-      areaTag: "Askari 10",
-      senderWhatsappNumber: i % 2 === 0 ? "03274029701" : "03190462638",
-      memberCount: 420 + i * 35,
-      dailyTargetPosts: 1,
-      isActive: true,
-    })),
-    // DHA Lahore (10 Groups)
-    ...[
-      "DHA Phase 1 & 2 Residents Hub",
-      "DHA Phase 3 Block Y & Z Community",
-      "DHA Phase 4 Families Forum",
-      "DHA Phase 5 Executive Residents",
-      "DHA Phase 6 Main Boulevard Community",
-      "DHA Phase 7 & 8 Homeowners Circle",
-      "DHA Rahbar & EME Sector Community",
-      "DHA Lahore Business & Professionals",
-      "DHA Lahore Islamic & Umrah Circle",
-      "DHA Lahore Overseas Pakistanis",
-    ].map((name, i) => ({
-      name,
-      platform: "whatsapp_group" as const,
-      areaTag: "DHA",
-      senderWhatsappNumber: i % 2 === 0 ? "03274029701" : "03190462638",
-      memberCount: 510 + i * 40,
-      dailyTargetPosts: 1,
-      isActive: true,
-    })),
-    // Lahore Cantt / Bahria / Model Town / Gulberg (6 Groups)
-    ...[
-      "Lahore Cantt & Polo Club Families",
-      "Bahria Town Lahore Executive Forum",
-      "Model Town Blocks A-M Residents",
-      "Gulberg & Cavalry Ground Community",
-      "Wapda Town & Valencia Residents",
-      "Lake City & Raiwind Golf Community",
-    ].map((name, i) => ({
-      name,
-      platform: "whatsapp_group" as const,
-      areaTag: "Lahore",
-      senderWhatsappNumber: i % 2 === 0 ? "03274029701" : "03190462638",
-      memberCount: 380 + i * 30,
-      dailyTargetPosts: 1,
-      isActive: true,
-    })),
-    // Other Cities (4 Groups)
-    ...[
-      "Islamabad F-6 / F-7 / DHA Pilgrims",
-      "Gujranwala & Sialkot Business Chamber",
-      "Faisalabad Textile & Business Families",
-      "Multan & Bahawalpur Executive Circle",
-    ].map((name, i) => ({
-      name,
-      platform: "whatsapp_group" as const,
-      areaTag: "Other Cities",
-      senderWhatsappNumber: i % 2 === 0 ? "03274029701" : "03190462638",
-      memberCount: 340 + i * 25,
-      dailyTargetPosts: 1,
-      isActive: true,
-    })),
-    // 2 WhatsApp Statuses
-    {
-      name: "WhatsApp Status — Primary Line (03274029701)",
-      platform: "whatsapp_status" as const,
-      areaTag: "Status",
-      senderWhatsappNumber: "03274029701",
-      memberCount: 1850,
-      dailyTargetPosts: 2,
-      isActive: true,
-    },
-    {
-      name: "WhatsApp Status — Secondary Line (03190462638)",
-      platform: "whatsapp_status" as const,
-      areaTag: "Status",
-      senderWhatsappNumber: "03190462638",
-      memberCount: 1420,
-      dailyTargetPosts: 2,
-      isActive: true,
-    },
-    // 4 Social Media Accounts
-    {
-      name: "Al Ramlah Travels Instagram (@alramlahtravels)",
-      platform: "instagram" as const,
-      areaTag: "Social",
-      externalGroupIdOrHandle: "@alramlahtravels",
-      memberCount: 4800,
-      dailyTargetPosts: 1,
-      isActive: true,
-    },
-    {
-      name: "Al Ramlah Travels Facebook Page",
-      platform: "facebook" as const,
-      areaTag: "Social",
-      externalGroupIdOrHandle: "fb.com/alramlahtravels",
-      memberCount: 6200,
-      dailyTargetPosts: 1,
-      isActive: true,
-    },
-    {
-      name: "Al Ramlah Travels TikTok (@alramlahtravels)",
-      platform: "tiktok" as const,
-      areaTag: "Social",
-      externalGroupIdOrHandle: "@alramlahtravels",
-      memberCount: 3100,
-      dailyTargetPosts: 1,
-      isActive: true,
-    },
-    {
-      name: "Al Ramlah Travels YouTube Shorts",
-      platform: "youtube" as const,
-      areaTag: "Social",
-      externalGroupIdOrHandle: "@alramlahtravels",
-      memberCount: 1200,
-      dailyTargetPosts: 1,
-      isActive: true,
-    },
-  ]
-
-  const insertedChannels = await db
-    .insert(schema.marketingChannels)
-    .values(channelsSeed)
-    .returning()
-
-  // Seed Sample Daily Post Distributions for Today
-  const todayStr = new Date().toISOString().split("T")[0]!
-  await db.insert(schema.dailyPostDistributions).values(
-    insertedChannels.slice(0, 8).map((ch) => ({
-      scheduledDate: todayStr,
-      channelId: ch.id,
-      postAssetId: ammaarSpotAsset.id,
-      pairedFollowUpAssetId: ammaarSheetAsset.id,
-      stage: "step_1_spotlight_hook" as const,
-      status: "sent" as const,
-      senderWhatsappLine: ch.senderWhatsappNumber || "03274029701",
-      captionUsed: ammaarSpotAsset.captionWhatsapp,
-      externalQueueJobId: `wacrm-seed-${ch.id.slice(0, 6)}`,
-      postedAt: new Date(),
-    }))
-  )
-
-  // Seed 14-Day Personal Outreach Contacts
-  await db.delete(schema.outreachContacts)
-  const nowTs = Date.now()
-  const dayMs = 24 * 60 * 60 * 1000
-
-  await db.insert(schema.outreachContacts).values([
-    {
-      fullName: "Brig. (R) Tariq Mahmood",
-      whatsappNumber: "03004112233",
-      city: "Lahore",
-      areaCommunity: "Askari 10",
-      sourceGroupOrChannel: "Askari 10 Sector B Community",
-      assignedWhatsappLine: "03274029701",
-      interestStatus: "interested",
-      lastOutreachAt: new Date(nowTs - 16 * dayMs),
-      cooldownUntil: new Date(nowTs - 2 * dayMs),
-      totalOutreachCount: 2,
-      packagesSharedHistory: ["ART-AM-21D-01"],
-      tags: ["Askari 10", "Family of 4"],
-    },
-    {
-      fullName: "Col. (R) Salman Rashid",
-      whatsappNumber: "03214223344",
-      city: "Lahore",
-      areaCommunity: "Askari 10",
-      sourceGroupOrChannel: "Askari 10 Sector F Executive Hub",
-      assignedWhatsappLine: "03274029701",
-      interestStatus: "prospect",
-      lastOutreachAt: null,
-      cooldownUntil: null,
-      totalOutreachCount: 0,
-      packagesSharedHistory: [],
-      tags: ["Askari 10", "First Outreach"],
-    },
-    {
-      fullName: "Dr. Kamran & Mrs. Ayesha Siddiqui",
-      whatsappNumber: "03334334455",
-      city: "Lahore",
-      areaCommunity: "DHA Phase 5",
-      sourceGroupOrChannel: "DHA Phase 5 Executive Residents",
-      assignedWhatsappLine: "03190462638",
-      interestStatus: "interested",
-      lastOutreachAt: new Date(nowTs - 5 * dayMs),
-      cooldownUntil: new Date(nowTs + 9 * dayMs), // Locked for 9 more days!
-      totalOutreachCount: 1,
-      packagesSharedHistory: ["ART-AM-21D-04"],
-      tags: ["DHA", "14-Day Cooldown Active"],
-    },
-    {
-      fullName: "Mian Usman Ghani",
-      whatsappNumber: "03014445566",
-      city: "Lahore",
-      areaCommunity: "DHA Phase 6",
-      sourceGroupOrChannel: "DHA Phase 6 Main Boulevard Community",
-      assignedWhatsappLine: "03274029701",
-      interestStatus: "active_conversation",
-      lastOutreachAt: new Date(nowTs - 3 * dayMs),
-      cooldownUntil: new Date(nowTs + 11 * dayMs),
-      lastInboundReplyAt: new Date(nowTs - 1 * dayMs), // Replied after outreach -> Active Reply Exemption!
-      totalOutreachCount: 1,
-      packagesSharedHistory: ["ART-UP-15D-01"],
-      tags: ["DHA", "Active Inbound Reply"],
-    },
-  ])
-
-  // Seed Barrister Adil Rafi Cheema & Family Custom Quotation (Zahoor Travels — PKR 1,750,000)
-  const existingAdilApp = await db.query.applications.findFirst({
-    where: eq(schema.applications.referenceNumber, "ART-2026-ADIL"),
-  })
-
-  if (!existingAdilApp) {
-    const [adilApp] = await db
-      .insert(schema.applications)
-      .values({
-        referenceNumber: "ART-2026-ADIL",
-        source: "custom_builder",
-        status: "quoted",
-        presetMode: "complete_umrah",
-        supplierId: zahoorId,
-        customerName: "Barrister Adil Rafi Cheema & Family",
-        customerPhone: "03008445566",
-        customerWhatsapp: "03008445566",
-        customerCity: "Lahore",
-        specialRequests:
-          "5 Family Members (4 Adults, 1 Child). PIA Return Flights, 6 Nights Makkah Hajar Tower Mövenpick (with Daily Buffet Breakfast), 6 Nights Anwar Al Madinah Mövenpick, Private Hyundai Staria 7-Seater VIP Transfers.",
-        adults: 4,
-        children: 1,
-        infants: 0,
-        totalPassportCount: 5,
-        bedAndSeatCount: 5,
-        includeVisa: true,
-        includeFlights: true,
-        includeHotels: true,
-        includeTransport: true,
-        includeZiyarat: true,
-        ksaArrivalDate: "2026-11-12",
-        ksaDepartureDate: "2026-11-24",
-        totalKsaDays: 13,
-        citySequence: "makkah_madinah",
-        entryAirport: "JED",
-        exitAirport: "JED",
-        quoteSentAt: new Date(),
       })
-      .returning()
-
-    await db.insert(schema.applicationQuotes).values({
-      applicationId: adilApp.id,
-      version: 1,
-      visaTotalPkr: 212500,
-      flightsTotalPkr: 625000,
-      makkahHotelTotalPkr: 465000,
-      madinahHotelTotalPkr: 335000,
-      transportTotalPkr: 82500,
-      ziyaratTotalPkr: 30000,
-      discountPkr: 0,
-      grandTotalPkr: 1750000,
-      supplierId: zahoorId,
-      supplierNetCostPkr: 1725000,
-      commissionPkr: 25000,
-      quotationPdfUrl: "/uploads/sample-posts/zahoor-adil-rafi-quotation.pdf",
-      quotationPdfGeneratedAt: new Date(),
-      quoteNotesCustomer:
-        "All-Inclusive VIP Custom Umrah Quotation for Barrister Adil Rafi Cheema & Family (5 Travelers): PIA Return Flights, 6N Hajar Tower Mövenpick Makkah (Breakfast Included), 6N Anwar Al Madinah Mövenpick, Private Hyundai Staria 7-Seater.",
-      internalNotesAdmin:
-        "B2B Supplier: Zahoor Travels. Wholesale Net Cost: PKR 1,725,000 | Al Ramlah Commission: PKR 25,000.",
-      paymentStatus: "partially_paid",
-      amountPaidPkr: 500000,
-      quotedAt: new Date(),
-    })
   }
+  console.log("   ✅ 3 indicative Hajj 2027 packages seeded.")
 
   console.log(
-    "   ✅ B2B Suppliers, Wrapped Flyers, 36 Channels, 14-Day Outreach CRM & Barrister Adil Rafi Quote seeded."
+    "✨ Seed completed successfully! Core foundation catalog data populated."
   )
 
-  console.log(
-    "✨ Seed completed successfully! All tables populated with realistic data."
-  )
-  process.exit(0)
+  if (options?.closePool !== false) {
+    await closeDatabasePool()
+  }
 }
 
-seed().catch((error) => {
-  console.error("❌ Seed execution failed:", error)
-  process.exit(1)
-})
+const isSeedEntrypoint =
+  process.argv[1] !== undefined &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+
+if (isSeedEntrypoint) {
+  runSeed({ closePool: true })
+    .then(() => {
+      process.exit(0)
+    })
+    .catch((error: unknown) => {
+      console.error("❌ Seed execution failed:", error)
+      process.exit(1)
+    })
+}

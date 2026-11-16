@@ -11,6 +11,8 @@ import {
   KeyboardSensor,
   closestCorners,
   useDroppable,
+  type Announcements,
+  type DraggableAttributes,
   type DragEndEvent,
   type DragStartEvent,
   type DragOverEvent,
@@ -22,12 +24,15 @@ import {
   sortableKeyboardCoordinates,
   arrayMove,
 } from "@dnd-kit/sortable"
+import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities"
 import { CSS } from "@dnd-kit/utilities"
 import {
   Clock,
   CheckCircle2,
   XCircle,
+  Ban,
   Send,
+  RotateCcw,
   Sparkles,
   AlertTriangle,
   FileEdit,
@@ -37,9 +42,7 @@ import {
   Phone,
   ArrowUpRight,
   X,
-  MessageSquare,
-  Building2,
-  Calendar,
+  GripVertical,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -49,18 +52,30 @@ import { updateApplicationStatus } from "@/app/actions/quotes"
 import { formatWhatsAppPhone } from "@/lib/phone"
 import { cn } from "@/lib/utils"
 
-export type KanbanColumnId =
-  | "new"
+export const KANBAN_COLUMN_IDS = [
+  "pending_quote",
+  "quoted",
+  "revision_requested",
+  "approved",
+  "rejected",
+  "cancelled",
+] as const
+
+export type KanbanColumnId = (typeof KANBAN_COLUMN_IDS)[number]
+
+export type KanbanApplicationStatus =
   | "pending_quote"
   | "quoted"
+  | "revision_requested"
   | "approved"
-  | "rejected_cancelled"
+  | "rejected"
+  | "cancelled"
 
 export interface KanbanApplicationItem {
   id: string
   referenceNumber: string
   source: "custom_builder" | "group_booking" | "hajj_inquiry"
-  status: "pending_quote" | "quoted" | "approved" | "rejected" | "cancelled"
+  status: KanbanApplicationStatus
   presetMode?: string
   customerName: string
   customerPhone: string
@@ -93,7 +108,7 @@ export interface KanbanApplicationItem {
   } | null
 }
 
-interface ColumnConfig {
+export interface ColumnConfig {
   id: KanbanColumnId
   title: string
   subtitle: string
@@ -103,66 +118,118 @@ interface ColumnConfig {
   headerBg: string
 }
 
-const KANBAN_COLUMNS: ColumnConfig[] = [
-  {
-    id: "new",
-    title: "New",
-    subtitle: "Fresh inquiries & WhatsApp leads",
-    icon: Sparkles,
-    badgeClass: "bg-amber-100 text-amber-900 border-amber-300",
-    columnClass: "border-amber-200/80 bg-amber-50/20",
-    headerBg: "bg-amber-50/80 border-amber-200 text-amber-950",
-  },
+export const KANBAN_COLUMNS: ColumnConfig[] = [
   {
     id: "pending_quote",
     title: "Pending Quote",
-    subtitle: "Active pricing & worksheet costing",
+    subtitle: "Fresh inquiries & active costing",
     icon: Clock,
     badgeClass: "bg-amber-200 text-amber-950 border-amber-400",
-    columnClass: "border-amber-300/80 bg-amber-100/15",
+    columnClass: "border-amber-300/80 bg-amber-50/20",
     headerBg: "bg-amber-100/70 border-amber-300 text-amber-950",
   },
   {
     id: "quoted",
     title: "Quoted",
-    subtitle: "Formal proposal dispatched to pilgrim",
+    subtitle: "Formal proposal dispatched",
     icon: Send,
     badgeClass: "bg-sky-100 text-sky-900 border-sky-300",
     columnClass: "border-sky-200/80 bg-sky-50/20",
     headerBg: "bg-sky-50/80 border-sky-200 text-sky-950",
   },
   {
+    id: "revision_requested",
+    title: "Revision Requested",
+    subtitle: "Pilgrim requested changes",
+    icon: RotateCcw,
+    badgeClass: "bg-purple-100 text-purple-900 border-purple-300",
+    columnClass: "border-purple-200/80 bg-purple-50/20",
+    headerBg: "bg-purple-50/80 border-purple-200 text-purple-950",
+  },
+  {
     id: "approved",
     title: "Approved",
-    subtitle: "Deposit received & seats confirmed",
+    subtitle: "Confirmed & seats reserved",
     icon: CheckCircle2,
     badgeClass: "bg-emerald-100 text-emerald-900 border-emerald-300",
     columnClass: "border-emerald-200/80 bg-emerald-50/20",
     headerBg: "bg-emerald-50/80 border-emerald-200 text-emerald-950",
   },
   {
-    id: "rejected_cancelled",
-    title: "Rejected / Cancelled",
-    subtitle: "Declined quotes & client cancellations",
+    id: "rejected",
+    title: "Rejected",
+    subtitle: "Declined proposals",
     icon: XCircle,
+    badgeClass: "bg-red-100 text-red-900 border-red-300",
+    columnClass: "border-red-200/80 bg-red-50/15",
+    headerBg: "bg-red-50/80 border-red-200 text-red-950",
+  },
+  {
+    id: "cancelled",
+    title: "Cancelled",
+    subtitle: "Cancelled bookings",
+    icon: Ban,
     badgeClass: "bg-slate-200 text-slate-800 border-slate-300",
     columnClass: "border-slate-200 bg-slate-50/30",
     headerBg: "bg-slate-100/80 border-slate-200 text-slate-800",
   },
 ]
 
-function mapAppToColumn(app: KanbanApplicationItem): KanbanColumnId {
-  if (app.status === "quoted") return "quoted"
-  if (app.status === "approved") return "approved"
-  if (app.status === "rejected" || app.status === "cancelled") {
-    return "rejected_cancelled"
+/**
+ * Maps an application status 1-to-1 to its canonical Kanban column (`T-059`):
+ * - `pending_quote` unifies fresh (`new`) and active costing inquiries so dragging never no-ops
+ * - `revision_requested` gets its own dedicated column
+ * - `cancelled` and `rejected` remain strictly distinct
+ */
+export function mapAppToColumn(
+  app: Pick<KanbanApplicationItem, "status">
+): KanbanColumnId {
+  switch (app.status) {
+    case "quoted":
+      return "quoted"
+    case "revision_requested":
+      return "revision_requested"
+    case "approved":
+      return "approved"
+    case "rejected":
+      return "rejected"
+    case "cancelled":
+      return "cancelled"
+    case "pending_quote":
+    default:
+      return "pending_quote"
   }
-  // For pending_quote: if inquiry has grandTotalPkr > 0 it is under active pricing
-  const latestQuote = app.quotes?.[0]
-  if (latestQuote && latestQuote.grandTotalPkr > 0) {
-    return "pending_quote"
+}
+
+export function groupApplicationsByKanbanColumn<
+  T extends Pick<KanbanApplicationItem, "id" | "status">,
+>(apps: readonly T[]): Record<KanbanColumnId, string[]> {
+  const grouped: Record<KanbanColumnId, string[]> = {
+    pending_quote: [],
+    quoted: [],
+    revision_requested: [],
+    approved: [],
+    rejected: [],
+    cancelled: [],
   }
-  return "new"
+  for (const app of apps) {
+    const col = mapAppToColumn(app)
+    grouped[col].push(app.id)
+  }
+  return grouped
+}
+
+function cloneColumnsRecord(
+  source: Record<KanbanColumnId, string[]>
+): Record<KanbanColumnId, string[]> {
+  return {
+    pending_quote: [...source.pending_quote],
+    quoted: [...source.quoted],
+    revision_requested: [...source.revision_requested],
+    approved: [...source.approved],
+    rejected: [...source.rejected],
+    cancelled: [...source.cancelled],
+  }
 }
 
 interface ApplicationsKanbanBoardProps {
@@ -174,54 +241,36 @@ export function ApplicationsKanbanBoard({
   applications,
   slaHours = 24,
 }: ApplicationsKanbanBoardProps) {
-  // Map of all items for O(1) lookup
-  const [itemsMap, setItemsMap] = React.useState<Map<string, KanbanApplicationItem>>(() => {
+  const [itemsMap, setItemsMap] = React.useState<
+    Map<string, KanbanApplicationItem>
+  >(() => {
     const map = new Map<string, KanbanApplicationItem>()
     applications.forEach((app) => map.set(app.id, app))
     return map
   })
 
-  // Columns state: columnId -> array of item IDs
-  const [columns, setColumns] = React.useState<Record<KanbanColumnId, string[]>>(() => {
-    const initial: Record<KanbanColumnId, string[]> = {
-      new: [],
-      pending_quote: [],
-      quoted: [],
-      approved: [],
-      rejected_cancelled: [],
-    }
-    applications.forEach((app) => {
-      const col = mapAppToColumn(app)
-      initial[col].push(app.id)
-    })
-    return initial
-  })
+  const [columns, setColumns] = React.useState<Record<KanbanColumnId, string[]>>(
+    () => groupApplicationsByKanbanColumn(applications)
+  )
 
-  // Synchronize when applications prop changes externally
   React.useEffect(() => {
     const map = new Map<string, KanbanApplicationItem>()
-    const nextCols: Record<KanbanColumnId, string[]> = {
-      new: [],
-      pending_quote: [],
-      quoted: [],
-      approved: [],
-      rejected_cancelled: [],
-    }
-    applications.forEach((app) => {
-      map.set(app.id, app)
-      const col = mapAppToColumn(app)
-      nextCols[col].push(app.id)
-    })
+    applications.forEach((app) => map.set(app.id, app))
     setItemsMap(map)
-    setColumns(nextCols)
+    setColumns(groupApplicationsByKanbanColumn(applications))
   }, [applications])
 
   const [activeId, setActiveId] = React.useState<string | null>(null)
-  const [preDragSnapshot, setPreDragSnapshot] = React.useState<Record<KanbanColumnId, string[]> | null>(null)
-  const [errorBanner, setErrorBanner] = React.useState<{ message: string; cardRef?: string } | null>(null)
-  const [, startTransition] = React.useTransition()
+  const [preDragSnapshot, setPreDragSnapshot] = React.useState<Record<
+    KanbanColumnId,
+    string[]
+  > | null>(null)
+  const [errorBanner, setErrorBanner] = React.useState<{
+    message: string
+    cardRef?: string
+  } | null>(null)
+  const [isTransitioning, startTransition] = React.useTransition()
 
-  // Pointer sensor with 5px threshold so clicks open Quote Worksheet without dragging
   const pointerSensor = useSensor(PointerSensor, {
     activationConstraint: {
       distance: 5,
@@ -235,7 +284,7 @@ export function ApplicationsKanbanBoard({
   const findContainer = React.useCallback(
     (id: string): KanbanColumnId | null => {
       if (id in columns) return id as KanbanColumnId
-      for (const colId of Object.keys(columns) as KanbanColumnId[]) {
+      for (const colId of KANBAN_COLUMN_IDS) {
         if (columns[colId].includes(id)) {
           return colId
         }
@@ -245,54 +294,133 @@ export function ApplicationsKanbanBoard({
     [columns]
   )
 
+  const commitColumnMove = React.useCallback(
+    (
+      movedAppId: string,
+      targetStatus: KanbanColumnId,
+      snapshotToRevert: Record<KanbanColumnId, string[]>
+    ) => {
+      const app = itemsMap.get(movedAppId)
+      startTransition(async () => {
+        try {
+          const res = await updateApplicationStatus({
+            applicationId: movedAppId,
+            status: targetStatus,
+          })
+
+          if (!res.success) {
+            setColumns(snapshotToRevert)
+            setErrorBanner({
+              message:
+                res.error ||
+                "Status transition was rejected. Please review quote worksheet and seat allocations.",
+              cardRef: app?.referenceNumber,
+            })
+          } else {
+            setErrorBanner(null)
+            setItemsMap((prev) => {
+              const next = new Map(prev)
+              const current = next.get(movedAppId)
+              if (current) {
+                next.set(movedAppId, { ...current, status: targetStatus })
+              }
+              return next
+            })
+          }
+        } catch (err) {
+          setColumns(snapshotToRevert)
+          setErrorBanner({
+            message:
+              err instanceof Error
+                ? err.message
+                : "Failed to execute column transition.",
+            cardRef: app?.referenceNumber,
+          })
+        } finally {
+          setPreDragSnapshot(null)
+        }
+      })
+    },
+    [itemsMap]
+  )
+
+  const handleSelectStatusChange = React.useCallback(
+    (appId: string, targetCol: KanbanColumnId) => {
+      const currentCol = findContainer(appId)
+      if (!currentCol || currentCol === targetCol) return
+
+      const snapshot = cloneColumnsRecord(columns)
+      setColumns((prev) => ({
+        ...prev,
+        [currentCol]: prev[currentCol].filter((id) => id !== appId),
+        [targetCol]: [appId, ...prev[targetCol].filter((id) => id !== appId)],
+      }))
+      commitColumnMove(appId, targetCol, snapshot)
+    },
+    [columns, commitColumnMove, findContainer]
+  )
+
   const handleDragStart = (event: DragStartEvent) => {
-    const id = event.active.id as string
+    const id = String(event.active.id)
     setActiveId(id)
-    setPreDragSnapshot(JSON.parse(JSON.stringify(columns)))
+    setPreDragSnapshot(cloneColumnsRecord(columns))
   }
 
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event
     if (!over) return
 
-    const activeContainer = findContainer(active.id as string)
-    const overContainer = findContainer(over.id as string)
+    const activeItemId = String(active.id)
+    const overItemId = String(over.id)
+    const activeContainer = findContainer(activeItemId)
+    const overContainer = findContainer(overItemId)
 
-    if (!activeContainer || !overContainer || activeContainer === overContainer) {
+    if (
+      !activeContainer ||
+      !overContainer ||
+      activeContainer === overContainer
+    ) {
       return
     }
 
     setColumns((prev) => {
       const activeItems = prev[activeContainer]
       const overItems = prev[overContainer]
-      const activeIndex = activeItems.indexOf(active.id as string)
-      const overIndex = overItems.indexOf(over.id as string)
+      const activeIndex = activeItems.indexOf(activeItemId)
+      if (activeIndex === -1) {
+        return prev
+      }
+      const overIndex = overItems.indexOf(overItemId)
 
       let newIndex: number
-      if (over.id in prev) {
+      if (overItemId in prev) {
         newIndex = overItems.length
       } else {
         const isBelowOverItem =
-          over &&
-          active.rect.current.translated &&
-          active.rect.current.translated.top > over.rect.top + over.rect.height
+          Boolean(active.rect.current.translated) &&
+          (active.rect.current.translated?.top ?? 0) >
+            over.rect.top + over.rect.height
         const modifier = isBelowOverItem ? 1 : 0
         newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length
       }
 
+      const movedId = activeItems[activeIndex]
+      const deduplicatedOver = overItems.filter((id) => id !== movedId)
+      const clampedIndex = Math.min(newIndex, deduplicatedOver.length)
+
       return {
         ...prev,
-        [activeContainer]: prev[activeContainer].filter((item) => item !== active.id),
+        [activeContainer]: activeItems.filter((item) => item !== activeItemId),
         [overContainer]: [
-          ...prev[overContainer].slice(0, newIndex),
-          prev[activeContainer][activeIndex],
-          ...prev[overContainer].slice(newIndex),
+          ...deduplicatedOver.slice(0, clampedIndex),
+          movedId,
+          ...deduplicatedOver.slice(clampedIndex),
         ],
       }
     })
   }
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     setActiveId(null)
 
@@ -302,86 +430,78 @@ export function ApplicationsKanbanBoard({
       return
     }
 
-    const activeContainer = findContainer(active.id as string)
-    const overContainer = findContainer(over.id as string)
+    const activeItemId = String(active.id)
+    const overItemId = String(over.id)
+    const originContainer = preDragSnapshot
+      ? KANBAN_COLUMN_IDS.find((col) =>
+          preDragSnapshot[col].includes(activeItemId)
+        ) ?? findContainer(activeItemId)
+      : findContainer(activeItemId)
+    const overContainer = findContainer(overItemId)
 
-    if (!activeContainer || !overContainer) {
+    if (!originContainer || !overContainer) {
       if (preDragSnapshot) setColumns(preDragSnapshot)
       setPreDragSnapshot(null)
       return
     }
 
-    // Sort order update within same container
-    if (activeContainer === overContainer) {
-      const activeIndex = columns[activeContainer].indexOf(active.id as string)
-      const overIndex = columns[overContainer].indexOf(over.id as string)
-      if (activeIndex !== overIndex) {
-        setColumns((prev) => ({
-          ...prev,
-          [activeContainer]: arrayMove(prev[activeContainer], activeIndex, overIndex),
-        }))
+    if (originContainer === overContainer) {
+      const currentContainer = findContainer(activeItemId)
+      if (currentContainer) {
+        const activeIndex = columns[currentContainer].indexOf(activeItemId)
+        const overIndex = columns[currentContainer].indexOf(overItemId)
+        if (activeIndex !== -1 && overIndex !== -1 && activeIndex !== overIndex) {
+          setColumns((prev) => ({
+            ...prev,
+            [currentContainer]: arrayMove(
+              prev[currentContainer],
+              activeIndex,
+              overIndex
+            ),
+          }))
+        }
       }
       setPreDragSnapshot(null)
       return
     }
 
-    // Moved to a new column -> execute server transition
-    const movedAppId = active.id as string
-    const targetCol = overContainer
-    const targetStatus: "pending_quote" | "quoted" | "approved" | "rejected" =
-      targetCol === "new"
-        ? "pending_quote"
-        : targetCol === "pending_quote"
-          ? "pending_quote"
-          : targetCol === "quoted"
-            ? "quoted"
-            : targetCol === "approved"
-              ? "approved"
-              : "rejected"
-
-    const app = itemsMap.get(movedAppId)
-    const snapshotToRevert = preDragSnapshot
-
-    startTransition(async () => {
-      try {
-        const res = await updateApplicationStatus({
-          applicationId: movedAppId,
-          status: targetStatus,
-        })
-
-        if (!res.success) {
-          // Revert cleanly with inline error banner
-          if (snapshotToRevert) {
-            setColumns(snapshotToRevert)
-          }
-          setErrorBanner({
-            message:
-              res.error ||
-              "Status transition was rejected. Please review quote worksheet and seat allocations.",
-            cardRef: app?.referenceNumber,
-          })
-        } else {
-          // Update cached app status in itemsMap
-          setErrorBanner(null)
-          if (app) {
-            app.status = targetStatus
-            itemsMap.set(movedAppId, { ...app, status: targetStatus })
-          }
-        }
-      } catch (err) {
-        if (snapshotToRevert) {
-          setColumns(snapshotToRevert)
-        }
-        setErrorBanner({
-          message:
-            err instanceof Error ? err.message : "Failed to execute column transition.",
-          cardRef: app?.referenceNumber,
-        })
-      } finally {
-        setPreDragSnapshot(null)
-      }
-    })
+    const snapshotToRevert = preDragSnapshot ?? cloneColumnsRecord(columns)
+    commitColumnMove(activeItemId, overContainer, snapshotToRevert)
   }
+
+  const announcements: Announcements = React.useMemo(
+    () => ({
+      onDragStart({ active }) {
+        const card = itemsMap.get(String(active.id))
+        return `Picked up application ${card?.referenceNumber ?? String(active.id)}.`
+      },
+      onDragOver({ active, over }) {
+        const card = itemsMap.get(String(active.id))
+        if (!over) {
+          return `Application ${card?.referenceNumber ?? String(active.id)} is no longer over a droppable column.`
+        }
+        const colId = findContainer(String(over.id))
+        const colTitle =
+          KANBAN_COLUMNS.find((c) => c.id === colId)?.title ?? String(over.id)
+        return `Application ${card?.referenceNumber ?? String(active.id)} moved over ${colTitle} column.`
+      },
+      onDragEnd({ active, over }) {
+        const card = itemsMap.get(String(active.id))
+        if (!over) {
+          return `Dropped application ${card?.referenceNumber ?? String(active.id)} without changing status.`
+        }
+        const colId = findContainer(String(over.id))
+        const colTitle =
+          KANBAN_COLUMNS.find((c) => c.id === colId)?.title ?? String(over.id)
+        return `Dropped application ${card?.referenceNumber ?? String(active.id)} into ${colTitle}.`
+      },
+      onDragCancel({ active }) {
+        const card = itemsMap.get(String(active.id))
+        return `Cancelled dragging application ${card?.referenceNumber ?? String(active.id)}.`
+      },
+    }),
+    [findContainer, itemsMap]
+  )
 
   const activeCard = activeId ? itemsMap.get(activeId) : null
 
@@ -389,14 +509,19 @@ export function ApplicationsKanbanBoard({
     <div className="flex flex-col gap-4">
       {/* Inline Rollback Error Banner */}
       {errorBanner && (
-        <div className="relative flex items-center justify-between rounded-xl border border-red-400 bg-red-50/95 p-3.5 text-xs text-red-950 shadow-sm animate-in fade-in-50 duration-200">
+        <div
+          role="alert"
+          className="relative flex items-center justify-between rounded-xl border border-red-400 bg-red-50/95 p-3.5 text-xs text-red-950 shadow-sm animate-in fade-in-50 duration-200"
+        >
           <div className="flex items-center gap-2.5">
             <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-700">
               <AlertTriangle className="size-4" />
             </div>
             <div>
               <span className="font-semibold text-red-900">
-                {errorBanner.cardRef ? `Action Blocked for [${errorBanner.cardRef}]: ` : "Action Blocked: "}
+                {errorBanner.cardRef
+                  ? `Action Blocked for [${errorBanner.cardRef}]: `
+                  : "Action Blocked: "}
               </span>
               <span>{errorBanner.message}</span>
             </div>
@@ -414,20 +539,21 @@ export function ApplicationsKanbanBoard({
 
       {/* DndContext & Board Columns */}
       <DndContext
+        id="desk-kanban-dnd"
         sensors={sensors}
         collisionDetection={closestCorners}
+        accessibility={{ announcements }}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5 xl:gap-5">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 xl:gap-4">
           {KANBAN_COLUMNS.map((col) => {
             const itemIds = columns[col.id] || []
             const columnApps = itemIds
               .map((id) => itemsMap.get(id))
               .filter((a): a is KanbanApplicationItem => Boolean(a))
 
-            // Calculate total pipeline PKR for the column
             const columnTotalPkr = columnApps.reduce((acc, app) => {
               const quote = app.quotes?.[0]
               return acc + (quote?.grandTotalPkr || 0)
@@ -440,16 +566,22 @@ export function ApplicationsKanbanBoard({
                 apps={columnApps}
                 totalPkr={columnTotalPkr}
                 slaHours={slaHours}
+                isTransitioning={isTransitioning}
+                onSelectStatusChange={handleSelectStatusChange}
               />
             )
           })}
         </div>
 
-        {/* Drag Overlay with Gold/Emerald Elevation */}
+        {/* Drag Overlay */}
         <DragOverlay>
           {activeCard ? (
             <div className="w-72 rotate-1 scale-102 opacity-95 shadow-2xl ring-2 ring-primary">
-              <KanbanCardItem card={activeCard} slaHours={slaHours} isOverlay />
+              <KanbanCardItem
+                card={activeCard}
+                slaHours={slaHours}
+                isOverlay
+              />
             </div>
           ) : null}
         </DragOverlay>
@@ -467,9 +599,18 @@ interface KanbanColumnProps {
   apps: KanbanApplicationItem[]
   totalPkr: number
   slaHours: number
+  isTransitioning: boolean
+  onSelectStatusChange: (appId: string, targetCol: KanbanColumnId) => void
 }
 
-function KanbanColumn({ config, apps, totalPkr, slaHours }: KanbanColumnProps) {
+function KanbanColumn({
+  config,
+  apps,
+  totalPkr,
+  slaHours,
+  isTransitioning,
+  onSelectStatusChange,
+}: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: config.id,
   })
@@ -477,10 +618,11 @@ function KanbanColumn({ config, apps, totalPkr, slaHours }: KanbanColumnProps) {
   const Icon = config.icon
 
   return (
-    <div
+    <section
       ref={setNodeRef}
+      aria-label={`${config.title} column (${apps.length} applications)`}
       className={cn(
-        "flex min-h-[640px] flex-col rounded-2xl border p-2.5 transition-colors duration-200",
+        "flex min-h-[580px] flex-col rounded-2xl border p-2.5 transition-colors duration-200",
         config.columnClass,
         isOver && "ring-2 ring-primary ring-offset-2 bg-secondary/50"
       )}
@@ -525,7 +667,13 @@ function KanbanColumn({ config, apps, totalPkr, slaHours }: KanbanColumnProps) {
       >
         <div className="flex flex-1 flex-col gap-2.5 overflow-y-auto">
           {apps.map((app) => (
-            <SortableKanbanCard key={app.id} card={app} slaHours={slaHours} />
+            <SortableKanbanCard
+              key={app.id}
+              card={app}
+              slaHours={slaHours}
+              isTransitioning={isTransitioning}
+              onSelectStatusChange={onSelectStatusChange}
+            />
           ))}
 
           {apps.length === 0 && (
@@ -535,7 +683,7 @@ function KanbanColumn({ config, apps, totalPkr, slaHours }: KanbanColumnProps) {
           )}
         </div>
       </SortableContext>
-    </div>
+    </section>
   )
 }
 
@@ -546,14 +694,19 @@ function KanbanColumn({ config, apps, totalPkr, slaHours }: KanbanColumnProps) {
 function SortableKanbanCard({
   card,
   slaHours,
+  isTransitioning,
+  onSelectStatusChange,
 }: {
   card: KanbanApplicationItem
   slaHours: number
+  isTransitioning: boolean
+  onSelectStatusChange: (appId: string, targetCol: KanbanColumnId) => void
 }) {
   const {
     attributes,
     listeners,
     setNodeRef,
+    setActivatorNodeRef,
     transform,
     transition,
     isDragging,
@@ -566,64 +719,128 @@ function SortableKanbanCard({
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <KanbanCardItem card={card} slaHours={slaHours} />
+    <div ref={setNodeRef} style={style}>
+      <KanbanCardItem
+        card={card}
+        slaHours={slaHours}
+        dragHandleRef={setActivatorNodeRef}
+        dragAttributes={attributes}
+        dragListeners={listeners}
+        isTransitioning={isTransitioning}
+        onSelectStatusChange={onSelectStatusChange}
+      />
     </div>
   )
 }
 
 // ==========================================
-// LUXURY KANBAN CARD ITEM
+// LUXURY KANBAN CARD ITEM (WCAG SEPARATED DRAG HANDLE)
 // ==========================================
 
 function KanbanCardItem({
   card,
   slaHours,
   isOverlay = false,
+  dragHandleRef,
+  dragAttributes,
+  dragListeners,
+  isTransitioning = false,
+  onSelectStatusChange,
 }: {
   card: KanbanApplicationItem
   slaHours: number
   isOverlay?: boolean
+  dragHandleRef?: (element: HTMLElement | null) => void
+  dragAttributes?: DraggableAttributes
+  dragListeners?: SyntheticListenerMap
+  isTransitioning?: boolean
+  onSelectStatusChange?: (appId: string, targetCol: KanbanColumnId) => void
 }) {
   const latestQuote = card.quotes?.[0]
   const grandTotal = latestQuote?.grandTotalPkr ?? 0
+  const paymentStatus = latestQuote?.paymentStatus ?? "unpaid"
 
-  // SLA Overdue check: only applies to pending quotes older than slaHours (default 24h)
-  const isOverdue = React.useMemo(() => {
-    if (card.status !== "pending_quote") return false
-    const createdTime = new Date(card.createdAt).getTime()
-    return Date.now() - createdTime > slaHours * 60 * 60 * 1000
-  }, [card.status, card.createdAt, slaHours])
+  const voucherReady =
+    card.status === "approved" &&
+    grandTotal > 0 &&
+    (paymentStatus === "deposit_paid" || paymentStatus === "paid_in_full")
 
-  const hoursElapsed = Math.floor(
-    (Date.now() - new Date(card.createdAt).getTime()) / (1000 * 60 * 60)
+  const createdMs = React.useMemo(
+    () => new Date(card.createdAt).getTime(),
+    [card.createdAt]
   )
 
-  const cleanPhone = formatWhatsAppPhone(card.customerWhatsapp || card.customerPhone)
+  const elapsedMs = Number.isFinite(createdMs)
+    ? Math.max(0, Date.now() - createdMs)
+    : 0
+  const hoursElapsed = Math.floor(elapsedMs / (1000 * 60 * 60))
+  const isFreshInquiry =
+    card.status === "pending_quote" && grandTotal <= 0 && hoursElapsed < 2
+  const isOverdue =
+    card.status === "pending_quote" &&
+    elapsedMs > slaHours * 60 * 60 * 1000
+
+  const isWhatsAppIntake = card.referenceNumber
+    .toUpperCase()
+    .startsWith("ART-WA-")
+
+  const cleanPhone = formatWhatsAppPhone(
+    card.customerWhatsapp || card.customerPhone
+  )
   const waUrl = `https://wa.me/${cleanPhone}`
+  const currentColumn = mapAppToColumn(card)
 
   return (
-    <div
+    <article
+      aria-label={`Application ${card.referenceNumber} for ${card.customerName}`}
       className={cn(
         "group relative flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3 shadow-xs transition-all hover:border-primary/50 hover:shadow-md",
         isOverlay && "border-primary bg-card/95 shadow-xl",
         isOverdue && "border-red-300 bg-red-50/20 hover:border-red-400"
       )}
     >
-      {/* Top Meta Strip: Reference + Source + SLA Indicator */}
+      {/* Top Meta Strip: Dedicated Drag Handle + Reference + Source + SLA Indicator */}
       <div className="flex items-center justify-between gap-1 text-[11px]">
-        <Link
-          href={`/admin/applications/${card.id}`}
-          onClick={(e) => e.stopPropagation()}
-          className="font-mono font-bold tracking-tight text-primary hover:underline flex items-center gap-1"
-        >
-          {card.referenceNumber}
-          <ArrowUpRight className="size-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-        </Link>
+        <div className="flex items-center gap-1 min-w-0">
+          <button
+            ref={dragHandleRef}
+            type="button"
+            aria-label={`Drag application ${card.referenceNumber}`}
+            className="inline-flex size-6 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary active:cursor-grabbing"
+            {...(dragAttributes ?? {})}
+            {...(dragListeners ?? {})}
+          >
+            <GripVertical className="size-3.5" />
+          </button>
+
+          <Link
+            href={`/admin/applications/${card.id}`}
+            className="font-mono font-bold tracking-tight text-primary hover:underline flex items-center gap-1 truncate"
+          >
+            <span className="truncate">{card.referenceNumber}</span>
+            <ArrowUpRight className="size-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </Link>
+        </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          {/* Source Badges */}
-          {card.sourcePostCode ? (
+          {isFreshInquiry && (
+            <Badge
+              variant="outline"
+              className="border-amber-400 bg-amber-100 text-amber-950 text-[10px] px-1.5 py-0 h-4 inline-flex items-center gap-0.5"
+            >
+              <Sparkles className="size-2.5" />
+              <span>New</span>
+            </Badge>
+          )}
+
+          {isWhatsAppIntake ? (
+            <Badge
+              variant="outline"
+              className="border-emerald-400 bg-emerald-100 text-emerald-950 text-[10px] px-1.5 py-0 h-4 font-mono"
+            >
+              WA Intake
+            </Badge>
+          ) : card.sourcePostCode ? (
             <Badge
               variant="outline"
               className="border-amber-300 bg-amber-50 text-amber-900 text-[10px] px-1.5 py-0 h-4 font-mono"
@@ -653,13 +870,12 @@ function KanbanCardItem({
             </Badge>
           )}
 
-          {/* SLA Overdue Badge */}
           {isOverdue && (
             <span
               title={`Inquiry has exceeded ${slaHours}h quoting SLA (${hoursElapsed}h elapsed)`}
-              className="inline-flex animate-pulse items-center gap-1 rounded-full border border-red-300 bg-red-100 px-1.5 py-0 text-[10px] font-bold text-red-700 shadow-2xs select-none"
+              className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-100 px-1.5 py-0 text-[10px] font-bold text-red-900 shadow-2xs select-none"
             >
-              <span className="size-1.5 shrink-0 rounded-full bg-red-600" />
+              <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-red-600 motion-reduce:animate-none" />
               <span>{hoursElapsed}h+</span>
             </span>
           )}
@@ -670,19 +886,20 @@ function KanbanCardItem({
       <div className="flex flex-col">
         <Link
           href={`/admin/applications/${card.id}`}
-          onClick={(e) => e.stopPropagation()}
+          dir="auto"
           className="font-display text-sm font-bold text-foreground transition-colors hover:text-primary leading-tight"
         >
           {card.customerName}
         </Link>
         <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-          <span className="truncate">{card.customerCity || "Pakistan"}</span>
+          <span dir="auto" className="truncate">
+            {card.customerCity || "Pakistan"}
+          </span>
           <span className="text-border">·</span>
           <a
             href={waUrl}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
             className="flex items-center gap-1 text-emerald-700 hover:text-emerald-800 font-mono text-[11px]"
             title="Chat on WhatsApp"
           >
@@ -712,22 +929,59 @@ function KanbanCardItem({
         {card.groupPackage && (
           <>
             <span className="text-border">·</span>
-            <span className="truncate max-w-[120px]" title={card.groupPackage.title}>
+            <span
+              className="truncate max-w-[120px]"
+              title={card.groupPackage.title}
+            >
               {card.groupPackage.title}
             </span>
           </>
         )}
       </div>
 
+      {/* Keyboard-Accessible Column Status Mover (`T-086` WCAG keyboard parity) */}
+      {!isOverlay && onSelectStatusChange && (
+        <div className="flex items-center justify-between gap-2">
+          <label
+            htmlFor={`kanban-move-${card.id}`}
+            className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+          >
+            Stage
+          </label>
+          <select
+            id={`kanban-move-${card.id}`}
+            aria-label={`Move application ${card.referenceNumber} to status`}
+            value={currentColumn}
+            disabled={isTransitioning}
+            onChange={(e) =>
+              onSelectStatusChange(
+                card.id,
+                e.target.value as KanbanColumnId
+              )
+            }
+            className="h-6 rounded-md border border-border bg-background px-1.5 text-[11px] font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
+          >
+            {KANBAN_COLUMNS.map((col) => (
+              <option key={col.id} value={col.id}>
+                {col.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Quoted PKR Amount & Primary Action Links */}
-      <div className="mt-1 flex items-center justify-between border-t border-border/60 pt-2 text-xs">
+      <div className="mt-0.5 flex items-center justify-between border-t border-border/60 pt-2 text-xs">
         <div>
           {grandTotal > 0 ? (
             <div className="flex flex-col">
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
                 Quoted Total
               </span>
-              <TabularPrice amount={grandTotal} className="text-sm font-bold text-primary" />
+              <TabularPrice
+                amount={grandTotal}
+                className="text-sm font-bold text-primary"
+              />
             </div>
           ) : (
             <Badge
@@ -741,8 +995,7 @@ function KanbanCardItem({
 
         {/* 1-Click Action Buttons */}
         <div className="flex items-center gap-1">
-          {/* Printable Luxury Voucher Link (when approved) */}
-          {card.status === "approved" && (
+          {voucherReady && (
             <Button
               variant="outline"
               size="xs"
@@ -751,17 +1004,16 @@ function KanbanCardItem({
                 <Link
                   href={`/admin/applications/${card.id}/voucher`}
                   target="_blank"
-                  onClick={(e) => e.stopPropagation()}
                   title="Print Official Umrah Luxury Voucher"
                 />
               }
+              nativeButton={false}
             >
               <Printer className="size-3" />
               <span>Voucher</span>
             </Button>
           )}
 
-          {/* Quote Worksheet Link */}
           <Button
             variant="secondary"
             size="xs"
@@ -769,16 +1021,16 @@ function KanbanCardItem({
             render={
               <Link
                 href={`/admin/applications/${card.id}`}
-                onClick={(e) => e.stopPropagation()}
                 title="Open Quoting Worksheet"
               />
             }
+            nativeButton={false}
           >
             <FileEdit className="size-3" />
             <span>Worksheet</span>
           </Button>
         </div>
       </div>
-    </div>
+    </article>
   )
 }

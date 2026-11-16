@@ -1,17 +1,20 @@
 import * as React from "react"
-import { desc, asc, eq } from "drizzle-orm"
+import { asc, desc, eq } from "drizzle-orm"
 import { db } from "@/db"
 import * as schema from "@/db/schema"
 import { requireAdmin } from "@/lib/auth-guard"
+import { orderLatestMessagesChronologically } from "@/lib/whatsapp/desk-tabs"
 import {
   DeskHubClient,
   type DeskApplicationItem,
+  type DeskStaffMember,
+  type FlyerPackageRecord,
   type WhatsAppAccountRecord,
   type WhatsAppConversationRecord,
-  type WhatsAppTemplateRecord,
   type WhatsAppQuickReplyRecord,
-  type FlyerPackageRecord,
+  type WhatsAppTemplateRecord,
 } from "@/components/admin/hubs/desk-hub-client"
+import type { AutoReplyRuleItem } from "@/components/admin/desk/whatsapp-auto-reply-studio"
 import type { ContactMessageData } from "@/components/admin/catalog/messages-client"
 
 export const metadata = {
@@ -33,16 +36,41 @@ interface AdminDeskPageProps {
 /**
  * Hub 3: Pilgrim Inbox & Quote Desk (/admin/desk)
  * Next.js 16 async searchParams Server Component loading applications pipeline,
- * live Meta WhatsApp Cloud API conversations, quick replies, templates, supplier flyer packages,
- * and website contact inquiries.
+ * real active staff consultants, live Meta WhatsApp Cloud API conversations
+ * (newest 50 messages per thread ordered chronologically), templates, quick replies,
+ * supplier flyer packages, and website contact inquiries.
  */
 export default async function AdminDeskPage({
   searchParams,
 }: AdminDeskPageProps) {
-  await requireAdmin()
+  const session = await requireAdmin()
 
   const params = await searchParams
   const activeTab = params.tab || "pipeline"
+
+  // 0. Fetch Real Active Staff Members for Consultant Assignment (T-068)
+  let staffMembersList: DeskStaffMember[] = []
+  try {
+    const rawStaff = await db
+      .select({
+        id: schema.user.id,
+        name: schema.user.name,
+        email: schema.user.email,
+        role: schema.user.role,
+      })
+      .from(schema.user)
+      .where(eq(schema.user.isActive, true))
+      .orderBy(asc(schema.user.name))
+
+    staffMembersList = rawStaff.map((member) => ({
+      id: member.id,
+      name: member.name,
+      email: member.email,
+      role: member.role,
+    }))
+  } catch (err) {
+    console.warn("[desk-page] Active staff query fallback:", err)
+  }
 
   // 1. Fetch Applications with Quotes & Departure City
   let applicationsList: DeskApplicationItem[] = []
@@ -107,11 +135,12 @@ export default async function AdminDeskPage({
     console.warn("[desk-page] Applications query fallback:", err)
   }
 
-  // 2. Fetch WhatsApp Accounts, Conversations, Messages, Templates, and Quick Replies
+  // 2. Fetch WhatsApp Accounts, Conversations, Messages (newest 50 DESC -> reversed ASC), Templates & Quick Replies
   let whatsappAccounts: WhatsAppAccountRecord[] = []
   let whatsappConversations: WhatsAppConversationRecord[] = []
   let whatsappTemplates: WhatsAppTemplateRecord[] = []
   let whatsappQuickReplies: WhatsAppQuickReplyRecord[] = []
+  let whatsappAutoReplyRules: AutoReplyRuleItem[] = []
 
   try {
     const [rawAccounts, rawConversations, rawTemplates, rawQuickReplies] =
@@ -126,8 +155,22 @@ export default async function AdminDeskPage({
             verifiedName: schema.whatsappAccounts.verifiedName,
             qualityRating: schema.whatsappAccounts.qualityRating,
             messagingLimit: schema.whatsappAccounts.messagingLimit,
+            accountRole: schema.whatsappAccounts.accountRole,
+            isOnBizApp: schema.whatsappAccounts.isOnBizApp,
+            platformType: schema.whatsappAccounts.platformType,
+            intentFilterEnabled: schema.whatsappAccounts.intentFilterEnabled,
             isActive: schema.whatsappAccounts.isActive,
             isDefault: schema.whatsappAccounts.isDefault,
+            autoReplyEnabled: schema.whatsappAccounts.autoReplyEnabled,
+            autoReplyCooldownMinutes:
+              schema.whatsappAccounts.autoReplyCooldownMinutes,
+            welcomeGreetingEnabled:
+              schema.whatsappAccounts.welcomeGreetingEnabled,
+            welcomeGreetingText: schema.whatsappAccounts.welcomeGreetingText,
+            awayGreetingEnabled: schema.whatsappAccounts.awayGreetingEnabled,
+            awayGreetingText: schema.whatsappAccounts.awayGreetingText,
+            businessHoursStart: schema.whatsappAccounts.businessHoursStart,
+            businessHoursEnd: schema.whatsappAccounts.businessHoursEnd,
           })
           .from(schema.whatsappAccounts)
           .where(eq(schema.whatsappAccounts.isActive, true)),
@@ -143,6 +186,13 @@ export default async function AdminDeskPage({
                 id: true,
                 name: true,
                 displayPhoneNumber: true,
+                phoneNumberId: true,
+                platformType: true,
+                accountRole: true,
+                isOnBizApp: true,
+                intentFilterEnabled: true,
+                autoReplyEnabled: true,
+                autoReplyCooldownMinutes: true,
               },
             },
             application: {
@@ -156,7 +206,7 @@ export default async function AdminDeskPage({
               },
             },
             messages: {
-              orderBy: [asc(schema.whatsappMessages.createdAt)],
+              orderBy: [desc(schema.whatsappMessages.createdAt)],
               limit: 50,
             },
           },
@@ -179,7 +229,7 @@ export default async function AdminDeskPage({
             buttons: schema.whatsappTemplates.buttons,
           })
           .from(schema.whatsappTemplates)
-          .where(eq(schema.whatsappTemplates.status, "APPROVED")),
+          .orderBy(desc(schema.whatsappTemplates.createdAt)),
 
         db
           .select({
@@ -198,12 +248,32 @@ export default async function AdminDeskPage({
       ])
 
     whatsappAccounts = rawAccounts
-    whatsappConversations =
+    whatsappConversations = (
       rawConversations as unknown as WhatsAppConversationRecord[]
+    ).map((conv) => ({
+      ...conv,
+      messages: conv.messages
+        ? orderLatestMessagesChronologically(conv.messages)
+        : [],
+    }))
     whatsappTemplates = rawTemplates as WhatsAppTemplateRecord[]
     whatsappQuickReplies = rawQuickReplies
   } catch (err) {
     console.warn("[desk-page] WhatsApp CRM tables query fallback:", err)
+  }
+
+  // 2B. Fetch Keyword Auto-Reply Rules with graceful fallback
+  try {
+    const rawRules = await db
+      .select()
+      .from(schema.whatsappAutoReplyRules)
+      .orderBy(
+        desc(schema.whatsappAutoReplyRules.priority),
+        desc(schema.whatsappAutoReplyRules.createdAt)
+      )
+    whatsappAutoReplyRules = rawRules as unknown as AutoReplyRuleItem[]
+  } catch (err) {
+    console.warn("[desk-page] WhatsApp auto-reply rules query fallback:", err)
   }
 
   // 3. Fetch Supplier Flyer Packages for Detected Post Code Preview
@@ -244,6 +314,13 @@ export default async function AdminDeskPage({
         message: schema.contactMessages.message,
         status: schema.contactMessages.status,
         adminNotes: schema.contactMessages.adminNotes,
+        utmSource: schema.contactMessages.utmSource,
+        utmMedium: schema.contactMessages.utmMedium,
+        utmCampaign: schema.contactMessages.utmCampaign,
+        utmContent: schema.contactMessages.utmContent,
+        utmTerm: schema.contactMessages.utmTerm,
+        landingPage: schema.contactMessages.landingPage,
+        httpReferrer: schema.contactMessages.httpReferrer,
         createdAt: schema.contactMessages.createdAt,
       })
       .from(schema.contactMessages)
@@ -281,8 +358,12 @@ export default async function AdminDeskPage({
       whatsappConversations={whatsappConversations}
       whatsappTemplates={whatsappTemplates}
       whatsappQuickReplies={whatsappQuickReplies}
+      whatsappAutoReplyRules={whatsappAutoReplyRules}
       flyerPackages={flyerPackages}
       contactMessages={contactMessagesList}
+      staffMembers={staffMembersList}
+      currentUserId={session.user.id}
+      currentUserRole={session.user.role}
     />
   )
 }

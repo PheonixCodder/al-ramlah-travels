@@ -2,13 +2,12 @@
 
 import React, { useMemo } from "react"
 import { calculatePrivateRoomSplits } from "@/lib/domain/room-splitter"
-import type * as schema from "@/db/schema"
-import { usePlanner } from "./planner-context"
-import { BedDouble, Users2 } from "lucide-react"
-import { cn } from "cn"
+import { usePlanner, type PlannerHotelItem } from "./planner-context"
+import { BedDouble, Sparkles, Users2 } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface RoomAllocatorProps {
-  hotel?: typeof schema.hotels.$inferSelect
+  hotel?: PlannerHotelItem
   roomCategory: "shared" | "private"
   sharedRoomType?: "sharing" | "double" | "triple" | "quad"
   privateRoomAllocation: { double: number; triple: number; quad: number }
@@ -124,7 +123,7 @@ export function RoomAllocator({
             <div>
               <div className="flex items-center gap-2">
                 <Users2 className="size-4 text-[#0A3622]" />
-                <h4 className="text-xs sm:text-sm font-bold text-[#0A3622]">
+                <h4 className="text-xs sm:text-sm font-bold text-[#0A3622] tabular-nums">
                   {bedAndSeatCount} Shared Bed{bedAndSeatCount > 1 ? "s" : ""} Reserved
                 </h4>
               </div>
@@ -133,18 +132,21 @@ export function RoomAllocator({
               </p>
             </div>
 
-            {hotel?.sharingPriceSar && hotel.sharingPriceSar > 0 ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-[#FAF7F0] border border-[#C5A059] px-3 py-1 text-[11px] font-bold text-[#8F6E2A] self-start sm:self-auto shrink-0">
-                {hotel.sharingPriceSar} SAR / bed / night
-              </span>
-            ) : null}
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#FAF7F0] border border-[#C5A059] px-3 py-1 text-[11px] font-bold text-[#7A5C1E] self-start sm:self-auto shrink-0">
+              <Sparkles className="size-3 text-[#C5A059]" />
+              Live Rate — Confirmed upon submission
+            </span>
           </div>
 
           {(travellers.children > 0 || travellers.infants > 0) && (
-            <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#FAF7F0] border border-[#E6DEC8] p-2.5 text-[11px] text-[#8F6E2A] leading-relaxed">
+            <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#FAF7F0] border border-[#E6DEC8] p-2.5 text-[11px] text-[#7A5C1E] leading-relaxed">
               <span className="font-bold shrink-0">Note for Families:</span>
               <span>
-                You are travelling with {travellers.children > 0 ? `${travellers.children} child(ren)` : ""}{travellers.children > 0 && travellers.infants > 0 ? " and " : ""}{travellers.infants > 0 ? `${travellers.infants} infant(s)` : ""}. For comfort and family privacy together, <strong>Private Rooms</strong> are strongly recommended.
+                You are travelling with{" "}
+                {travellers.children > 0 ? `${travellers.children} child(ren)` : ""}
+                {travellers.children > 0 && travellers.infants > 0 ? " and " : ""}
+                {travellers.infants > 0 ? `${travellers.infants} infant(s)` : ""}. For comfort and family privacy together,{" "}
+                <strong>Private Rooms</strong> are strongly recommended.
               </span>
             </div>
           )}
@@ -152,7 +154,11 @@ export function RoomAllocator({
       ) : (
         <div className="space-y-2">
           <p className="text-[11px] text-[#686E65]">
-            Intelligent room allocation for <strong>{bedAndSeatCount} passenger{bedAndSeatCount > 1 ? "s" : ""}</strong> (Quad, Triple &amp; Double combinations):
+            Intelligent room allocation for{" "}
+            <strong className="tabular-nums">
+              {bedAndSeatCount} passenger{bedAndSeatCount > 1 ? "s" : ""}
+            </strong>{" "}
+            (Quad, Triple &amp; Double combinations):
           </p>
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -173,12 +179,12 @@ export function RoomAllocator({
                   : "border-[#E6DEC8] bg-white text-[#1A1D1A] hover:border-[#C5A059]"
               )}
             >
-              <span className="text-xs font-semibold">
+              <span className="text-xs font-semibold tabular-nums">
                 {formatRoomSplitLabel(splits.primaryAllocation)}
               </span>
               <span
                 className={cn(
-                  "rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+                  "rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide tabular-nums",
                   isCurrentSplit(splits.primaryAllocation)
                     ? "bg-[#C5A059] text-[#0A3622]"
                     : "bg-[#D1FAE5] text-[#065F46]"
@@ -210,12 +216,12 @@ export function RoomAllocator({
                       : "border-[#E6DEC8] bg-white text-[#1A1D1A] hover:border-[#C5A059]"
                   )}
                 >
-                  <span className="text-xs font-semibold">
+                  <span className="text-xs font-semibold tabular-nums">
                     {formatRoomSplitLabel(alt)}
                   </span>
                   <span
                     className={cn(
-                      "rounded-full px-2 py-0.5 text-[9px] font-semibold",
+                      "rounded-full px-2 py-0.5 text-[9px] font-semibold tabular-nums",
                       isSelected
                         ? "bg-[#FAF7F0] text-[#0A3622]"
                         : "bg-[#F5EFE6] text-[#686E65]"
@@ -233,4 +239,3 @@ export function RoomAllocator({
     </div>
   )
 }
-

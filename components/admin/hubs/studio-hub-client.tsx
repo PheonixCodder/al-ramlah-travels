@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import {
   Sparkles,
@@ -52,16 +53,32 @@ import {
   type PackageWithRelations,
 } from "@/components/admin/catalog/groups-client"
 import {
+  approveStagedSupplierFlyerAction,
   ingestFinishedPosterOrFlyerAction,
+  generateMultiPackageSheetForFlyer,
+  generateSingleSpotlightForCard,
   updateExtractedFlyerCardAction,
   deleteSupplierFlyerAction,
   publishFlyerCardToPublicGroupPackages,
   publishAllFlyerCardsToPublicGroupPackagesAction,
+  unpublishFlyerCardFromPublicAction,
   updatePackageSpotlightImageAction,
   upsertSupplier,
 } from "@/app/actions/marketing-ops"
-import { calculateWrappedPackagePricing } from "@/lib/domain/marketing-ops"
+import { mintRealtimeRunPublicTokenAction } from "@/app/actions/trigger-realtime"
+import { StudioRealtimeRunBanner } from "@/components/admin/studio/studio-realtime-run-banner"
+import type { TaskProgressMetadata } from "@/trigger/metadata"
 import { cn } from "@/lib/utils"
+
+function isPdfAssetPreviewUrl(url: string | null | undefined): boolean {
+  if (!url) return false
+  const clean = url.split("?")[0]?.split("#")[0]?.trim().toLowerCase() ?? ""
+  return clean.endsWith(".pdf")
+}
+
+function formatStudioPkrTier(amount: number): string {
+  return amount > 0 ? amount.toLocaleString("en-PK") : "On Request"
+}
 
 export interface SupplierRecord {
   id: string
@@ -319,6 +336,41 @@ export function StudioHubClient({
   const [busyKey, setBusyKey] = React.useState<string | null>(null)
 
   // ----------------------------------------------------------------------
+  // REALTIME RUN TELEMETRY STATE (TRIGGER.DEV V4 + LOCAL FALLBACK)
+  // ----------------------------------------------------------------------
+  const [activeRealtimeRun, setActiveRealtimeRun] = React.useState<{
+    runId: string
+    publicAccessToken?: string | null
+    tokenMode: "cloud" | "local"
+    taskKind: "extract_packages" | "render_gotenberg" | "studio_pipeline"
+    title: string
+    isActive: boolean
+    localProgress: Partial<TaskProgressMetadata>
+  } | null>(null)
+
+  const syncRunTokenIfAvailable = React.useCallback(async (runId: string) => {
+    try {
+      const tokenRes = await mintRealtimeRunPublicTokenAction(runId)
+      if (tokenRes.success) {
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                runId,
+                publicAccessToken:
+                  tokenRes.publicAccessToken ?? tokenRes.token ?? null,
+                tokenMode: tokenRes.mode === "cloud" ? "cloud" : "local",
+                localProgress: tokenRes.snapshot ?? prev.localProgress,
+              }
+            : null
+        )
+      }
+    } catch {
+      // Safe fallback to local polling
+    }
+  }, [])
+
+  // ----------------------------------------------------------------------
   // MODAL: ADD NEW SUPPLIER
   // ----------------------------------------------------------------------
   const [isSupplierModalOpen, setIsSupplierModalOpen] = React.useState(false)
@@ -389,12 +441,30 @@ export function StudioHubClient({
   }
 
   // ----------------------------------------------------------------------
-  // TAB 1: 4K POSTER INGESTION WORKBENCH STATE
+  // TAB 1: 4K POSTER & RAW SUPPLIER FLYER INGESTION WORKBENCH STATE
   // ----------------------------------------------------------------------
   const [selectedSupplierId, setSelectedSupplierId] = React.useState<string>(
     initialSuppliers[0]?.id || ""
   )
+  const [ingestionMode, setIngestionMode] = React.useState<
+    "gemini_ultra_poster" | "raw_supplier_flyer"
+  >("gemini_ultra_poster")
+  const [commissionMode, setCommissionMode] = React.useState<
+    "included_in_flyer" | "net_plus_markup"
+  >(initialSuppliers[0]?.defaultCommissionMode || "included_in_flyer")
   const [commissionPkr, setCommissionPkr] = React.useState<number>(22000)
+  const [usePerTierMarkup, setUsePerTierMarkup] = React.useState<boolean>(false)
+  const [perTierMarkup, setPerTierMarkup] = React.useState<{
+    sharing: number
+    quad: number
+    triple: number
+    double: number
+  }>({
+    sharing: 22000,
+    quad: 22000,
+    triple: 25000,
+    double: 28000,
+  })
   const [departureCityCode, setDepartureCityCode] = React.useState<string>("LHE")
 
   const [posterFile, setPosterFile] = React.useState<File | null>(null)
@@ -402,16 +472,28 @@ export function StudioHubClient({
   const [uploadProgress, setUploadProgress] = React.useState<number>(0)
   const [uploadStatus, setUploadStatus] = React.useState<string>("")
 
-  // Sync supplier default commission when supplier changes
+  // Sync supplier default commission & mode when supplier or ingestionMode changes
   React.useEffect(() => {
     const s = suppliersList.find((sup) => sup.id === selectedSupplierId)
     if (s) {
-      setCommissionPkr(s.defaultCommissionPkr || 22000)
+      const defComm = s.defaultCommissionPkr || 22000
+      setCommissionPkr(defComm)
+      setPerTierMarkup({
+        sharing: defComm,
+        quad: defComm,
+        triple: defComm,
+        double: defComm,
+      })
+      if (ingestionMode === "raw_supplier_flyer") {
+        setCommissionMode(s.defaultCommissionMode || "net_plus_markup")
+      } else {
+        setCommissionMode("included_in_flyer")
+      }
     }
-  }, [selectedSupplierId, suppliersList])
+  }, [selectedSupplierId, suppliersList, ingestionMode])
 
   // ----------------------------------------------------------------------
-  // HANDLERS: FINISHED 4K POSTER INGESTION
+  // HANDLERS: FINISHED 4K POSTER INGESTION & 4K GOTENBERG RENDERS
   // ----------------------------------------------------------------------
   const handleIngestPoster = async () => {
     if (!selectedSupplierId) {
@@ -419,10 +501,25 @@ export function StudioHubClient({
       return
     }
 
+    const syntheticRunId = `local_extract_${Date.now()}`
     setBusyKey("ingest_poster")
     setNotice(null)
     setUploadProgress(5)
     setUploadStatus("Preparing finished poster ingestion...")
+
+    setActiveRealtimeRun({
+      runId: syntheticRunId,
+      tokenMode: "local",
+      taskKind: "extract_packages",
+      title: "Multimodal AI Extraction & 1080p Social JPEG Pipeline",
+      isActive: true,
+      localProgress: {
+        stage: "initializing",
+        progress: 10,
+        detail: "Preparing finished 4K poster ingestion pipeline...",
+        updatedAt: new Date().toISOString(),
+      },
+    })
 
     try {
       let finalMediaUrl = posterDirectUrl.trim()
@@ -434,6 +531,19 @@ export function StudioHubClient({
           (pct, text) => {
             setUploadProgress(pct)
             setUploadStatus(text)
+            setActiveRealtimeRun((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    localProgress: {
+                      stage: pct < 45 ? "initializing" : "uploading_r2",
+                      progress: Math.min(35, Math.max(12, Math.round(pct * 0.35))),
+                      detail: text,
+                      updatedAt: new Date().toISOString(),
+                    },
+                  }
+                : null
+            )
           }
         )
         finalMediaUrl = uploadResult.publicUrl
@@ -444,21 +554,69 @@ export function StudioHubClient({
           type: "error",
           text: "Please provide a 4K poster image/PDF file or direct URL.",
         })
+        setActiveRealtimeRun(null)
         return
       }
 
       setUploadStatus("Invoking Gemini Ultra Multimodal AI extraction & 1080p social optimizer...")
+      setActiveRealtimeRun((prev) =>
+        prev
+          ? {
+              ...prev,
+              localProgress: {
+                stage: "extracting_ai",
+                progress: 45,
+                detail:
+                  "Running Gemini Ultra multimodal AI package extraction & 1080×1520 social JPEG normalization...",
+                updatedAt: new Date().toISOString(),
+              },
+            }
+          : null
+      )
+
+      const effectiveCommMode =
+        ingestionMode === "gemini_ultra_poster"
+          ? "included_in_flyer"
+          : commissionMode
 
       const res = await ingestFinishedPosterOrFlyerAction({
         supplierId: selectedSupplierId,
         mediaUrl: finalMediaUrl,
-        ingestionMode: "gemini_ultra_poster",
-        commissionMode: "included_in_flyer",
+        ingestionMode,
+        commissionMode: effectiveCommMode,
         commissionPkr,
+        perTierMarkupPkr:
+          effectiveCommMode === "net_plus_markup" && usePerTierMarkup
+            ? perTierMarkup
+            : undefined,
         departureCityCode,
       })
 
+      const returnedRunId =
+        (res as { runId?: string }).runId || syntheticRunId
+      void syncRunTokenIfAvailable(returnedRunId)
+
       if (res.success) {
+        const createdFlyer = res.flyer as SupplierFlyerRecord | undefined
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                runId: returnedRunId,
+                isActive: false,
+                localProgress: {
+                  stage: "completed",
+                  progress: 100,
+                  detail: `Extracted ${res.packagesCount} package cards and normalized 1080p social JPEG`,
+                  extractedCount: res.packagesCount,
+                  pngUrl: createdFlyer?.multiSheetImageUrl ?? finalMediaUrl,
+                  socialJpegUrl:
+                    createdFlyer?.socialReadySheetJpegUrl ?? undefined,
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : null
+        )
         setNotice({
           type: "success",
           text: `✨ Successfully ingested 4K poster! Preserved 4K asset, generated 1080p social JPEG, and extracted ${res.packagesCount} package cards.`,
@@ -470,15 +628,273 @@ export function StudioHubClient({
         router.refresh()
         switchTab("vault")
       } else {
+        const errMsg = res.error || "Failed to ingest finished poster."
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                isActive: false,
+                localProgress: {
+                  stage: "failed",
+                  progress: 100,
+                  detail: errMsg,
+                  error: errMsg,
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : null
+        )
         setNotice({
           type: "error",
-          text: res.error || "Failed to ingest finished poster.",
+          text: errMsg,
         })
       }
     } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "Ingestion failed."
+      setActiveRealtimeRun((prev) =>
+        prev
+          ? {
+              ...prev,
+              isActive: false,
+              localProgress: {
+                stage: "failed",
+                progress: 100,
+                detail: errMsg,
+                error: errMsg,
+                updatedAt: new Date().toISOString(),
+              },
+            }
+          : null
+      )
       setNotice({
         type: "error",
-        text: err instanceof Error ? err.message : "Ingestion failed.",
+        text: errMsg,
+      })
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const handleGenerateMultiSheet = async (
+    flyerId: string,
+    flyerTitle: string
+  ) => {
+    const syntheticRunId = `local_render_sheet_${flyerId}_${Date.now()}`
+    setBusyKey(`render-sheet-${flyerId}`)
+    setNotice(null)
+
+    setActiveRealtimeRun({
+      runId: syntheticRunId,
+      tokenMode: "local",
+      taskKind: "render_gotenberg",
+      title: `4K Multi-Package Sheet Render · ${flyerTitle}`,
+      isActive: true,
+      localProgress: {
+        stage: "rendering_gotenberg",
+        progress: 55,
+        detail: `Rendering 4K Multi-Package Sheet & Vector PDF via Gotenberg queue for "${flyerTitle}"...`,
+        updatedAt: new Date().toISOString(),
+      },
+    })
+
+    try {
+      const res = await generateMultiPackageSheetForFlyer(flyerId)
+      const returnedRunId =
+        (res as { runId?: string }).runId || syntheticRunId
+      void syncRunTokenIfAvailable(returnedRunId)
+
+      if (res.success && res.pngUrl) {
+        setFlyersList((prev) =>
+          prev.map((f) =>
+            f.id === flyerId
+              ? {
+                  ...f,
+                  multiSheetImageUrl: res.pngUrl,
+                  multiSheetPdfUrl: res.pdfUrl ?? f.multiSheetPdfUrl,
+                }
+              : f
+          )
+        )
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                runId: returnedRunId,
+                isActive: false,
+                localProgress: {
+                  stage: "completed",
+                  progress: 100,
+                  detail: `Rendered 4K Multi-Package Sheet [${res.postCode}] and uploaded to Cloudflare R2`,
+                  pngUrl: res.pngUrl,
+                  pdfUrl: res.pdfUrl ?? undefined,
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : null
+        )
+        setNotice({
+          type: "success",
+          text: `4K Multi-Package Sheet [${res.postCode}] rendered and uploaded to Cloudflare R2!`,
+        })
+        router.refresh()
+      } else {
+        const errMsg = res.error || "Failed to generate 4K Multi-Package Sheet."
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                isActive: false,
+                localProgress: {
+                  stage: "failed",
+                  progress: 100,
+                  detail: errMsg,
+                  error: errMsg,
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : null
+        )
+        setNotice({
+          type: "error",
+          text: errMsg,
+        })
+      }
+    } catch (err: unknown) {
+      const errMsg =
+        err instanceof Error
+          ? err.message
+          : "Failed to generate 4K Multi-Package Sheet."
+      setActiveRealtimeRun((prev) =>
+        prev
+          ? {
+              ...prev,
+              isActive: false,
+              localProgress: {
+                stage: "failed",
+                progress: 100,
+                detail: errMsg,
+                error: errMsg,
+                updatedAt: new Date().toISOString(),
+              },
+            }
+          : null
+      )
+      setNotice({
+        type: "error",
+        text: errMsg,
+      })
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const handleGenerateSpotlight = async (pkgId: string, postCode: string) => {
+    const syntheticRunId = `local_render_spot_${pkgId}_${Date.now()}`
+    setBusyKey(`render-spot-${pkgId}`)
+    setNotice(null)
+
+    setActiveRealtimeRun({
+      runId: syntheticRunId,
+      tokenMode: "local",
+      taskKind: "render_gotenberg",
+      title: `4K Spotlight Poster Render · ${postCode}`,
+      isActive: true,
+      localProgress: {
+        stage: "rendering_gotenberg",
+        progress: 55,
+        detail: `Rendering 4K Single-Package Spotlight Poster [${postCode}] via Gotenberg queue...`,
+        updatedAt: new Date().toISOString(),
+      },
+    })
+
+    try {
+      const res = await generateSingleSpotlightForCard(pkgId)
+      const returnedRunId =
+        (res as { runId?: string }).runId || syntheticRunId
+      void syncRunTokenIfAvailable(returnedRunId)
+
+      if (res.success && res.pngUrl) {
+        setFlyersList((prev) =>
+          prev.map((flyer) => ({
+            ...flyer,
+            packages: flyer.packages.map((card) =>
+              card.id === pkgId
+                ? {
+                    ...card,
+                    spotlightPosterUrl: res.pngUrl,
+                    spotlightPdfUrl: res.pdfUrl ?? card.spotlightPdfUrl,
+                  }
+                : card
+            ),
+          }))
+        )
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                runId: returnedRunId,
+                isActive: false,
+                localProgress: {
+                  stage: "completed",
+                  progress: 100,
+                  detail: `Rendered 4K Spotlight Poster [${res.postCode}] and uploaded to Cloudflare R2`,
+                  pngUrl: res.pngUrl,
+                  pdfUrl: res.pdfUrl ?? undefined,
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : null
+        )
+        setNotice({
+          type: "success",
+          text: `4K Spotlight Poster [${res.postCode}] rendered and synced across Vault & Campaigns!`,
+        })
+        router.refresh()
+      } else {
+        const errMsg = res.error || "Failed to render 4K Spotlight Poster."
+        setActiveRealtimeRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                isActive: false,
+                localProgress: {
+                  stage: "failed",
+                  progress: 100,
+                  detail: errMsg,
+                  error: errMsg,
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : null
+        )
+        setNotice({
+          type: "error",
+          text: errMsg,
+        })
+      }
+    } catch (err: unknown) {
+      const errMsg =
+        err instanceof Error
+          ? err.message
+          : "Failed to render 4K Spotlight Poster."
+      setActiveRealtimeRun((prev) =>
+        prev
+          ? {
+              ...prev,
+              isActive: false,
+              localProgress: {
+                stage: "failed",
+                progress: 100,
+                detail: errMsg,
+                error: errMsg,
+                updatedAt: new Date().toISOString(),
+              },
+            }
+          : null
+      )
+      setNotice({
+        type: "error",
+        text: errMsg,
       })
     } finally {
       setBusyKey(null)
@@ -765,12 +1181,24 @@ export function StudioHubClient({
     try {
       const res = await deleteSupplierFlyerAction({ flyerId: deletingFlyer.id })
       if (res.success) {
-        setFlyersList((prev) => prev.filter((f) => f.id !== deletingFlyer.id))
-        setAssetsList((prev) => prev.filter((a) => a.flyerId !== deletingFlyer.id))
-        setNotice({
-          type: "success",
-          text: `Flyer batch "${deletingFlyer.title}" and associated assets deleted successfully.`,
-        })
+        if (res.archivedInsteadOfDeleted) {
+          setFlyersList((prev) =>
+            prev.map((f) =>
+              f.id === deletingFlyer.id ? { ...f, status: "archived" } : f
+            )
+          )
+          setNotice({
+            type: "info",
+            text: `Flyer batch "${deletingFlyer.title}" has ${res.activeApplicationsCount || 1} active customer booking(s) and was safely Soft-Archived (bookings preserved, public packages unpublished).`,
+          })
+        } else {
+          setFlyersList((prev) => prev.filter((f) => f.id !== deletingFlyer.id))
+          setAssetsList((prev) => prev.filter((a) => a.flyerId !== deletingFlyer.id))
+          setNotice({
+            type: "success",
+            text: `Flyer batch "${deletingFlyer.title}" and associated assets deleted successfully.`,
+          })
+        }
         setDeletingFlyer(null)
         router.refresh()
       } else {
@@ -883,7 +1311,55 @@ export function StudioHubClient({
     }
   }
 
-  // Filtered flyers in Vault
+  const handleApproveDraftFlyer = async (flyerId: string, flyerTitle: string) => {
+    setBusyKey(`approve-draft-${flyerId}`)
+    setNotice(null)
+    try {
+      const res = await approveStagedSupplierFlyerAction({ flyerId })
+      if (res.success && res.flyer) {
+        const nextStatus = res.flyer.status
+        setFlyersList((prev) =>
+          prev.map((f) => (f.id === flyerId ? { ...f, status: nextStatus } : f))
+        )
+        setNotice({
+          type: "success",
+          text: `Approved B2B extraction draft "${flyerTitle}"! You can now render 4K posters and publish cards to the public website.`,
+        })
+        router.refresh()
+      } else {
+        setNotice({
+          type: "error",
+          text: res.error || "Failed to approve draft flyer.",
+        })
+      }
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const handleUnpublishFromWebsite = async (pkgId: string, postCode: string) => {
+    setBusyKey(`unpub-${pkgId}`)
+    setNotice(null)
+    try {
+      const res = await unpublishFlyerCardFromPublicAction({
+        packageItemId: pkgId,
+      })
+      if (res.success) {
+        setNotice({
+          type: "info",
+          text: `Package [${postCode}] unpublished from live website (historical booking references safely preserved).`,
+        })
+        router.refresh()
+      } else {
+        setNotice({
+          type: "error",
+          text: res.error || "Failed to unpublish package card.",
+        })
+      }
+    } finally {
+      setBusyKey(null)
+    }
+  }
   const filteredFlyers = React.useMemo(() => {
     return flyersList.filter((flyer) => {
       const matchesSupplier =
@@ -942,7 +1418,7 @@ export function StudioHubClient({
             <div className="flex items-center gap-2 mb-1.5">
               <span className="inline-flex items-center gap-1 rounded-full border border-gold/50 bg-gold/15 px-3 py-0.5 text-[11px] font-bold uppercase tracking-wider text-gold">
                 <Sparkles className="size-3 text-gold" />
-                Hub 1 · Multimodal AI &amp; 4K Chromium Studio
+                Multimodal AI &amp; 4K Poster Studio
               </span>
               <span className="text-xs text-white/70">
                 /admin/studio
@@ -1078,6 +1554,23 @@ export function StudioHubClient({
         </div>
       )}
 
+      {/* Trigger.dev v4 Realtime Task Progress Banner */}
+      {activeRealtimeRun && (
+        <StudioRealtimeRunBanner
+          runId={activeRealtimeRun.runId}
+          publicAccessToken={activeRealtimeRun.publicAccessToken}
+          tokenMode={activeRealtimeRun.tokenMode}
+          taskKind={activeRealtimeRun.taskKind}
+          title={activeRealtimeRun.title}
+          isActive={activeRealtimeRun.isActive}
+          localProgress={activeRealtimeRun.localProgress}
+          onComplete={() => {
+            router.refresh()
+          }}
+          onDismiss={() => setActiveRealtimeRun(null)}
+        />
+      )}
+
       {/* ==================================================================== */}
       {/* TAB 1: FINISHED 4K POSTER / PDF INGESTION STUDIO                     */}
       {/* ==================================================================== */}
@@ -1102,6 +1595,51 @@ export function StudioHubClient({
             </CardHeader>
 
             <CardContent className="space-y-6 pt-5">
+              {/* Mode A vs Mode B Selector */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setIngestionMode("gemini_ultra_poster")}
+                  className={cn(
+                    "flex flex-col items-start gap-1 rounded-xl border p-3.5 text-left transition-all cursor-pointer",
+                    ingestionMode === "gemini_ultra_poster"
+                      ? "border-[#0A3622] bg-[#0A3622]/5 ring-1 ring-[#0A3622]"
+                      : "border-border bg-background hover:border-gold/60"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="size-4 text-gold" />
+                    <span className="text-xs font-bold text-foreground">
+                      Mode A — Finished Al Ramlah 4K Poster
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Finished retail artwork: extracted rates are Retail PKR (Net = Retail − Commission).
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIngestionMode("raw_supplier_flyer")}
+                  className={cn(
+                    "flex flex-col items-start gap-1 rounded-xl border p-3.5 text-left transition-all cursor-pointer",
+                    ingestionMode === "raw_supplier_flyer"
+                      ? "border-[#0A3622] bg-[#0A3622]/5 ring-1 ring-[#0A3622]"
+                      : "border-border bg-background hover:border-gold/60"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <Wand2 className="size-4 text-gold" />
+                    <span className="text-xs font-bold text-foreground">
+                      Mode B — Raw B2B Supplier Wholesale Flyer
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Stages in Draft Review: wraps wholesale net rates (+ flat or per-tier markup) into 4K Al Ramlah posters.
+                  </p>
+                </button>
+              </div>
+
               {/* Configuration Row: Supplier & Commission & City */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="space-y-1.5">
@@ -1132,22 +1670,47 @@ export function StudioHubClient({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">
-                    2. Commission Margin per Seat (PKR)
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold">
+                      2. {ingestionMode === "raw_supplier_flyer" && commissionMode === "net_plus_markup"
+                        ? "Markup per Seat (PKR)"
+                        : "Commission Margin per Seat (PKR)"}
+                    </Label>
+                    {ingestionMode === "raw_supplier_flyer" && (
+                      <select
+                        value={commissionMode}
+                        onChange={(e) =>
+                          setCommissionMode(
+                            e.target.value as "included_in_flyer" | "net_plus_markup"
+                          )
+                        }
+                        className="rounded border border-gold/50 bg-gold/10 px-1.5 py-0.5 text-[10px] font-bold text-primary"
+                      >
+                        <option value="net_plus_markup">Net + Markup</option>
+                        <option value="included_in_flyer">Comm. Included</option>
+                      </select>
+                    )}
+                  </div>
                   <div className="relative">
                     <Input
                       type="number"
+                      min={0}
                       value={commissionPkr}
                       onChange={(e) => setCommissionPkr(Number(e.target.value) || 0)}
                       className="text-xs font-mono font-bold h-9"
                     />
                     <span className="absolute right-3 top-2 text-[10px] text-muted-foreground uppercase font-bold">
-                      Mode A: Included
+                      {ingestionMode === "raw_supplier_flyer" &&
+                      commissionMode === "net_plus_markup"
+                        ? "Mode B: +Markup"
+                        : "Mode A: Included"}
                     </span>
                   </div>
                   <p className="text-[10px] text-muted-foreground">
-                    Deducted internally to calculate net payable to supplier.
+                    {ingestionMode === "raw_supplier_flyer" &&
+                    commissionMode === "net_plus_markup"
+                      ? "Added onto non-zero wholesale net tiers (0 stays On Request)."
+                      : "Deducted internally to calculate net payable to supplier."}
                   </p>
                 </div>
 
@@ -1166,6 +1729,51 @@ export function StudioHubClient({
                   </select>
                 </div>
               </div>
+
+              {/* Optional Per-Tier Markup Editor for Mode B (`T-026` / `OD-09b`) */}
+              {ingestionMode === "raw_supplier_flyer" &&
+                commissionMode === "net_plus_markup" && (
+                  <div className="rounded-xl border border-gold/40 bg-gold/5 p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-primary">
+                        Mode B Markup Strategy (0 PKR tiers remain &ldquo;On Request&rdquo;)
+                      </span>
+                      <label className="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={usePerTierMarkup}
+                          onChange={(e) => setUsePerTierMarkup(e.target.checked)}
+                        />
+                        <span>Customize per-room-tier markup</span>
+                      </label>
+                    </div>
+                    {usePerTierMarkup && (
+                      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                        {(["sharing", "quad", "triple", "double"] as const).map(
+                          (tierKey) => (
+                            <div key={tierKey} className="space-y-1">
+                              <Label className="text-[11px] font-semibold capitalize">
+                                +{tierKey} Markup (PKR)
+                              </Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={perTierMarkup[tierKey]}
+                                onChange={(e) =>
+                                  setPerTierMarkup((prev) => ({
+                                    ...prev,
+                                    [tierKey]: Number(e.target.value) || 0,
+                                  }))
+                                }
+                                className="h-8 text-xs font-mono font-bold"
+                              />
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
               {/* Multimodal Dropzone for 4K Poster */}
               <div className="space-y-2">
@@ -1207,7 +1815,7 @@ export function StudioHubClient({
                     Or Direct Media URL:
                   </span>
                   <Input
-                    placeholder="/uploads/sample-posts/ammaar-raw-17cards.jpg or https://..."
+                    placeholder="https://pub-....r2.dev/posters/finished/..."
                     value={posterDirectUrl}
                     onChange={(e) => setPosterDirectUrl(e.target.value)}
                     className="text-xs font-mono h-8"
@@ -1281,7 +1889,7 @@ export function StudioHubClient({
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 4K Posters &amp; Assets Vault
               </span>
-              <div className="text-xl font-bold font-mono text-gold mt-1">
+              <div className="text-xl font-bold font-mono text-gold-text mt-1">
                 {assetsList.length}
               </div>
             </Card>
@@ -1408,8 +2016,20 @@ export function StudioHubClient({
                                 variant="outline"
                                 className="border-emerald-600/30 bg-emerald-50 text-emerald-800 text-[11px] font-semibold"
                               >
-                                Mode A: Comm Included (PKR {flyer.commissionPkr.toLocaleString()})
+                                {flyer.commissionMode === "net_plus_markup"
+                                  ? `Mode B: Net + Markup (PKR ${flyer.commissionPkr.toLocaleString()})`
+                                  : `Mode A: Comm Included (PKR ${flyer.commissionPkr.toLocaleString()})`}
                               </Badge>
+                              {flyer.status === "draft_extracted" && (
+                                <Badge className="bg-amber-100 text-amber-950 border border-amber-400 text-[10px] uppercase font-bold">
+                                  Draft Review Required
+                                </Badge>
+                              )}
+                              {flyer.status === "archived" && (
+                                <Badge className="bg-stone-200 text-stone-800 border border-stone-400 text-[10px] uppercase font-bold">
+                                  Archived (Bookings Protected)
+                                </Badge>
+                              )}
                               {flyer.ingestionSource && (
                                 <Badge
                                   variant="secondary"
@@ -1423,18 +2043,40 @@ export function StudioHubClient({
                               {flyer.title}
                             </CardTitle>
                             <CardDescription className="text-xs">
-                              Received: {flyer.receivedDate} · {flyer.packages?.length || 0} Package Cards · Baggage: {flyer.outboundBaggage || "20Kg"} Out / {flyer.inboundBaggage || "30Kg + Zamzam"} In
+                              Received: {flyer.receivedDate} · {flyer.packages?.length || 0} Package Cards · Baggage: {flyer.outboundBaggage || "Unstated"} Out / {flyer.inboundBaggage || "Unstated"} In
                             </CardDescription>
                           </div>
 
                           {/* Master Assets & Batch Actions */}
                           <div className="flex flex-wrap items-center gap-2">
-                            {/* 1-Click Bulk Publish All Cards to Website */}
-                            {totalFlyerCards > 0 && (
+                            {flyer.status === "draft_extracted" && (
                               <Button
                                 type="button"
                                 size="sm"
-                                disabled={busyKey === `pub-all-${flyer.id}`}
+                                disabled={busyKey === `approve-draft-${flyer.id}`}
+                                onClick={() =>
+                                  handleApproveDraftFlyer(flyer.id, flyer.title)
+                                }
+                                className="bg-amber-700 text-white hover:bg-amber-800 text-xs font-bold gap-1.5 cursor-pointer shadow-xs"
+                              >
+                                {busyKey === `approve-draft-${flyer.id}` ? (
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                ) : (
+                                  <CheckCircle2 className="size-3.5 text-gold" />
+                                )}
+                                <span>Approve Draft</span>
+                              </Button>
+                            )}
+
+                            {/* 1-Click Bulk Publish All Cards to Website */}
+                            {totalFlyerCards > 0 && flyer.status !== "archived" && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={
+                                  busyKey === `pub-all-${flyer.id}` ||
+                                  flyer.status === "draft_extracted"
+                                }
                                 onClick={() =>
                                   handlePublishAllToWebsite(flyer.id, flyer.title)
                                 }
@@ -1514,6 +2156,25 @@ export function StudioHubClient({
                                 <span>Schedule</span>
                               </Button>
                             )}
+
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={busyKey === `render-sheet-${flyer.id}`}
+                              onClick={() =>
+                                handleGenerateMultiSheet(flyer.id, flyer.title)
+                              }
+                              className="border-gold/50 bg-[#FBF9F4] text-[#064E3B] hover:bg-gold/15 text-xs font-semibold gap-1.5 cursor-pointer"
+                              title="Render 4K Multi-Package Sheet & Vector PDF via Gotenberg queue"
+                            >
+                              {busyKey === `render-sheet-${flyer.id}` ? (
+                                <Loader2 className="size-3.5 animate-spin text-gold" />
+                              ) : (
+                                <Sparkles className="size-3.5 text-gold" />
+                              )}
+                              <span>Render 4K Sheet</span>
+                            </Button>
 
                             <Button
                               type="button"
@@ -1649,14 +2310,14 @@ export function StudioHubClient({
                                     {/* Al Ramlah Retail Price */}
                                     <td className="py-3 pr-3 text-right align-top font-mono">
                                       <div className="font-bold text-primary text-sm">
-                                        S: {pkg.retailSharingPkr.toLocaleString()}
+                                        S: {formatStudioPkrTier(pkg.retailSharingPkr)}
                                       </div>
                                       <div className="text-[11px] text-foreground">
-                                        Q: {pkg.retailQuadPkr.toLocaleString()} · T:{" "}
-                                        {pkg.retailTriplePkr.toLocaleString()}
+                                        Q: {formatStudioPkrTier(pkg.retailQuadPkr)} · T:{" "}
+                                        {formatStudioPkrTier(pkg.retailTriplePkr)}
                                       </div>
                                       <div className="text-[11px] text-muted-foreground">
-                                        D: {pkg.retailDoublePkr.toLocaleString()}
+                                        D: {formatStudioPkrTier(pkg.retailDoublePkr)}
                                       </div>
                                     </td>
 
@@ -1674,6 +2335,26 @@ export function StudioHubClient({
                                         >
                                           <Pencil className="size-3 text-gold" />
                                           <span>Edit Card</span>
+                                        </Button>
+
+                                        {/* Render 4K Spotlight Poster */}
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={busyKey === `render-spot-${pkg.id}`}
+                                          onClick={() =>
+                                            handleGenerateSpotlight(pkg.id, pkg.postCode)
+                                          }
+                                          className="h-7 px-2 text-[11px] font-semibold border-gold/50 bg-[#FBF9F4] text-[#064E3B] hover:bg-gold/15 cursor-pointer gap-1"
+                                          title="Render 4K Single-Package Spotlight Poster via Gotenberg queue"
+                                        >
+                                          {busyKey === `render-spot-${pkg.id}` ? (
+                                            <Loader2 className="size-3 animate-spin text-gold" />
+                                          ) : (
+                                            <Sparkles className="size-3 text-gold" />
+                                          )}
+                                          <span>Render 4K</span>
                                         </Button>
 
                                         {/* Preview Poster */}
@@ -1718,6 +2399,25 @@ export function StudioHubClient({
                                               : "1-Click Publish"}
                                           </span>
                                         </Button>
+
+                                        {pkg.publishedGroupPackageId && (
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            disabled={busyKey === `unpub-${pkg.id}`}
+                                            onClick={() =>
+                                              handleUnpublishFromWebsite(
+                                                pkg.id,
+                                                pkg.postCode
+                                              )
+                                            }
+                                            className="h-7 px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-50 cursor-pointer"
+                                            title="Unpublish from live website without breaking bookings"
+                                          >
+                                            <span>Unpublish</span>
+                                          </Button>
+                                        )}
 
                                         {/* Schedule Campaign */}
                                         {matchingAsset && (
@@ -1795,12 +2495,36 @@ export function StudioHubClient({
                         <div>
                           {/* Thumbnail Container */}
                           <div className="relative aspect-[3/4] w-full bg-secondary/50 overflow-hidden border-b border-border">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={asset.imageUrl}
-                              alt={asset.title}
-                              className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-                            />
+                            {isPdfAssetPreviewUrl(asset.imageUrl) ? (
+                              <object
+                                data={asset.imageUrl}
+                                type="application/pdf"
+                                className="w-full h-full"
+                              >
+                                <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center bg-[#FBF9F4]">
+                                  <FileText className="size-10 text-gold" />
+                                  <span className="text-xs font-bold text-primary">
+                                    Vector PDF Poster
+                                  </span>
+                                  <a
+                                    href={asset.imageUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[11px] font-semibold underline text-emerald-800"
+                                  >
+                                    Open Vector PDF
+                                  </a>
+                                </div>
+                              </object>
+                            ) : (
+                              <Image
+                                src={asset.imageUrl}
+                                alt={asset.title}
+                                fill
+                                unoptimized
+                                className="object-cover transition-transform duration-300 hover:scale-105"
+                              />
+                            )}
                             <div className="absolute top-2 left-2 flex items-center gap-1.5">
                               <span className="rounded-md bg-[#0A3622] px-2 py-0.5 font-mono text-[11px] font-bold text-gold shadow-sm">
                                 {asset.postCode}
@@ -2571,12 +3295,22 @@ export function StudioHubClient({
 
                 {editForm.spotlightPosterUrl && (
                   <div className="relative h-32 w-48 rounded-lg overflow-hidden border border-border bg-secondary/40">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={editForm.spotlightPosterUrl}
-                      alt="Dedicated Package Spotlight Preview"
-                      className="w-full h-full object-cover object-top"
-                    />
+                    {isPdfAssetPreviewUrl(editForm.spotlightPosterUrl) ? (
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-[#FBF9F4] p-2 text-center">
+                        <FileText className="size-6 text-gold" />
+                        <span className="text-[10px] font-bold text-primary">
+                          Vector PDF Selected
+                        </span>
+                      </div>
+                    ) : (
+                      <Image
+                        src={editForm.spotlightPosterUrl}
+                        alt="Dedicated Package Spotlight Preview"
+                        fill
+                        unoptimized
+                        className="object-cover object-top"
+                      />
+                    )}
                     <span className="absolute bottom-1 right-2 rounded bg-black/75 px-1.5 py-0.5 text-[9px] text-white">
                       Spotlight Preview
                     </span>
@@ -2648,12 +3382,21 @@ export function StudioHubClient({
               {/* Current Thumbnail Preview */}
               <div className="flex items-center gap-4 p-3 rounded-xl border border-border bg-secondary/30">
                 <div className="relative h-24 w-18 shrink-0 rounded-lg overflow-hidden border border-border bg-black/20">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={imageModalUrlInput || imageModalCard.currentImageUrl}
-                    alt={imageModalCard.title}
-                    className="w-full h-full object-cover object-top"
-                  />
+                  {isPdfAssetPreviewUrl(
+                    imageModalUrlInput || imageModalCard.currentImageUrl
+                  ) ? (
+                    <div className="flex h-full w-full items-center justify-center bg-[#FBF9F4]">
+                      <FileText className="size-6 text-gold" />
+                    </div>
+                  ) : (
+                    <Image
+                      src={imageModalUrlInput || imageModalCard.currentImageUrl}
+                      alt={imageModalCard.title}
+                      fill
+                      unoptimized
+                      className="object-cover object-top"
+                    />
+                  )}
                 </div>
                 <div className="space-y-1 text-xs">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">

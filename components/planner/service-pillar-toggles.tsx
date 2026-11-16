@@ -3,7 +3,7 @@
 import React from "react"
 import { usePlanner, type ServicePillars } from "./planner-context"
 import { ShieldCheck, Plane, Building, Car, Compass, Check, Lock } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 interface PillarItem {
   key: keyof ServicePillars
@@ -52,7 +52,7 @@ export function ServicePillarToggles() {
   return (
     <div className="w-full">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold tracking-wider text-[#8F6E2A] uppercase">
+        <span className="text-xs font-semibold tracking-wider text-[#7A5C1E] uppercase">
           Active Service Pillars
         </span>
         <span className="text-xs text-[#686E65]">
@@ -91,7 +91,7 @@ export function ServicePillarToggles() {
                     "flex size-7 items-center justify-center rounded-lg transition-colors",
                     isActive
                       ? "bg-[#0A3622] text-[#C5A059]"
-                      : "bg-[#F5EFE6] text-[#686E65] group-hover:bg-[#C5A059]/15 group-hover:text-[#8F6E2A]"
+                      : "bg-[#F5EFE6] text-[#686E65] group-hover:bg-[#C5A059]/15 group-hover:text-[#7A5C1E]"
                   )}
                 >
                   <Icon className="size-4" />
@@ -122,8 +122,8 @@ export function ServicePillarToggles() {
                   {pillar.subtitle}
                 </p>
                 {isOnlyActive && (
-                  <div className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-[#8F6E2A]">
-                    <Lock className="size-2.5 text-[#8F6E2A] shrink-0" />
+                  <div className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-[#7A5C1E]">
+                    <Lock className="size-2.5 text-[#7A5C1E] shrink-0" />
                     <span>Required</span>
                   </div>
                 )}

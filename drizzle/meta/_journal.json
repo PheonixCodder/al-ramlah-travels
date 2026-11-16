@@ -8,6 +8,27 @@
       "when": 1792856493665,
       "tag": "0000_noisy_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794219930354,
+      "tag": "0001_cynical_proudstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794671801273,
+      "tag": "0002_production_hardening_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794763457506,
+      "tag": "0003_seo_lead_attribution",
+      "breakpoints": true
     }
   ]
 }

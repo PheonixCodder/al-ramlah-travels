@@ -1,80 +1,178 @@
-import fs from "node:fs/promises"
-import path from "node:path"
+import crypto from "node:crypto"
 import { NextResponse, type NextRequest } from "next/server"
-import { requireAdmin } from "@/lib/auth-guard"
+import { isAuditLocalE2eMode } from "@/lib/env"
+import { uploadAssetToR2 } from "@/lib/storage/r2"
+import {
+  enforceRouteAdminAuth,
+  MAX_LOCAL_DEV_UPLOAD_BYTES,
+  sanitizeUploadFolder,
+  sniffAllowedBinaryMagicBytes,
+} from "@/lib/storage/upload-security"
 
-async function handleLocalUpload(req: NextRequest) {
-  try {
-    await requireAdmin()
-  } catch (authErr) {
-    const message =
-      authErr instanceof Error ? authErr.message : "Unauthorized"
-    const status = message.toLowerCase().includes("forbidden") ? 403 : 401
-    return NextResponse.json({ success: false, error: message }, { status })
+function extractFolderFromRawKeyOrParam(
+  rawKey: string,
+  rawFolder: string
+): string | null {
+  if (rawFolder.trim()) {
+    return sanitizeUploadFolder(rawFolder)
+  }
+  const normalized = rawKey.replace(/\\/g, "/").replace(/^\/+/, "").trim()
+  if (!normalized) {
+    return "uploads"
+  }
+  const parts = normalized.split("/").filter(Boolean)
+  if (parts.length <= 1) {
+    return "uploads"
+  }
+  return sanitizeUploadFolder(parts.slice(0, -1).join("/"))
+}
+
+async function readBoundedPayloadBuffer(
+  req: NextRequest
+): Promise<
+  | { ok: true; buffer: Buffer; formFolder?: string }
+  | { ok: false; status: number; error: string }
+> {
+  const declaredLenHeader = req.headers.get("content-length")
+  if (declaredLenHeader) {
+    const declaredBytes = Number.parseInt(declaredLenHeader, 10)
+    if (
+      Number.isFinite(declaredBytes) &&
+      declaredBytes > MAX_LOCAL_DEV_UPLOAD_BYTES + 64 * 1024
+    ) {
+      return {
+        ok: false,
+        status: 413,
+        error: "Upload payload exceeds 25MB local development limit",
+      }
+    }
+  }
+
+  const contentTypeHeader = (req.headers.get("content-type") ?? "").toLowerCase()
+  if (contentTypeHeader.includes("multipart/form-data")) {
+    const formData = await req.formData()
+    const fileEntry = formData.get("file")
+    if (!(fileEntry instanceof File)) {
+      return {
+        ok: false,
+        status: 400,
+        error: "Missing 'file' field in multipart upload",
+      }
+    }
+    if (fileEntry.size === 0) {
+      return { ok: false, status: 400, error: "Empty file payload" }
+    }
+    if (fileEntry.size > MAX_LOCAL_DEV_UPLOAD_BYTES) {
+      return {
+        ok: false,
+        status: 413,
+        error: "Upload payload exceeds 25MB local development limit",
+      }
+    }
+    const rawFolderField = formData.get("folder")
+    const formFolder =
+      typeof rawFolderField === "string" ? rawFolderField : undefined
+    const buffer = Buffer.from(await fileEntry.arrayBuffer())
+    return { ok: true, buffer, formFolder }
+  }
+
+  const arrayBuffer = await req.arrayBuffer()
+  if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+    return { ok: false, status: 400, error: "Empty request payload" }
+  }
+  if (arrayBuffer.byteLength > MAX_LOCAL_DEV_UPLOAD_BYTES) {
+    return {
+      ok: false,
+      status: 413,
+      error: "Upload payload exceeds 25MB local development limit",
+    }
+  }
+
+  return { ok: true, buffer: Buffer.from(arrayBuffer) }
+}
+
+async function handleLocalUpload(req: NextRequest): Promise<NextResponse> {
+  // Hard-disabled in production (`T-014`): production uploads must use direct R2 presigned PUTs
+  if (process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()) {
+    return NextResponse.json(
+      { success: false, error: "Not Found" },
+      { status: 404 }
+    )
+  }
+
+  const authCheck = await enforceRouteAdminAuth(req)
+  if (!authCheck.ok) {
+    return NextResponse.json(
+      { success: false, error: authCheck.error },
+      { status: authCheck.status }
+    )
   }
 
   try {
+    const payloadResult = await readBoundedPayloadBuffer(req)
+    if (!payloadResult.ok) {
+      return NextResponse.json(
+        { success: false, error: payloadResult.error },
+        { status: payloadResult.status }
+      )
+    }
+
+    const sniffed = sniffAllowedBinaryMagicBytes(payloadResult.buffer)
+    if (!sniffed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unsupported or unsafe file payload. Allowed binary formats: PNG, JPEG, WebP, PDF, MP4, QuickTime MOV.",
+        },
+        { status: 415 }
+      )
+    }
+
     const searchParams = req.nextUrl.searchParams
     const rawKey =
-      searchParams.get("key") ||
-      req.headers.get("x-upload-key") ||
-      ""
+      searchParams.get("key") ?? req.headers.get("x-upload-key") ?? ""
+    const rawFolder =
+      payloadResult.formFolder ?? searchParams.get("folder") ?? ""
 
-    if (!rawKey.trim()) {
+    const safeFolder = extractFolderFromRawKeyOrParam(rawKey, rawFolder)
+    if (!safeFolder) {
       return NextResponse.json(
-        { success: false, error: "Missing required 'key' query parameter" },
+        { success: false, error: "Invalid or disallowed upload folder" },
         { status: 400 }
       )
     }
 
-    // Path traversal protection: sanitize and verify boundary
-    const sanitizedKey = rawKey
-      .replace(/^\/+/, "")
-      .replace(/\\/g, "/")
-      .replace(/\.\./g, "")
-
-    const baseDir = path.resolve(process.cwd(), "public", "uploads", "r2-local")
-    const targetPath = path.resolve(baseDir, ...sanitizedKey.split("/"))
-
-    if (
-      !targetPath.startsWith(baseDir + path.sep) &&
-      targetPath !== baseDir
-    ) {
-      return NextResponse.json(
-        { success: false, error: "Invalid storage key: path traversal detected" },
-        { status: 400 }
-      )
-    }
-
-    const arrayBuffer = await req.arrayBuffer()
-    if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-      return NextResponse.json(
-        { success: false, error: "Empty request payload" },
-        { status: 400 }
-      )
-    }
-
-    const buffer = Buffer.from(arrayBuffer)
-    await fs.mkdir(path.dirname(targetPath), { recursive: true })
-    await fs.writeFile(targetPath, buffer)
+    // Always generate a server-controlled UUID key with verified extension (never caller filename)
+    const uuidStorageKey = `${safeFolder}/${crypto.randomUUID()}.${sniffed.extension}`
+    const stored = await uploadAssetToR2(
+      uuidStorageKey,
+      payloadResult.buffer,
+      sniffed.mimeType
+    )
 
     return NextResponse.json({
       success: true,
-      publicUrl: `/uploads/r2-local/${sanitizedKey}`,
-      storageKey: sanitizedKey,
-      sizeBytes: buffer.byteLength,
+      url: stored.url,
+      publicUrl: stored.url,
+      storageKey: stored.key,
+      contentType: sniffed.mimeType,
+      sizeBytes: stored.sizeBytes,
     })
   } catch (err: unknown) {
     const message =
-      err instanceof Error ? err.message : "Failed to write local asset to disk"
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+      err instanceof Error ? err.message : "Failed to store local development upload"
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
   }
 }
 
-export async function PUT(req: NextRequest) {
+export async function PUT(req: NextRequest): Promise<NextResponse> {
   return handleLocalUpload(req)
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   return handleLocalUpload(req)
 }

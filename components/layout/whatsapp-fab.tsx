@@ -1,19 +1,38 @@
 "use client"
 
 import * as React from "react"
+import { usePathname } from "next/navigation"
 import { MessageCircle } from "lucide-react"
+import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
+import { toWaMeUrl } from "@/components/public/public-utils"
+import {
+  formatWhatsAppAttributionSuffix,
+  readStoredAttribution,
+} from "@/lib/seo/utm"
 
 interface WhatsAppFabProps {
   whatsappNumber?: string
 }
 
+const BASE_GREETING =
+  "Assalam o Alaikum, I would like to inquire about Al Ramlah Travels pilgrimage packages."
+
+const NOOP_SUBSCRIBE = () => () => {}
+
 export function WhatsAppFab({
-  whatsappNumber = "03274029701",
+  whatsappNumber = DEFAULT_COMPANY_INFO.primaryWhatsapp,
 }: WhatsAppFabProps = {}) {
-  const normalizedWhatsapp = whatsappNumber
-    .replace(/\D/g, "")
-    .replace(/^03/, "923")
-  const whatsappUrl = `https://wa.me/${normalizedWhatsapp || "923274029701"}?text=Assalam%20o%20Alaikum%2C%20I%20would%20like%20to%20inquire%20about%20Al%20Ramlah%20Travels%20pilgrimage%20packages.`
+  const pathname = usePathname()
+  const attributionSuffix = React.useSyncExternalStore(
+    NOOP_SUBSCRIBE,
+    () => formatWhatsAppAttributionSuffix(readStoredAttribution(), pathname),
+    () => ""
+  )
+
+  const whatsappUrl = toWaMeUrl(
+    whatsappNumber,
+    `${BASE_GREETING}${attributionSuffix}`
+  )
 
   return (
     <div className="group fixed right-6 bottom-6 z-50 flex items-center">

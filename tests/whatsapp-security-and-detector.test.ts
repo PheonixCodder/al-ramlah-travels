@@ -1,4 +1,3 @@
-import "dotenv/config"
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 import crypto from "node:crypto"
@@ -30,15 +29,23 @@ import {
 } from "../lib/whatsapp/template-send-builder"
 
 describe("WhatsApp AES-256-GCM Token Encryption and Decryption", () => {
-  it("encrypts and decrypts sensitive tokens in a round trip", () => {
+  it("encrypts and decrypts sensitive tokens in a round trip using v2 HKDF vault", () => {
     const originalToken = "EAABtestMetaWabaAccessToken_9876543210_abcdef"
     const encrypted = encrypt(originalToken)
 
     assert.ok(encrypted.length > 0)
     const parts = encrypted.split(":")
-    assert.equal(parts.length, 3)
+    assert.equal(parts.length, 5)
 
-    const [ivHex, ctHex, tagHex] = parts
+    const [ver, kid, ivHex, tagHex, ctHex] = parts as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ]
+    assert.equal(ver, "v2")
+    assert.ok(kid.length > 0)
     assert.equal(ivHex.length, GCM_IV_LENGTH * 2)
     assert.equal(tagHex.length, AUTH_TAG_LENGTH * 2)
     assert.ok(ctHex.length > 0)
@@ -57,9 +64,9 @@ describe("WhatsApp AES-256-GCM Token Encryption and Decryption", () => {
     assert.notEqual(enc2, enc3)
     assert.notEqual(enc1, enc3)
 
-    const iv1 = enc1.split(":")[0]
-    const iv2 = enc2.split(":")[0]
-    const iv3 = enc3.split(":")[0]
+    const iv1 = enc1.split(":")[2]
+    const iv2 = enc2.split(":")[2]
+    const iv3 = enc3.split(":")[2]
 
     assert.notEqual(iv1, iv2)
     assert.notEqual(iv2, iv3)
@@ -71,11 +78,17 @@ describe("WhatsApp AES-256-GCM Token Encryption and Decryption", () => {
 
   it("rejects tampered ciphertext by throwing an authentication error", () => {
     const encrypted = encrypt("sensitive_waba_secret_token")
-    const [ivHex, ctHex, tagHex] = encrypted.split(":")
+    const [ver, kid, ivHex, tagHex, ctHex] = encrypted.split(":") as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ]
 
     const flippedChar = ctHex[0] === "a" ? "b" : "a"
     const tamperedCt = flippedChar + ctHex.slice(1)
-    const tamperedPayload = `${ivHex}:${tamperedCt}:${tagHex}`
+    const tamperedPayload = `${ver}:${kid}:${ivHex}:${tagHex}:${tamperedCt}`
 
     assert.throws(() => {
       decrypt(tamperedPayload)
@@ -84,10 +97,16 @@ describe("WhatsApp AES-256-GCM Token Encryption and Decryption", () => {
 
   it("rejects tampered auth tag by throwing an authentication error", () => {
     const encrypted = encrypt("sensitive_waba_secret_token")
-    const [ivHex, ctHex, tagHex] = encrypted.split(":")
+    const [ver, kid, ivHex, tagHex, ctHex] = encrypted.split(":") as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ]
 
     const flippedTag = (tagHex[0] === "f" ? "0" : "f") + tagHex.slice(1)
-    const tamperedPayload = `${ivHex}:${ctHex}:${flippedTag}`
+    const tamperedPayload = `${ver}:${kid}:${ivHex}:${flippedTag}:${ctHex}`
 
     assert.throws(() => {
       decrypt(tamperedPayload)
@@ -96,10 +115,16 @@ describe("WhatsApp AES-256-GCM Token Encryption and Decryption", () => {
 
   it("rejects tampered IV by throwing an authentication error", () => {
     const encrypted = encrypt("sensitive_waba_secret_token")
-    const [ivHex, ctHex, tagHex] = encrypted.split(":")
+    const [ver, kid, ivHex, tagHex, ctHex] = encrypted.split(":") as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ]
 
     const flippedIv = (ivHex[0] === "0" ? "1" : "0") + ivHex.slice(1)
-    const tamperedPayload = `${flippedIv}:${ctHex}:${tagHex}`
+    const tamperedPayload = `${ver}:${kid}:${flippedIv}:${tagHex}:${ctHex}`
 
     assert.throws(() => {
       decrypt(tamperedPayload)
@@ -110,13 +135,13 @@ describe("WhatsApp AES-256-GCM Token Encryption and Decryption", () => {
     const shortIvPayload = "abcd:1234:5678"
     assert.throws(() => {
       decrypt(shortIvPayload)
-    }, /invalid GCM IV length/)
+    }, /Invalid|mismatch|corrupted|vault/i)
 
     const validIvHex = crypto.randomBytes(GCM_IV_LENGTH).toString("hex")
     const shortTagPayload = `${validIvHex}:1234abcd:5678`
     assert.throws(() => {
       decrypt(shortTagPayload)
-    }, /invalid GCM auth tag length/)
+    }, /Invalid|mismatch|corrupted|vault/i)
   })
 
   it("handles empty string input safely without throwing", () => {
@@ -125,7 +150,7 @@ describe("WhatsApp AES-256-GCM Token Encryption and Decryption", () => {
     assert.equal(isLegacyFormat(""), false)
   })
 
-  it("detects and decrypts legacy 2 part AES-256-CBC ciphertexts", () => {
+  it("hard-rejects unauthenticated legacy 2-part AES-256-CBC ciphertexts while supporting 3-part GCM migration", () => {
     const legacyPlaintext = "legacy_meta_access_token_v1"
     const cbcIv = crypto.randomBytes(CBC_IV_LENGTH)
     const derivedKey = getDerivedEncryptionKey()
@@ -134,11 +159,24 @@ describe("WhatsApp AES-256-GCM Token Encryption and Decryption", () => {
     let encrypted = cipher.update(legacyPlaintext, "utf8", "hex")
     encrypted += cipher.final("hex")
 
-    const legacyPayload = `${cbcIv.toString("hex")}:${encrypted}`
+    const legacyCbcPayload = `${cbcIv.toString("hex")}:${encrypted}`
 
-    assert.equal(isLegacyFormat(legacyPayload), true)
-    const decrypted = decrypt(legacyPayload)
-    assert.equal(decrypted, legacyPlaintext)
+    assert.equal(isLegacyFormat(legacyCbcPayload), true)
+    assert.throws(() => {
+      decrypt(legacyCbcPayload)
+    }, /AES-CBC|unauthenticated/i)
+
+    // Verify 3-part authenticated GCM legacy ciphertext can still migrate cleanly
+    const gcmIv = crypto.randomBytes(GCM_IV_LENGTH)
+    const gcmCipher = crypto.createCipheriv("aes-256-gcm", derivedKey, gcmIv)
+    const gcmCt = Buffer.concat([
+      gcmCipher.update(legacyPlaintext, "utf8"),
+      gcmCipher.final(),
+    ])
+    const gcmTag = gcmCipher.getAuthTag()
+    const legacyGcmPayload = `${gcmIv.toString("hex")}:${gcmCt.toString("hex")}:${gcmTag.toString("hex")}`
+    assert.equal(isLegacyFormat(legacyGcmPayload), true)
+    assert.equal(decrypt(legacyGcmPayload), legacyPlaintext)
 
     const modernPayload = encrypt(legacyPlaintext)
     assert.equal(isLegacyFormat(modernPayload), false)
@@ -147,11 +185,11 @@ describe("WhatsApp AES-256-GCM Token Encryption and Decryption", () => {
   it("rejects unrecognised formats with unexpected part count", () => {
     assert.throws(() => {
       decrypt("not_a_valid_token_string")
-    }, /unrecognised format/)
+    }, /Unrecognized vault ciphertext format/i)
 
     assert.throws(() => {
       decrypt("part1:part2:part3:part4")
-    }, /unrecognised format/)
+    }, /Unrecognized vault ciphertext format/i)
   })
 })
 

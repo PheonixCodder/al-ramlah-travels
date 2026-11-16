@@ -10,16 +10,13 @@ import {
   Plane,
   Coins,
   Globe,
+  Inbox,
   Plus,
   Search,
-  Phone,
   MessageCircle,
   Edit2,
-  CheckCircle2,
-  XCircle,
   Loader2,
   Sparkles,
-  Users,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -39,7 +36,9 @@ import { VisaClient, type VisaRateData } from "@/components/admin/catalog/visa-c
 import { TransportClient, type TransportRateData } from "@/components/admin/catalog/transport-client"
 import { ZiyaratClient } from "@/components/admin/catalog/ziyarat-client"
 import { FlightsClient } from "@/components/admin/catalog/flights-client"
-import { ContentClient } from "@/components/admin/catalog/content-client"
+import { ContentClient, type CmsSubTab } from "@/components/admin/catalog/content-client"
+import { HajjClient, type HajjPackageData } from "@/components/admin/catalog/hajj-client"
+import { MessagesClient, type ContactMessageData } from "@/components/admin/catalog/messages-client"
 import type { HotelData } from "@/components/admin/catalog/hotel-dialog"
 import type { VehicleData } from "@/components/admin/catalog/vehicle-dialog"
 import type { SectorData } from "@/components/admin/catalog/sector-dialog"
@@ -52,6 +51,7 @@ import type {
   FaqData,
 } from "@/components/admin/catalog/content-dialogs"
 import { upsertSupplier } from "@/app/actions/marketing-ops"
+import { buildWhatsappUrl } from "@/lib/company-info"
 import { cn } from "@/lib/utils"
 
 export interface SupplierRecord {
@@ -77,23 +77,69 @@ export type CatalogTabKey =
   | "transport"
   | "ziyarat"
   | "flights"
+  | "hajj"
   | "suppliers"
   | "cms"
+  | "messages"
+
+export function resolveCatalogTab(rawTab?: string | null): {
+  tab: CatalogTabKey
+  cmsSubTab?: CmsSubTab
+} {
+  const normalized = (rawTab ?? "").trim().toLowerCase()
+  switch (normalized) {
+    case "hotels":
+    case "hotel":
+      return { tab: "hotels" }
+    case "visa":
+    case "visas":
+      return { tab: "visa" }
+    case "transport":
+    case "vehicles":
+      return { tab: "transport" }
+    case "ziyarat":
+      return { tab: "ziyarat" }
+    case "flights":
+    case "airlines":
+      return { tab: "flights" }
+    case "hajj":
+    case "hajj-2027":
+    case "hajj_packages":
+      return { tab: "hajj" }
+    case "suppliers":
+    case "supplier":
+      return { tab: "suppliers" }
+    case "cms":
+    case "content":
+      return { tab: "cms" }
+    case "gallery":
+      return { tab: "cms", cmsSubTab: "gallery" }
+    case "messages":
+    case "inquiries":
+    case "inbox":
+      return { tab: "messages" }
+    default:
+      return { tab: "hotels" }
+  }
+}
 
 export interface CatalogHubClientProps {
   initialTab?: string
   hotels: HotelData[]
   visaRates: VisaRateData[]
+  sarToPkrRate?: number
   vehicles: VehicleData[]
   transportSectors: SectorData[]
   transportRates: TransportRateData[]
   ziyaratPlaces: ZiyaratData[]
   airlines: AirlineData[]
   departureCities: DepartureCityData[]
+  hajjPackages?: HajjPackageData[]
   suppliers: SupplierRecord[]
   heroSlides: HeroSlideData[]
   testimonials: TestimonialData[]
   faqs: FaqData[]
+  contactMessages?: ContactMessageData[]
 }
 
 const TAB_CONFIG: Array<{
@@ -106,13 +152,13 @@ const TAB_CONFIG: Array<{
     key: "hotels",
     label: "Hotels Catalog",
     icon: Building2,
-    description: "Makkah & Madinah hotel properties, distance bands, room categories & SAR tariffs",
+    description: "Makkah & Madinah hotel properties, distance bands, galleries & SAR tariffs",
   },
   {
     key: "visa",
     label: "Visa Pricing",
     icon: FileCheck,
-    description: "Short-term & long-term Umrah visa tariffs, Masar fees, and regulatory rules",
+    description: "Short-term & long-term Umrah visa tariffs, Masar fees, and SAR-PKR conversion",
   },
   {
     key: "transport",
@@ -133,6 +179,12 @@ const TAB_CONFIG: Array<{
     description: "Authorized flight carriers, IATA codes, and Pakistan origin departure cities",
   },
   {
+    key: "hajj",
+    label: "Hajj 2027",
+    icon: Sparkles,
+    description: "Indicative 2027 Pre-Registration Maktab tiers, hotel bands & regulatory disclaimers",
+  },
+  {
     key: "suppliers",
     label: "B2B Suppliers",
     icon: Coins,
@@ -142,7 +194,13 @@ const TAB_CONFIG: Array<{
     key: "cms",
     label: "Website CMS",
     icon: Globe,
-    description: "Hero landing slides, pilgrim testimonials, and frequently asked questions",
+    description: "Hero landing slides, pilgrim testimonials, FAQs, and property galleries",
+  },
+  {
+    key: "messages",
+    label: "Web Inquiries",
+    icon: Inbox,
+    description: "Public contact-us inquiries, triage notes, and one-click E.164 WhatsApp replies",
   },
 ]
 
@@ -150,41 +208,33 @@ export function CatalogHubClient({
   initialTab = "hotels",
   hotels,
   visaRates,
+  sarToPkrRate = 75,
   vehicles,
   transportSectors,
   transportRates,
   ziyaratPlaces,
   airlines,
   departureCities,
+  hajjPackages = [],
   suppliers: initialSuppliers,
   heroSlides,
   testimonials,
   faqs,
+  contactMessages = [],
 }: CatalogHubClientProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  const validTabKeys: CatalogTabKey[] = [
-    "hotels",
-    "visa",
-    "transport",
-    "ziyarat",
-    "flights",
-    "suppliers",
-    "cms",
-  ]
-
-  const activeTab: CatalogTabKey = React.useMemo(() => {
-    const urlTab = searchParams.get("tab") as CatalogTabKey | null
-    if (urlTab && validTabKeys.includes(urlTab)) {
-      return urlTab
+  const resolvedTab = React.useMemo(() => {
+    const urlTab = searchParams.get("tab")
+    if (urlTab) {
+      return resolveCatalogTab(urlTab)
     }
-    if (validTabKeys.includes(initialTab as CatalogTabKey)) {
-      return initialTab as CatalogTabKey
-    }
-    return "hotels"
+    return resolveCatalogTab(initialTab)
   }, [searchParams, initialTab])
+
+  const activeTab = resolvedTab.tab
 
   const handleTabChange = (key: CatalogTabKey) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -192,15 +242,22 @@ export function CatalogHubClient({
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
+  const unreadMessagesCount = React.useMemo(
+    () => contactMessages.filter((m) => m.status === "unread").length,
+    [contactMessages]
+  )
+
   // Calculate live item counts for tab badges
   const tabCounts: Record<CatalogTabKey, number> = {
     hotels: hotels.length,
-    visa: visaRates.length,
+    visa: visaRates.length || 2,
     transport: vehicles.length,
     ziyarat: ziyaratPlaces.length,
     flights: airlines.length,
+    hajj: hajjPackages.length,
     suppliers: initialSuppliers.length,
     cms: heroSlides.length + testimonials.length + faqs.length,
+    messages: unreadMessagesCount > 0 ? unreadMessagesCount : contactMessages.length,
   }
 
   const activeMeta = TAB_CONFIG.find((t) => t.key === activeTab) || TAB_CONFIG[0]
@@ -209,15 +266,15 @@ export function CatalogHubClient({
     <div className="flex flex-col gap-6">
       {/* Hub Header */}
       <div className="flex flex-col gap-2 border-b border-border/80 pb-5">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gold">
-            Hub 4 • Operations & Dynamic Inventory
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-gold-text">
+            Hub 4 • Operations &amp; Dynamic Inventory
           </span>
           <Badge
             variant="outline"
             className="text-[10px] font-mono border-primary/30 text-primary bg-primary/5"
           >
-            {hotels.length} Hotels • {initialSuppliers.length} Suppliers • {airlines.length} Airlines
+            {hotels.length} Hotels • {hajjPackages.length} Hajj Tiers • {initialSuppliers.length} Suppliers • {airlines.length} Airlines
           </Badge>
         </div>
 
@@ -228,7 +285,8 @@ export function CatalogHubClient({
             </h1>
             <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-3xl">
               Unified administrative workspace for master tariffs, vehicle fleets, holy ziyarat sites,
-              flight schedules, B2B wholesale suppliers, and public website CMS content.
+              flight schedules, Indicative 2027 Hajj pre-registration tiers, B2B wholesale suppliers,
+              public CMS content, and web inquiries.
             </p>
           </div>
         </div>
@@ -255,7 +313,7 @@ export function CatalogHubClient({
                 <Icon
                   className={cn(
                     "size-4 shrink-0 transition-colors",
-                    isActive ? "text-gold" : "text-muted-foreground"
+                    isActive ? "text-gold-text" : "text-muted-foreground"
                   )}
                 />
                 <span>{tab.label}</span>
@@ -264,7 +322,9 @@ export function CatalogHubClient({
                     "ml-0.5 rounded-full px-1.5 py-0.2 font-mono text-[10px] font-bold",
                     isActive
                       ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
+                      : tab.key === "messages" && unreadMessagesCount > 0
+                        ? "bg-gold text-foreground"
+                        : "bg-muted text-muted-foreground"
                   )}
                 >
                   {count}
@@ -292,7 +352,12 @@ export function CatalogHubClient({
       <div className="min-h-[500px]">
         {activeTab === "hotels" && <HotelsClient initialHotels={hotels} />}
 
-        {activeTab === "visa" && <VisaClient initialRates={visaRates} />}
+        {activeTab === "visa" && (
+          <VisaClient
+            initialRates={visaRates}
+            initialSarToPkrRate={sarToPkrRate}
+          />
+        )}
 
         {activeTab === "transport" && (
           <TransportClient
@@ -313,6 +378,10 @@ export function CatalogHubClient({
           />
         )}
 
+        {activeTab === "hajj" && (
+          <HajjClient initialPackages={hajjPackages} />
+        )}
+
         {activeTab === "suppliers" && (
           <B2BSuppliersTab initialSuppliers={initialSuppliers} />
         )}
@@ -322,7 +391,13 @@ export function CatalogHubClient({
             initialSlides={heroSlides}
             initialTestimonials={testimonials}
             initialFaqs={faqs}
+            initialHotels={hotels}
+            initialSubTab={resolvedTab.cmsSubTab ?? "slides"}
           />
+        )}
+
+        {activeTab === "messages" && (
+          <MessagesClient initialMessages={contactMessages} />
         )}
       </div>
     </div>
@@ -344,6 +419,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
   const [searchQuery, setSearchQuery] = React.useState("")
   const [categoryFilter, setCategoryFilter] = React.useState<string>("all")
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
+  const [bannerError, setBannerError] = React.useState<string | null>(null)
 
   // Add / Edit Dialog state
   const [dialogOpen, setDialogOpen] = React.useState(false)
@@ -426,7 +502,6 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
   const handleNameChange = (val: string) => {
     setName(val)
     if (!editingSupplier) {
-      // Auto-generate slug and code prefix if new
       const derivedSlug = val
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
@@ -435,7 +510,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
 
       const parts = val.trim().split(/\s+/)
       const derivedPrefix =
-        parts.length > 1
+        parts.length > 1 && parts[0]?.[0] && parts[1]?.[0]
           ? (parts[0][0] + parts[1][0]).toUpperCase()
           : val.slice(0, 2).toUpperCase()
       setCodePrefix(derivedPrefix.slice(0, 4))
@@ -491,13 +566,13 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
 
   const handleToggleActive = async (s: SupplierRecord) => {
     const nextStatus = !s.isActive
-    // Optimistic update
+    setBannerError(null)
     setSuppliersList((prev) =>
       prev.map((item) => (item.id === s.id ? { ...item, isActive: nextStatus } : item))
     )
 
     try {
-      await upsertSupplier({
+      const res = await upsertSupplier({
         id: s.id,
         name: s.name,
         slug: s.slug,
@@ -511,18 +586,32 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
         notes: s.notes,
         isActive: nextStatus,
       })
+      if (!res.success) {
+        setSuppliersList((prev) =>
+          prev.map((item) => (item.id === s.id ? { ...item, isActive: s.isActive } : item))
+        )
+        setBannerError(res.error || "Failed to update supplier status.")
+        return
+      }
       router.refresh()
-    } catch (err) {
-      console.error("Failed to toggle supplier active:", err)
-      // Revert on error
+    } catch (err: unknown) {
       setSuppliersList((prev) =>
         prev.map((item) => (item.id === s.id ? { ...item, isActive: s.isActive } : item))
+      )
+      setBannerError(
+        err instanceof Error ? err.message : "Failed to update supplier status."
       )
     }
   }
 
   return (
     <div className="flex flex-col gap-5">
+      {bannerError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-xs font-medium text-destructive">
+          {bannerError}
+        </div>
+      )}
+
       {/* Search & Actions Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-4 rounded-xl border border-border shadow-xs">
         <div className="flex items-center gap-2 flex-1 max-w-md">
@@ -580,7 +669,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
               {/* Card Header */}
               <div className="flex items-start justify-between gap-2 border-b border-border/60 pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="flex size-9 items-center justify-center rounded-lg bg-gold/10 border border-gold/30 text-gold font-bold font-mono text-sm">
+                  <div className="flex size-9 items-center justify-center rounded-lg bg-gold/10 border border-gold/30 text-gold-text font-bold font-mono text-sm">
                     {s.codePrefix}
                   </div>
                   <div>
@@ -598,7 +687,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                   className={cn(
                     "text-[10px] font-semibold cursor-pointer select-none",
                     s.isActive
-                      ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                      ? "bg-emerald-800 text-white hover:bg-emerald-900"
                       : "bg-muted text-muted-foreground hover:bg-muted/80"
                   )}
                   onClick={() => handleToggleActive(s)}
@@ -628,7 +717,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
 
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Default Margin:</span>
-                  <span className="font-mono font-bold text-gold text-xs">
+                  <span className="font-mono font-bold text-gold-text text-xs">
                     PKR {s.defaultCommissionPkr.toLocaleString()} / pax
                   </span>
                 </div>
@@ -644,7 +733,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">WhatsApp:</span>
                     <a
-                      href={`https://wa.me/${s.whatsappNumber.replace(/\D/g, "")}`}
+                      href={buildWhatsappUrl(s.whatsappNumber)}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-emerald-700 hover:underline"
@@ -689,7 +778,10 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
 
       {/* Add / Edit Supplier Modal */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md bg-card border border-gold/40 shadow-xl rounded-2xl">
+        <DialogContent
+          key={dialogOpen ? (editingSupplier?.id ?? "new") : "closed"}
+          className="sm:max-w-md bg-card border border-gold/40 shadow-xl rounded-2xl"
+        >
           <form onSubmit={handleSaveSupplier}>
             <DialogHeader>
               <DialogTitle>
@@ -784,7 +876,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                   step={1000}
                   value={defaultCommissionPkr}
                   onChange={(e) =>
-                    setDefaultCommissionPkr(parseInt(e.target.value) || 0)
+                    setDefaultCommissionPkr(parseInt(e.target.value, 10) || 0)
                   }
                   className="h-8 text-xs mt-1 font-mono"
                 />

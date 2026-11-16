@@ -1,26 +1,33 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition, useEffect } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { HotelData, HotelDialog } from "./hotel-dialog"
-import { toggleHotelActive, deleteHotel } from "@/app/actions/catalog"
+import {
+  deleteHotel,
+  reorderCatalogEntities,
+  toggleHotelActive,
+} from "@/app/actions/catalog"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import {
+  ArrowDown,
+  ArrowUp,
   Building2,
+  Bus,
+  CheckCircle2,
+  Coins,
+  Edit2,
+  Footprints,
+  Images,
+  MapPin,
   Search,
   Star,
-  Footprints,
-  Bus,
   Trash2,
-  Edit2,
-  CheckCircle2,
   XCircle,
-  MapPin,
-  Coins,
 } from "lucide-react"
 
 interface HotelsClientProps {
@@ -31,17 +38,20 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
   const router = useRouter()
   const [hotels, setHotels] = useState<HotelData[]>(initialHotels)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCity, setSelectedCity] = useState<"all" | "makkah" | "madinah">(
-    "all"
-  )
+  const [selectedCity, setSelectedCity] = useState<
+    "all" | "makkah" | "madinah"
+  >("all")
   const [selectedRating, setSelectedRating] = useState<string>("all")
+  const [notice, setNotice] = useState<{
+    tone: "error" | "info"
+    text: string
+  } | null>(null)
   const [, startTransition] = useTransition()
 
   useEffect(() => {
     setHotels(initialHotels)
   }, [initialHotels])
 
-  // Filter logic
   const filteredHotels = hotels.filter((h) => {
     const matchesCity = selectedCity === "all" || h.city === selectedCity
     const matchesRating =
@@ -56,34 +66,82 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
 
   function handleToggle(id: string, currentStatus: boolean) {
     const nextStatus = !currentStatus
+    setNotice(null)
     startTransition(async () => {
       const res = await toggleHotelActive(id, nextStatus)
       if (res.success) {
         setHotels((prev) =>
           prev.map((h) => (h.id === id ? { ...h, isActive: nextStatus } : h))
         )
+        router.refresh()
+      } else {
+        setNotice({
+          tone: "error",
+          text: res.error || "Unable to update hotel visibility.",
+        })
       }
+    })
+  }
+
+  function handleMove(hotelId: string, direction: -1 | 1) {
+    const idx = hotels.findIndex((h) => h.id === hotelId)
+    const targetIdx = idx + direction
+    if (idx < 0 || targetIdx < 0 || targetIdx >= hotels.length) return
+    const nextList = [...hotels]
+    const [moved] = nextList.splice(idx, 1)
+    if (!moved) return
+    nextList.splice(targetIdx, 0, moved)
+    const reindexed = nextList.map((item, i) => ({ ...item, sortOrder: i }))
+    setHotels(reindexed)
+    const orderedIds = reindexed
+      .map((h) => h.id)
+      .filter((id): id is string => Boolean(id))
+
+    startTransition(async () => {
+      const res = await reorderCatalogEntities({
+        entityType: "hotels",
+        orderedIds,
+      })
+      if (!res.success) {
+        setNotice({
+          tone: "error",
+          text: res.error || "Failed to reorder hotels.",
+        })
+        return
+      }
+      router.refresh()
     })
   }
 
   function handleDelete(id: string, name: string) {
     if (
-      !window.confirm(`Are you sure you want to remove "${name}" from the catalog?`)
+      !window.confirm(
+        `Are you sure you want to remove "${name}" from the catalog?`
+      )
     ) {
       return
     }
+    setNotice(null)
     startTransition(async () => {
       const res = await deleteHotel(id)
       if (res.softDeleted) {
         setHotels((prev) =>
           prev.map((h) => (h.id === id ? { ...h, isActive: false } : h))
         )
+        setNotice({
+          tone: "info",
+          text:
+            res.error ||
+            "Hotel is referenced by packages or applications — deactivated instead.",
+        })
         router.refresh()
-        alert(res.error)
         return
       }
       if (!res.success) {
-        alert(res.error)
+        setNotice({
+          tone: "error",
+          text: res.error || "Failed to delete hotel.",
+        })
         return
       }
       setHotels((prev) => prev.filter((h) => h.id !== id))
@@ -96,19 +154,31 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
       {/* Header & Quick Stats */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          <h2 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Hotels Catalog
-          </h1>
+          </h2>
           <p className="text-sm text-muted-foreground">
-            Manage luxury pilgrim accommodations in Makkah Al-Mukarramah and Madinah Al-Munawwarah.
+            Manage luxury pilgrim accommodations in Makkah Al-Mukarramah and
+            Madinah Al-Munawwarah.
           </p>
         </div>
         <HotelDialog />
       </div>
 
+      {notice && (
+        <div
+          className={`rounded-xl border p-3 text-xs font-medium ${
+            notice.tone === "error"
+              ? "border-red-300 bg-red-50 text-red-800"
+              : "border-amber-300 bg-amber-50 text-amber-900"
+          }`}
+        >
+          {notice.text}
+        </div>
+      )}
+
       {/* Filter and Search Bar */}
       <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-2xs sm:flex-row sm:items-center sm:justify-between">
-        {/* City Filter Tabs */}
         <div className="flex items-center gap-1 rounded-lg bg-muted p-1 text-xs">
           <button
             type="button"
@@ -147,7 +217,6 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
           </button>
         </div>
 
-        {/* Search & Stars Filter */}
         <div className="flex items-center gap-2">
           <div className="relative w-full sm:w-60">
             <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -160,6 +229,7 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
             />
           </div>
           <select
+            aria-label="Filter hotels by star rating"
             value={selectedRating}
             onChange={(e) => setSelectedRating(e.target.value)}
             className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-foreground shadow-xs"
@@ -182,217 +252,248 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
             No hotels found
           </h3>
           <p className="text-xs text-muted-foreground max-w-sm mt-1">
-            Try adjusting your search criteria or add a new property to the inventory.
+            Try adjusting your search criteria or add a new property to the
+            inventory.
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredHotels.map((hotel) => (
-            <div
-              key={hotel.id}
-              className={`flex flex-col justify-between overflow-hidden rounded-xl border bg-card shadow-xs transition-all hover:shadow-md ${
-                hotel.isActive
-                  ? "border-border hover:border-gold/60"
-                  : "border-border/60 opacity-60 bg-muted/20"
-              }`}
-            >
-              {/* Hotel Card Top: Image & Badges */}
-              <div>
-                <div className="relative h-44 w-full bg-muted">
-                  <Image
-                    src={hotel.imageUrl}
-                    alt={hotel.name}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
+          {filteredHotels.map((hotel) => {
+            const globalIdx = hotels.findIndex((h) => h.id === hotel.id)
+            return (
+              <div
+                key={hotel.id}
+                className={`flex flex-col justify-between overflow-hidden rounded-xl border bg-card shadow-xs transition-all hover:shadow-md ${
+                  hotel.isActive
+                    ? "border-border hover:border-gold/60"
+                    : "border-border/60 bg-muted/30"
+                }`}
+              >
+                <div>
+                  <div className="relative h-44 w-full bg-muted">
+                    <Image
+                      src={hotel.imageUrl}
+                      alt={hotel.name}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
 
-                  {/* Top Badges */}
-                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-                    <Badge
-                      className={`font-semibold capitalize text-[10px] ${
-                        hotel.city === "makkah"
-                          ? "bg-emerald-900/90 text-emerald-100 border border-emerald-500/40"
-                          : "bg-amber-900/90 text-amber-100 border border-amber-500/40"
-                      }`}
-                    >
-                      <MapPin className="size-3 mr-1" />
-                      {hotel.city}
-                    </Badge>
-                    {hotel.isFeatured && (
-                      <Badge className="bg-gold text-white font-semibold text-[10px] border border-amber-300">
-                        Featured
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                      <Badge
+                        className={`font-semibold capitalize text-[10px] ${
+                          hotel.city === "makkah"
+                            ? "bg-emerald-900/90 text-emerald-100 border border-emerald-500/40"
+                            : "bg-amber-900/90 text-amber-100 border border-amber-500/40"
+                        }`}
+                      >
+                        <MapPin className="size-3 mr-1" />
+                        {hotel.city}
                       </Badge>
-                    )}
-                  </div>
-
-                  {/* Stars Pill */}
-                  <div className="absolute top-2.5 right-2.5 flex items-center gap-0.5 rounded-full bg-black/60 px-2 py-0.5 backdrop-blur-xs">
-                    {Array.from({ length: hotel.starRating }).map((_, i) => (
-                      <Star key={i} className="size-3 fill-gold text-gold" />
-                    ))}
-                  </div>
-
-                  {/* Distance label on image bottom */}
-                  <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-white text-xs font-medium">
-                    <div className="flex items-center gap-1">
-                      {hotel.accessType === "walking" ? (
-                        <Footprints className="size-3.5 text-emerald-400" />
-                      ) : (
-                        <Bus className="size-3.5 text-amber-400" />
+                      {hotel.isFeatured && (
+                        <Badge className="bg-gold text-emerald-950 font-semibold text-[10px] border border-amber-300">
+                          Featured
+                        </Badge>
                       )}
-                      <span className="truncate">{hotel.distanceLabel}</span>
+                      {hotel.galleryUrls && hotel.galleryUrls.length > 0 && (
+                        <Badge className="bg-black/70 text-white font-mono text-[10px]">
+                          <Images className="size-2.5 mr-1" />
+                          {hotel.galleryUrls.length}
+                        </Badge>
+                      )}
                     </div>
-                    <span className="shrink-0 font-mono text-[11px] text-white/90">
-                      {hotel.distanceMeters}m
-                    </span>
+
+                    <div className="absolute top-2.5 right-2.5 flex items-center gap-0.5 rounded-full bg-black/60 px-2 py-0.5 backdrop-blur-xs">
+                      {Array.from({ length: hotel.starRating }).map((_, i) => (
+                        <Star key={i} className="size-3 fill-gold text-gold" />
+                      ))}
+                    </div>
+
+                    <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-white text-xs font-medium">
+                      <div className="flex items-center gap-1">
+                        {hotel.accessType === "walking" ? (
+                          <Footprints className="size-3.5 text-emerald-400" />
+                        ) : (
+                          <Bus className="size-3.5 text-amber-400" />
+                        )}
+                        <span className="truncate">{hotel.distanceLabel}</span>
+                      </div>
+                      <span className="shrink-0 font-mono text-[11px] text-white/90 tabular-nums">
+                        {hotel.distanceMeters}m
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-semibold text-base text-foreground leading-snug">
+                        {hotel.name}
+                      </h3>
+                    </div>
+
+                    {hotel.locationNotes && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <MapPin className="size-3 text-gold shrink-0" />
+                        <span className="truncate">{hotel.locationNotes}</span>
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap gap-1.5 text-[11px]">
+                      {hotel.allowsPrivateRooms && (
+                        <span className="rounded bg-muted px-2 py-0.5 text-muted-foreground font-medium">
+                          Private
+                        </span>
+                      )}
+                      {hotel.allowsSharedRooms && (
+                        <span className="rounded bg-muted px-2 py-0.5 text-muted-foreground font-medium">
+                          Shared
+                        </span>
+                      )}
+                      {hotel.availableRoomTypes.map((rt) => (
+                        <span
+                          key={rt}
+                          className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase text-foreground/80"
+                        >
+                          {rt}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="rounded-lg border border-border/80 bg-muted/20 p-2.5 text-xs space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-foreground border-b border-border/50 pb-1">
+                        <span className="flex items-center gap-1 text-gold-text">
+                          <Coins className="size-3" />
+                          Rates (SAR / Night)
+                        </span>
+                        {hotel.roomPriceSar ? (
+                          <span className="font-mono text-muted-foreground tabular-nums">
+                            Room: SAR {hotel.roomPriceSar}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="grid grid-cols-4 gap-1 text-center font-mono text-[11px] tabular-nums">
+                        <div className="rounded bg-background p-1 border border-border/40">
+                          <span className="text-[9px] block text-muted-foreground uppercase font-sans">
+                            Share
+                          </span>
+                          <span className="font-bold text-foreground">
+                            {hotel.sharingPriceSar
+                              ? `${hotel.sharingPriceSar}`
+                              : "-"}
+                          </span>
+                        </div>
+                        <div className="rounded bg-background p-1 border border-border/40">
+                          <span className="text-[9px] block text-muted-foreground uppercase font-sans">
+                            Quad
+                          </span>
+                          <span className="font-bold text-foreground">
+                            {hotel.quadPriceSar ? `${hotel.quadPriceSar}` : "-"}
+                          </span>
+                        </div>
+                        <div className="rounded bg-background p-1 border border-border/40">
+                          <span className="text-[9px] block text-muted-foreground uppercase font-sans">
+                            Triple
+                          </span>
+                          <span className="font-bold text-foreground">
+                            {hotel.triplePriceSar
+                              ? `${hotel.triplePriceSar}`
+                              : "-"}
+                          </span>
+                        </div>
+                        <div className="rounded bg-background p-1 border border-border/40">
+                          <span className="text-[9px] block text-muted-foreground uppercase font-sans">
+                            Double
+                          </span>
+                          <span className="font-bold text-foreground">
+                            {hotel.doublePriceSar
+                              ? `${hotel.doublePriceSar}`
+                              : "-"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Hotel Details Body */}
-                <div className="p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-base text-foreground leading-snug">
-                      {hotel.name}
-                    </h3>
-                  </div>
-
-                  {hotel.locationNotes && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <MapPin className="size-3 text-gold shrink-0" />
-                      <span className="truncate">{hotel.locationNotes}</span>
-                    </p>
-                  )}
-
-                  {/* Room Sharing Badges */}
-                  <div className="flex flex-wrap gap-1.5 text-[11px]">
-                    {hotel.allowsPrivateRooms && (
-                      <span className="rounded bg-muted px-2 py-0.5 text-muted-foreground font-medium">
-                        Private
-                      </span>
-                    )}
-                    {hotel.allowsSharedRooms && (
-                      <span className="rounded bg-muted px-2 py-0.5 text-muted-foreground font-medium">
-                        Shared
-                      </span>
-                    )}
-                    {hotel.availableRoomTypes.map((rt) => (
-                      <span
-                        key={rt}
-                        className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase text-foreground/80"
-                      >
-                        {rt}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Seasonal SAR Rates Table Preview */}
-                  <div className="rounded-lg border border-border/80 bg-muted/20 p-2.5 text-xs space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-foreground border-b border-border/50 pb-1">
-                      <span className="flex items-center gap-1 text-gold">
-                        <Coins className="size-3" />
-                        Rates (SAR / Night)
-                      </span>
-                      {hotel.roomPriceSar ? (
-                        <span className="font-mono text-muted-foreground">
-                          Room: SAR {hotel.roomPriceSar}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="grid grid-cols-4 gap-1 text-center font-mono text-[11px]">
-                      <div className="rounded bg-background p-1 border border-border/40">
-                        <span className="text-[9px] block text-muted-foreground uppercase font-sans">
-                          Share
-                        </span>
-                        <span className="font-bold text-foreground">
-                          {hotel.sharingPriceSar ? `${hotel.sharingPriceSar}` : "-"}
-                        </span>
-                      </div>
-                      <div className="rounded bg-background p-1 border border-border/40">
-                        <span className="text-[9px] block text-muted-foreground uppercase font-sans">
-                          Quad
-                        </span>
-                        <span className="font-bold text-foreground">
-                          {hotel.quadPriceSar ? `${hotel.quadPriceSar}` : "-"}
-                        </span>
-                      </div>
-                      <div className="rounded bg-background p-1 border border-border/40">
-                        <span className="text-[9px] block text-muted-foreground uppercase font-sans">
-                          Triple
-                        </span>
-                        <span className="font-bold text-foreground">
-                          {hotel.triplePriceSar ? `${hotel.triplePriceSar}` : "-"}
-                        </span>
-                      </div>
-                      <div className="rounded bg-background p-1 border border-border/40">
-                        <span className="text-[9px] block text-muted-foreground uppercase font-sans">
-                          Double
-                        </span>
-                        <span className="font-bold text-foreground">
-                          {hotel.doublePriceSar ? `${hotel.doublePriceSar}` : "-"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bottom Actions Bar */}
-              <div className="flex items-center justify-between border-t border-border/80 bg-muted/10 px-4 py-2.5 text-xs">
-                {/* Active Toggle */}
-                <button
-                  type="button"
-                  onClick={() =>
-                    hotel.id && handleToggle(hotel.id, hotel.isActive)
-                  }
-                  className="flex items-center gap-1.5 font-medium transition-colors hover:opacity-80 cursor-pointer"
-                >
-                  {hotel.isActive ? (
-                    <>
-                      <CheckCircle2 className="size-4 text-emerald-600" />
-                      <span className="text-emerald-700 font-semibold">
-                        Active
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="size-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">Hidden</span>
-                    </>
-                  )}
-                </button>
-
-                {/* Edit & Delete Buttons */}
-                <div className="flex items-center gap-1">
-                  <HotelDialog
-                    hotel={hotel}
-                    trigger={
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
-                        title="Edit Hotel"
-                      >
-                        <Edit2 className="size-3.5" />
-                      </Button>
-                    }
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
+                {/* Bottom Actions Bar */}
+                <div className="flex items-center justify-between border-t border-border/80 bg-muted/10 px-4 py-2.5 text-xs">
+                  <button
+                    type="button"
                     onClick={() =>
-                      hotel.id && handleDelete(hotel.id, hotel.name)
+                      hotel.id && handleToggle(hotel.id, hotel.isActive)
                     }
-                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
-                    title="Delete Hotel"
+                    className="flex items-center gap-1.5 font-medium transition-colors hover:opacity-80 cursor-pointer"
                   >
-                    <Trash2 className="size-3.5" />
-                  </Button>
+                    {hotel.isActive ? (
+                      <>
+                        <CheckCircle2 className="size-4 text-emerald-600" />
+                        <span className="text-emerald-700 font-semibold">
+                          Active
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="size-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Hidden</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {hotel.id && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          disabled={globalIdx <= 0}
+                          onClick={() => hotel.id && handleMove(hotel.id, -1)}
+                          className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                          title="Move Earlier"
+                        >
+                          <ArrowUp className="size-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          disabled={globalIdx >= hotels.length - 1}
+                          onClick={() => hotel.id && handleMove(hotel.id, 1)}
+                          className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                          title="Move Later"
+                        >
+                          <ArrowDown className="size-3.5" />
+                        </Button>
+                      </>
+                    )}
+                    <HotelDialog
+                      hotel={hotel}
+                      trigger={
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                          title="Edit Hotel"
+                        >
+                          <Edit2 className="size-3.5" />
+                        </Button>
+                      }
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() =>
+                        hotel.id && handleDelete(hotel.id, hotel.name)
+                      }
+                      className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                      title="Delete Hotel"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/layout/status-badge"
 import { formatCitySequence } from "@/lib/domain"
 import { formatWhatsAppPhone } from "@/lib/phone"
+import { inferAcquisitionChannel } from "@/lib/seo/utm"
 
 interface HotelStayItem {
   id: string
@@ -82,7 +83,13 @@ export interface ApplicationDossierProps {
     id: string
     referenceNumber: string
     source: "custom_builder" | "group_booking" | "hajj_inquiry"
-    status: "pending_quote" | "quoted" | "approved" | "rejected" | "cancelled"
+    status:
+      | "pending_quote"
+      | "quoted"
+      | "revision_requested"
+      | "approved"
+      | "rejected"
+      | "cancelled"
     presetMode: string
     customerName: string
     customerPhone: string
@@ -90,6 +97,9 @@ export interface ApplicationDossierProps {
     customerCity: string
     customerEmail?: string | null
     specialRequests?: string | null
+    revisionNotesCustomer?: string | null
+    hajjConsultationType?: string | null
+    hajjInquiryJson?: Record<string, unknown> | null
     adults: number
     children: number
     infants: number
@@ -112,6 +122,13 @@ export interface ApplicationDossierProps {
     flightRouteType?: string | null
     cabinClass?: string | null
     sourcePostCode?: string | null
+    utmSource?: string | null
+    utmMedium?: string | null
+    utmCampaign?: string | null
+    utmContent?: string | null
+    utmTerm?: string | null
+    landingPage?: string | null
+    httpReferrer?: string | null
     createdAt: Date
     supplier?: { id: string; name: string; codePrefix: string } | null
     departureCity?: { cityName: string; airportCode: string } | null
@@ -162,13 +179,24 @@ export function ApplicationDossier({
   ziyaratPlaces = [],
 }: ApplicationDossierProps) {
   const cleanWa = formatWhatsAppPhone(application.customerWhatsapp || application.customerPhone)
+  const acquisitionChannel = inferAcquisitionChannel(application)
+  const hasAttribution = Boolean(
+    acquisitionChannel ||
+      application.utmSource ||
+      application.utmMedium ||
+      application.utmCampaign ||
+      application.utmContent ||
+      application.utmTerm ||
+      application.landingPage ||
+      application.httpReferrer
+  )
 
   return (
     <div className="flex flex-col gap-6">
       {/* Dossier Header */}
       <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-5 shadow-xs sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xl font-bold text-primary sm:text-2xl">
               {application.referenceNumber}
             </span>
@@ -186,6 +214,14 @@ export function ApplicationDossier({
                 Post Ref: {application.sourcePostCode}
               </Badge>
             )}
+            {acquisitionChannel && (
+              <Badge
+                variant="outline"
+                className="border-emerald-600/30 bg-emerald-50 text-xs font-semibold text-emerald-900"
+              >
+                {acquisitionChannel}
+              </Badge>
+            )}
             {application.supplier && (
               <Badge
                 variant="outline"
@@ -200,8 +236,59 @@ export function ApplicationDossier({
             {new Date(application.createdAt).toLocaleString("en-PK", {
               dateStyle: "medium",
               timeStyle: "short",
-            })}
+              timeZone: "Asia/Karachi",
+            })}{" "}
+            PKT
           </span>
+          {hasAttribution && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+              {application.utmSource && (
+                <Badge
+                  variant="outline"
+                  className="border-emerald-700/30 bg-emerald-50/70 font-mono text-[11px] font-semibold text-emerald-900"
+                >
+                  {`${application.utmSource.charAt(0).toUpperCase()}${application.utmSource.slice(1)}${
+                    application.utmMedium
+                      ? ` ${application.utmMedium.toUpperCase()}`
+                      : ""
+                  }`}
+                </Badge>
+              )}
+              {application.utmCampaign && (
+                <Badge
+                  variant="outline"
+                  className="border-gold/40 bg-gold/10 font-mono text-[11px] font-medium text-gold-text"
+                >
+                  Campaign: {application.utmCampaign}
+                </Badge>
+              )}
+              {application.landingPage && (
+                <Badge
+                  variant="outline"
+                  className="border-border bg-muted/40 font-mono text-[11px] font-normal text-foreground"
+                >
+                  Entry: {application.landingPage}
+                </Badge>
+              )}
+              {application.utmTerm && (
+                <Badge
+                  variant="outline"
+                  className="border-border bg-muted/40 font-mono text-[11px] font-normal text-muted-foreground"
+                >
+                  Term: {application.utmTerm}
+                </Badge>
+              )}
+              {application.httpReferrer && (
+                <Badge
+                  variant="outline"
+                  className="max-w-xs truncate border-border bg-muted/40 font-mono text-[11px] font-normal text-muted-foreground"
+                  title={application.httpReferrer}
+                >
+                  Referrer: {application.httpReferrer}
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
 
         <StatusBadge
@@ -285,16 +372,56 @@ export function ApplicationDossier({
             )}
           </div>
 
+          {application.revisionNotesCustomer && (
+            <div className="rounded-lg border border-sky-300 bg-sky-50/80 p-3 text-xs">
+              <span className="font-semibold text-sky-950 block mb-1">
+                Pilgrim Revision Request Notes:
+              </span>
+              <p className="text-sky-900 whitespace-pre-wrap" dir="auto">
+                {application.revisionNotesCustomer}
+              </p>
+            </div>
+          )}
+
           {application.specialRequests && (
             <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-xs">
               <span className="font-semibold text-amber-900 block mb-1">
                 Pilgrim Notes / Special Requests:
               </span>
-              <p className="text-amber-800 whitespace-pre-wrap">
+              <p className="text-amber-800 whitespace-pre-wrap" dir="auto">
                 {application.specialRequests}
               </p>
             </div>
           )}
+
+          {application.source === "hajj_inquiry" &&
+            (application.hajjConsultationType || application.hajjInquiryJson) && (
+              <div className="rounded-lg border border-gold/40 bg-gold/10 p-3 text-xs space-y-1.5">
+                <span className="font-semibold text-foreground block">
+                  Hajj 2027 Consultation Preferences:
+                </span>
+                {application.hajjConsultationType && (
+                  <p className="text-foreground">
+                    <span className="text-muted-foreground">Consultation Tier:</span>{" "}
+                    <strong className="capitalize">
+                      {application.hajjConsultationType.replace(/_/g, " ")}
+                    </strong>
+                  </p>
+                )}
+                {application.hajjInquiryJson &&
+                  Object.entries(application.hajjInquiryJson).map(
+                    ([key, val]) =>
+                      val !== null && val !== undefined && String(val).trim() ? (
+                        <p key={key} className="text-muted-foreground">
+                          <span className="capitalize">
+                            {key.replace(/([A-Z])/g, " $1").replace(/_/g, " ")}:
+                          </span>{" "}
+                          <strong className="text-foreground">{String(val)}</strong>
+                        </p>
+                      ) : null
+                  )}
+              </div>
+            )}
         </CardContent>
       </Card>
 
@@ -456,7 +583,7 @@ export function ApplicationDossier({
                   {application.groupPackage?.tier && (
                     <Badge
                       variant="outline"
-                      className="border-gold/40 bg-gold/10 text-xs font-bold text-gold uppercase"
+                      className="border-gold/40 bg-gold/10 text-xs font-bold text-gold-text uppercase"
                     >
                       {application.groupPackage.tier.replace(/_/g, " ")} Tier
                     </Badge>
@@ -764,7 +891,7 @@ export function ApplicationDossier({
                     <span className="text-xs font-semibold text-foreground">
                       {place.name}
                     </span>
-                    <span className="font-arabic text-sm text-gold">
+                    <span className="font-arabic text-sm text-gold-text">
                       {place.arabicName}
                     </span>
                   </div>

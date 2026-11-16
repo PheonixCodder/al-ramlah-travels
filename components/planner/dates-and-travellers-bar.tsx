@@ -1,8 +1,9 @@
 "use client"
 
 import React from "react"
-import { usePlanner } from "./planner-context"
+import { usePlanner, addDaysToDateString } from "./planner-context"
 import { PlannerDatePicker, formatDisplayDate } from "./planner-date-picker"
+import { getTodayPktIso } from "@/components/public/public-utils"
 import { Calendar, Users, Plus, Minus, ArrowRight } from "lucide-react"
 
 export function DatesAndTravellersBar() {
@@ -21,16 +22,7 @@ export function DatesAndTravellersBar() {
   const { adults, children, infants, totalPassportCount, bedAndSeatCount } =
     travellers
 
-  const todayIso = React.useMemo(
-    () => new Date().toISOString().split("T")[0]!,
-    []
-  )
-
-  const isCitySequenceVisible =
-    presetMode !== "visa_only" &&
-    presetMode !== "transport_only" &&
-    presetMode !== "flights_only" &&
-    (pillars.flights || pillars.hotels || pillars.transport)
+  const todayPktIso = React.useMemo(() => getTodayPktIso(), [])
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -44,10 +36,10 @@ export function DatesAndTravellersBar() {
               Pilgrims &amp; Room Capacity
             </span>
             <div className="flex items-center gap-1.5">
-              <span className="rounded-md bg-[#FAF7F0] border border-[#E6DEC8] px-2.5 py-0.5 text-[10px] font-semibold text-[#0A3622]">
+              <span className="rounded-md bg-[#FAF7F0] border border-[#E6DEC8] px-2.5 py-0.5 text-[10px] font-semibold text-[#0A3622] tabular-nums">
                 {bedAndSeatCount} {bedAndSeatCount === 1 ? "Bed & Seat" : "Beds & Seats"}
               </span>
-              <span className="rounded-md bg-[#F5EFE6] border border-[#E6DEC8] px-2.5 py-0.5 text-[10px] font-medium text-[#686E65]">
+              <span className="rounded-md bg-[#F5EFE6] border border-[#E6DEC8] px-2.5 py-0.5 text-[10px] font-medium text-[#686E65] tabular-nums">
                 {totalPassportCount} {totalPassportCount === 1 ? "Passport" : "Passports"}
               </span>
             </div>
@@ -73,7 +65,7 @@ export function DatesAndTravellersBar() {
                 >
                   <Minus className="size-3.5" />
                 </button>
-                <span className="w-6 text-center font-mono font-bold text-sm text-[#0A3622]">
+                <span className="w-6 text-center font-mono font-bold text-sm text-[#0A3622] tabular-nums">
                   {adults}
                 </span>
                 <button
@@ -105,7 +97,7 @@ export function DatesAndTravellersBar() {
                 >
                   <Minus className="size-3.5" />
                 </button>
-                <span className="w-6 text-center font-mono font-bold text-sm text-[#0A3622]">
+                <span className="w-6 text-center font-mono font-bold text-sm text-[#0A3622] tabular-nums">
                   {children}
                 </span>
                 <button
@@ -124,7 +116,7 @@ export function DatesAndTravellersBar() {
               <div className="flex flex-col">
                 <span className="text-xs font-bold text-[#1A1D1A]">Infants</span>
                 <span className="text-[10px] text-[#686E65]">
-                  Under 2 yrs · Visa Only
+                  Under 2 yrs · Visa &amp; Air Ticket (0 Beds/Seats)
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -137,14 +129,19 @@ export function DatesAndTravellersBar() {
                 >
                   <Minus className="size-3.5" />
                 </button>
-                <span className="w-6 text-center font-mono font-bold text-sm text-[#0A3622]">
+                <span className="w-6 text-center font-mono font-bold text-sm text-[#0A3622] tabular-nums">
                   {infants}
                 </span>
                 <button
                   type="button"
+                  disabled={infants >= adults}
                   onClick={() => setTravellers({ infants: infants + 1 })}
-                  className="flex size-7 items-center justify-center rounded-md border border-[#E6DEC8] bg-white text-[#1A1D1A] hover:bg-[#F5EFE6] transition-colors"
-                  title="Increase Infants"
+                  className="flex size-7 items-center justify-center rounded-md border border-[#E6DEC8] bg-white text-[#1A1D1A] disabled:opacity-40 hover:bg-[#F5EFE6] transition-colors"
+                  title={
+                    infants >= adults
+                      ? "Infants cannot exceed accompanying adults"
+                      : "Increase Infants"
+                  }
                 >
                   <Plus className="size-3.5" />
                 </button>
@@ -155,43 +152,28 @@ export function DatesAndTravellersBar() {
       </div>
 
       {/* Card 2: Travel Window (Rendered ONLY when CitySequenceModule is NOT active) */}
-      {!isCitySequenceVisible && (
+      {!hasCityLegs && (
         <div className="flex flex-col justify-between rounded-2xl border border-[#E6DEC8] bg-white p-4 sm:p-5 shadow-xs w-full">
           <div>
             {/* Header */}
             <div className="flex items-center justify-between mb-3">
               <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
                 <Calendar className="size-3.5 text-[#C5A059]" />
-                Travel Window
+                KSA Travel Dates {pillars.visa ? "(Required for Visa Tier)" : ""}
               </span>
-              <span className="inline-flex items-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-3 py-1 text-xs font-semibold text-[#8F6E2A]">
+              <span className="inline-flex items-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-3 py-1 text-xs font-semibold text-[#7A5C1E] tabular-nums">
                 {totalKsaDays} {totalKsaDays === 1 ? "Day" : "Days"} Total
               </span>
             </div>
 
-            {hasCityLegs ? (
+            {presetMode === "transport_only" ? (
               <div className="flex flex-col gap-2.5 rounded-xl border border-[#C5A059]/30 bg-[#FAF7F0] p-4">
                 <div className="flex items-center gap-3">
-                  <span className="text-sm sm:text-base font-bold text-[#0A3622]">
+                  <span className="text-sm sm:text-base font-bold text-[#0A3622] tabular-nums">
                     {formatDisplayDate(dates.arrivalDate)}
                   </span>
                   <ArrowRight className="size-4 text-[#C5A059]" />
-                  <span className="text-sm sm:text-base font-bold text-[#0A3622]">
-                    {formatDisplayDate(dates.departureDate)}
-                  </span>
-                </div>
-                <p className="text-xs text-[#686E65] border-t border-[#E6DEC8]/60 pt-2">
-                  Calculated from your stay dates.
-                </p>
-              </div>
-            ) : presetMode === "transport_only" ? (
-              <div className="flex flex-col gap-2.5 rounded-xl border border-[#C5A059]/30 bg-[#FAF7F0] p-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm sm:text-base font-bold text-[#0A3622]">
-                    {formatDisplayDate(dates.arrivalDate)}
-                  </span>
-                  <ArrowRight className="size-4 text-[#C5A059]" />
-                  <span className="text-sm sm:text-base font-bold text-[#0A3622]">
+                  <span className="text-sm sm:text-base font-bold text-[#0A3622] tabular-nums">
                     {formatDisplayDate(dates.departureDate)}
                   </span>
                 </div>
@@ -200,21 +182,28 @@ export function DatesAndTravellersBar() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <PlannerDatePicker
-                  id="travel-arrival-date"
-                  label="Arrival Date"
-                  value={dates.arrivalDate}
-                  minDate={todayIso}
-                  onChange={(d) => setArrivalDate(d)}
-                />
-                <PlannerDatePicker
-                  id="travel-departure-date"
-                  label="Departure Date"
-                  value={dates.departureDate}
-                  minDate={dates.arrivalDate}
-                  onChange={(d) => setDepartureDate(d)}
-                />
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <PlannerDatePicker
+                    id="travel-arrival-date"
+                    label="KSA Arrival Date *"
+                    value={dates.arrivalDate}
+                    minDate={todayPktIso}
+                    onChange={(d) => setArrivalDate(d)}
+                  />
+                  <PlannerDatePicker
+                    id="travel-departure-date"
+                    label="KSA Departure Date *"
+                    value={dates.departureDate}
+                    minDate={addDaysToDateString(dates.arrivalDate, 1)}
+                    onChange={(d) => setDepartureDate(d)}
+                  />
+                </div>
+                {pillars.visa && (
+                  <p className="text-[11px] text-[#686E65]">
+                    Your Umrah visa duration tier (Short-Term ≤30 Days vs Extended &gt;30 Days) is calculated automatically on the server from your KSA arrival and departure dates.
+                  </p>
+                )}
               </div>
             )}
           </div>

@@ -1,30 +1,38 @@
 "use client"
 
 import React, {
+  Suspense,
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react"
-import type * as schema from "@/db/schema"
+import { useSearchParams } from "next/navigation"
+import { z } from "zod"
 import {
   chainItineraryDates,
   type CitySequence,
 } from "@/lib/domain/date-chaining"
-import {
-  calculatePrivateRoomSplits,
-} from "@/lib/domain/room-splitter"
+import { calculatePrivateRoomSplits } from "@/lib/domain/room-splitter"
 import {
   calculateVisaTierAndCost,
   type VisaCalculationResult,
   type VisaRateTiers,
 } from "@/lib/domain/visa-calc"
+import {
+  getTodayPktIso,
+  isStrictIsoCalendarDate,
+} from "@/components/public/public-utils"
+import type { AttributionPayload } from "@/lib/seo/utm"
 
 // ==========================================
-// TYPES & CATALOG PROPS
+// TYPES & WHOLESALE-SAFE CATALOG PROPS
 // ==========================================
+
+export const PLANNER_DRAFT_STORAGE_KEY = "alramlah_planner_draft_v1"
 
 export type PlannerPresetMode =
   | "complete_umrah"
@@ -69,15 +77,189 @@ export interface TransportSegmentConfig {
   scheduledDate: string
 }
 
+export interface PlannerContactDraft {
+  customerName: string
+  customerPhone: string
+  customerWhatsapp: string
+  customerCity: string
+  cityTouched: boolean
+  customerEmail: string
+  specialRequests: string
+  sameAsPhone: boolean
+}
+
+export interface PlannerSubmissionPayload {
+  clientSubmissionId?: string
+  honeypot?: string
+  attribution?: AttributionPayload
+  presetMode: PlannerPresetMode
+  includeVisa: boolean
+  includeFlights: boolean
+  includeHotels: boolean
+  includeTransport: boolean
+  includeZiyarat: boolean
+  passengers: {
+    adults: number
+    children: number
+    infants: number
+  }
+  ksaArrivalDate?: string
+  ksaDepartureDate?: string
+  citySequence?: CitySequence
+  entryAirport?: "JED" | "MED"
+  exitAirport?: "JED" | "MED"
+  departureCityId?: string
+  flightRouteType?: "direct" | "connecting"
+  cabinClass?: "economy" | "business"
+  preferredAirlineId?: string
+  hotelStays?: Array<{
+    stayOrder: number
+    city: "makkah" | "madinah"
+    hotelId: string
+    nights: number
+    checkInDate: string
+    checkOutDate: string
+    roomCategory: "shared" | "private"
+    sharedRoomType?: "sharing" | "double" | "triple" | "quad"
+    privateRoomAllocation?: { double: number; triple: number; quad: number }
+    mealPlan?: "room_only" | "breakfast" | "half_board" | "full_board"
+    includeBreakfast?: boolean
+    includeLunch?: boolean
+    includeDinner?: boolean
+  }>
+  transportSegments?: Array<{
+    segmentOrder: number
+    sectorId: string
+    serviceType: "private" | "shared"
+    vehicleId: string
+    pickupTime?: string
+    scheduledDate?: string
+  }>
+  ziyaratScope?: "makkah_only" | "madinah_only" | "both"
+  ziyaratVehicleId?: string
+  selectedZiyaratPlaceIds?: string[]
+  contact: {
+    customerName: string
+    customerPhone: string
+    customerWhatsapp?: string
+    customerCity: string
+    customerCountry?: string
+    customerEmail?: string
+    specialRequests?: string
+  }
+}
+
+export interface PlannerVisaRateItem {
+  id: string
+  tier: "short_term" | "long_term"
+  label: string
+  maxDays: number
+  pricePkr: number
+  priceSar?: number | null
+  withoutMasarPriceSar?: number | null
+  withMasar10DaysSar?: number | null
+  withMasar15DaysSar?: number | null
+  withMasar21DaysSar?: number | null
+  withMasar28DaysSar?: number | null
+  notes?: string | null
+}
+
+export interface PlannerHotelItem {
+  id: string
+  name: string
+  city: "makkah" | "madinah"
+  starRating: number
+  distanceMeters: number
+  distanceLabel: string
+  accessType: "walking" | "shuttle"
+  imageUrl: string | null
+  galleryUrls?: string[] | null
+  amenities: string[]
+  allowsSharedRooms: boolean
+  allowsPrivateRooms: boolean
+  availableRoomTypes: Array<"double" | "triple" | "quad">
+  offersDining: boolean
+  availableMealPlans: Array<
+    "room_only" | "breakfast" | "half_board" | "full_board"
+  >
+  validFrom?: string | null
+  validUntil?: string | null
+  locationNotes?: string | null
+  isFeatured: boolean
+  isActive?: boolean
+  sortOrder: number
+}
+
+export interface PlannerVehicleItem {
+  id: string
+  name: string
+  category: "sedan" | "suv" | "van" | "minibus" | "bus" | "train"
+  bookingMode: "private_only" | "shared_only" | "shared_and_private"
+  seatCapacity: number
+  luggageCapacity: number
+  allowsCustomPickupTime: boolean
+  imageUrl?: string | null
+  description?: string | null
+  isActive?: boolean
+  sortOrder: number
+}
+
+export interface PlannerTransportSectorItem {
+  id: string
+  code: string
+  label: string
+  originCity: string
+  destinationCity: string
+  originType?: "airport" | "hotel"
+  destinationType?: "airport" | "hotel"
+  supportsTrain: boolean
+  isSharedBusEligible: boolean
+  approxDistanceKm: number | null
+  approxDurationMinutes: number | null
+  isActive?: boolean
+  sortOrder: number
+}
+
+export interface PlannerZiyaratPlaceItem {
+  id: string
+  city: "makkah" | "madinah"
+  name: string
+  arabicName: string
+  description: string
+  imageUrl?: string | null
+  isActive?: boolean
+  sortOrder: number
+}
+
+export interface PlannerAirlineItem {
+  id: string
+  name: string
+  iataCode: string
+  logoUrl?: string | null
+  isDirectAvailable: boolean
+  isConnectingAvailable: boolean
+  isActive?: boolean
+  sortOrder?: number
+}
+
+export interface PlannerDepartureCityItem {
+  id: string
+  cityName: string
+  airportCode: string
+  airportName: string
+  isActive?: boolean
+  sortOrder?: number
+}
+
 export interface PlannerCatalogData {
-  visaRates: (typeof schema.visaRates.$inferSelect)[]
-  hotels: (typeof schema.hotels.$inferSelect)[]
-  vehicles: (typeof schema.vehicles.$inferSelect)[]
-  transportSectors: (typeof schema.transportSectors.$inferSelect)[]
-  ziyaratPlaces: (typeof schema.ziyaratPlaces.$inferSelect)[]
-  airlines: (typeof schema.airlines.$inferSelect)[]
-  departureCities: (typeof schema.departureCities.$inferSelect)[]
-  agencyWhatsapp?: string
+  visaRates: PlannerVisaRateItem[]
+  hotels: PlannerHotelItem[]
+  vehicles: PlannerVehicleItem[]
+  transportSectors: PlannerTransportSectorItem[]
+  ziyaratPlaces: PlannerZiyaratPlaceItem[]
+  airlines: PlannerAirlineItem[]
+  departureCities: PlannerDepartureCityItem[]
+  sarToPkrRate?: number
 }
 
 export type WizardStepId =
@@ -139,8 +321,10 @@ export interface PlannerContextValue {
   derived: {
     visaCalc: VisaCalculationResult
     isVisaOnly: boolean
-    leadVehicle: typeof schema.vehicles.$inferSelect | undefined
+    leadVehicle: PlannerVehicleItem | undefined
   }
+  contactDraft: PlannerContactDraft
+  clientSubmissionId: string
 
   // Wizard Navigation
   wizardSteps: WizardStep[]
@@ -182,11 +366,19 @@ export interface PlannerContextValue {
   toggleZiyaratPlace: (id: string) => void
   selectAllZiyaratPlaces: (city?: "makkah" | "madinah") => void
   setFallbackVehicleId: (id: string) => void
+  updateContactDraft: (updates: Partial<PlannerContactDraft>) => void
+  resetSubmissionSession: () => void
 }
 
 const PlannerContext = createContext<PlannerContextValue | null>(null)
+const PlannerUrlApplyContext = createContext<((rawSearch: string) => void) | null>(
+  null
+)
 
-// Helper date math
+// ==========================================
+// PURE DOMAIN & URL PREFILL HELPERS (EXPORTED FOR TESTS)
+// ==========================================
+
 export function addDaysToDateString(dateStr: string, days: number): string {
   const parts = dateStr.split("-").map(Number)
   const y = parts[0] || 2026
@@ -207,17 +399,643 @@ export function getDaysBetween(startStr: string, endStr: string): number {
   return Math.round((t2 - t1) / (1000 * 60 * 60 * 24))
 }
 
-// Initial default dates (14 days from now, 14 days duration)
+export function computeHasCityLegs(
+  pillars: ServicePillars,
+  presetMode: PlannerPresetMode
+): boolean {
+  return (
+    pillars.hotels ||
+    (pillars.flights && presetMode !== "flights_only") ||
+    (pillars.transport && presetMode !== "transport_only")
+  )
+}
+
+export function pruneOrphanedStationTransfers(
+  segments: TransportSegmentConfig[],
+  sectors: ReadonlyArray<{ id: string; code: string }>,
+  vehicles: ReadonlyArray<{ id: string; category: string }>,
+  presetMode: PlannerPresetMode
+): TransportSegmentConfig[] {
+  if (presetMode === "transport_only") {
+    return segments
+  }
+
+  const hasTrainLeg = segments.some((seg) => {
+    if (seg.enabled === false) return false
+    const veh = vehicles.find((v) => v.id === seg.vehicleId)
+    return veh?.category === "train"
+  })
+
+  if (hasTrainLeg) {
+    return segments
+  }
+
+  const filtered = segments.filter((seg) => {
+    const sec = sectors.find(
+      (ts) => ts.id === seg.sectorId || ts.code === seg.sectorId
+    )
+    const code = sec?.code ?? seg.sectorId
+    return code !== "MAK_TRN" && code !== "MED_TRN"
+  })
+
+  if (filtered.length === segments.length) {
+    return segments
+  }
+
+  return filtered.map((seg, idx) => ({
+    ...seg,
+    segmentOrder: idx + 1,
+  }))
+}
+
+export interface StoredNonPiiPlannerDraft {
+  v: 1
+  presetMode: PlannerPresetMode
+  pillars: ServicePillars
+  arrivalDate: string
+  departureDate: string
+  adults: number
+  children: number
+  infants: number
+  citySequence: CitySequence
+  entryAirport: "JED" | "MED"
+  exitAirport: "JED" | "MED"
+  stays: StayConfig[]
+  flights: {
+    departureCityId: string
+    routeType: "direct" | "connecting"
+    cabinClass: "economy" | "business"
+    preferredAirlineId: string
+  }
+  useSameVehicle: boolean
+  globalVehicleId: string
+  ziyaratScope: "makkah_only" | "madinah_only" | "both"
+  selectedPlaceIds: string[]
+  fallbackVehicleId: string
+}
+
+export function buildNonPiiPlannerDraftSnapshot(
+  draft: Omit<StoredNonPiiPlannerDraft, "v">
+): StoredNonPiiPlannerDraft {
+  return {
+    v: 1,
+    presetMode: draft.presetMode,
+    pillars: draft.pillars,
+    arrivalDate: draft.arrivalDate,
+    departureDate: draft.departureDate,
+    adults: draft.adults,
+    children: draft.children,
+    infants: draft.infants,
+    citySequence: draft.citySequence,
+    entryAirport: draft.entryAirport,
+    exitAirport: draft.exitAirport,
+    stays: draft.stays,
+    flights: draft.flights,
+    useSameVehicle: draft.useSameVehicle,
+    globalVehicleId: draft.globalVehicleId,
+    ziyaratScope: draft.ziyaratScope,
+    selectedPlaceIds: draft.selectedPlaceIds,
+    fallbackVehicleId: draft.fallbackVehicleId,
+  }
+}
+
+const urlPresetSchema = z.enum([
+  "visa_only",
+  "hotels_only",
+  "flights_only",
+  "complete_umrah",
+  "transport_only",
+])
+
+const urlCitySequenceSchema = z.enum([
+  "makkah_madinah",
+  "madinah_makkah",
+  "makkah_only",
+  "madinah_only",
+  "makkah_madinah_makkah",
+  "makkah_madinah_jeddah",
+])
+
+const urlZiyaratScopeSchema = z.enum(["both", "makkah_only", "madinah_only"])
+const urlHotelUuidSchema = z.string().uuid()
+
+export interface PlannerUrlPrefill {
+  preset?: z.infer<typeof urlPresetSchema>
+  departureCity?: "LHE" | "KHI" | "ISB"
+  citySequence?: CitySequence
+  hotelId?: string
+  ziyaratCity?: "both" | "makkah_only" | "madinah_only"
+  hasAnyOverride: boolean
+}
+
+function normalizeGatewayCode(raw: string | null): "LHE" | "KHI" | "ISB" | undefined {
+  if (!raw) return undefined
+  const cleaned = raw.trim().toUpperCase()
+  if (cleaned === "LHE" || cleaned === "LAHORE") return "LHE"
+  if (cleaned === "KHI" || cleaned === "KARACHI") return "KHI"
+  if (cleaned === "ISB" || cleaned === "ISLAMABAD") return "ISB"
+  return undefined
+}
+
+/**
+ * Zod-validated query-string parser for spoke-to-builder deep links (`SEO-006`, `S15-001`).
+ */
+export function parsePlannerUrlPrefill(
+  rawSearch: string | URLSearchParams
+): PlannerUrlPrefill {
+  const params =
+    typeof rawSearch === "string"
+      ? new URLSearchParams(
+          rawSearch.includes("?")
+            ? rawSearch.slice(rawSearch.indexOf("?"))
+            : rawSearch
+        )
+      : rawSearch
+
+  const presetParsed = urlPresetSchema.safeParse(
+    params.get("preset")?.trim().toLowerCase()
+  )
+  const departureCity = normalizeGatewayCode(params.get("departureCity"))
+  const seqParsed = urlCitySequenceSchema.safeParse(
+    params.get("citySequence")?.trim().toLowerCase()
+  )
+  const hotelParsed = urlHotelUuidSchema.safeParse(params.get("hotelId")?.trim())
+  const ziyaratParsed = urlZiyaratScopeSchema.safeParse(
+    params.get("ziyaratCity")?.trim().toLowerCase()
+  )
+
+  const result: PlannerUrlPrefill = {
+    preset: presetParsed.success ? presetParsed.data : undefined,
+    departureCity,
+    citySequence: seqParsed.success ? seqParsed.data : undefined,
+    hotelId: hotelParsed.success ? hotelParsed.data : undefined,
+    ziyaratCity: ziyaratParsed.success ? ziyaratParsed.data : undefined,
+    hasAnyOverride: false,
+  }
+
+  result.hasAnyOverride = Boolean(
+    result.preset ||
+      result.departureCity ||
+      result.citySequence ||
+      result.hotelId ||
+      result.ziyaratCity
+  )
+
+  return result
+}
+
+export function pillarsForPresetMode(mode: PlannerPresetMode): ServicePillars {
+  if (mode === "visa_only") {
+    return {
+      visa: true,
+      flights: false,
+      hotels: false,
+      transport: false,
+      ziyarat: false,
+    }
+  }
+  if (mode === "flights_only") {
+    return {
+      visa: false,
+      flights: true,
+      hotels: false,
+      transport: false,
+      ziyarat: false,
+    }
+  }
+  if (mode === "hotels_only") {
+    return {
+      visa: false,
+      flights: false,
+      hotels: true,
+      transport: false,
+      ziyarat: false,
+    }
+  }
+  if (mode === "transport_only") {
+    return {
+      visa: false,
+      flights: false,
+      hotels: false,
+      transport: true,
+      ziyarat: false,
+    }
+  }
+  return {
+    visa: true,
+    flights: true,
+    hotels: true,
+    transport: true,
+    ziyarat: true,
+  }
+}
+
+function inferPresetModeFromPillars(next: ServicePillars): PlannerPresetMode {
+  if (
+    next.visa &&
+    next.flights &&
+    next.hotels &&
+    next.transport &&
+    next.ziyarat
+  ) {
+    return "complete_umrah"
+  }
+  if (
+    next.visa &&
+    !next.flights &&
+    !next.hotels &&
+    !next.transport &&
+    !next.ziyarat
+  ) {
+    return "visa_only"
+  }
+  if (
+    !next.visa &&
+    next.flights &&
+    !next.hotels &&
+    !next.transport &&
+    !next.ziyarat
+  ) {
+    return "flights_only"
+  }
+  if (
+    !next.visa &&
+    !next.flights &&
+    next.hotels &&
+    !next.transport &&
+    !next.ziyarat
+  ) {
+    return "hotels_only"
+  }
+  if (
+    !next.visa &&
+    !next.flights &&
+    !next.hotels &&
+    next.transport &&
+    !next.ziyarat
+  ) {
+    return "transport_only"
+  }
+  return "custom_mix"
+}
+
+function buildChainedStaysForSequence(
+  seq: CitySequence,
+  arrDate: string,
+  currentStays: StayConfig[],
+  bedAndSeatCount: number,
+  hotelsCatalog: PlannerHotelItem[]
+): {
+  stays: StayConfig[]
+  finalDepartureDate: string
+  entryAirport: "JED" | "MED"
+  exitAirport: "JED" | "MED"
+} {
+  const defaultMakkahHotel =
+    hotelsCatalog.find((h) => h.city === "makkah")?.id ?? ""
+  const defaultMadinahHotel =
+    hotelsCatalog.find((h) => h.city === "madinah")?.id ?? ""
+
+  let stayCities: Array<{ city: "makkah" | "madinah"; nights: number }> = []
+  if (seq === "makkah_madinah" || seq === "makkah_madinah_jeddah") {
+    stayCities = [
+      { city: "makkah", nights: currentStays[0]?.nights ?? 7 },
+      { city: "madinah", nights: currentStays[1]?.nights ?? 7 },
+    ]
+  } else if (seq === "madinah_makkah") {
+    stayCities = [
+      { city: "madinah", nights: currentStays[0]?.nights ?? 7 },
+      { city: "makkah", nights: currentStays[1]?.nights ?? 7 },
+    ]
+  } else if (seq === "makkah_madinah_makkah") {
+    stayCities = [
+      { city: "makkah", nights: currentStays[0]?.nights ?? 5 },
+      { city: "madinah", nights: currentStays[1]?.nights ?? 5 },
+      { city: "makkah", nights: currentStays[2]?.nights ?? 4 },
+    ]
+  } else if (seq === "makkah_only") {
+    stayCities = [{ city: "makkah", nights: currentStays[0]?.nights ?? 14 }]
+  } else if (seq === "madinah_only") {
+    stayCities = [{ city: "madinah", nights: currentStays[0]?.nights ?? 14 }]
+  }
+
+  const chained = chainItineraryDates(seq, arrDate, stayCities)
+
+  const newStays: StayConfig[] = chained.chainedStays.map((cs, idx) => {
+    const existing = currentStays[idx]
+    const sameCityAndHotel =
+      existing?.city === cs.city && Boolean(existing.hotelId)
+    const hotelId = sameCityAndHotel
+      ? existing!.hotelId
+      : cs.city === "makkah"
+        ? defaultMakkahHotel
+        : defaultMadinahHotel
+
+    const targetHotel = hotelsCatalog.find((h) => h.id === hotelId)
+    const split = calculatePrivateRoomSplits(
+      bedAndSeatCount,
+      targetHotel?.availableRoomTypes
+    ).primaryAllocation
+
+    let roomCategory = existing?.roomCategory ?? "private"
+    if (bedAndSeatCount === 1) roomCategory = "private"
+    if (
+      roomCategory === "shared" &&
+      targetHotel &&
+      !targetHotel.allowsSharedRooms
+    ) {
+      roomCategory = "private"
+    } else if (
+      roomCategory === "private" &&
+      targetHotel &&
+      !targetHotel.allowsPrivateRooms
+    ) {
+      roomCategory = "shared"
+    }
+
+    return {
+      stayOrder: idx + 1,
+      city: cs.city,
+      hotelId,
+      nights: cs.nights,
+      checkInDate: cs.checkInDate,
+      checkOutDate: cs.checkOutDate,
+      roomCategory,
+      sharedRoomType: existing?.sharedRoomType ?? "sharing",
+      privateRoomAllocation: sameCityAndHotel
+        ? (existing?.privateRoomAllocation ?? split)
+        : split,
+      mealPlan: existing?.mealPlan ?? "room_only",
+      includeBreakfast: existing?.includeBreakfast ?? false,
+      includeLunch: existing?.includeLunch ?? false,
+      includeDinner: existing?.includeDinner ?? false,
+      starFilter: existing?.starFilter ?? 0,
+    }
+  })
+
+  const entryAirport: "JED" | "MED" = seq.startsWith("makkah") ? "JED" : "MED"
+  const exitAirport: "JED" | "MED" =
+    seq === "makkah_madinah" || seq === "madinah_only" ? "MED" : "JED"
+
+  return {
+    stays: newStays,
+    finalDepartureDate: chained.finalDepartureDate,
+    entryAirport,
+    exitAirport,
+  }
+}
+
+export interface ResolvablePlannerState {
+  presetMode: PlannerPresetMode
+  pillars: ServicePillars
+  arrivalDate: string
+  departureDate: string
+  adults: number
+  children: number
+  infants: number
+  citySequence: CitySequence
+  entryAirport: "JED" | "MED"
+  exitAirport: "JED" | "MED"
+  stays: StayConfig[]
+  flights: PlannerContextValue["flights"]
+  ziyaratScope: "makkah_only" | "madinah_only" | "both"
+  selectedPlaceIds: string[]
+  customerCity: string
+  activeStepId: WizardStepId
+}
+
+const CITY_DISPLAY_BY_CODE: Record<"LHE" | "KHI" | "ISB", string> = {
+  LHE: "Lahore",
+  KHI: "Karachi",
+  ISB: "Islamabad",
+}
+
+/**
+ * Pure URL-over-`sessionStorage` state reducer enforcing all Haramain domain invariants:
+ * - Makkah-first `JED` entry lock (Invariant #3)
+ * - Seamless hotel stay date chaining (`checkOut[i] === checkIn[i+1]`, Invariant #7)
+ * - `calculatePrivateRoomSplits()` & `allowsPrivateRooms`/`allowsSharedRooms` guards (Invariant #5)
+ */
+export function resolvePlannerPrefillState(
+  base: ResolvablePlannerState,
+  prefill: PlannerUrlPrefill,
+  catalog: Pick<
+    PlannerCatalogData,
+    "hotels" | "departureCities" | "ziyaratPlaces"
+  >
+): ResolvablePlannerState {
+  if (!prefill.hasAnyOverride) {
+    return base
+  }
+
+  const todayPkt = getTodayPktIso()
+  const arrivalDate =
+    isStrictIsoCalendarDate(base.arrivalDate) && base.arrivalDate >= todayPkt
+      ? base.arrivalDate
+      : addDaysToDateString(todayPkt, 14)
+
+  let presetMode = base.presetMode
+  let pillars = { ...base.pillars }
+  let activeStepId = base.activeStepId
+  let flights = { ...base.flights }
+  let customerCity = base.customerCity
+  let citySequence = base.citySequence
+  let entryAirport = base.entryAirport
+  let exitAirport = base.exitAirport
+  let stays = base.stays.map((s) => ({ ...s }))
+  let departureDate =
+    isStrictIsoCalendarDate(base.departureDate) &&
+    getDaysBetween(arrivalDate, base.departureDate) >= 1
+      ? base.departureDate
+      : addDaysToDateString(arrivalDate, 14)
+  let ziyaratScope = base.ziyaratScope
+  let selectedPlaceIds = [...base.selectedPlaceIds]
+
+  const bedCount = Math.max(1, base.adults + base.children)
+
+  // 1. Preset override
+  if (prefill.preset) {
+    presetMode = prefill.preset
+    pillars = pillarsForPresetMode(prefill.preset)
+    if (prefill.preset === "hotels_only") {
+      activeStepId = "hotels"
+    } else if (prefill.preset === "flights_only") {
+      activeStepId = "flights"
+    } else if (prefill.preset === "transport_only") {
+      activeStepId = "transport"
+    } else {
+      activeStepId = "setup"
+    }
+  }
+
+  // 2. Departure city override (`LHE`, `KHI`, `ISB`)
+  if (prefill.departureCity) {
+    const matchedCity = catalog.departureCities.find(
+      (c) => c.airportCode.toUpperCase() === prefill.departureCity
+    )
+    if (matchedCity) {
+      flights = { ...flights, departureCityId: matchedCity.id }
+      customerCity =
+        matchedCity.cityName.split("/")[0]?.trim() ||
+        CITY_DISPLAY_BY_CODE[prefill.departureCity]
+    } else {
+      customerCity = CITY_DISPLAY_BY_CODE[prefill.departureCity]
+    }
+    if (!prefill.preset && !pillars.flights) {
+      pillars.flights = true
+      presetMode = inferPresetModeFromPillars(pillars)
+    }
+  }
+
+  // 3. Validate hotelId against active catalog
+  const matchedHotel = prefill.hotelId
+    ? catalog.hotels.find(
+        (h) => h.id === prefill.hotelId && (h.isActive === undefined || h.isActive)
+      )
+    : undefined
+
+  if (matchedHotel && !prefill.preset && !pillars.hotels) {
+    pillars.hotels = true
+    presetMode = inferPresetModeFromPillars(pillars)
+  }
+
+  // 4. City sequence resolution (explicit or inferred from hotel city)
+  if (prefill.citySequence) {
+    citySequence = prefill.citySequence
+  } else if (
+    matchedHotel &&
+    !stays.some((s) => s.city === matchedHotel.city)
+  ) {
+    citySequence =
+      matchedHotel.city === "madinah" ? "madinah_makkah" : "makkah_madinah"
+  }
+
+  // 5. Chain stays & lock airports (`JED` lock for Makkah-first)
+  const hasLegs = computeHasCityLegs(pillars, presetMode)
+  if (hasLegs || prefill.citySequence || matchedHotel) {
+    const built = buildChainedStaysForSequence(
+      citySequence,
+      arrivalDate,
+      stays,
+      bedCount,
+      catalog.hotels
+    )
+    stays = built.stays
+    entryAirport = built.entryAirport
+    exitAirport = built.exitAirport
+    if (hasLegs) {
+      departureDate = built.finalDepartureDate
+    }
+  } else if (citySequence.startsWith("makkah")) {
+    entryAirport = "JED"
+  }
+
+  // 6. Apply specific hotelId + private room splitter & room-category guards
+  if (matchedHotel) {
+    const targetStayIdx = stays.findIndex((s) => s.city === matchedHotel.city)
+    if (targetStayIdx >= 0) {
+      const currentStay = stays[targetStayIdx]!
+      let nextCategory = currentStay.roomCategory
+      if (bedCount === 1) nextCategory = "private"
+      if (nextCategory === "shared" && !matchedHotel.allowsSharedRooms) {
+        nextCategory = "private"
+      } else if (
+        nextCategory === "private" &&
+        !matchedHotel.allowsPrivateRooms
+      ) {
+        nextCategory = "shared"
+      }
+
+      const nextAlloc = calculatePrivateRoomSplits(
+        bedCount,
+        matchedHotel.availableRoomTypes
+      ).primaryAllocation
+
+      stays[targetStayIdx] = {
+        ...currentStay,
+        hotelId: matchedHotel.id,
+        roomCategory: nextCategory,
+        privateRoomAllocation: nextAlloc,
+      }
+    }
+  }
+
+  // 7. Ziyarat scope override
+  if (prefill.ziyaratCity) {
+    if (!prefill.preset && !pillars.ziyarat) {
+      pillars.ziyarat = true
+      presetMode = inferPresetModeFromPillars(pillars)
+    }
+    let effectiveScope = prefill.ziyaratCity
+    if (computeHasCityLegs(pillars, presetMode)) {
+      if (citySequence === "makkah_only") {
+        effectiveScope = "makkah_only"
+      } else if (citySequence === "madinah_only") {
+        effectiveScope = "madinah_only"
+      }
+    }
+    ziyaratScope = effectiveScope
+    const activeCities: Array<"makkah" | "madinah"> =
+      effectiveScope === "both"
+        ? ["makkah", "madinah"]
+        : effectiveScope === "makkah_only"
+          ? ["makkah"]
+          : ["madinah"]
+    const scopedPlaces = catalog.ziyaratPlaces
+      .filter((p) => activeCities.includes(p.city))
+      .map((p) => p.id)
+    if (scopedPlaces.length > 0) {
+      selectedPlaceIds = scopedPlaces
+    }
+  }
+
+  return {
+    presetMode,
+    pillars,
+    arrivalDate,
+    departureDate,
+    adults: base.adults,
+    children: base.children,
+    infants: base.infants,
+    citySequence,
+    entryAirport,
+    exitAirport,
+    stays,
+    flights,
+    ziyaratScope,
+    selectedPlaceIds,
+    customerCity,
+    activeStepId,
+  }
+}
+
+/**
+ * `<Suspense>`-wrapped URL search-param hydrator (`SEO-006`).
+ * Never causes parent RSC / ISR bailout on `/`.
+ */
+export function PlannerUrlHydrator(): null {
+  const applyUrlPrefill = useContext(PlannerUrlApplyContext)
+  const searchParams = useSearchParams()
+  const searchString = searchParams.toString()
+
+  useEffect(() => {
+    if (!searchString || !applyUrlPrefill) return
+    applyUrlPrefill(searchString)
+  }, [applyUrlPrefill, searchString])
+
+  return null
+}
+
+function generateClientSubmissionId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `plnr_${crypto.randomUUID().replace(/-/g, "")}`
+  }
+  return `plnr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`
+}
+
+// Initial default dates anchored to PKT (`Asia/Karachi`, 14 days from today PKT)
 function getInitialArrivalDate(): string {
-  const now = new Date()
-  const y = now.getUTCFullYear()
-  const m = now.getUTCMonth()
-  const d = now.getUTCDate()
-  const target = new Date(Date.UTC(y, m, d + 14))
-  const resY = String(target.getUTCFullYear()).padStart(4, "0")
-  const resM = String(target.getUTCMonth() + 1).padStart(2, "0")
-  const resD = String(target.getUTCDate()).padStart(2, "0")
-  return `${resY}-${resM}-${resD}`
+  return addDaysToDateString(getTodayPktIso(), 14)
 }
 
 export function PlannerProvider({
@@ -225,7 +1043,7 @@ export function PlannerProvider({
   children: reactChildren,
 }: {
   catalog: PlannerCatalogData
-  children: React.ReactNode
+  children?: React.ReactNode
 }) {
   const initialArrival = useMemo(() => getInitialArrivalDate(), [])
   const initialDeparture = useMemo(
@@ -251,7 +1069,6 @@ export function PlannerProvider({
     const steps: WizardStep[] = []
     let num = 1
 
-    // 1. Setup & Dates (Always present)
     steps.push({
       id: "setup",
       stepNumber: num++,
@@ -261,7 +1078,6 @@ export function PlannerProvider({
       subtitle: "Select journey preset, toggle service pillars & choose dates",
     })
 
-    // Dynamic Middle Steps
     if (pillars.flights) {
       steps.push({
         id: "flights",
@@ -306,7 +1122,6 @@ export function PlannerProvider({
       })
     }
 
-    // Final Step (Always present)
     steps.push({
       id: "review",
       stepNumber: num,
@@ -319,7 +1134,6 @@ export function PlannerProvider({
     return steps
   }, [pillars.flights, pillars.hotels, pillars.transport, pillars.ziyarat])
 
-  // Automatically keep activeStepId valid if pillars change
   useEffect(() => {
     if (!wizardSteps.some((s) => s.id === activeStepId)) {
       setActiveStepIdState("setup")
@@ -433,6 +1247,333 @@ export function PlannerProvider({
   const [fallbackVehicleId, setFallbackVehicleId] =
     useState<string>(defaultRoadVehicle)
 
+  // Step-6 Contact Draft (in-memory only — NEVER persisted to sessionStorage)
+  const initialCityLabel = useMemo(() => {
+    const dep = catalog.departureCities.find((c) => c.id === defaultDepartureCity)
+    return dep?.cityName?.split("/")[0]?.trim() || "Lahore"
+  }, [catalog.departureCities, defaultDepartureCity])
+
+  const [contactDraft, setContactDraft] = useState<PlannerContactDraft>({
+    customerName: "",
+    customerPhone: "",
+    customerWhatsapp: "",
+    customerCity: initialCityLabel,
+    cityTouched: false,
+    customerEmail: "",
+    specialRequests: "",
+    sameAsPhone: true,
+  })
+
+  const [clientSubmissionId, setClientSubmissionId] = useState<string>(() =>
+    generateClientSubmissionId()
+  )
+
+  // Sync default contact city from departure city until user edits city manually
+  useEffect(() => {
+    if (contactDraft.cityTouched) return
+    const dep = catalog.departureCities.find(
+      (c) => c.id === flights.departureCityId
+    )
+    const derivedCity = dep?.cityName?.split("/")[0]?.trim()
+    if (derivedCity && derivedCity !== contactDraft.customerCity) {
+      setContactDraft((prev) =>
+        prev.cityTouched ? prev : { ...prev, customerCity: derivedCity }
+      )
+    }
+  }, [
+    catalog.departureCities,
+    flights.departureCityId,
+    contactDraft.cityTouched,
+    contactDraft.customerCity,
+  ])
+
+  const updateContactDraft = useCallback(
+    (updates: Partial<PlannerContactDraft>) => {
+      setContactDraft((prev) => {
+        const next = { ...prev, ...updates }
+        if (next.sameAsPhone && updates.customerPhone !== undefined) {
+          next.customerWhatsapp = updates.customerPhone
+        }
+        return next
+      })
+    },
+    []
+  )
+
+  const resetSubmissionSession = useCallback(() => {
+    setClientSubmissionId(generateClientSubmissionId())
+    if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.removeItem(PLANNER_DRAFT_STORAGE_KEY)
+      } catch {
+        // Ignore storage quota / private mode restrictions
+      }
+    }
+  }, [])
+
+  const applyResolvedPrefillState = useCallback(
+    (resolved: ResolvablePlannerState, shouldScroll: boolean) => {
+      setPresetModeState(resolved.presetMode)
+      setPillars(resolved.pillars)
+      setArrivalDateState(resolved.arrivalDate)
+      setDepartureDateState(resolved.departureDate)
+      setAdults(resolved.adults)
+      setChildren(resolved.children)
+      setInfants(resolved.infants)
+      setCitySequenceState(resolved.citySequence)
+      setEntryAirportState(resolved.entryAirport)
+      setExitAirportState(resolved.exitAirport)
+      setStays(resolved.stays)
+      setFlights(resolved.flights)
+      setZiyaratScope(resolved.ziyaratScope)
+      setSelectedPlaceIds(resolved.selectedPlaceIds)
+      setActiveStepIdState(resolved.activeStepId)
+      setContactDraft((prev) =>
+        prev.cityTouched
+          ? prev
+          : { ...prev, customerCity: resolved.customerCity }
+      )
+
+      if (shouldScroll && typeof document !== "undefined") {
+        const target =
+          document.getElementById("journey-builder") ??
+          document.getElementById("custom-journey")
+        target?.scrollIntoView({ behavior: "smooth", block: "start" })
+      }
+    },
+    []
+  )
+
+  const draftHydratedRef = useRef(false)
+  const lastAppliedUrlSearchRef = useRef<string>("")
+  const latestStateRef = useRef<ResolvablePlannerState>({
+    presetMode,
+    pillars,
+    arrivalDate,
+    departureDate,
+    adults,
+    children,
+    infants,
+    citySequence,
+    entryAirport,
+    exitAirport,
+    stays,
+    flights,
+    ziyaratScope,
+    selectedPlaceIds,
+    customerCity: contactDraft.customerCity,
+    activeStepId,
+  })
+  useEffect(() => {
+    latestStateRef.current = {
+      presetMode,
+      pillars,
+      arrivalDate,
+      departureDate,
+      adults,
+      children,
+      infants,
+      citySequence,
+      entryAirport,
+      exitAirport,
+      stays,
+      flights,
+      ziyaratScope,
+      selectedPlaceIds,
+      customerCity: contactDraft.customerCity,
+      activeStepId,
+    }
+  })
+
+  // T-083 + SEO-006: Hydrate non-PII draft from sessionStorage FIRST, then apply URL query overrides so URL ALWAYS wins
+  useEffect(() => {
+    if (draftHydratedRef.current) return
+    draftHydratedRef.current = true
+    if (typeof window === "undefined") return
+
+    let baseState: ResolvablePlannerState = { ...latestStateRef.current }
+
+    try {
+      const raw = window.sessionStorage.getItem(PLANNER_DRAFT_STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<StoredNonPiiPlannerDraft>
+        if (parsed.v === 1) {
+          const todayPkt = getTodayPktIso()
+          if (
+            parsed.presetMode &&
+            [
+              "complete_umrah",
+              "visa_only",
+              "flights_only",
+              "hotels_only",
+              "transport_only",
+              "custom_mix",
+            ].includes(parsed.presetMode)
+          ) {
+            baseState.presetMode = parsed.presetMode
+          }
+
+          if (
+            parsed.pillars &&
+            typeof parsed.pillars.visa === "boolean" &&
+            Object.values(parsed.pillars).some(Boolean)
+          ) {
+            baseState.pillars = parsed.pillars
+          }
+
+          if (
+            typeof parsed.arrivalDate === "string" &&
+            isStrictIsoCalendarDate(parsed.arrivalDate) &&
+            parsed.arrivalDate >= todayPkt
+          ) {
+            baseState.arrivalDate = parsed.arrivalDate
+          }
+          if (
+            typeof parsed.departureDate === "string" &&
+            isStrictIsoCalendarDate(parsed.departureDate) &&
+            parsed.departureDate >= todayPkt
+          ) {
+            baseState.departureDate = parsed.departureDate
+          }
+
+          if (typeof parsed.adults === "number" && parsed.adults >= 1) {
+            const safeAdults = Math.min(30, Math.floor(parsed.adults))
+            baseState.adults = safeAdults
+            if (typeof parsed.children === "number" && parsed.children >= 0) {
+              baseState.children = Math.min(20, Math.floor(parsed.children))
+            }
+            if (typeof parsed.infants === "number" && parsed.infants >= 0) {
+              baseState.infants = Math.min(safeAdults, Math.floor(parsed.infants))
+            }
+          }
+
+          if (parsed.citySequence) {
+            baseState.citySequence = parsed.citySequence
+          }
+          if (parsed.entryAirport === "JED" || parsed.entryAirport === "MED") {
+            baseState.entryAirport = parsed.citySequence?.startsWith("makkah")
+              ? "JED"
+              : parsed.entryAirport
+          }
+          if (parsed.exitAirport === "JED" || parsed.exitAirport === "MED") {
+            baseState.exitAirport = parsed.exitAirport
+          }
+
+          if (Array.isArray(parsed.stays) && parsed.stays.length > 0) {
+            baseState.stays = parsed.stays
+          }
+          if (parsed.flights && typeof parsed.flights === "object") {
+            baseState.flights = { ...baseState.flights, ...parsed.flights }
+          }
+          if (typeof parsed.useSameVehicle === "boolean") {
+            setUseSameVehicleState(parsed.useSameVehicle)
+          }
+          if (
+            typeof parsed.globalVehicleId === "string" &&
+            parsed.globalVehicleId
+          ) {
+            setGlobalVehicleIdState(parsed.globalVehicleId)
+          }
+          if (parsed.ziyaratScope) {
+            baseState.ziyaratScope = parsed.ziyaratScope
+          }
+          if (
+            Array.isArray(parsed.selectedPlaceIds) &&
+            parsed.selectedPlaceIds.length > 0
+          ) {
+            baseState.selectedPlaceIds = parsed.selectedPlaceIds
+          }
+          if (
+            typeof parsed.fallbackVehicleId === "string" &&
+            parsed.fallbackVehicleId
+          ) {
+            setFallbackVehicleId(parsed.fallbackVehicleId)
+          }
+        }
+      }
+    } catch {
+      // Ignore malformed sessionStorage payload
+    }
+
+    const initialSearch = window.location.search.replace(/^\?/, "")
+    const prefill = parsePlannerUrlPrefill(initialSearch)
+    if (prefill.hasAnyOverride) {
+      lastAppliedUrlSearchRef.current = initialSearch
+      baseState = resolvePlannerPrefillState(baseState, prefill, catalog)
+      applyResolvedPrefillState(baseState, true)
+    } else {
+      applyResolvedPrefillState(baseState, false)
+    }
+  }, [applyResolvedPrefillState, catalog])
+
+  const handleUrlPrefillFromChild = useCallback(
+    (rawSearch: string) => {
+      const normalized = rawSearch.replace(/^\?/, "")
+      if (!normalized || normalized === lastAppliedUrlSearchRef.current) {
+        return
+      }
+      const prefill = parsePlannerUrlPrefill(normalized)
+      if (!prefill.hasAnyOverride) return
+      lastAppliedUrlSearchRef.current = normalized
+      const next = resolvePlannerPrefillState(
+        latestStateRef.current,
+        prefill,
+        catalog
+      )
+      applyResolvedPrefillState(next, true)
+    },
+    [applyResolvedPrefillState, catalog]
+  )
+
+  useEffect(() => {
+    if (!draftHydratedRef.current || typeof window === "undefined") return
+    try {
+      const snapshot = buildNonPiiPlannerDraftSnapshot({
+        presetMode,
+        pillars,
+        arrivalDate,
+        departureDate,
+        adults,
+        children,
+        infants,
+        citySequence,
+        entryAirport,
+        exitAirport,
+        stays,
+        flights,
+        useSameVehicle,
+        globalVehicleId,
+        ziyaratScope,
+        selectedPlaceIds,
+        fallbackVehicleId,
+      })
+      window.sessionStorage.setItem(
+        PLANNER_DRAFT_STORAGE_KEY,
+        JSON.stringify(snapshot)
+      )
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [
+    presetMode,
+    pillars,
+    arrivalDate,
+    departureDate,
+    adults,
+    children,
+    infants,
+    citySequence,
+    entryAirport,
+    exitAirport,
+    stays,
+    flights,
+    useSameVehicle,
+    globalVehicleId,
+    ziyaratScope,
+    selectedPlaceIds,
+    fallbackVehicleId,
+  ])
+
   // Auto-initialize ziyarat places if catalog was populated after initial render
   useEffect(() => {
     if (catalog.ziyaratPlaces.length > 0) {
@@ -450,12 +1591,10 @@ export function PlannerProvider({
     }
   }, [catalog.ziyaratPlaces, ziyaratScope])
 
-  const hasCityLegs = useMemo(() => {
-    return (
-      pillars.hotels ||
-      (pillars.transport && presetMode !== "transport_only")
-    )
-  }, [pillars.hotels, pillars.transport, presetMode])
+  const hasCityLegs = useMemo(
+    () => computeHasCityLegs(pillars, presetMode),
+    [pillars, presetMode]
+  )
 
   const syncPlacesForScope = useCallback(
     (targetScope: "makkah_only" | "madinah_only" | "both") => {
@@ -484,7 +1623,7 @@ export function PlannerProvider({
 
         if (nextSelected.length === 0) {
           const scopePlaces = catalog.ziyaratPlaces.filter((p) =>
-            activeCities.includes(p.city as "makkah" | "madinah")
+            activeCities.includes(p.city)
           )
           return scopePlaces.map((p) => p.id)
         }
@@ -530,139 +1669,56 @@ export function PlannerProvider({
   // Sync stays when sequence or dates change
   const recomputeStays = useCallback(
     (seq: CitySequence, arrDate: string, currentStays: StayConfig[]) => {
-      let stayCities: Array<{ city: "makkah" | "madinah"; nights: number }> = []
-
-      if (seq === "makkah_madinah" || seq === "makkah_madinah_jeddah") {
-        const n1 = currentStays[0]?.nights ?? 7
-        const n2 = currentStays[1]?.nights ?? 7
-        stayCities = [
-          { city: "makkah", nights: n1 },
-          { city: "madinah", nights: n2 },
-        ]
-      } else if (seq === "madinah_makkah") {
-        const n1 = currentStays[0]?.nights ?? 7
-        const n2 = currentStays[1]?.nights ?? 7
-        stayCities = [
-          { city: "madinah", nights: n1 },
-          { city: "makkah", nights: n2 },
-        ]
-      } else if (seq === "makkah_madinah_makkah") {
-        const n1 = currentStays[0]?.nights ?? 5
-        const n2 = currentStays[1]?.nights ?? 5
-        const n3 = currentStays[2]?.nights ?? 4
-        stayCities = [
-          { city: "makkah", nights: n1 },
-          { city: "madinah", nights: n2 },
-          { city: "makkah", nights: n3 },
-        ]
-      } else if (seq === "makkah_only") {
-        const n1 = currentStays[0]?.nights ?? 14
-        stayCities = [{ city: "makkah", nights: n1 }]
-      } else if (seq === "madinah_only") {
-        const n1 = currentStays[0]?.nights ?? 14
-        stayCities = [{ city: "madinah", nights: n1 }]
-      }
-
-      const chained = chainItineraryDates(seq, arrDate, stayCities)
-
-      const newStays: StayConfig[] = chained.chainedStays.map((cs, idx) => {
-        const existing = currentStays[idx]
-        const hotelId =
-          existing?.city === cs.city && existing.hotelId
-            ? existing.hotelId
-            : cs.city === "makkah"
-              ? defaultMakkahHotel
-              : defaultMadinahHotel
-
-        const targetHotel = catalog.hotels.find((h) => h.id === hotelId)
-        const split = calculatePrivateRoomSplits(
-          bedAndSeatCount,
-          targetHotel?.availableRoomTypes as
-            | Array<"double" | "triple" | "quad">
-            | undefined
-        ).primaryAllocation
-
-        let roomCategory = existing?.roomCategory ?? "private"
-        if (bedAndSeatCount === 1) roomCategory = "private"
-        if (roomCategory === "shared" && targetHotel && !targetHotel.allowsSharedRooms) {
-          roomCategory = "private"
-        } else if (roomCategory === "private" && targetHotel && !targetHotel.allowsPrivateRooms) {
-          roomCategory = "shared"
-        }
-
-        return {
-          stayOrder: idx + 1,
-          city: cs.city,
-          hotelId,
-          nights: cs.nights,
-          checkInDate: cs.checkInDate,
-          checkOutDate: cs.checkOutDate,
-          roomCategory,
-          sharedRoomType: existing?.sharedRoomType ?? "sharing",
-          privateRoomAllocation: existing?.privateRoomAllocation ?? split,
-          mealPlan: existing?.mealPlan ?? "room_only",
-          includeBreakfast: existing?.includeBreakfast ?? false,
-          includeLunch: existing?.includeLunch ?? false,
-          includeDinner: existing?.includeDinner ?? false,
-          starFilter: existing?.starFilter ?? 0,
-        }
-      })
-
-      setStays(newStays)
-      setDepartureDateState(chained.finalDepartureDate)
-
-      // Airport locking
-      if (chained.entryAirport === "JED") {
-        setEntryAirportState("JED")
-      } else {
-        setEntryAirportState("MED")
-      }
+      const built = buildChainedStaysForSequence(
+        seq,
+        arrDate,
+        currentStays,
+        bedAndSeatCount,
+        catalog.hotels
+      )
+      setStays(built.stays)
+      setDepartureDateState(built.finalDepartureDate)
+      setEntryAirportState(built.entryAirport)
     },
-    [bedAndSeatCount, catalog.hotels, defaultMakkahHotel, defaultMadinahHotel]
+    [bedAndSeatCount, catalog.hotels]
   )
 
-  // Re-sync stays on sequence change
   const setCitySequence = useCallback(
     (seq: CitySequence) => {
-      const targetSeq =
-        pillars.visa && (seq === "makkah_only" || seq === "madinah_only")
-          ? "makkah_madinah"
-          : seq
-
-      setCitySequenceState(targetSeq)
-      if (targetSeq.startsWith("makkah")) {
+      setCitySequenceState(seq)
+      if (seq.startsWith("makkah")) {
         setEntryAirportState("JED")
         if (
-          targetSeq === "makkah_only" ||
-          targetSeq === "makkah_madinah_makkah" ||
-          targetSeq === "makkah_madinah_jeddah"
+          seq === "makkah_only" ||
+          seq === "makkah_madinah_makkah" ||
+          seq === "makkah_madinah_jeddah"
         ) {
           setExitAirportState("JED")
         } else {
           setExitAirportState("MED")
         }
-      } else if (targetSeq === "madinah_makkah") {
+      } else if (seq === "madinah_makkah") {
         setEntryAirportState("MED")
         setExitAirportState("JED")
-      } else if (targetSeq === "madinah_only") {
+      } else if (seq === "madinah_only") {
         setEntryAirportState("MED")
         setExitAirportState("MED")
       }
-      recomputeStays(targetSeq, arrivalDate, stays)
+      recomputeStays(seq, arrivalDate, stays)
     },
-    [arrivalDate, pillars.visa, recomputeStays, stays]
+    [arrivalDate, recomputeStays, stays]
   )
 
   const setEntryAirport = useCallback(
     (airport: "JED" | "MED") => {
-      // Invariant: Makkah has no civilian airport; sequences starting in Makkah lock entryAirport to JED
-      if (citySequence.startsWith("makkah")) {
+      // Business Invariant #3: Makkah has no commercial airport; Makkah-first locks entryAirport to JED
+      if (hasCityLegs && citySequence.startsWith("makkah")) {
         setEntryAirportState("JED")
         return
       }
       setEntryAirportState(airport)
     },
-    [citySequence]
+    [citySequence, hasCityLegs]
   )
 
   const setArrivalDate = useCallback(
@@ -691,20 +1747,24 @@ export function PlannerProvider({
         return
       }
 
-      const lastStay = stays[stays.length - 1]
-      if (new Date(newDepDate).getTime() > new Date(lastStay.checkInDate).getTime()) {
+      const lastStay = stays[stays.length - 1]!
+      if (getDaysBetween(lastStay.checkInDate, newDepDate) >= 1) {
         const lastStayNights = getDaysBetween(lastStay.checkInDate, newDepDate)
         const stayConfigs = stays.map((s, idx) => ({
           city: s.city,
           nights: idx === stays.length - 1 ? lastStayNights : s.nights,
         }))
-        const chained = chainItineraryDates(citySequence, arrivalDate, stayConfigs)
+        const chained = chainItineraryDates(
+          citySequence,
+          arrivalDate,
+          stayConfigs
+        )
         setStays((prev) =>
           prev.map((s, idx) => ({
             ...s,
-            nights: chained.chainedStays[idx].nights,
-            checkInDate: chained.chainedStays[idx].checkInDate,
-            checkOutDate: chained.chainedStays[idx].checkOutDate,
+            nights: chained.chainedStays[idx]!.nights,
+            checkInDate: chained.chainedStays[idx]!.checkInDate,
+            checkOutDate: chained.chainedStays[idx]!.checkOutDate,
           }))
         )
       } else {
@@ -715,13 +1775,17 @@ export function PlannerProvider({
           city: s.city,
           nights: baseNights + (idx < remainder ? 1 : 0),
         }))
-        const chained = chainItineraryDates(citySequence, arrivalDate, stayConfigs)
+        const chained = chainItineraryDates(
+          citySequence,
+          arrivalDate,
+          stayConfigs
+        )
         setStays((prev) =>
           prev.map((s, idx) => ({
             ...s,
-            nights: chained.chainedStays[idx].nights,
-            checkInDate: chained.chainedStays[idx].checkInDate,
-            checkOutDate: chained.chainedStays[idx].checkOutDate,
+            nights: chained.chainedStays[idx]!.nights,
+            checkInDate: chained.chainedStays[idx]!.checkInDate,
+            checkOutDate: chained.chainedStays[idx]!.checkOutDate,
           }))
         )
       }
@@ -736,9 +1800,7 @@ export function PlannerProvider({
         const hotel = catalog.hotels.find((h) => h.id === s.hotelId)
         const split = calculatePrivateRoomSplits(
           bedAndSeatCount,
-          hotel?.availableRoomTypes as
-            | Array<"double" | "triple" | "quad">
-            | undefined
+          hotel?.availableRoomTypes
         ).primaryAllocation
         return {
           ...s,
@@ -755,17 +1817,13 @@ export function PlannerProvider({
     const vehicleToUse = globalVehicleId || defaultVehicle
 
     if (presetMode === "transport_only") {
-      // In transport-only mode: provide all sectors from catalog
-      // Default enabled: JED_MAK, MAK_MED, MED_AIR
       setSegments((prevSegments) => {
         const prevMap = new Map(prevSegments.map((s) => [s.sectorId, s]))
         return sectors.map((sector, idx) => {
           const existing = prevMap.get(sector.id)
-          const defaultEnabled = [
-            "JED_MAK",
-            "MAK_MED",
-            "MED_AIR",
-          ].includes(sector.code)
+          const defaultEnabled = ["JED_MAK", "MAK_MED", "MED_AIR"].includes(
+            sector.code
+          )
 
           let scheduledDate = existing?.scheduledDate
           if (!scheduledDate) {
@@ -786,14 +1844,18 @@ export function PlannerProvider({
             }
           }
 
+          const serviceType = existing?.serviceType ?? "private"
           return {
             segmentOrder: idx + 1,
             sectorId: sector.id,
-            serviceType: existing?.serviceType ?? "private",
+            serviceType,
             vehicleId: useSameVehicle
               ? vehicleToUse
-              : existing?.vehicleId ?? vehicleToUse,
-            pickupTime: existing?.pickupTime ?? "10:00",
+              : (existing?.vehicleId ?? vehicleToUse),
+            pickupTime:
+              serviceType === "shared"
+                ? ""
+                : (existing?.pickupTime || "10:00"),
             enabled:
               existing !== undefined ? existing.enabled : defaultEnabled,
             scheduledDate,
@@ -803,7 +1865,6 @@ export function PlannerProvider({
       return
     }
 
-    // Itinerary mode: generate sectors based on sequence and airports
     const neededSectorDefs: Array<{ code: string; defaultDate: string }> = []
     const stay1 = stays[0]
     const stay2 = stays[1]
@@ -857,7 +1918,6 @@ export function PlannerProvider({
 
     setSegments((prevSegments) => {
       const prevMap = new Map(prevSegments.map((s) => [s.segmentOrder, s]))
-      // Preserve any station transfers user has toggled on
       const existingStationTransfers = prevSegments.filter((s) => {
         const sec = sectors.find((ts) => ts.id === s.sectorId)
         return (
@@ -888,14 +1948,18 @@ export function PlannerProvider({
           if (!sector) sector = sectors[idx % sectors.length]
           if (!sector) return null
 
+          const serviceType = existing?.serviceType ?? "private"
           return {
             segmentOrder: order,
             sectorId: sector.id,
-            serviceType: existing?.serviceType ?? "private",
+            serviceType,
             vehicleId: useSameVehicle
               ? vehicleToUse
-              : existing?.vehicleId ?? vehicleToUse,
-            pickupTime: existing?.pickupTime ?? "10:00",
+              : (existing?.vehicleId ?? vehicleToUse),
+            pickupTime:
+              serviceType === "shared"
+                ? ""
+                : (existing?.pickupTime || "10:00"),
             enabled: true,
             scheduledDate: item.defaultDate,
           }
@@ -910,10 +1974,16 @@ export function PlannerProvider({
         })
       })
 
-      return combined
+      return pruneOrphanedStationTransfers(
+        combined,
+        sectors,
+        catalog.vehicles,
+        presetMode
+      )
     })
   }, [
     catalog.transportSectors,
+    catalog.vehicles,
     citySequence,
     entryAirport,
     exitAirport,
@@ -949,7 +2019,6 @@ export function PlannerProvider({
   // Sync global vehicle change across segments if useSameVehicle is true
   const setGlobalVehicleId = useCallback(
     (id: string) => {
-      // Exclude train from global road vehicle dropdown
       const candidate = catalog.vehicles.find((v) => v.id === id)
       const validId =
         candidate && candidate.category === "train" ? defaultRoadVehicle : id
@@ -957,15 +2026,27 @@ export function PlannerProvider({
       setGlobalVehicleIdState(validId)
       if (useSameVehicle) {
         setSegments((prev) =>
-          prev.map((s) => ({
-            ...s,
-            vehicleId: validId,
-            serviceType: "private",
-          }))
+          pruneOrphanedStationTransfers(
+            prev.map((s) => ({
+              ...s,
+              vehicleId: validId,
+              serviceType: "private",
+              pickupTime: s.pickupTime || "10:00",
+            })),
+            catalog.transportSectors,
+            catalog.vehicles,
+            presetMode
+          )
         )
       }
     },
-    [catalog.vehicles, defaultRoadVehicle, useSameVehicle]
+    [
+      catalog.transportSectors,
+      catalog.vehicles,
+      defaultRoadVehicle,
+      presetMode,
+      useSameVehicle,
+    ]
   )
 
   const setUseSameVehicle = useCallback(
@@ -973,169 +2054,94 @@ export function PlannerProvider({
       setUseSameVehicleState(val)
       if (val && globalVehicleId) {
         setSegments((prev) =>
-          prev.map((s) => ({ ...s, vehicleId: globalVehicleId }))
+          pruneOrphanedStationTransfers(
+            prev.map((s) => ({
+              ...s,
+              vehicleId: globalVehicleId,
+              serviceType: "private",
+              pickupTime: s.pickupTime || "10:00",
+            })),
+            catalog.transportSectors,
+            catalog.vehicles,
+            presetMode
+          )
         )
       }
     },
-    [globalVehicleId]
+    [catalog.transportSectors, catalog.vehicles, globalVehicleId, presetMode]
   )
 
-  // Preset Mode Handler with Single-City Auto-Switch Guard
+  const syncDatesForModeAndPillars = useCallback(
+    (nextMode: PlannerPresetMode, nextPillars: ServicePillars) => {
+      const todayPkt = getTodayPktIso()
+      const safeArrival = arrivalDate >= todayPkt ? arrivalDate : todayPkt
+      if (safeArrival !== arrivalDate) {
+        setArrivalDateState(safeArrival)
+      }
+
+      if (computeHasCityLegs(nextPillars, nextMode)) {
+        recomputeStays(citySequence, safeArrival, stays)
+      } else if (nextMode !== "transport_only") {
+        if (getDaysBetween(safeArrival, departureDate) < 1) {
+          setDepartureDateState(addDaysToDateString(safeArrival, 14))
+        }
+      }
+    },
+    [arrivalDate, citySequence, departureDate, recomputeStays, stays]
+  )
+
   const setPresetMode = useCallback(
     (mode: PlannerPresetMode) => {
       setPresetModeState(mode)
-      let willHaveVisa = false
-
-      if (mode === "complete_umrah") {
-        willHaveVisa = true
-        setPillars({
-          visa: true,
-          flights: true,
-          hotels: true,
-          transport: true,
-          ziyarat: true,
-        })
-      } else if (mode === "visa_only") {
-        willHaveVisa = true
-        setPillars({
-          visa: true,
-          flights: false,
-          hotels: false,
-          transport: false,
-          ziyarat: false,
-        })
-      } else if (mode === "flights_only") {
-        willHaveVisa = false
-        setPillars({
-          visa: false,
-          flights: true,
-          hotels: false,
-          transport: false,
-          ziyarat: false,
-        })
-      } else if (mode === "hotels_only") {
-        willHaveVisa = false
-        setPillars({
-          visa: false,
-          flights: false,
-          hotels: true,
-          transport: false,
-          ziyarat: false,
-        })
-      } else if (mode === "transport_only") {
-        willHaveVisa = false
-        setPillars({
-          visa: false,
-          flights: false,
-          hotels: false,
-          transport: true,
-          ziyarat: false,
-        })
-      }
-
-      // If visa becomes active while in single-city mode, automatically switch to makkah_madinah
-      if (
-        willHaveVisa &&
-        (citySequence === "makkah_only" || citySequence === "madinah_only")
-      ) {
-        setCitySequenceState("makkah_madinah")
-        setEntryAirportState("JED")
-        setExitAirportState("MED")
-        recomputeStays("makkah_madinah", arrivalDate, stays)
-      }
+      const nextPillars =
+        mode === "custom_mix" ? pillars : pillarsForPresetMode(mode)
+      setPillars(nextPillars)
+      syncDatesForModeAndPillars(mode, nextPillars)
     },
-    [citySequence, arrivalDate, recomputeStays, stays]
+    [pillars, syncDatesForModeAndPillars]
   )
 
-  // Manual Pillar Toggle with Minimum 1 Active Pillar Guard & Single-City Auto-Switch
   const togglePillar = useCallback(
     (pillar: keyof ServicePillars) => {
-      setPillars((prev) => {
-        const nextVal = !prev[pillar]
-
-        // Minimum 1 active pillar guard
-        if (!nextVal) {
-          const otherActive = (
-            Object.keys(prev) as Array<keyof ServicePillars>
-          ).some((p) => p !== pillar && prev[p])
-          if (!otherActive) {
-            return prev
-          }
+      const nextVal = !pillars[pillar]
+      if (!nextVal) {
+        const otherActive = (
+          Object.keys(pillars) as Array<keyof ServicePillars>
+        ).some((p) => p !== pillar && pillars[p])
+        if (!otherActive) {
+          return
         }
+      }
 
-        const next = { ...prev, [pillar]: nextVal }
+      const next: ServicePillars = { ...pillars, [pillar]: nextVal }
+      const nextMode = inferPresetModeFromPillars(next)
 
-        // If visa is being activated while in a single-city sequence:
-        if (
-          pillar === "visa" &&
-          nextVal &&
-          (citySequence === "makkah_only" || citySequence === "madinah_only")
-        ) {
-          setCitySequenceState("makkah_madinah")
-          setEntryAirportState("JED")
-          setExitAirportState("MED")
-          recomputeStays("makkah_madinah", arrivalDate, stays)
-        }
-
-        // Check if matches preset
-        if (
-          next.visa &&
-          next.flights &&
-          next.hotels &&
-          next.transport &&
-          next.ziyarat
-        ) {
-          setPresetModeState("complete_umrah")
-        } else if (
-          next.visa &&
-          !next.flights &&
-          !next.hotels &&
-          !next.transport &&
-          !next.ziyarat
-        ) {
-          setPresetModeState("visa_only")
-        } else if (
-          !next.visa &&
-          next.flights &&
-          !next.hotels &&
-          !next.transport &&
-          !next.ziyarat
-        ) {
-          setPresetModeState("flights_only")
-        } else if (
-          !next.visa &&
-          !next.flights &&
-          next.hotels &&
-          !next.transport &&
-          !next.ziyarat
-        ) {
-          setPresetModeState("hotels_only")
-        } else if (
-          !next.visa &&
-          !next.flights &&
-          !next.hotels &&
-          next.transport &&
-          !next.ziyarat
-        ) {
-          setPresetModeState("transport_only")
-        } else {
-          setPresetModeState("custom_mix")
-        }
-
-        return next
-      })
+      setPillars(next)
+      setPresetModeState(nextMode)
+      syncDatesForModeAndPillars(nextMode, next)
     },
-    [arrivalDate, citySequence, recomputeStays, stays]
+    [pillars, syncDatesForModeAndPillars]
   )
 
   const setTravellers = useCallback(
     (counts: { adults?: number; children?: number; infants?: number }) => {
-      if (counts.adults !== undefined) setAdults(Math.max(1, counts.adults))
-      if (counts.children !== undefined)
-        setChildren(Math.max(0, counts.children))
-      if (counts.infants !== undefined) setInfants(Math.max(0, counts.infants))
+      if (counts.adults !== undefined) {
+        const safeAdults = Math.max(1, Math.min(30, counts.adults))
+        setAdults(safeAdults)
+        setInfants((prevInfants) => Math.min(prevInfants, safeAdults))
+      }
+      if (counts.children !== undefined) {
+        setChildren(Math.max(0, Math.min(20, counts.children)))
+      }
+      if (counts.infants !== undefined) {
+        setInfants((prev) => {
+          const maxInfants =
+            counts.adults !== undefined ? Math.max(1, counts.adults) : adults
+          return Math.max(0, Math.min(maxInfants, counts.infants ?? prev))
+        })
+      }
     },
-    []
+    [adults]
   )
 
   const updateStay = useCallback(
@@ -1143,13 +2149,14 @@ export function PlannerProvider({
       const targetIndex = stayOrder - 1
       if (targetIndex < 0 || targetIndex >= stays.length) return
 
-      // Sanitize hotel-specific constraints if hotelId is changed
+      const currentStay = stays[targetIndex]
       const finalUpdates = { ...updates }
+
       if (updates.hotelId) {
         const hotel = catalog.hotels.find((h) => h.id === updates.hotelId)
         if (hotel) {
           let currentRoomCat =
-            updates.roomCategory ?? stays[targetIndex]?.roomCategory ?? "private"
+            updates.roomCategory ?? currentStay?.roomCategory ?? "private"
           if (bedAndSeatCount === 1) currentRoomCat = "private"
           if (currentRoomCat === "shared" && !hotel.allowsSharedRooms) {
             finalUpdates.roomCategory = "private"
@@ -1158,6 +2165,16 @@ export function PlannerProvider({
             !hotel.allowsPrivateRooms
           ) {
             finalUpdates.roomCategory = "shared"
+          }
+
+          if (
+            updates.hotelId !== currentStay?.hotelId &&
+            updates.privateRoomAllocation === undefined
+          ) {
+            finalUpdates.privateRoomAllocation = calculatePrivateRoomSplits(
+              bedAndSeatCount,
+              hotel.availableRoomTypes
+            ).primaryAllocation
           }
         }
       }
@@ -1176,7 +2193,6 @@ export function PlannerProvider({
         return
       }
 
-      // Handle Date or Nights Updates with Full Two-Way Chaining
       const effectiveArrival =
         stayOrder === 1 && finalUpdates.checkInDate !== undefined
           ? finalUpdates.checkInDate
@@ -1194,7 +2210,7 @@ export function PlannerProvider({
           finalUpdates.checkInDate !== undefined &&
           idx === targetIndex - 1
         ) {
-          const prevStay = stays[targetIndex - 1]
+          const prevStay = stays[targetIndex - 1]!
           const diff = getDaysBetween(
             prevStay.checkInDate,
             finalUpdates.checkInDate
@@ -1225,7 +2241,7 @@ export function PlannerProvider({
 
       setStays((prev) =>
         prev.map((s, idx) => {
-          const cs = chained.chainedStays[idx]
+          const cs = chained.chainedStays[idx]!
           const base = idx === targetIndex ? { ...s, ...finalUpdates } : s
           return {
             ...base,
@@ -1267,7 +2283,6 @@ export function PlannerProvider({
 
   const updateSegment = useCallback(
     (segmentOrder: number, updates: Partial<TransportSegmentConfig>) => {
-      // Auto-unset useSameVehicle if user overrides vehicle or switches to shared
       if (
         useSameVehicle &&
         ((updates.vehicleId && updates.vehicleId !== globalVehicleId) ||
@@ -1277,7 +2292,6 @@ export function PlannerProvider({
       }
 
       setSegments((prev) => {
-        // Disabling legs is only permitted in transport_only mode; itinerary legs are mandatory
         if (updates.enabled === false) {
           if (presetMode !== "transport_only") {
             return prev
@@ -1288,7 +2302,7 @@ export function PlannerProvider({
           }
         }
 
-        return prev.map((s) => {
+        const mapped = prev.map((s) => {
           if (s.segmentOrder !== segmentOrder) return s
 
           const next = { ...s, ...updates }
@@ -1296,7 +2310,6 @@ export function PlannerProvider({
             (sec) => sec.id === next.sectorId
           )
 
-          // Validate vehicleId validity for sector & serviceType
           if (sector) {
             const isPrivate = next.serviceType === "private"
             const candidateVehicle = catalog.vehicles.find(
@@ -1339,14 +2352,28 @@ export function PlannerProvider({
             }
           }
 
+          if (next.serviceType === "shared") {
+            next.pickupTime = ""
+          } else if (!next.pickupTime) {
+            next.pickupTime = "10:00"
+          }
+
           return next
         })
+
+        return pruneOrphanedStationTransfers(
+          mapped,
+          catalog.transportSectors,
+          catalog.vehicles,
+          presetMode
+        )
       })
     },
     [
       catalog.transportSectors,
       catalog.vehicles,
       globalVehicleId,
+      presetMode,
       useSameVehicle,
     ]
   )
@@ -1362,7 +2389,6 @@ export function PlannerProvider({
         const currentSegment = prev.find((s) => s.sectorId === sectorId)
         const isCurrentlyEnabled = currentSegment?.enabled ?? false
 
-        // Minimum 1 enabled leg guard
         if (isCurrentlyEnabled) {
           const enabledCount = prev.filter((s) => s.enabled !== false).length
           if (enabledCount <= 1) {
@@ -1370,7 +2396,6 @@ export function PlannerProvider({
           }
         }
 
-        // Mutual exclusion between MAK_MED and MAK_BADR_MED
         const makMedSector = catalog.transportSectors.find(
           (s) => s.code === "MAK_MED"
         )
@@ -1406,8 +2431,8 @@ export function PlannerProvider({
         (s) => s.code === newSectorCode
       )
       if (!targetSector) return
-      setSegments((prev) =>
-        prev.map((s) => {
+      setSegments((prev) => {
+        const mapped = prev.map((s) => {
           if (s.segmentOrder !== segmentOrder) return s
           const isBadr = targetSector.code === "MAK_BADR_MED"
           const serviceType = isBadr ? "private" : s.serviceType
@@ -1427,15 +2452,29 @@ export function PlannerProvider({
             sectorId: targetSector.id,
             serviceType,
             vehicleId,
+            pickupTime:
+              serviceType === "shared" ? "" : (s.pickupTime || "10:00"),
           }
         })
-      )
+
+        return pruneOrphanedStationTransfers(
+          mapped,
+          catalog.transportSectors,
+          catalog.vehicles,
+          presetMode
+        )
+      })
     },
-    [catalog.transportSectors, catalog.vehicles, defaultRoadVehicle]
+    [
+      catalog.transportSectors,
+      catalog.vehicles,
+      defaultRoadVehicle,
+      presetMode,
+    ]
   )
 
   const toggleTrainStationTransfers = useCallback(
-    (trainSegmentOrder?: number, scheduledDate?: string) => {
+    (_trainSegmentOrder?: number, scheduledDate?: string) => {
       const makTrnSector = catalog.transportSectors.find(
         (s) => s.code === "MAK_TRN"
       )
@@ -1481,6 +2520,7 @@ export function PlannerProvider({
                     s.vehicleId && s.vehicleId !== ""
                       ? s.vehicleId
                       : defaultRoadVehicle,
+                  pickupTime: s.pickupTime || "08:00",
                   scheduledDate:
                     scheduledDate || s.scheduledDate || arrivalDate,
                 }
@@ -1553,13 +2593,19 @@ export function PlannerProvider({
     [catalog.ziyaratPlaces, ziyaratScope]
   )
 
-  // Derived Calculations
   const visaRatesTiers: VisaRateTiers = useMemo(() => {
-    const st =
-      catalog.visaRates.find((r) => r.tier === "short_term")?.pricePkr ?? 42500
-    const lt =
-      catalog.visaRates.find((r) => r.tier === "long_term")?.pricePkr ?? 65000
-    return { shortTermPricePkr: st, longTermPricePkr: lt }
+    const stRow = catalog.visaRates.find((r) => r.tier === "short_term")
+    const ltRow = catalog.visaRates.find((r) => r.tier === "long_term")
+    return {
+      shortTermPricePkr: stRow?.pricePkr ?? 42500,
+      longTermPricePkr: ltRow?.pricePkr ?? 68000,
+      longTermPriceSar: ltRow?.priceSar ?? undefined,
+      withoutMasarPriceSar: stRow?.withoutMasarPriceSar ?? undefined,
+      withMasar10DaysSar: stRow?.withMasar10DaysSar ?? undefined,
+      withMasar15DaysSar: stRow?.withMasar15DaysSar ?? undefined,
+      withMasar21DaysSar: stRow?.withMasar21DaysSar ?? undefined,
+      withMasar28DaysSar: stRow?.withMasar28DaysSar ?? undefined,
+    }
   }, [catalog.visaRates])
 
   const visaCalc = useMemo(
@@ -1569,7 +2615,10 @@ export function PlannerProvider({
         departureDate,
         totalPassportCount,
         visaRatesTiers,
-        { withMasar: pillars.hotels }
+        {
+          withMasar: pillars.hotels,
+          sarToPkrRate: pillars.hotels ? catalog.sarToPkrRate : undefined,
+        }
       ),
     [
       arrivalDate,
@@ -1577,6 +2626,7 @@ export function PlannerProvider({
       totalPassportCount,
       visaRatesTiers,
       pillars.hotels,
+      catalog.sarToPkrRate,
     ]
   )
 
@@ -1594,7 +2644,6 @@ export function PlannerProvider({
   const leadVehicle = useMemo(() => {
     const vId = useSameVehicle ? globalVehicleId : segments[0]?.vehicleId
     const candidate = catalog.vehicles.find((v) => v.id === vId)
-    // Never resolve to a train for lead transport / excursion inheritance
     if (candidate && candidate.category !== "train") {
       return candidate
     }
@@ -1614,7 +2663,6 @@ export function PlannerProvider({
     fallbackVehicleId,
   ])
 
-  // Wizard Step Navigation Helpers
   const goToStep = useCallback(
     (stepId: WizardStepId) => {
       if (wizardSteps.some((s) => s.id === stepId)) {
@@ -1632,7 +2680,7 @@ export function PlannerProvider({
   const goToNextStep = useCallback(() => {
     const currentIndex = wizardSteps.findIndex((s) => s.id === activeStepId)
     if (currentIndex >= 0 && currentIndex < wizardSteps.length - 1) {
-      setActiveStepIdState(wizardSteps[currentIndex + 1].id)
+      setActiveStepIdState(wizardSteps[currentIndex + 1]!.id)
       if (typeof window !== "undefined") {
         document
           .getElementById("custom-journey")
@@ -1644,7 +2692,7 @@ export function PlannerProvider({
   const goToPrevStep = useCallback(() => {
     const currentIndex = wizardSteps.findIndex((s) => s.id === activeStepId)
     if (currentIndex > 0) {
-      setActiveStepIdState(wizardSteps[currentIndex - 1].id)
+      setActiveStepIdState(wizardSteps[currentIndex - 1]!.id)
       if (typeof window !== "undefined") {
         document
           .getElementById("custom-journey")
@@ -1659,7 +2707,7 @@ export function PlannerProvider({
   }, [wizardSteps, activeStepId])
 
   const activeStep = useMemo(() => {
-    return wizardSteps[currentStepIndex] ?? wizardSteps[0]
+    return wizardSteps[currentStepIndex] ?? wizardSteps[0]!
   }, [wizardSteps, currentStepIndex])
 
   const value: PlannerContextValue = {
@@ -1701,6 +2749,8 @@ export function PlannerProvider({
       isVisaOnly,
       leadVehicle,
     },
+    contactDraft,
+    clientSubmissionId,
     wizardSteps,
     activeStepId,
     currentStepIndex,
@@ -1728,11 +2778,18 @@ export function PlannerProvider({
     toggleZiyaratPlace,
     selectAllZiyaratPlaces,
     setFallbackVehicleId,
+    updateContactDraft,
+    resetSubmissionSession,
   }
 
   return (
     <PlannerContext.Provider value={value}>
-      {reactChildren}
+      <PlannerUrlApplyContext.Provider value={handleUrlPrefillFromChild}>
+        <Suspense fallback={null}>
+          <PlannerUrlHydrator />
+        </Suspense>
+        {reactChildren}
+      </PlannerUrlApplyContext.Provider>
     </PlannerContext.Provider>
   )
 }

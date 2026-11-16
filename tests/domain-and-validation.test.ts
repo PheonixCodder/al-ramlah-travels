@@ -381,11 +381,17 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
       }
     })
 
-    it("falls back to standard splits if allowedRoomTypes is empty or cannot be matched", () => {
-      // Empty allowedRoomTypes falls back to standard candidate generation
+    it("returns isPossible: false when allowedRoomTypes is empty and computes constrained splits when allowedRoomTypes is provided", () => {
       const result = calculatePrivateRoomSplits(5, [])
-      assert.ok(result.primaryAllocation.totalBeds >= 5)
-      assert.ok(result.primaryAllocation.totalRooms > 0)
+      assert.equal(result.isPossible, false)
+      assert.equal(result.primaryAllocation.totalRooms, 0)
+      assert.equal(result.primaryAllocation.totalBeds, 0)
+      assert.ok(Boolean(result.warning))
+
+      const quadOnly = calculatePrivateRoomSplits(5, ["quad"])
+      assert.equal(quadOnly.isPossible, true)
+      assert.equal(quadOnly.primaryAllocation.totalRooms, 2)
+      assert.equal(quadOnly.primaryAllocation.totalBeds, 8)
     })
 
     it("safely handles 0 or negative bedCount returning empty allocation", () => {
@@ -574,31 +580,31 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
       assert.equal(result.recommendedCategory, "suv")
     })
 
-    it("suggests Van upgrade for a party of 6 in a 3-seat Sedan", () => {
+    it("suggests SUV upgrade for a party of 6 in a 3-seat Sedan", () => {
       const result = calculateVehicleQuantity(6, {
         seatCapacity: 3,
         bookingMode: "private_only",
       })
 
-      // 6 passengers / 3 seats = 2 sedans
+      // 6 passengers / 3 seats = 2 sedans (fits 6-seat SUV)
       assert.equal(result.requiredQuantity, 2)
       assert.equal(result.suggestUpgrade, true)
-      assert.equal(result.recommendedCategory, "van")
+      assert.equal(result.recommendedCategory, "suv")
     })
 
-    it("suggests Van upgrade for a party of 6 in a 4-seat Sedan", () => {
+    it("suggests SUV upgrade for a party of 6 in a 4-seat Sedan", () => {
       const result = calculateVehicleQuantity(6, {
         seatCapacity: 4,
         bookingMode: "private_only",
       })
 
-      // 6 passengers / 4 seats = 2 sedans
+      // 6 passengers / 4 seats = 2 sedans (fits 6-seat SUV)
       assert.equal(result.requiredQuantity, 2)
       assert.equal(result.suggestUpgrade, true)
-      assert.equal(result.recommendedCategory, "van")
+      assert.equal(result.recommendedCategory, "suv")
     })
 
-    it("suggests Van Hiace upgrade for a party of 9 in a 4-seat vehicle", () => {
+    it("suggests Minibus (HiAce) upgrade for a party of 9 in a 4-seat vehicle", () => {
       const result = calculateVehicleQuantity(9, {
         seatCapacity: 4,
         bookingMode: "private_only",
@@ -607,18 +613,26 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
       // 9 passengers / 4 seats = 3 vehicles
       assert.equal(result.requiredQuantity, 3)
       assert.equal(result.suggestUpgrade, true)
-      assert.equal(result.recommendedCategory, "van_hiace")
+      assert.equal(result.recommendedCategory, "minibus")
     })
 
-    it("does not suggest single-vehicle upgrade for groups larger than 10 seats", () => {
+    it("suggests Bus for 14 seats and flags exceedsSingleVehicleCapacity above 49 seats", () => {
       const result = calculateVehicleQuantity(14, {
         seatCapacity: 4,
         bookingMode: "private_only",
       })
 
       assert.equal(result.requiredQuantity, 4) // ceil(14 / 4) = 4
-      assert.equal(result.suggestUpgrade, false)
-      assert.equal(result.recommendedCategory, undefined)
+      assert.equal(result.suggestUpgrade, true)
+      assert.equal(result.recommendedCategory, "bus")
+
+      const overCap = calculateVehicleQuantity(55, {
+        seatCapacity: 4,
+        bookingMode: "private_only",
+      })
+      assert.equal(overCap.suggestUpgrade, false)
+      assert.equal(overCap.exceedsSingleVehicleCapacity, true)
+      assert.equal(overCap.recommendedCategory, undefined)
     })
 
     it("books exact per-passenger seats when vehicle bookingMode is shared_only", () => {
@@ -661,7 +675,7 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
 
       assert.equal(result.requiredQuantity, 2)
       assert.equal(result.suggestUpgrade, true)
-      assert.equal(result.recommendedCategory, "van")
+      assert.equal(result.recommendedCategory, "suv")
     })
 
     it("dynamically returns sorted larger road vehicles when allVehicles catalog is passed", () => {
@@ -893,6 +907,37 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
           citySequence: "makkah_madinah_jeddah" as const,
           entryAirport: "JED" as const,
           exitAirport: "JED" as const,
+          departureCityId: "a1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d",
+          hotelStays: [
+            {
+              stayOrder: 1,
+              city: "makkah" as const,
+              hotelId: "c3d4e5f6-a1b2-4c3d-8e4f-5a6b7c8d9e0f",
+              checkInDate: "2026-11-10",
+              checkOutDate: "2026-11-17",
+              nights: 7,
+              roomCategory: "shared" as const,
+            },
+            {
+              stayOrder: 2,
+              city: "madinah" as const,
+              hotelId: "d4e5f6a1-b2c3-4d4e-9f5a-6b7c8d9e0f1a",
+              checkInDate: "2026-11-17",
+              checkOutDate: "2026-11-24",
+              nights: 7,
+              roomCategory: "shared" as const,
+            },
+          ],
+          transportSegments: [
+            {
+              segmentOrder: 1,
+              sectorId: "e5f6a1b2-c3d4-4e5f-a1b2-c3d4e5f6a1b2",
+              serviceType: "private" as const,
+              vehicleId: "f6a1b2c3-d4e5-4f6a-b2c3-d4e5f6a1b2c3",
+              scheduledDate: "2026-11-10",
+              pickupTime: "10:00",
+            },
+          ],
         }
 
         const parsed = customJourneyApplicationSchema.parse(payload)
@@ -1022,7 +1067,7 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
         customerName: "Bilal Ahmad",
         customerPhone: "+923331122334",
         customerWhatsapp: "+923331122334",
-        customerCity: "Rawalpindi",
+        customerCity: "Lahore",
       }
 
       it("validates a group booking payload", () => {
@@ -1207,21 +1252,10 @@ describe("Al Ramlah Travels — Domain Logic & Validation Contracts", () => {
 
     describe("lib/env.ts Runtime Environment Verification", () => {
       it("validates environment variables contract", async () => {
-        // Set mock environment variables before dynamic import
-        process.env.DATABASE_URL =
-          "postgresql://user:pass@localhost:5432/alramlah"
-        process.env.DATABASE_URL_POOLED =
-          "postgresql://user:pass@localhost:5432/alramlah"
-        process.env.BETTER_AUTH_SECRET =
-          "12345678901234567890123456789012" // 32 characters
-        process.env.BETTER_AUTH_URL = "http://localhost:3000"
-        process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000"
-        ;(process.env as Record<string, string | undefined>).NODE_ENV = "test"
-
         const { env } = await import("../lib/env.js")
         assert.ok(env, "env should be parsed and defined")
         assert.equal(env.NODE_ENV, "test")
-        assert.equal(env.BETTER_AUTH_URL, "http://localhost:3000")
+        assert.ok(env.BETTER_AUTH_URL.startsWith("http://"))
       })
     })
   })

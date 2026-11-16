@@ -1,47 +1,50 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition, useEffect } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { VehicleData, VehicleDialog } from "./vehicle-dialog"
 import { SectorData, SectorDialog } from "./sector-dialog"
 import {
-  toggleVehicleActive,
-  deleteVehicle,
-  toggleSectorActive,
   deleteTransportSector,
+  deleteVehicle,
+  reorderCatalogEntities,
+  toggleSectorActive,
+  toggleVehicleActive,
   upsertTransportRate,
 } from "@/app/actions/catalog"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "@/components/ui/dialog"
 import {
-  Car,
-  Compass,
-  Train,
-  Clock,
-  Briefcase,
-  Users,
-  Trash2,
-  Edit2,
-  CheckCircle2,
-  XCircle,
+  ArrowDown,
   ArrowRight,
-  Coins,
+  ArrowUp,
+  Briefcase,
   Bus,
-  Table,
+  Car,
+  CheckCircle2,
+  Clock,
+  Coins,
+  Compass,
+  Edit2,
   Loader2,
+  Table,
+  Train,
+  Trash2,
+  Users,
+  XCircle,
 } from "lucide-react"
 
 export interface TransportRateData {
@@ -71,6 +74,10 @@ export function TransportClient({
   const [vehicles, setVehicles] = useState<VehicleData[]>(initialVehicles)
   const [sectors, setSectors] = useState<SectorData[]>(initialSectors)
   const [rates, setRates] = useState<TransportRateData[]>(initialRates)
+  const [notice, setNotice] = useState<{
+    tone: "error" | "info"
+    text: string
+  } | null>(null)
   const [, startTransition] = useTransition()
 
   useEffect(() => {
@@ -85,7 +92,6 @@ export function TransportClient({
     setRates(initialRates)
   }, [initialRates])
 
-  // Matrix cell edit modal state
   const [editingCell, setEditingCell] = useState<{
     sectorId: string
     vehicleId: string
@@ -100,30 +106,75 @@ export function TransportClient({
 
   function handleVehicleToggle(id: string, current: boolean) {
     const next = !current
+    setNotice(null)
     startTransition(async () => {
       const res = await toggleVehicleActive(id, next)
       if (res.success) {
         setVehicles((prev) =>
           prev.map((v) => (v.id === id ? { ...v, isActive: next } : v))
         )
+        router.refresh()
+      } else {
+        setNotice({
+          tone: "error",
+          text: res.error || "Unable to update vehicle status.",
+        })
       }
+    })
+  }
+
+  function handleVehicleMove(index: number, direction: -1 | 1) {
+    const target = index + direction
+    if (target < 0 || target >= vehicles.length) return
+    const nextList = [...vehicles]
+    const [moved] = nextList.splice(index, 1)
+    if (!moved) return
+    nextList.splice(target, 0, moved)
+    const reindexed = nextList.map((v, idx) => ({ ...v, sortOrder: idx }))
+    setVehicles(reindexed)
+    const orderedIds = reindexed
+      .map((v) => v.id)
+      .filter((id): id is string => Boolean(id))
+
+    startTransition(async () => {
+      const res = await reorderCatalogEntities({
+        entityType: "vehicles",
+        orderedIds,
+      })
+      if (!res.success) {
+        setNotice({
+          tone: "error",
+          text: res.error || "Failed to reorder vehicles.",
+        })
+        return
+      }
+      router.refresh()
     })
   }
 
   function handleVehicleDelete(id: string, name: string) {
     if (!window.confirm(`Delete vehicle "${name}"?`)) return
+    setNotice(null)
     startTransition(async () => {
       const res = await deleteVehicle(id)
       if (res.softDeleted) {
         setVehicles((prev) =>
           prev.map((v) => (v.id === id ? { ...v, isActive: false } : v))
         )
+        setNotice({
+          tone: "info",
+          text:
+            res.error ||
+            "Vehicle is referenced by transport rates or bookings — deactivated instead.",
+        })
         router.refresh()
-        alert(res.error)
         return
       }
       if (!res.success) {
-        alert(res.error)
+        setNotice({
+          tone: "error",
+          text: res.error || "Failed to delete vehicle.",
+        })
         return
       }
       setVehicles((prev) => prev.filter((v) => v.id !== id))
@@ -133,30 +184,75 @@ export function TransportClient({
 
   function handleSectorToggle(id: string, current: boolean) {
     const next = !current
+    setNotice(null)
     startTransition(async () => {
       const res = await toggleSectorActive(id, next)
       if (res.success) {
         setSectors((prev) =>
           prev.map((s) => (s.id === id ? { ...s, isActive: next } : s))
         )
+        router.refresh()
+      } else {
+        setNotice({
+          tone: "error",
+          text: res.error || "Unable to update sector status.",
+        })
       }
+    })
+  }
+
+  function handleSectorMove(index: number, direction: -1 | 1) {
+    const target = index + direction
+    if (target < 0 || target >= sectors.length) return
+    const nextList = [...sectors]
+    const [moved] = nextList.splice(index, 1)
+    if (!moved) return
+    nextList.splice(target, 0, moved)
+    const reindexed = nextList.map((s, idx) => ({ ...s, sortOrder: idx }))
+    setSectors(reindexed)
+    const orderedIds = reindexed
+      .map((s) => s.id)
+      .filter((id): id is string => Boolean(id))
+
+    startTransition(async () => {
+      const res = await reorderCatalogEntities({
+        entityType: "transport_sectors",
+        orderedIds,
+      })
+      if (!res.success) {
+        setNotice({
+          tone: "error",
+          text: res.error || "Failed to reorder transport sectors.",
+        })
+        return
+      }
+      router.refresh()
     })
   }
 
   function handleSectorDelete(id: string, code: string) {
     if (!window.confirm(`Delete sector "${code}"?`)) return
+    setNotice(null)
     startTransition(async () => {
       const res = await deleteTransportSector(id)
       if (res.softDeleted) {
         setSectors((prev) =>
           prev.map((s) => (s.id === id ? { ...s, isActive: false } : s))
         )
+        setNotice({
+          tone: "info",
+          text:
+            res.error ||
+            "Sector is referenced by transport rates — deactivated instead.",
+        })
         router.refresh()
-        alert(res.error)
         return
       }
       if (!res.success) {
-        alert(res.error)
+        setNotice({
+          tone: "error",
+          text: res.error || "Failed to delete sector.",
+        })
         return
       }
       setSectors((prev) => prev.filter((s) => s.id !== id))
@@ -209,6 +305,8 @@ export function TransportClient({
         })
         setEditingCell(null)
         router.refresh()
+      } else {
+        setRateError(res.error || "Failed to update transport rate.")
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -226,11 +324,12 @@ export function TransportClient({
       {/* Header & Dialog Trigger */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            Transport & Vehicles
-          </h1>
+          <h2 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            Transport &amp; Vehicles
+          </h2>
           <p className="text-sm text-muted-foreground">
-            Manage private fleet vehicles, transit sectors, and the dynamic Route × Vehicle SAR rate matrix.
+            Manage private fleet vehicles, transit sectors, and the dynamic
+            Route × Vehicle SAR rate matrix.
           </p>
         </div>
         <div>
@@ -242,8 +341,20 @@ export function TransportClient({
         </div>
       </div>
 
+      {notice && (
+        <div
+          className={`rounded-xl border p-3 text-xs font-medium ${
+            notice.tone === "error"
+              ? "border-red-300 bg-red-50 text-red-800"
+              : "border-amber-300 bg-amber-50 text-amber-900"
+          }`}
+        >
+          {notice.text}
+        </div>
+      )}
+
       {/* Tabs Switcher */}
-      <div className="flex items-center gap-2 border-b border-border pb-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
         <button
           type="button"
           onClick={() => setActiveTab("vehicles")}
@@ -287,7 +398,7 @@ export function TransportClient({
       {/* Vehicles Tab Content */}
       {activeTab === "vehicles" && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {vehicles.map((v) => (
+          {vehicles.map((v, idx) => (
             <div
               key={v.id}
               className={`flex flex-col justify-between overflow-hidden rounded-xl border bg-card shadow-xs transition-all hover:shadow-md ${
@@ -297,7 +408,6 @@ export function TransportClient({
               }`}
             >
               <div>
-                {/* Vehicle Image */}
                 <div className="relative h-40 w-full bg-muted">
                   {v.imageUrl ? (
                     <Image
@@ -340,7 +450,6 @@ export function TransportClient({
                     </p>
                   )}
 
-                  {/* Capacities */}
                   <div className="flex items-center gap-4 text-xs font-medium text-foreground/80 pt-1">
                     <div className="flex items-center gap-1.5">
                       <Users className="size-3.5 text-emerald-700" />
@@ -358,9 +467,8 @@ export function TransportClient({
                     )}
                   </div>
 
-                  {/* Default SAR Rates */}
-                  <div className="rounded-lg border border-border/80 bg-muted/20 p-2 text-xs flex items-center justify-between font-mono">
-                    <div className="flex items-center gap-1 text-gold font-sans font-semibold">
+                  <div className="rounded-lg border border-border/80 bg-muted/20 p-2 text-xs flex items-center justify-between font-mono tabular-nums">
+                    <div className="flex items-center gap-1 text-gold-text font-sans font-semibold">
                       <Coins className="size-3.5" />
                       <span>Default Rate:</span>
                     </div>
@@ -378,7 +486,6 @@ export function TransportClient({
                 </div>
               </div>
 
-              {/* Bottom Actions */}
               <div className="flex items-center justify-between border-t border-border/80 bg-muted/10 px-4 py-2.5 text-xs">
                 <button
                   type="button"
@@ -401,6 +508,26 @@ export function TransportClient({
                 </button>
 
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    disabled={idx === 0}
+                    onClick={() => handleVehicleMove(idx, -1)}
+                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    title="Move Up"
+                  >
+                    <ArrowUp className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    disabled={idx === vehicles.length - 1}
+                    onClick={() => handleVehicleMove(idx, 1)}
+                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    title="Move Down"
+                  >
+                    <ArrowDown className="size-3.5" />
+                  </Button>
                   <VehicleDialog
                     vehicle={v}
                     trigger={
@@ -433,7 +560,7 @@ export function TransportClient({
       {/* Sectors Tab Content */}
       {activeTab === "sectors" && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {sectors.map((s) => (
+          {sectors.map((s, idx) => (
             <div
               key={s.id}
               className={`flex flex-col justify-between rounded-xl border bg-card p-4 shadow-2xs transition-all hover:shadow-sm ${
@@ -477,8 +604,7 @@ export function TransportClient({
                   )}
                 </div>
 
-                {/* Shared Bus & Terminal Parking Fee Information */}
-                <div className="rounded-lg bg-muted/30 p-2 text-xs space-y-1 font-mono">
+                <div className="rounded-lg bg-muted/30 p-2 text-xs space-y-1 font-mono tabular-nums">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-sans text-muted-foreground flex items-center gap-1">
                       <Bus className="size-3" /> Shared Bus:
@@ -521,6 +647,26 @@ export function TransportClient({
                   )}
                 </button>
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    disabled={idx === 0}
+                    onClick={() => handleSectorMove(idx, -1)}
+                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    title="Move Up"
+                  >
+                    <ArrowUp className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    disabled={idx === sectors.length - 1}
+                    onClick={() => handleSectorMove(idx, 1)}
+                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    title="Move Down"
+                  >
+                    <ArrowDown className="size-3.5" />
+                  </Button>
                   <SectorDialog
                     sector={s}
                     trigger={
@@ -561,7 +707,8 @@ export function TransportClient({
                   <span>Interactive Route × Vehicle SAR Rate Matrix</span>
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Click any cell in the 2D grid to update or set the customized SAR rate for that specific sector and vehicle model.
+                  Click any cell in the 2D grid to update or set the customized
+                  SAR rate for that specific sector and vehicle model.
                 </p>
               </div>
             </div>
@@ -588,7 +735,10 @@ export function TransportClient({
                 </thead>
                 <tbody className="divide-y divide-border">
                   {sectors.map((s) => (
-                    <tr key={s.id} className="hover:bg-muted/10 transition-colors">
+                    <tr
+                      key={s.id}
+                      className="hover:bg-muted/10 transition-colors"
+                    >
                       <td className="px-4 py-3">
                         <div className="font-semibold text-foreground">
                           {s.label}
@@ -601,7 +751,8 @@ export function TransportClient({
                         const rateObj = rates.find(
                           (r) => r.sectorId === s.id && r.vehicleId === v.id
                         )
-                        const rateSar = rateObj?.rateSar ?? v.defaultRateSar ?? 250
+                        const rateSar =
+                          rateObj?.rateSar ?? v.defaultRateSar ?? 250
                         const isCustom = Boolean(rateObj)
 
                         return (
@@ -612,16 +763,14 @@ export function TransportClient({
                             <button
                               type="button"
                               onClick={() => openRateModal(s, v)}
-                              className={`group inline-flex flex-col items-center justify-center w-full rounded-md px-2 py-1.5 font-mono text-xs transition-all cursor-pointer ${
+                              className={`group inline-flex flex-col items-center justify-center w-full rounded-md px-2 py-1.5 font-mono text-xs tabular-nums transition-all cursor-pointer ${
                                 isCustom
                                   ? "bg-gold/15 text-gold-foreground border border-gold/40 hover:bg-gold/25"
                                   : "bg-muted/50 text-foreground border border-border/60 hover:border-gold/50 hover:bg-muted"
                               }`}
                               title={`Click to edit rate for ${s.label} + ${v.name}`}
                             >
-                              <span className="font-bold">
-                                SAR {rateSar}
-                              </span>
+                              <span className="font-bold">SAR {rateSar}</span>
                               <span className="text-[9px] opacity-70 group-hover:underline">
                                 {isCustom ? "Custom" : "Default"}
                               </span>
@@ -644,11 +793,15 @@ export function TransportClient({
           open={Boolean(editingCell)}
           onOpenChange={(o) => !o && setEditingCell(null)}
         >
-          <DialogContent className="sm:max-w-sm">
+          <DialogContent
+            key={`${editingCell.sectorId}-${editingCell.vehicleId}`}
+            className="sm:max-w-sm"
+          >
             <DialogHeader>
               <DialogTitle>Edit Route Rate</DialogTitle>
               <DialogDescription>
-                Set the contracted private transfer SAR rate for this specific sector and vehicle.
+                Set the contracted private transfer SAR rate for this specific
+                sector and vehicle.
               </DialogDescription>
             </DialogHeader>
 
@@ -686,7 +839,7 @@ export function TransportClient({
                   value={modalRateSar}
                   onChange={(e) => setModalRateSar(Number(e.target.value))}
                   required
-                  className="font-mono"
+                  className="font-mono tabular-nums"
                 />
               </div>
 

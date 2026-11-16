@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 function StepIconRenderer({
   id,
@@ -63,7 +63,7 @@ export function WizardStepperHeader() {
       {/* Top Progress Info */}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F0] border border-[#C5A059]/60 px-3 py-1 text-[11px] font-bold text-[#8F6E2A]">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F0] border border-[#C5A059]/60 px-3 py-1 text-[11px] font-bold text-[#7A5C1E]">
             <Sparkles className="size-3 text-[#C5A059]" />
             <span>
               Step {currentStepIndex + 1} of {totalSteps}
@@ -142,7 +142,7 @@ export function WizardStepperHeader() {
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#FAF7F0] border border-[#C5A059]/40 text-[#0A3622] shadow-xs">
             <StepIconRenderer
               id={activeStep.id}
-              className="size-5 text-[#8F6E2A]"
+              className="size-5 text-[#7A5C1E]"
             />
           </div>
           <div>
@@ -186,7 +186,7 @@ export function WizardBottomNav() {
               onClick={goToPrevStep}
               className="flex items-center gap-1.5 sm:gap-2 rounded-xl border border-[#E6DEC8] bg-white px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-semibold text-[#1A1D1A] shadow-xs hover:bg-[#FAF7F0] hover:border-[#C5A059] transition-all focus:outline-none focus:ring-2 focus:ring-[#C5A059]"
             >
-              <ArrowLeft className="size-4 text-[#8F6E2A]" />
+              <ArrowLeft className="size-4 text-[#7A5C1E]" />
               <span className="hidden sm:inline">Previous:</span>
               <span>{prevStep.shortTitle}</span>
             </button>
@@ -199,7 +199,7 @@ export function WizardBottomNav() {
 
         {/* Center: Step Indicator */}
         <div className="text-center">
-          <span className="text-xs font-semibold text-[#8F6E2A]">
+          <span className="text-xs font-semibold text-[#7A5C1E]">
             Step {currentStepIndex + 1} of {totalSteps}
           </span>
           <p className="text-[11px] text-[#686E65] hidden md:block">

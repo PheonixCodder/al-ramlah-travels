@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
+    "target": "ES2022",
     "lib": [
       "dom",
       "dom.iterable",
@@ -25,23 +25,45 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "cn": [
+        "./lib/utils.ts"
       ]
     }
   },
   "include": [
     "next-env.d.ts",
     "next.config.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    "**/*.mts",
+    "proxy.ts",
+    "instrumentation.ts",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "db/**/*.ts",
+    "hooks/**/*.ts",
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "trigger/**/*.ts",
+    "trigger.config.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "services",
+    "../services",
     "agent",
     ".agents",
-    ".claude"
+    ".claude",
+    ".next/dev",
+    ".next/standalone",
+    ".next/static",
+    "out",
+    "build",
+    ".trigger",
+    "public/uploads",
+    "tests",
+    "scripts"
   ]
 }

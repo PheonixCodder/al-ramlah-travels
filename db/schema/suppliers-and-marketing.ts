@@ -1,6 +1,8 @@
-import { relations } from "drizzle-orm"
+import { relations, sql } from "drizzle-orm"
 import {
+  bigint,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -118,12 +120,10 @@ export const suppliers = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
-  (table) => [
-    uniqueIndex("idx_supplier_slug").on(table.slug),
-    index("idx_supplier_active").on(table.isActive),
-  ]
+  (table) => [index("idx_supplier_active").on(table.isActive)]
 )
 
 // ==========================================
@@ -186,11 +186,13 @@ export const supplierFlyers = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_flyer_supplier").on(table.supplierId),
     index("idx_flyer_status").on(table.status),
+    index("idx_flyer_created").on(table.createdAt),
   ]
 )
 
@@ -234,23 +236,27 @@ export const supplierFlyerPackages = pgTable(
     mealPlanLabel: text("meal_plan_label").default("Room Only"),
 
     // Raw Supplier Flyer Prices (PKR)
-    rawSharingPkr: integer("raw_sharing_pkr").notNull(),
-    rawQuadPkr: integer("raw_quad_pkr").notNull(),
-    rawTriplePkr: integer("raw_triple_pkr").notNull(),
-    rawDoublePkr: integer("raw_double_pkr").notNull(),
+    rawSharingPkr: bigint("raw_sharing_pkr", { mode: "number" }).notNull(),
+    rawQuadPkr: bigint("raw_quad_pkr", { mode: "number" }).notNull(),
+    rawTriplePkr: bigint("raw_triple_pkr", { mode: "number" }).notNull(),
+    rawDoublePkr: bigint("raw_double_pkr", { mode: "number" }).notNull(),
 
     // Net Supplier Payable (PKR)
-    netSharingPkr: integer("net_sharing_pkr").notNull(),
-    netQuadPkr: integer("net_quad_pkr").notNull(),
-    netTriplePkr: integer("net_triple_pkr").notNull(),
-    netDoublePkr: integer("net_double_pkr").notNull(),
+    netSharingPkr: bigint("net_sharing_pkr", { mode: "number" }).notNull(),
+    netQuadPkr: bigint("net_quad_pkr", { mode: "number" }).notNull(),
+    netTriplePkr: bigint("net_triple_pkr", { mode: "number" }).notNull(),
+    netDoublePkr: bigint("net_double_pkr", { mode: "number" }).notNull(),
 
     // Commission & Final Al Ramlah Retail Display Prices (PKR)
-    commissionPkr: integer("commission_pkr").notNull().default(22000),
-    retailSharingPkr: integer("retail_sharing_pkr").notNull(),
-    retailQuadPkr: integer("retail_quad_pkr").notNull(),
-    retailTriplePkr: integer("retail_triple_pkr").notNull(),
-    retailDoublePkr: integer("retail_double_pkr").notNull(),
+    commissionPkr: bigint("commission_pkr", { mode: "number" })
+      .notNull()
+      .default(22000),
+    retailSharingPkr: bigint("retail_sharing_pkr", {
+      mode: "number",
+    }).notNull(),
+    retailQuadPkr: bigint("retail_quad_pkr", { mode: "number" }).notNull(),
+    retailTriplePkr: bigint("retail_triple_pkr", { mode: "number" }).notNull(),
+    retailDoublePkr: bigint("retail_double_pkr", { mode: "number" }).notNull(),
 
     // Generated Single-Package Spotlight Poster Asset (Skill 3)
     spotlightPosterUrl: text("spotlight_poster_url"),
@@ -270,13 +276,14 @@ export const supplierFlyerPackages = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex("idx_pkg_item_post_code").on(table.postCode),
     index("idx_pkg_item_flyer").on(table.flyerId),
     index("idx_pkg_item_supplier").on(table.supplierId),
     index("idx_pkg_item_sharing_price").on(table.retailSharingPkr),
+    index("idx_pkg_item_created").on(table.createdAt),
   ]
 )
 
@@ -309,11 +316,15 @@ export const postAssets = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex("idx_post_asset_code").on(table.postCode),
     index("idx_post_asset_flyer").on(table.flyerId),
     index("idx_post_asset_kind").on(table.kind),
+    index("idx_post_asset_created").on(table.createdAt),
   ]
 )
 
@@ -339,11 +350,18 @@ export const marketingChannels = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_channel_platform").on(table.platform),
     index("idx_channel_area").on(table.areaTag),
     index("idx_channel_active").on(table.isActive),
+    uniqueIndex("idx_marketing_channels_external_handle").on(
+      table.externalGroupIdOrHandle
+    ),
   ]
 )
 
@@ -386,6 +404,10 @@ export const dailyPostDistributions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_dist_date").on(table.scheduledDate),
@@ -421,6 +443,7 @@ export const outreachContacts = pgTable(
     lastInboundReplyAt: timestamp("last_inbound_reply_at", {
       withTimezone: true,
     }),
+    optedOutAt: timestamp("opted_out_at", { withTimezone: true }),
     totalOutreachCount: integer("total_outreach_count").notNull().default(0),
     packagesSharedHistory: jsonb("packages_shared_history")
       .$type<string[]>()
@@ -433,12 +456,20 @@ export const outreachContacts = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex("idx_outreach_wa_number").on(table.whatsappNumber),
     index("idx_outreach_status").on(table.interestStatus),
     index("idx_outreach_cooldown").on(table.cooldownUntil),
+    index("idx_outreach_last_outreach_name").on(
+      table.lastOutreachAt,
+      table.fullName
+    ),
+    check(
+      "chk_outreach_interest_status",
+      sql`${table.interestStatus} IN ('prospect', 'interested', 'active_conversation', 'contacted_cooldown', 'replied_active', 'quoted', 'booked_client', 'do_not_contact')`
+    ),
   ]
 )
 

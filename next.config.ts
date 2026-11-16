@@ -1,3 +1,4 @@
+import path from "node:path"
 import type { NextConfig } from "next"
 
 function getHost(urlString?: string): string | undefined {
@@ -9,11 +10,18 @@ function getHost(urlString?: string): string | undefined {
   }
 }
 
-const appUrlHost = getHost(process.env.NEXT_PUBLIC_APP_URL)
-const authUrlHost = getHost(process.env.BETTER_AUTH_URL)
-const r2PublicHost = getHost(process.env.R2_PUBLIC_URL)
+function getHostname(urlString?: string): string | undefined {
+  if (!urlString) return undefined
+  try {
+    const parsed = new URL(urlString)
+    if (parsed.protocol !== "https:") return undefined
+    return parsed.hostname
+  } catch {
+    return undefined
+  }
+}
 
-const serverActionOrigins = [
+const DEV_TUNNEL_ORIGINS = [
   "localhost:3000",
   "localhost",
   "127.0.0.1:3000",
@@ -25,84 +33,273 @@ const serverActionOrigins = [
   "*.trycloudflare.com",
   "*.devtunnels.ms",
   "*.asse.devtunnels.ms",
-  appUrlHost,
-  authUrlHost,
-].filter((origin): origin is string => Boolean(origin && origin.trim()))
-
-const configuredRemotePatterns = [
-  {
-    protocol: "https" as const,
-    hostname: "images.unsplash.com",
-  },
-  {
-    protocol: "https" as const,
-    hostname: "plus.unsplash.com",
-  },
-  {
-    protocol: "https" as const,
-    hostname: "*.public.blob.vercel-storage.com",
-  },
-  {
-    protocol: "https" as const,
-    hostname: "lh3.googleusercontent.com",
-  },
-  {
-    protocol: "https" as const,
-    hostname: "avatars.githubusercontent.com",
-  },
-  {
-    protocol: "https" as const,
-    hostname: "**.r2.dev",
-  },
-  {
-    protocol: "https" as const,
-    hostname: "pub-7f2c533d31cc45bb9eb2669af5a3b5ef.r2.dev",
-  },
-  {
-    protocol: "https" as const,
-    hostname: "**.r2.cloudflarestorage.com",
-  },
-  ...(r2PublicHost
-    ? [
-        {
-          protocol: "https" as const,
-          hostname: r2PublicHost,
-        },
-      ]
-    : []),
 ]
 
-// Deduplicate remotePatterns by protocol and hostname
-const remotePatterns = Array.from(
-  new Map(
-    configuredRemotePatterns.map((pattern) => [
-      `${pattern.protocol}://${pattern.hostname}`,
-      pattern,
-    ])
-  ).values()
-)
+export function buildNextConfig(
+  env: NodeJS.ProcessEnv = process.env
+): NextConfig {
+  const isProduction = env.NODE_ENV === "production"
+  const pooledDbCandidate = env.DATABASE_URL_POOLED || env.DATABASE_URL || ""
+  const isAuditLocal =
+    env.AUDIT_E2E_LOCAL === "1" &&
+    Boolean(
+      env.DATABASE_URL &&
+        (env.DATABASE_URL.includes("127.0.0.1") ||
+          env.DATABASE_URL.includes("localhost")) &&
+        (pooledDbCandidate.includes("127.0.0.1") ||
+          pooledDbCandidate.includes("localhost"))
+    )
+  const isStrictProduction = isProduction && !isAuditLocal
+  const appUrlHost = getHost(env.NEXT_PUBLIC_APP_URL)
+  const authUrlHost = getHost(env.BETTER_AUTH_URL)
+  const r2PublicHostname = getHostname(env.R2_PUBLIC_URL)
 
-const nextConfig: NextConfig = {
-  output: "standalone",
-  allowedDevOrigins: [
-    "*.ngrok-free.app",
-    "*.ngrok-free.dev",
-    "*.ngrok.app",
-    "*.ngrok.io",
-    "*.trycloudflare.com",
-    "*.devtunnels.ms",
-    "*.asse.devtunnels.ms",
-    "localhost",
-    "127.0.0.1",
-  ],
-  experimental: {
-    serverActions: {
-      allowedOrigins: Array.from(new Set(serverActionOrigins)),
+  const prodOrigins = [appUrlHost, authUrlHost].filter(
+    (origin): origin is string =>
+      Boolean(
+        origin &&
+        origin.trim() &&
+        !origin.includes("localhost") &&
+        !origin.includes("127.0.0.1")
+      )
+  )
+
+  const serverActionOrigins = isStrictProduction
+    ? Array.from(new Set(prodOrigins))
+    : Array.from(
+        new Set(
+          [...DEV_TUNNEL_ORIGINS, appUrlHost, authUrlHost].filter(
+            (origin): origin is string => Boolean(origin && origin.trim())
+          )
+        )
+      )
+
+  const configuredRemotePatterns = [
+    {
+      protocol: "https" as const,
+      hostname: "r2.alramlahtravels.com",
     },
-  },
-  images: {
-    remotePatterns,
-  },
+    {
+      protocol: "https" as const,
+      hostname: "assets.alramlahtravels.com",
+    },
+    {
+      protocol: "https" as const,
+      hostname: "*.r2.dev",
+    },
+    {
+      protocol: "https" as const,
+      hostname: "*.r2.cloudflarestorage.com",
+    },
+    {
+      protocol: "https" as const,
+      hostname: "images.unsplash.com",
+    },
+    {
+      protocol: "https" as const,
+      hostname: "plus.unsplash.com",
+    },
+    {
+      protocol: "https" as const,
+      hostname: "*.public.blob.vercel-storage.com",
+    },
+    {
+      protocol: "https" as const,
+      hostname: "lh3.googleusercontent.com",
+    },
+    {
+      protocol: "https" as const,
+      hostname: "avatars.githubusercontent.com",
+    },
+    ...(r2PublicHostname
+      ? [
+          {
+            protocol: "https" as const,
+            hostname: r2PublicHostname,
+          },
+        ]
+      : []),
+  ]
+
+  const remotePatterns = Array.from(
+    new Map(
+      configuredRemotePatterns.map((pattern) => [
+        `${pattern.protocol}://${pattern.hostname}`,
+        pattern,
+      ])
+    ).values()
+  )
+
+  const excludedTraceGlobs = [
+    "./.env*",
+    "./public/uploads/**/*",
+    "./tests/**/*",
+    "./scripts/**/*",
+    "./docs/**/*",
+    "./.trigger/**/*",
+  ]
+
+  return {
+    output: "standalone",
+    poweredByHeader: false,
+    turbopack: {
+      resolveAlias: {
+        cn: "./lib/utils.ts",
+        "@/lib/seo/company-info-loader": {
+          browser: "./lib/seo/company-info-loader.browser.ts",
+          default: "./lib/seo/company-info-loader.ts",
+        },
+      },
+    },
+    webpack: (config, context) => {
+      config.resolve = config.resolve || {}
+      config.resolve.alias = {
+        ...(config.resolve.alias || {}),
+        cn: path.resolve(process.cwd(), "lib/utils.ts"),
+        ...(!context.isServer
+          ? {
+              "@/lib/seo/company-info-loader": path.resolve(
+                process.cwd(),
+                "lib/seo/company-info-loader.browser.ts"
+              ),
+            }
+          : {}),
+      }
+      return config
+    },
+    serverExternalPackages: [
+      "@whiskeysockets/baileys",
+      "pino",
+      "pg",
+      "sharp",
+    ],
+    outputFileTracingExcludes: {
+      "/*": excludedTraceGlobs,
+      "*": excludedTraceGlobs,
+    },
+    ...(isProduction
+      ? {}
+      : {
+          allowedDevOrigins: [
+            "*.ngrok-free.app",
+            "*.ngrok-free.dev",
+            "*.ngrok.app",
+            "*.ngrok.io",
+            "*.trycloudflare.com",
+            "*.devtunnels.ms",
+            "*.asse.devtunnels.ms",
+            "localhost",
+            "127.0.0.1",
+          ],
+        }),
+    experimental: {
+      authInterrupts: true,
+      optimizePackageImports: [
+        "lucide-react",
+        "recharts",
+        "@base-ui/react",
+        "date-fns",
+      ],
+      serverActions: {
+        bodySizeLimit: (
+          env.SERVER_ACTIONS_BODY_SIZE_LIMIT?.trim() ||
+          (isProduction ? "4mb" : "20mb")
+        ) as "4mb" | "20mb",
+        allowedOrigins: serverActionOrigins,
+      },
+    },
+    images: {
+      remotePatterns,
+      ...(isAuditLocal ? { unoptimized: true } : {}),
+    },
+    async redirects() {
+      return [
+        {
+          source: "/:path*",
+          has: [
+            {
+              type: "host",
+              value: "www.alramlahtravels.com",
+            },
+          ],
+          destination: "https://alramlahtravels.com/:path*",
+          permanent: true,
+        },
+        {
+          source: "/admin/social",
+          destination: "/admin/campaigns?tab=social",
+          permanent: true,
+        },
+        {
+          source: "/admin/hotels",
+          destination: "/admin/catalog?tab=hotels",
+          permanent: true,
+        },
+        {
+          source: "/admin/flights",
+          destination: "/admin/catalog?tab=flights",
+          permanent: true,
+        },
+        {
+          source: "/admin/groups",
+          destination: "/admin/catalog?tab=groups",
+          permanent: true,
+        },
+        {
+          source: "/admin/visa",
+          destination: "/admin/catalog?tab=visa",
+          permanent: true,
+        },
+        {
+          source: "/admin/transport",
+          destination: "/admin/catalog?tab=transport",
+          permanent: true,
+        },
+        {
+          source: "/admin/ziyarat",
+          destination: "/admin/catalog?tab=ziyarat",
+          permanent: true,
+        },
+        {
+          source: "/admin/content",
+          destination: "/admin/catalog?tab=content",
+          permanent: true,
+        },
+        {
+          source: "/admin/messages",
+          destination: "/admin/catalog?tab=messages",
+          permanent: true,
+        },
+        {
+          source: "/admin/users",
+          destination: "/admin/settings?tab=users",
+          permanent: true,
+        },
+        {
+          source: "/admin/post-lookup",
+          destination: "/admin/studio",
+          permanent: true,
+        },
+        {
+          source: "/admin/supplier-flyers",
+          destination: "/admin/studio",
+          permanent: true,
+        },
+        {
+          source: "/admin/distribution",
+          destination: "/admin/campaigns?tab=whatsapp",
+          permanent: true,
+        },
+        {
+          source: "/admin/outreach",
+          destination: "/admin/campaigns?tab=outreach",
+          permanent: true,
+        },
+      ]
+    },
+  }
 }
+
+const nextConfig: NextConfig = buildNextConfig()
 
 export default nextConfig

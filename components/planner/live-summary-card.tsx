@@ -1,11 +1,17 @@
 "use client"
 
 import React, { useState } from "react"
-import { usePlanner } from "./planner-context"
+import dynamic from "next/dynamic"
+import {
+  usePlanner,
+  type PlannerSubmissionPayload,
+} from "./planner-context"
 import { formatDisplayDate } from "./planner-date-picker"
-import { LeadCaptureDialog } from "./lead-capture-dialog"
-import type { CustomJourneyApplicationInput } from "@/lib/validations/application"
 import { formatCitySequence } from "@/lib/domain"
+
+const LeadCaptureDialog = dynamic(() =>
+  import("./lead-capture-dialog").then((mod) => mod.LeadCaptureDialog)
+)
 import {
   Calendar,
   Users,
@@ -31,6 +37,7 @@ export function LiveSummaryCard() {
     ziyarat,
     derived,
     catalog,
+    clientSubmissionId,
     activeStepId,
     goToStep,
   } = usePlanner()
@@ -49,8 +56,10 @@ export function LiveSummaryCard() {
     (s) => presetMode !== "transport_only" || s.enabled !== false
   )
 
-  // Construct submission payload for dialog
-  const submissionPayload: Omit<CustomJourneyApplicationInput, "contact"> = {
+  const includeAirportRouting = hasCityLegs || pillars.flights
+
+  const submissionPayload: Omit<PlannerSubmissionPayload, "contact"> = {
+    clientSubmissionId,
     presetMode,
     includeVisa: pillars.visa,
     includeFlights: pillars.flights,
@@ -65,8 +74,8 @@ export function LiveSummaryCard() {
     ksaArrivalDate: dates.arrivalDate,
     ksaDepartureDate: dates.departureDate,
     citySequence: hasCityLegs ? itinerary.citySequence : undefined,
-    entryAirport: hasCityLegs ? itinerary.entryAirport : undefined,
-    exitAirport: hasCityLegs ? itinerary.exitAirport : undefined,
+    entryAirport: includeAirportRouting ? itinerary.entryAirport : undefined,
+    exitAirport: includeAirportRouting ? itinerary.exitAirport : undefined,
     departureCityId: pillars.flights
       ? flights.departureCityId || undefined
       : undefined,
@@ -93,16 +102,14 @@ export function LiveSummaryCard() {
         }))
       : undefined,
     transportSegments: pillars.transport
-      ? transport.segments
-          .filter((s) => s.enabled !== false)
-          .map((s, idx) => ({
-            segmentOrder: idx + 1,
-            sectorId: s.sectorId,
-            serviceType: s.serviceType,
-            vehicleId: s.vehicleId,
-            pickupTime: s.pickupTime,
-            scheduledDate: s.scheduledDate,
-          }))
+      ? activeSegments.map((s, idx) => ({
+          segmentOrder: idx + 1,
+          sectorId: s.sectorId,
+          serviceType: s.serviceType,
+          vehicleId: s.vehicleId,
+          pickupTime: s.serviceType === "private" ? s.pickupTime : undefined,
+          scheduledDate: s.scheduledDate,
+        }))
       : undefined,
     ziyaratScope: pillars.ziyarat ? ziyarat.scope : undefined,
     ziyaratVehicleId: pillars.ziyarat
@@ -123,7 +130,7 @@ export function LiveSummaryCard() {
         {/* Header */}
         <div className="mb-4 flex items-center justify-between border-b border-[#E6DEC8] pb-3">
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
               Live Itinerary Card
             </span>
             <h3 className="text-base font-bold text-[#0A3622]">
@@ -140,7 +147,7 @@ export function LiveSummaryCard() {
                         : "Custom Package"}
             </h3>
           </div>
-          <span className="flex size-7 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059] text-[#8F6E2A]">
+          <span className="flex size-7 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059] text-[#7A5C1E]">
             <Sparkles className="size-3.5" />
           </span>
         </div>
@@ -156,7 +163,7 @@ export function LiveSummaryCard() {
               <Calendar className="size-3 text-[#C5A059]" />
               Dates in KSA:
             </span>
-            <span className="font-semibold text-[#1A1D1A]">
+            <span className="font-semibold text-[#1A1D1A] tabular-nums">
               {dates.totalKsaDays} Days ({formatDisplayDate(dates.arrivalDate)} → {formatDisplayDate(dates.departureDate)})
             </span>
           </button>
@@ -170,7 +177,7 @@ export function LiveSummaryCard() {
               <Users className="size-3 text-[#C5A059]" />
               Pilgrims:
             </span>
-            <span className="font-semibold text-[#1A1D1A]">
+            <span className="font-semibold text-[#1A1D1A] tabular-nums">
               {travellers.bedAndSeatCount} Beds/Seats ({travellers.totalPassportCount} Passports)
             </span>
           </button>
@@ -194,7 +201,6 @@ export function LiveSummaryCard() {
 
         {/* Itemized Summary Items */}
         <div className="mb-5 flex flex-col gap-2.5 text-xs">
-          {/* Visa Line */}
           {pillars.visa && (
             <button
               type="button"
@@ -207,13 +213,12 @@ export function LiveSummaryCard() {
                   Umrah Visa
                 </span>
               </div>
-              <span className="text-[11px] text-[#0A3622] font-medium">
+              <span className="text-[11px] text-[#0A3622] font-medium tabular-nums">
                 {travellers.totalPassportCount} Passports
               </span>
             </button>
           )}
 
-          {/* Flights Line */}
           {pillars.flights && (
             <button
               type="button"
@@ -237,7 +242,6 @@ export function LiveSummaryCard() {
             </button>
           )}
 
-          {/* Hotels Line */}
           {pillars.hotels && (
             <button
               type="button"
@@ -246,7 +250,7 @@ export function LiveSummaryCard() {
             >
               <div className="flex items-center gap-1.5">
                 <Building className="size-3.5 text-[#0A3622]" />
-                <span className="font-semibold text-[#1A1D1A]">
+                <span className="font-semibold text-[#1A1D1A] tabular-nums">
                   Courtyard Hotels ({itinerary.stays.length} Leg{itinerary.stays.length > 1 ? "s" : ""})
                 </span>
               </div>
@@ -257,7 +261,7 @@ export function LiveSummaryCard() {
                     key={stay.stayOrder}
                     className="flex items-center justify-between pl-5 text-[11px] text-[#686E65]"
                   >
-                    <span className="truncate max-w-[170px]">
+                    <span className="truncate max-w-[170px] tabular-nums">
                       {stay.stayOrder}. {hotel?.name ?? stay.city.toUpperCase()} ({stay.nights}n)
                     </span>
                     <span className="font-medium text-[#0A3622]">
@@ -270,7 +274,6 @@ export function LiveSummaryCard() {
             </button>
           )}
 
-          {/* Transport Line */}
           {pillars.transport && (
             <button
               type="button"
@@ -283,7 +286,7 @@ export function LiveSummaryCard() {
                   <span className="font-semibold text-[#1A1D1A]">
                     Ground Transport Fleet
                   </span>
-                  <p className="text-[10px] text-[#686E65]">
+                  <p className="text-[10px] text-[#686E65] tabular-nums">
                     {activeSegments.length} Point-to-Point Leg{activeSegments.length !== 1 ? "s" : ""}
                   </p>
                 </div>
@@ -294,7 +297,6 @@ export function LiveSummaryCard() {
             </button>
           )}
 
-          {/* Ziyarat Line */}
           {pillars.ziyarat && (
             <button
               type="button"
@@ -307,7 +309,7 @@ export function LiveSummaryCard() {
                   <span className="font-semibold text-[#1A1D1A]">
                     Sacred Historical Ziyarat
                   </span>
-                  <p className="text-[10px] text-[#686E65]">
+                  <p className="text-[10px] text-[#686E65] tabular-nums">
                     {ziyarat.selectedPlaceIds.length} Sanctuary{" "}
                     {ziyarat.selectedPlaceIds.length === 1 ? "Site" : "Sites"} Selected
                   </p>
@@ -324,17 +326,17 @@ export function LiveSummaryCard() {
           )}
         </div>
 
-        {/* Pricing Display Box */}
+        {/* Pricing Display Box (Business Invariant #2) */}
         <div className="mb-5 rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] p-4 text-center">
           {isVisaOnly ? (
             <div>
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8F6E2A]">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#7A5C1E]">
                 Guaranteed Fixed Total (PKR)
               </span>
-              <div className="font-mono text-2xl sm:text-3xl font-extrabold text-[#0A3622] my-1">
+              <div className="font-mono text-2xl sm:text-3xl font-extrabold text-[#0A3622] my-1 tabular-nums">
                 PKR {visaCalc.totalVisaCostPkr.toLocaleString()}
               </div>
-              <p className="text-[11px] text-[#686E65]">
+              <p className="text-[11px] text-[#686E65] tabular-nums">
                 {travellers.totalPassportCount} × PKR{" "}
                 {visaCalc.pricePerPassportPkr.toLocaleString()} (Includes Visa &amp; Medical Insurance)
               </p>
@@ -388,15 +390,15 @@ export function LiveSummaryCard() {
         </div>
       </div>
 
-      {/* Lead Capture Dialog */}
-      <LeadCaptureDialog
-        isOpen={isDialogOpen}
-        onClose={() => setIsDialogOpen(false)}
-        payload={submissionPayload}
-        isVisaOnly={isVisaOnly}
-        calculatedVisaTotalPkr={visaCalc.totalVisaCostPkr}
-        defaultCity={depCity?.cityName?.split("/")[0]?.trim() || "Lahore"}
-      />
+      {isDialogOpen && (
+        <LeadCaptureDialog
+          isOpen={isDialogOpen}
+          onClose={() => setIsDialogOpen(false)}
+          payload={submissionPayload}
+          isVisaOnly={isVisaOnly}
+          calculatedVisaTotalPkr={visaCalc.totalVisaCostPkr}
+        />
+      )}
     </>
   )
 }

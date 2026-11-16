@@ -1,23 +1,23 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertVehicle } from "@/app/actions/catalog"
-import { Plus, Loader2, Coins } from "lucide-react"
+import { Coins, Loader2, Plus } from "lucide-react"
 
 export interface VehicleData {
   id?: string
@@ -79,6 +79,29 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
   const [isActive, setIsActive] = useState(vehicle?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(vehicle?.sortOrder ?? 0)
 
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setName(vehicle?.name ?? "")
+    setCategory(vehicle?.category ?? "suv")
+    setBookingMode(vehicle?.bookingMode ?? "private_only")
+    setSeatCapacity(vehicle?.seatCapacity ?? 7)
+    setLuggageCapacity(vehicle?.luggageCapacity ?? 5)
+    setAllowsCustomPickupTime(vehicle?.allowsCustomPickupTime ?? true)
+    setDefaultRateSar(vehicle?.defaultRateSar ?? 250)
+    setZiyaratRateSar(vehicle?.ziyaratRateSar ?? 200)
+    setImageUrl(
+      vehicle?.imageUrl ??
+        "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=600"
+    )
+    setDescription(
+      vehicle?.description ??
+        "Private GMC Yukon / Toyota Fortuner with English & Urdu speaking drivers."
+    )
+    setIsActive(vehicle?.isActive ?? true)
+    setSortOrder(vehicle?.sortOrder ?? 0)
+  }, [open, vehicle])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -104,7 +127,7 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
         setOpen(false)
         router.refresh()
       } else {
-        setError("Failed to save vehicle.")
+        setError(res.error || "Failed to save vehicle.")
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -131,13 +154,17 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
           )
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        key={open ? (vehicle?.id ?? "new") : "closed"}
+        className="sm:max-w-md"
+      >
         <DialogHeader>
           <DialogTitle>
             {vehicle ? `Edit ${vehicle.name}` : "Add Fleet Vehicle"}
           </DialogTitle>
           <DialogDescription>
-            Configure vehicle category, seat/luggage limits, default SAR rates, and booking modes.
+            Configure vehicle category, seat/luggage limits, default SAR rates,
+            and booking modes.
           </DialogDescription>
         </DialogHeader>
 
@@ -202,7 +229,7 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
               >
                 <option value="private_only">Private Only</option>
-                <option value="shared_and_private">Shared & Private</option>
+                <option value="shared_and_private">Shared &amp; Private</option>
                 <option value="shared_only">Shared Only</option>
               </select>
             </div>
@@ -319,7 +346,7 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
                 type="number"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="w-14 h-7 text-xs"
+                className="w-14 h-7 text-xs font-mono"
               />
             </div>
           </div>

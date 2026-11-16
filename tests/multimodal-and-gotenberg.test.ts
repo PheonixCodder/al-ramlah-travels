@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, afterEach, after } from "node:test"
 import assert from "node:assert/strict"
 import fs from "node:fs/promises"
+import os from "node:os"
 import path from "node:path"
 import sharp from "sharp"
 import {
@@ -12,7 +13,11 @@ import {
   createPresignedUploadUrl,
   optimizePosterForSocialToR2,
 } from "../lib/storage/r2"
-import { checkGotenbergHealth } from "../lib/posters/gotenberg"
+import {
+  checkGotenbergHealth,
+  renderHtmlViaGotenberg,
+} from "../lib/posters/gotenberg"
+import { startGotenbergFake } from "./fakes/gotenberg.fake"
 
 const originalEnv = { ...process.env }
 const originalFetch = globalThis.fetch
@@ -161,7 +166,7 @@ describe("createPresignedUploadUrl (Offline / Local Dev Fallback)", () => {
     assert.equal(res.publicUrl, `/uploads/r2-local/${res.key}`)
   })
 
-  it("sanitizes filename and isolates assets by target folder", async () => {
+  it("generates CSPRNG UUID key preserving extension without leaking user filename and isolates assets by target folder", async () => {
     const res = await createPresignedUploadUrl({
       filename: "Raw Supplier Flyer (Nov 2026) #1.jpg",
       contentType: "image/jpeg",
@@ -174,8 +179,13 @@ describe("createPresignedUploadUrl (Offline / Local Dev Fallback)", () => {
       `Key should start with sanitized folder path, got ${res.key}`
     )
     assert.ok(
-      res.key.endsWith("Raw_Supplier_Flyer__Nov_2026___1.jpg"),
-      `Key should have spaces and hashes sanitized, got ${res.key}`
+      res.key.endsWith(".jpg"),
+      `Key should preserve normalized .jpg extension, got ${res.key}`
+    )
+    assert.ok(
+      !res.key.includes("Raw Supplier Flyer") &&
+        !res.key.includes("Raw_Supplier_Flyer"),
+      `Key must use CSPRNG UUID and never leak user filename, got ${res.key}`
     )
   })
 
@@ -198,10 +208,8 @@ describe("createPresignedUploadUrl (Offline / Local Dev Fallback)", () => {
 
 describe("optimizePosterForSocialToR2", () => {
   const testOutputDir = path.join(
-    process.cwd(),
-    "public",
-    "uploads",
-    "r2-local",
+    os.tmpdir(),
+    "alramlah-r2-local",
     "tests-slice27"
   )
 
@@ -248,21 +256,21 @@ describe("optimizePosterForSocialToR2", () => {
     )
     assert.equal(result.width, 1080)
     assert.equal(result.height, 1520)
-    assert.equal(
+    assert.match(
       result.key,
-      "tests-slice27/poster-portrait-4k_social.jpg"
+      /^tests-slice27\/poster-portrait-4k_[a-z0-9]+_social\.jpg$/
     )
     assert.equal(
       result.socialJpegUrl,
-      "/uploads/r2-local/tests-slice27/poster-portrait-4k_social.jpg"
+      `/uploads/r2-local/${result.key}`
     )
     assert.ok(result.sizeBytes > 0)
 
-    // Verify written file on disk is a valid JPEG
+    // Verify written file in test temp fallback dir is a valid JPEG
     const diskPath = path.join(
-      process.cwd(),
-      "public",
-      result.socialJpegUrl.replace(/^\//, "")
+      os.tmpdir(),
+      "alramlah-r2-local",
+      ...result.key.split("/")
     )
     const diskMeta = await sharp(diskPath).metadata()
     assert.equal(diskMeta.format, "jpeg")
@@ -617,5 +625,36 @@ describe("checkGotenbergHealth", () => {
     const health = await checkGotenbergHealth()
     assert.equal(health.ok, false)
     assert.ok(health.message.includes("ECONNREFUSED"))
+  })
+
+  it("renders PNG and PDF via Gotenberg v8 /forms/chromium/screenshot/html and /forms/chromium/convert/html and rejects legacy /forms/chromium/screenshot with 404", async () => {
+    const fake = await startGotenbergFake({ apiKey: "audit_gotenberg_secret" })
+    try {
+      process.env.GOTENBERG_API_URL = fake.baseUrl
+      process.env.GOTENBERG_API_KEY = "audit_gotenberg_secret"
+
+      const rendered = await renderHtmlViaGotenberg({
+        html: "<html><body><h1>Al Ramlah Travels Askari 10, Lahore Cantt</h1></body></html>",
+        capturePng: true,
+        capturePdf: true,
+      })
+
+      assert.ok(rendered.pngBuffer && rendered.pngBuffer.byteLength > 8)
+      assert.ok(rendered.pdfBuffer && rendered.pdfBuffer.toString("ascii", 0, 5) === "%PDF-")
+      assert.ok(
+        fake.requests.some((r) => r.pathname === "/forms/chromium/screenshot/html")
+      )
+      assert.ok(
+        fake.requests.some((r) => r.pathname === "/forms/chromium/convert/html")
+      )
+
+      const legacyRes = await fetch(`${fake.baseUrl}/forms/chromium/screenshot`, {
+        method: "POST",
+        headers: { "X-Gotenberg-Api-Key": "audit_gotenberg_secret" },
+      })
+      assert.equal(legacyRes.status, 404)
+    } finally {
+      await fake.close()
+    }
   })
 })

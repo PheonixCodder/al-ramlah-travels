@@ -1,5 +1,6 @@
-import { logger, task } from "@trigger.dev/sdk"
+import { logger, schemaTask } from "@trigger.dev/sdk"
 import { eq } from "drizzle-orm"
+import { z } from "zod"
 import { db } from "@/db"
 import { applicationQuotes } from "@/db/schema/applications"
 import {
@@ -18,24 +19,87 @@ import {
   renderAndUploadSinglePackagePoster,
   type SinglePackageSpotlightInput,
 } from "@/lib/posters/render-single-package-poster"
+import { rethrowAsTaskError } from "./errors"
+import { updateTaskProgress } from "./metadata"
+import { gotenbergQueue } from "./queues"
 
-export type RenderGotenbergAssetPayload =
-  | {
-      kind: "quotation_pdf"
-      applicationQuoteId?: string
-      data: LuxuryQuotationPdfInput
-    }
-  | {
-      kind: "multi_poster"
-      postAssetId?: string
-      flyerId?: string
-      data: RenderMultiPackagePosterParams
-    }
-  | {
-      kind: "single_poster"
-      postAssetId?: string
-      data: SinglePackageSpotlightInput
-    }
+const quotationPdfDataSchema = z
+  .object({
+    referenceNumber: z.string().min(1),
+    adults: z.number().int().min(0),
+    children: z.number().int().min(0),
+    infants: z.number().int().min(0),
+    airlineName: z.string().min(1),
+    makkahHotelName: z.string().min(1),
+    makkahNights: z.number().int().min(0),
+    madinahHotelName: z.string().min(1),
+    madinahNights: z.number().int().min(0),
+    transportVehicleName: z.string().min(1),
+    grandTotalPkr: z.number().min(0),
+  })
+  .passthrough() as unknown as z.ZodType<LuxuryQuotationPdfInput>
+
+const multiPosterDataSchema = z
+  .object({
+    postCode: z.string().min(1),
+    airlineName: z.string().min(1),
+    daysTitle: z.string().min(1),
+    routePill: z.string().min(1),
+    packages: z.array(z.record(z.string(), z.unknown())).min(1),
+  })
+  .passthrough() as unknown as z.ZodType<RenderMultiPackagePosterParams>
+
+const singlePosterDataSchema = z
+  .object({
+    cardNumber: z.string().min(1),
+    daysTitle: z.string().min(1),
+    routePill: z.string().min(1),
+    airlineName: z.string().min(1),
+    outboundFlightNo: z.string(),
+    outboundDateLabel: z.string(),
+    outboundRoute: z.string(),
+    outboundDepTime: z.string(),
+    outboundArrTime: z.string(),
+    returnFlightNo: z.string(),
+    returnDateLabel: z.string(),
+    returnRoute: z.string(),
+    returnDepTime: z.string(),
+    returnArrTime: z.string(),
+    makkahNights: z.string(),
+    makkahHotelName: z.string(),
+    makkahDistanceLabel: z.string(),
+    madinahNights: z.string(),
+    madinahHotelName: z.string(),
+    madinahDistanceLabel: z.string(),
+    sharingPricePkr: z.number(),
+    quadPricePkr: z.number(),
+    triplePricePkr: z.number(),
+    doublePricePkr: z.number(),
+  })
+  .passthrough() as unknown as z.ZodType<SinglePackageSpotlightInput>
+
+export const renderGotenbergAssetPayloadSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("quotation_pdf"),
+    applicationQuoteId: z.string().optional(),
+    data: quotationPdfDataSchema,
+  }),
+  z.object({
+    kind: z.literal("multi_poster"),
+    postAssetId: z.string().optional(),
+    flyerId: z.string().optional(),
+    data: multiPosterDataSchema,
+  }),
+  z.object({
+    kind: z.literal("single_poster"),
+    postAssetId: z.string().optional(),
+    data: singlePosterDataSchema,
+  }),
+])
+
+export type RenderGotenbergAssetPayload = z.infer<
+  typeof renderGotenbergAssetPayloadSchema
+>
 
 export interface RenderGotenbergAssetTaskResult {
   success: boolean
@@ -47,13 +111,33 @@ export interface RenderGotenbergAssetTaskResult {
 }
 
 /**
- * Core Gotenberg asset rendering runner. Dispatches to Gotenberg and uploads to Cloudflare R2.
+ * Core Gotenberg asset rendering runner (`T-037`, `T-072`).
+ * Permanent errors (`400/401/403/404/422`) throw `AbortTaskRunError`, while transient
+ * errors (`429/5xx`/timeouts) rethrow via `rethrowAsTaskError` so Trigger.dev retries cleanly.
  */
 export async function runRenderGotenbergAsset(
   payload: RenderGotenbergAssetPayload
 ): Promise<RenderGotenbergAssetTaskResult> {
+  const entityId =
+    payload.kind === "quotation_pdf"
+      ? payload.applicationQuoteId || payload.data.referenceNumber
+      : payload.kind === "multi_poster"
+        ? payload.flyerId || payload.postAssetId || payload.data.postCode
+        : payload.postAssetId ||
+          payload.data.postRefCode ||
+          payload.data.postCode ||
+          "spotlight"
+
   logger.info("[RenderGotenbergAssetTask] Starting asset rendering", {
     kind: payload.kind,
+  })
+
+  updateTaskProgress({
+    taskType: "render-gotenberg-asset",
+    entityId,
+    stage: "initializing",
+    progress: 15,
+    detail: `Initializing ${payload.kind} render pipeline`,
   })
 
   try {
@@ -65,9 +149,35 @@ export async function runRenderGotenbergAsset(
           applicationQuoteId,
         })
 
+        updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
+          stage: "rendering_gotenberg",
+          progress: 55,
+          detail: `Rendering 3-page luxury quotation PDF (${data.referenceNumber})`,
+        })
+
         const result = await renderAndUploadLuxuryQuotationPdf(data)
 
+        updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
+          stage: "uploading_r2",
+          progress: 85,
+          detail: "Uploaded quotation PDF to Cloudflare R2",
+          pdfUrl: result.pdfUrl,
+        })
+
         if (applicationQuoteId) {
+          updateTaskProgress({
+            taskType: "render-gotenberg-asset",
+            entityId,
+            stage: "persisting_db",
+            progress: 95,
+            detail: "Updating quotation PDF record in database",
+            pdfUrl: result.pdfUrl,
+          })
+
           await db
             .update(applicationQuotes)
             .set({
@@ -77,6 +187,15 @@ export async function runRenderGotenbergAsset(
             })
             .where(eq(applicationQuotes.id, applicationQuoteId))
         }
+
+        updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
+          stage: "completed",
+          progress: 100,
+          detail: "Luxury quotation PDF ready",
+          pdfUrl: result.pdfUrl,
+        })
 
         logger.info(
           "[RenderGotenbergAssetTask] Luxury quotation PDF rendered and uploaded",
@@ -103,7 +222,39 @@ export async function runRenderGotenbergAsset(
           }
         )
 
+        updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
+          stage: "rendering_gotenberg",
+          progress: 55,
+          detail: `Rendering 4K multi-package sheet (${data.postCode})`,
+        })
+
         const result = await renderAndUploadMultiPackagePoster(data)
+
+        updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
+          stage: "uploading_r2",
+          progress: 85,
+          detail: "Uploaded 4K PNG, PDF, and social JPEG to Cloudflare R2",
+          pngUrl: result.pngUrl,
+          pdfUrl: result.pdfUrl,
+          socialJpegUrl: result.socialJpegUrl,
+        })
+
+        if (postAssetId || flyerId) {
+          updateTaskProgress({
+            taskType: "render-gotenberg-asset",
+            entityId,
+            stage: "persisting_db",
+            progress: 95,
+            detail: "Persisting multi-package asset URLs to database",
+            pngUrl: result.pngUrl,
+            pdfUrl: result.pdfUrl,
+            socialJpegUrl: result.socialJpegUrl,
+          })
+        }
 
         if (postAssetId) {
           await db
@@ -125,6 +276,17 @@ export async function runRenderGotenbergAsset(
             })
             .where(eq(supplierFlyers.id, flyerId))
         }
+
+        updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
+          stage: "completed",
+          progress: 100,
+          detail: "Multi-package 4K sheet poster ready",
+          pngUrl: result.pngUrl,
+          pdfUrl: result.pdfUrl,
+          socialJpegUrl: result.socialJpegUrl,
+        })
 
         logger.info(
           "[RenderGotenbergAssetTask] Multi-package poster rendered and uploaded",
@@ -157,9 +319,39 @@ export async function runRenderGotenbergAsset(
           }
         )
 
+        updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
+          stage: "rendering_gotenberg",
+          progress: 55,
+          detail: `Rendering 4K single spotlight poster (${effectiveCode})`,
+        })
+
         const result = await renderAndUploadSinglePackagePoster(data)
 
+        updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
+          stage: "uploading_r2",
+          progress: 85,
+          detail: "Uploaded spotlight PNG, PDF, and social JPEG to Cloudflare R2",
+          pngUrl: result.pngUrl,
+          pdfUrl: result.pdfUrl,
+          socialJpegUrl: result.socialJpegUrl,
+        })
+
         if (postAssetId) {
+          updateTaskProgress({
+            taskType: "render-gotenberg-asset",
+            entityId,
+            stage: "persisting_db",
+            progress: 95,
+            detail: "Updating spotlight asset record in database",
+            pngUrl: result.pngUrl,
+            pdfUrl: result.pdfUrl,
+            socialJpegUrl: result.socialJpegUrl,
+          })
+
           await db
             .update(postAssets)
             .set({
@@ -168,6 +360,17 @@ export async function runRenderGotenbergAsset(
             })
             .where(eq(postAssets.id, postAssetId))
         }
+
+        updateTaskProgress({
+          taskType: "render-gotenberg-asset",
+          entityId,
+          stage: "completed",
+          progress: 100,
+          detail: "Single spotlight 4K poster ready",
+          pngUrl: result.pngUrl,
+          pdfUrl: result.pdfUrl,
+          socialJpegUrl: result.socialJpegUrl,
+        })
 
         logger.info(
           "[RenderGotenbergAssetTask] Single spotlight poster rendered and uploaded",
@@ -200,29 +403,38 @@ export async function runRenderGotenbergAsset(
         ? err.message
         : "Unknown Gotenberg asset rendering failure"
 
+    updateTaskProgress({
+      taskType: "render-gotenberg-asset",
+      entityId,
+      stage: "failed",
+      progress: 100,
+      detail: errorMsg,
+      error: errorMsg,
+    })
+
     logger.error("[RenderGotenbergAssetTask] Rendering failure", {
       kind: payload.kind,
       error: errorMsg,
     })
 
-    return {
-      success: false,
-      kind: payload.kind,
-      error: errorMsg,
-    }
+    rethrowAsTaskError(err, "RenderGotenbergAssetTask")
   }
 }
 
+export const runRenderGotenbergAssetInline = runRenderGotenbergAsset
+
 /**
- * Trigger.dev durable task for Gotenberg asset rendering.
+ * Trigger.dev v4 schemaTask for Gotenberg asset rendering, bound to `gotenbergQueue` (`concurrencyLimit: 2`).
  */
-export const renderGotenbergAssetTask = task({
+export const renderGotenbergAssetTask = schemaTask({
   id: "render-gotenberg-asset",
+  schema: renderGotenbergAssetPayloadSchema,
+  queue: gotenbergQueue,
   retry: {
     maxAttempts: 3,
     factor: 2,
     minTimeoutInMs: 2000,
     maxTimeoutInMs: 15000,
   },
-  run: runRenderGotenbergAsset,
+  run: async (payload) => runRenderGotenbergAsset(payload),
 })

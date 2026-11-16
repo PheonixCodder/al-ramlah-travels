@@ -15,7 +15,7 @@ import {
   ArrowLeft,
   UtensilsCrossed,
 } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 function formatShortDateRange(checkIn: string, checkOut: string): string {
   if (!checkIn || !checkOut) return ""
@@ -117,7 +117,7 @@ export function HotelSelectionModule() {
               Select your hotel and room type for each city stay
             </p>
           </div>
-          <span className="self-start sm:self-auto rounded-full bg-[#FAF7F0] border border-[#C5A059] px-3 py-1 text-[10px] font-bold text-[#8F6E2A]">
+          <span className="self-start sm:self-auto rounded-full bg-[#FAF7F0] border border-[#C5A059] px-3 py-1 text-[10px] font-bold text-[#7A5C1E]">
             {stays.length} City {stays.length === 1 ? "Stay" : "Stays"}
           </span>
         </div>
@@ -196,7 +196,7 @@ export function HotelSelectionModule() {
                   </h4>
 
                   {/* Read-only schedule pill from Step 1 */}
-                  <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-[#FAF7F0] border border-[#E6DEC8] px-2 py-0.5 text-[10px] font-medium text-[#8F6E2A]">
+                  <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-[#FAF7F0] border border-[#E6DEC8] px-2 py-0.5 text-[10px] font-medium text-[#7A5C1E]">
                     <Calendar className="size-3 text-[#C5A059]" />
                     <span>
                       {stay.nights} {stay.nights === 1 ? "Night" : "Nights"} ·{" "}
@@ -238,7 +238,7 @@ export function HotelSelectionModule() {
           {/* Context pill connecting settings to active hotel */}
           {selectedHotel && (
             <div className="self-start sm:self-auto inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F0] border border-[#C5A059]/50 px-3 py-1 text-[11px] font-semibold text-[#0A3622]">
-              <span className="text-[#8F6E2A]">For:</span>
+              <span className="text-[#7A5C1E]">For:</span>
               <span className="font-bold truncate max-w-[200px] sm:max-w-[280px]">
                 {selectedHotel.name}
               </span>

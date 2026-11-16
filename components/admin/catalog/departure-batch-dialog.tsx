@@ -1,23 +1,23 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertGroupDeparture } from "@/app/actions/groups"
-import { Plus, Loader2, Plane } from "lucide-react"
+import { Loader2, Plane, Plus } from "lucide-react"
 
 function generateDefaultBatchCode(): string {
   return `BATCH-${Math.floor(1000 + Math.random() * 9000)}`
@@ -80,7 +80,6 @@ export function DepartureBatchDialog({
     "open" | "filling_fast" | "sold_out" | "closed"
   >(batch?.status ?? "open")
 
-  // Overrides
   const [sharingOverride, setSharingOverride] = useState<number | undefined>(
     batch?.sharingPriceOverridePkr ?? undefined
   )
@@ -94,7 +93,6 @@ export function DepartureBatchDialog({
     batch?.doublePriceOverridePkr ?? undefined
   )
 
-  // Flight block fields
   const [outboundFlightNumber, setOutboundFlightNumber] = useState<string>(
     batch?.outboundFlightNumber ?? "SV-739"
   )
@@ -108,8 +106,35 @@ export function DepartureBatchDialog({
     batch?.routingNote ?? "Direct Flights (LHE <-> JED)"
   )
   const [flightScheduleSummary, setFlightScheduleSummary] = useState<string>(
-    batch?.flightScheduleSummary ?? "SV-739 (04:15 - 08:30) / SV-738 (21:00 - 03:15)"
+    batch?.flightScheduleSummary ??
+      "SV-739 (04:15 - 08:30) / SV-738 (21:00 - 03:15)"
   )
+
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setBatchCode(batch?.batchCode ?? generateDefaultBatchCode())
+    setDepartureCityId(batch?.departureCityId ?? (cities[0]?.id || ""))
+    setDepartureDate(batch?.departureDate ?? "2026-11-15")
+    setReturnDate(batch?.returnDate ?? "2026-11-29")
+    setTotalSeats(batch?.totalSeats ?? 45)
+    setBookedSeats(batch?.bookedSeats ?? 0)
+    setStatus(batch?.status ?? "open")
+    setSharingOverride(batch?.sharingPriceOverridePkr ?? undefined)
+    setQuadOverride(batch?.quadPriceOverridePkr ?? undefined)
+    setTripleOverride(batch?.triplePriceOverridePkr ?? undefined)
+    setDoubleOverride(batch?.doublePriceOverridePkr ?? undefined)
+    setOutboundFlightNumber(batch?.outboundFlightNumber ?? "SV-739")
+    setReturnFlightNumber(batch?.returnFlightNumber ?? "SV-738")
+    setBaggageAllowance(
+      batch?.baggageAllowance ?? "23-KG Outbound / 46-KG Return"
+    )
+    setRoutingNote(batch?.routingNote ?? "Direct Flights (LHE <-> JED)")
+    setFlightScheduleSummary(
+      batch?.flightScheduleSummary ??
+        "SV-739 (04:15 - 08:30) / SV-738 (21:00 - 03:15)"
+    )
+  }, [open, batch, cities])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -141,7 +166,10 @@ export function DepartureBatchDialog({
         setOpen(false)
         router.refresh()
       } else {
-        setError("Failed to save departure batch.")
+        const maybeError = "error" in res && typeof res.error === "string"
+          ? res.error
+          : "Failed to save departure batch."
+        setError(maybeError)
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -172,13 +200,19 @@ export function DepartureBatchDialog({
           )
         }
       />
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+      <DialogContent
+        key={open ? (batch?.id ?? "new") : "closed"}
+        className="max-h-[90vh] overflow-y-auto sm:max-w-md"
+      >
         <DialogHeader>
           <DialogTitle>
-            {batch ? `Edit Batch ${batch.batchCode}` : "Schedule Departure Batch"}
+            {batch
+              ? `Edit Batch ${batch.batchCode}`
+              : "Schedule Departure Batch"}
           </DialogTitle>
           <DialogDescription>
-            Assign gateway airport, travel dates, seat allotment, flight blocks, and rate overrides.
+            Assign gateway airport, travel dates, seat allotment, flight blocks,
+            and rate overrides.
           </DialogDescription>
         </DialogHeader>
 
@@ -197,6 +231,7 @@ export function DepartureBatchDialog({
                 value={batchCode}
                 onChange={(e) => setBatchCode(e.target.value.toUpperCase())}
                 placeholder="e.g. NOV-26-LHE-01"
+                className="font-mono"
                 required
               />
             </div>
@@ -288,11 +323,10 @@ export function DepartureBatchDialog({
             </div>
           </div>
 
-          {/* Flight Block Configuration */}
           <div className="rounded-lg border border-gold/40 bg-card p-3 space-y-2.5">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
               <Plane className="size-3.5 text-gold" />
-              <span>Flight Block & Schedule</span>
+              <span>Flight Block &amp; Schedule</span>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs">
@@ -353,7 +387,6 @@ export function DepartureBatchDialog({
             </div>
           </div>
 
-          {/* Optional overrides */}
           <div className="rounded-lg border border-border/80 bg-muted/20 p-2.5 space-y-2">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Optional Batch Price Overrides (PKR)
@@ -368,7 +401,7 @@ export function DepartureBatchDialog({
                     e.target.value ? Number(e.target.value) : undefined
                   )
                 }
-                className="text-xs"
+                className="text-xs font-mono"
               />
               <Input
                 placeholder="Quad Override"
@@ -379,7 +412,7 @@ export function DepartureBatchDialog({
                     e.target.value ? Number(e.target.value) : undefined
                   )
                 }
-                className="text-xs"
+                className="text-xs font-mono"
               />
               <Input
                 placeholder="Triple Override"
@@ -390,7 +423,7 @@ export function DepartureBatchDialog({
                     e.target.value ? Number(e.target.value) : undefined
                   )
                 }
-                className="text-xs"
+                className="text-xs font-mono"
               />
               <Input
                 placeholder="Double Override"
@@ -401,7 +434,7 @@ export function DepartureBatchDialog({
                     e.target.value ? Number(e.target.value) : undefined
                   )
                 }
-                className="text-xs"
+                className="text-xs font-mono"
               />
             </div>
           </div>

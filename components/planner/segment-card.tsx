@@ -1,10 +1,14 @@
 "use client"
 
 import React from "react"
-import type * as schema from "@/db/schema"
-import { type TransportSegmentConfig } from "./planner-context"
+import {
+  type PlannerTransportSectorItem,
+  type PlannerVehicleItem,
+  type TransportSegmentConfig,
+} from "./planner-context"
 import { VehicleCapacityPill } from "./vehicle-capacity-pill"
 import { PlannerDatePicker, formatDisplayDate } from "./planner-date-picker"
+import { getTodayPktIso } from "@/components/public/public-utils"
 import {
   Clock,
   Route,
@@ -16,12 +20,12 @@ import {
   Check,
   Calendar,
 } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 interface SegmentCardProps {
   segment: TransportSegmentConfig
-  sector: typeof schema.transportSectors.$inferSelect | undefined
-  vehicles: (typeof schema.vehicles.$inferSelect)[]
+  sector: PlannerTransportSectorItem | undefined
+  vehicles: PlannerVehicleItem[]
   bedAndSeatCount: number
   useSameVehicle: boolean
   presetMode?: string
@@ -65,6 +69,7 @@ export function SegmentCard({
 }: SegmentCardProps) {
   if (!sector) return null
 
+  const todayPktIso = getTodayPktIso()
   const isItineraryMode = presetMode !== "transport_only"
   const canShareSector = Boolean(sector.isSharedBusEligible || sector.supportsTrain)
   const isPrivate = !canShareSector || segment.serviceType === "private"
@@ -105,7 +110,7 @@ export function SegmentCard({
         {/* Main Title Row: Leg Badge + Title + Service Mode */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <span className="flex items-center justify-center rounded-lg bg-[#0A3622] text-white px-2.5 py-1 text-xs font-bold shrink-0">
+            <span className="flex items-center justify-center rounded-lg bg-[#0A3622] text-white px-2.5 py-1 text-xs font-bold shrink-0 tabular-nums">
               Leg {segment.segmentOrder}
             </span>
             <h4 className="text-sm sm:text-base font-bold text-[#0A3622] leading-tight truncate sm:whitespace-normal">
@@ -130,6 +135,7 @@ export function SegmentCard({
                   onUpdate({
                     serviceType: "private",
                     vehicleId: fallbackVehicle,
+                    pickupTime: segment.pickupTime || "10:00",
                   })
                 }}
                 className={cn(
@@ -162,6 +168,7 @@ export function SegmentCard({
                   onUpdate({
                     serviceType: "shared",
                     vehicleId: fallbackVehicle,
+                    pickupTime: "",
                   })
                 }}
                 className={cn(
@@ -176,7 +183,7 @@ export function SegmentCard({
               </button>
             </div>
           ) : (
-            <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#E6DEC8] bg-[#FAF7F0] px-2.5 py-1 text-[11px] font-semibold text-[#8F6E2A] self-start sm:self-auto">
+            <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#E6DEC8] bg-[#FAF7F0] px-2.5 py-1 text-[11px] font-semibold text-[#7A5C1E] self-start sm:self-auto">
               <Lock className="size-3 text-[#C5A059]" />
               Private Only
             </div>
@@ -191,7 +198,7 @@ export function SegmentCard({
               <Calendar className="size-3.5 text-[#C5A059]" />
               <span>
                 Transit Date:{" "}
-                <strong className="font-bold text-[#0A3622]">
+                <strong className="font-bold text-[#0A3622] tabular-nums">
                   {formatDisplayDate(segment.scheduledDate)}
                 </strong>
               </span>
@@ -199,7 +206,7 @@ export function SegmentCard({
           )}
 
           {/* Distance & Duration Pill */}
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-[#FAF7F0] border border-[#E6DEC8] px-2.5 py-1 text-xs text-[#686E65]">
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-[#FAF7F0] border border-[#E6DEC8] px-2.5 py-1 text-xs text-[#686E65] tabular-nums">
             <Route className="size-3.5 text-[#C5A059]" />
             <span>
               {sector.approxDistanceKm ?? 80} km · ~{sector.approxDurationMinutes ?? 60} mins
@@ -208,7 +215,7 @@ export function SegmentCard({
 
           {/* Rail Eligible Badge */}
           {sector.supportsTrain && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-[#FAF7F0] border border-[#C5A059]/60 px-2 py-1 text-xs font-semibold text-[#8F6E2A]">
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#FAF7F0] border border-[#C5A059]/60 px-2 py-1 text-xs font-semibold text-[#7A5C1E]">
               <Sparkles className="size-3 text-[#C5A059]" />
               Haramain High-Speed Rail Eligible
             </span>
@@ -233,7 +240,7 @@ export function SegmentCard({
           <button
             type="button"
             onClick={() => onSwitchRoute(segment.segmentOrder, "MAK_BADR_MED")}
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[#C5A059] bg-white px-3 py-1.5 text-xs font-bold text-[#8F6E2A] hover:bg-[#FAF7F0] transition-colors shadow-2xs self-start sm:self-auto"
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[#C5A059] bg-white px-3 py-1.5 text-xs font-bold text-[#7A5C1E] hover:bg-[#FAF7F0] transition-colors shadow-2xs self-start sm:self-auto"
           >
             <Sparkles className="size-3 text-[#C5A059]" />
             Upgrade: Via Badr Detour
@@ -268,7 +275,6 @@ export function SegmentCard({
       {useSameVehicle && isPrivate && isItineraryMode ? (
         /* Case A: Global Vehicle is Active & Private Transport & Itinerary Mode */
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center mt-3 pt-3">
-          {/* Column 1: Assigned Vehicle Summary Box */}
           <div>
             <span className="block text-[11px] font-semibold uppercase tracking-wider text-[#686E65] mb-1.5">
               Assigned Vehicle Fleet
@@ -279,7 +285,7 @@ export function SegmentCard({
                 <span className="font-bold text-[#0A3622] truncate">
                   {selectedVehicle?.name ?? "Private Vehicle"}
                 </span>
-                <span className="text-[11px] text-[#686E65] shrink-0">
+                <span className="text-[11px] text-[#686E65] shrink-0 tabular-nums">
                   ({selectedVehicle?.seatCapacity} Seats, {selectedVehicle?.luggageCapacity} Bags)
                 </span>
               </div>
@@ -287,7 +293,7 @@ export function SegmentCard({
                 <button
                   type="button"
                   onClick={onEnableCustomPerLeg}
-                  className="ml-2 text-[11px] font-bold text-[#8F6E2A] hover:text-[#0A3622] whitespace-nowrap transition-colors"
+                  className="ml-2 text-[11px] font-bold text-[#7A5C1E] hover:text-[#0A3622] whitespace-nowrap transition-colors"
                 >
                   Change per leg
                 </button>
@@ -295,7 +301,6 @@ export function SegmentCard({
             </div>
           </div>
 
-          {/* Column 2: Pickup Time */}
           <div>
             <label
               htmlFor={`pickup-select-${segment.segmentOrder}`}
@@ -306,9 +311,9 @@ export function SegmentCard({
             </label>
             <select
               id={`pickup-select-${segment.segmentOrder}`}
-              value={segment.pickupTime}
+              value={segment.pickupTime || "10:00"}
               onChange={(e) => onUpdate({ pickupTime: e.target.value })}
-              className="w-full rounded-lg border border-[#E6DEC8] bg-white px-3 py-2 text-xs font-semibold text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
+              className="w-full rounded-lg border border-[#E6DEC8] bg-white px-3 py-2 text-xs font-semibold text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:outline-none focus:ring-1 focus:ring-[#C5A059] tabular-nums"
             >
               {PICKUP_TIMES.map((time) => (
                 <option key={time} value={time}>
@@ -319,22 +324,18 @@ export function SegmentCard({
           </div>
         </div>
       ) : !isItineraryMode ? (
-        /* Case B (transport_only Mode): 3-Column Grid including Editable Date Picker */
+        /* Case B (transport_only Mode): 3-Column Grid including PKT-anchored Date Picker */
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start mt-3 pt-3">
-          {/* Column 1: Transit Date */}
           <div>
-            <label className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-[#686E65] mb-1.5">
-              <Calendar className="size-3 text-[#C5A059]" />
-              Transit Date
-            </label>
             <PlannerDatePicker
-              label="Date"
+              id={`transit-date-${segment.segmentOrder}`}
+              label="Transit Date"
               value={segment.scheduledDate ?? ""}
+              minDate={todayPktIso}
               onChange={(date) => onUpdate({ scheduledDate: date })}
             />
           </div>
 
-          {/* Column 2: Vehicle Selection */}
           <div>
             <label
               htmlFor={`vehicle-select-${segment.segmentOrder}`}
@@ -366,7 +367,6 @@ export function SegmentCard({
             )}
           </div>
 
-          {/* Column 3: Pickup Time */}
           <div>
             <label
               htmlFor={`pickup-select-${segment.segmentOrder}`}
@@ -379,9 +379,9 @@ export function SegmentCard({
             {isPrivate ? (
               <select
                 id={`pickup-select-${segment.segmentOrder}`}
-                value={segment.pickupTime}
+                value={segment.pickupTime || "10:00"}
                 onChange={(e) => onUpdate({ pickupTime: e.target.value })}
-                className="w-full rounded-lg border border-[#E6DEC8] bg-white px-3 py-2 text-xs font-semibold text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
+                className="w-full rounded-lg border border-[#E6DEC8] bg-white px-3 py-2 text-xs font-semibold text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:outline-none focus:ring-1 focus:ring-[#C5A059] tabular-nums"
               >
                 {PICKUP_TIMES.map((time) => (
                   <option key={time} value={time}>
@@ -391,7 +391,7 @@ export function SegmentCard({
               </select>
             ) : (
               <div className="flex items-center gap-2 rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] p-2.5 text-xs text-[#686E65]">
-                <Lock className="size-3.5 text-[#8F6E2A] shrink-0" />
+                <Lock className="size-3.5 text-[#7A5C1E] shrink-0" />
                 <span>
                   <strong>Fixed Schedule:</strong> Departure schedule assigned by station operator.
                 </span>
@@ -402,7 +402,6 @@ export function SegmentCard({
       ) : (
         /* Case C (Per-Leg Customization / Shared Service in Itinerary Mode): 2 Spacious Columns */
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start mt-3 pt-3">
-          {/* Column 1: Vehicle Selection */}
           <div>
             <label
               htmlFor={`vehicle-select-${segment.segmentOrder}`}
@@ -434,7 +433,6 @@ export function SegmentCard({
             )}
           </div>
 
-          {/* Column 2: Pickup Time */}
           <div>
             <label
               htmlFor={`pickup-select-${segment.segmentOrder}`}
@@ -447,9 +445,9 @@ export function SegmentCard({
             {isPrivate ? (
               <select
                 id={`pickup-select-${segment.segmentOrder}`}
-                value={segment.pickupTime}
+                value={segment.pickupTime || "10:00"}
                 onChange={(e) => onUpdate({ pickupTime: e.target.value })}
-                className="w-full rounded-lg border border-[#E6DEC8] bg-white px-3 py-2 text-xs font-semibold text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
+                className="w-full rounded-lg border border-[#E6DEC8] bg-white px-3 py-2 text-xs font-semibold text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:outline-none focus:ring-1 focus:ring-[#C5A059] tabular-nums"
               >
                 {PICKUP_TIMES.map((time) => (
                   <option key={time} value={time}>
@@ -459,7 +457,7 @@ export function SegmentCard({
               </select>
             ) : (
               <div className="flex items-center gap-2 rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] p-2.5 text-xs text-[#686E65]">
-                <Lock className="size-3.5 text-[#8F6E2A] shrink-0" />
+                <Lock className="size-3.5 text-[#7A5C1E] shrink-0" />
                 <span>
                   <strong>Fixed Schedule:</strong> Departure schedule assigned by station operator.
                 </span>

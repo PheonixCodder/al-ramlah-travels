@@ -1,8 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
-import { submitHajjInquiry } from "@/app/actions/applications"
+import { useMemo, useState } from "react"
+import Link from "next/link"
+import { submitHajjInquiryApplication } from "@/app/actions/applications"
+import { ArabicText } from "@/components/public/arabic-text"
+import { formatPkr, toWaMeUrl } from "@/components/public/public-utils"
+import { readStoredAttribution } from "@/lib/seo/utm"
+import { toTelHref } from "@/lib/company-info"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -24,11 +29,40 @@ import {
   Info,
   ArrowRight,
   ExternalLink,
+  AlertCircle,
+  Globe,
+  Search,
 } from "lucide-react"
+import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
+
+export interface PublicHajjPackageItem {
+  id: string
+  slug: string
+  title: string
+  seasonYear: number
+  maktabTier: string
+  durationDays: number
+  makkahHotelName: string
+  makkahDistanceLabel: string
+  madinahHotelName: string
+  madinahDistanceLabel: string
+  aziziyahStayNotes?: string | null
+  indicativeSharingPkr: number
+  indicativeQuadPkr?: number | null
+  indicativeTriplePkr?: number | null
+  indicativeDoublePkr?: number | null
+  isIndicative: boolean
+  regulatoryDisclaimer: string
+  highlights?: string[]
+  isFeatured?: boolean
+}
 
 export interface HajjInquirySectionProps {
+  hajjPackages?: PublicHajjPackageItem[]
+  packages?: PublicHajjPackageItem[]
   departureCities?: { cityName: string; airportCode: string }[]
   agencyWhatsapp?: string
+  secondaryPhone?: string
 }
 
 export interface HajjHotelStay {
@@ -37,12 +71,15 @@ export interface HajjHotelStay {
   meal: string
 }
 
+export type HajjMaktabCode = "A+" | "A" | "B" | "C"
+
 export interface HajjPackageDefinition {
   id: string
-  maktab: "A" | "B" | "C"
+  slug: string
+  maktab: HajjMaktabCode
   code: string
   title: string
-  tierName: "Executive" | "Premium" | "Silver"
+  tierName: "Royal VIP" | "Executive" | "Premium" | "Silver"
   duration: string
   daysCount: number
   camps: string
@@ -53,15 +90,13 @@ export interface HajjPackageDefinition {
     double: number
   }
   popular?: boolean
-  notes?: string
+  regulatoryDisclaimer?: string
 }
 
 export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
-  // ==========================================
-  // MAKTAB A (3 Packages)
-  // ==========================================
   {
     id: "hajj-a-01",
+    slug: "hajj-2027-maktab-a-executive-10d",
     maktab: "A",
     code: "01",
     title: "Executive · Short Days (10 Days)",
@@ -72,12 +107,12 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
     hotels: [
       {
         city: "Madinah",
-        name: "Peninsula Worth Hotel Madinah / Similar",
+        name: "Peninsula Worth Hotel Madinah / Similar (Markazia Courtyard)",
         meal: "Half Board Buffet: Breakfast + Dinner",
       },
       {
         city: "Azizia",
-        name: "Executive Building, Azizia",
+        name: "Executive Building, Azizia (Near Jamarat Access)",
         meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
     ],
@@ -89,6 +124,7 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
   },
   {
     id: "hajj-a-02",
+    slug: "hajj-2027-maktab-a-executive-14d",
     maktab: "A",
     code: "02",
     title: "Executive · Short Days (14 Days)",
@@ -99,12 +135,12 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
     hotels: [
       {
         city: "Madinah",
-        name: "Peninsula Worth Hotel Madinah / Similar",
+        name: "Peninsula Worth Hotel Madinah / Similar (Markazia Courtyard)",
         meal: "Half Board Buffet: Breakfast + Dinner",
       },
       {
         city: "Azizia",
-        name: "Executive Building, Azizia",
+        name: "Executive Building, Azizia (Near Jamarat Access)",
         meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
     ],
@@ -116,6 +152,7 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
   },
   {
     id: "hajj-a-03",
+    slug: "hajj-2027-maktab-a-executive-19d",
     maktab: "A",
     code: "03",
     title: "Executive · Semi-Short Days (18/19 Days)",
@@ -127,17 +164,17 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
     hotels: [
       {
         city: "Madinah",
-        name: "Elaf Taiba / Similar",
+        name: "Elaf Taiba / Similar (Front Row Haram Courtyard)",
         meal: "Half Board Buffet: Breakfast + Dinner",
       },
       {
         city: "Makkah",
-        name: "Swiss Al Maqam / Similar",
+        name: "Swissotel Al Maqam / Similar (0m Clock Tower Courtyard)",
         meal: "Half Board Buffet: Breakfast + Dinner",
       },
       {
         city: "Azizia",
-        name: "Executive Building, Azizia",
+        name: "Executive Building, Azizia (Near Jamarat Access)",
         meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
     ],
@@ -147,12 +184,9 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
       double: 2990000,
     },
   },
-
-  // ==========================================
-  // MAKTAB B (4 Packages)
-  // ==========================================
   {
     id: "hajj-b-01",
+    slug: "hajj-2027-maktab-b-premium-15d",
     maktab: "B",
     code: "01",
     title: "Premium · 14/15 Days",
@@ -163,13 +197,13 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
     hotels: [
       {
         city: "Madinah",
-        name: "Elaf Taiba",
+        name: "Elaf Taiba (Markazia Courtyard)",
         meal: "Half Board: Breakfast + Dinner · Gender-based sharing",
       },
       {
         city: "Azizia",
         name: "Azizia Building (Nearest to Jamarat)",
-        meal: "Full Board Buffet: Breakfast + Lunch + Dinner · Gender-based sharing",
+        meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
     ],
     pricing: {
@@ -180,6 +214,7 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
   },
   {
     id: "hajj-b-02",
+    slug: "hajj-2027-maktab-b-executive-15d",
     maktab: "B",
     code: "02",
     title: "Executive · 14/15 Days",
@@ -190,13 +225,13 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
     hotels: [
       {
         city: "Madinah",
-        name: "Verta Al Madina / Similar",
+        name: "Verta Al Madina / Similar (Central Markazia)",
         meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
       {
         city: "Azizia",
         name: "Azizia Building (Nearest to Jamarat)",
-        meal: "Full Board Buffet: Breakfast + Lunch + Dinner · Gender-based sharing",
+        meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
     ],
     pricing: {
@@ -207,6 +242,7 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
   },
   {
     id: "hajj-b-03",
+    slug: "hajj-2027-maktab-b-premium-22d",
     maktab: "B",
     code: "03",
     title: "Premium · 20/22 Days",
@@ -218,18 +254,18 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
     hotels: [
       {
         city: "Madinah",
-        name: "Elaf Taiba",
+        name: "Elaf Taiba (Front Row Courtyard)",
         meal: "Half Board: Breakfast + Dinner · Gender-based sharing",
       },
       {
         city: "Makkah",
-        name: "Clock Tower",
+        name: "Makkah Clock Royal Tower (0m Haram Courtyard)",
         meal: "Half Board: Breakfast + Dinner · Gender-based sharing",
       },
       {
         city: "Azizia",
         name: "Azizia Building (Nearest to Jamarat)",
-        meal: "Full Board Buffet: Breakfast + Lunch + Dinner · Gender-based sharing",
+        meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
     ],
     pricing: {
@@ -240,6 +276,7 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
   },
   {
     id: "hajj-b-04",
+    slug: "hajj-2027-maktab-b-executive-22d",
     maktab: "B",
     code: "04",
     title: "Executive · 20/22 Days",
@@ -250,18 +287,18 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
     hotels: [
       {
         city: "Madinah",
-        name: "Verta Al Madina / Similar",
+        name: "Verta Al Madina / Similar (Central Markazia)",
         meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
       {
         city: "Makkah",
-        name: "Hilton Convention / Marriott",
+        name: "Hilton Convention / Marriott Jabal Omar (300m Courtyard)",
         meal: "Half Board Buffet: Breakfast + Dinner",
       },
       {
         city: "Azizia",
         name: "Azizia Building (Nearest to Jamarat)",
-        meal: "Full Board Buffet: Breakfast + Lunch + Dinner · Gender-based sharing",
+        meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
     ],
     pricing: {
@@ -270,12 +307,9 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
       double: 2395000,
     },
   },
-
-  // ==========================================
-  // MAKTAB C (3 Packages)
-  // ==========================================
   {
     id: "hajj-c-01",
+    slug: "hajj-2027-maktab-c-silver-15d",
     maktab: "C",
     code: "01",
     title: "Silver · 14/15 Days",
@@ -286,7 +320,7 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
     hotels: [
       {
         city: "Madinah",
-        name: "Dewan Al Madina / Similar",
+        name: "Dewan Al Madina / Similar (Markazia Walkable)",
         meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
       {
@@ -303,6 +337,7 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
   },
   {
     id: "hajj-c-02",
+    slug: "hajj-2027-maktab-c-silver-22d",
     maktab: "C",
     code: "02",
     title: "Silver · 20/22 Days",
@@ -313,12 +348,12 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
     hotels: [
       {
         city: "Madinah",
-        name: "Dewan Al Madina / Similar",
+        name: "Dewan Al Madina / Similar (Markazia Walkable)",
         meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
       {
         city: "Makkah",
-        name: "Arfat Golden Rushd (Ex-Dar Khalil Al Rushd) / Similar",
+        name: "Arfat Golden Rushd / Similar (650m Walkable)",
         meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
       {
@@ -335,6 +370,7 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
   },
   {
     id: "hajj-c-03",
+    slug: "hajj-2027-maktab-c-executive-22d",
     maktab: "C",
     code: "03",
     title: "Executive · 20/22 Days",
@@ -345,18 +381,18 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
     hotels: [
       {
         city: "Madinah",
-        name: "Verta Al Madina / Similar",
+        name: "Verta Al Madina / Similar (Central Markazia)",
         meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
       {
         city: "Makkah",
-        name: "Hilton Convention / Marriott",
+        name: "Hilton Convention / Marriott Jabal Omar (300m Courtyard)",
         meal: "Half Board Buffet: Breakfast + Dinner",
       },
       {
         city: "Azizia",
         name: "Azizia Building (Nearest to Jamarat)",
-        meal: "Full Board Buffet: Breakfast + Lunch + Dinner · Gender-based sharing",
+        meal: "Full Board Buffet: Breakfast + Lunch + Dinner",
       },
     ],
     pricing: {
@@ -367,21 +403,148 @@ export const HAJJ_2027_PACKAGES: HajjPackageDefinition[] = [
   },
 ]
 
+const DIASPORA_COUNTRIES = [
+  "Pakistan",
+  "United Kingdom",
+  "United States",
+  "Canada",
+  "United Arab Emirates",
+  "Saudi Arabia",
+  "Qatar",
+  "Kuwait",
+  "Bahrain",
+  "Oman",
+  "European Union",
+  "Australia",
+  "Other",
+] as const
+
+const SUGGESTED_CITIES_BY_COUNTRY: Record<string, string[]> = {
+  Pakistan: ["Lahore", "Islamabad", "Karachi", "Faisalabad", "Multan", "Peshawar", "Sialkot"],
+  "United Kingdom": ["London", "Birmingham", "Manchester", "Bradford", "Glasgow"],
+  "United States": ["Houston", "New York", "Chicago", "Dallas", "Washington DC"],
+  Canada: ["Toronto", "Mississauga", "Calgary", "Vancouver", "Montreal"],
+  "United Arab Emirates": ["Dubai", "Abu Dhabi", "Sharjah"],
+  "Saudi Arabia": ["Riyadh", "Jeddah", "Dammam"],
+}
+
+export function coerceMaktabCode(raw: string): HajjMaktabCode {
+  const cleaned = (raw || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\bMAKTAB\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (/(?:^|[\s(])A\+/.test(cleaned)) return "A+"
+  if (/\bB\b/.test(cleaned)) return "B"
+  if (/\bC\b/.test(cleaned)) return "C"
+  return "A"
+}
+
+function mapDbHajjPackagesToDefinitions(
+  rows: PublicHajjPackageItem[]
+): HajjPackageDefinition[] {
+  return rows.map((row, idx) => {
+    const maktab = coerceMaktabCode(row.maktabTier)
+    const quad = row.indicativeQuadPkr ?? row.indicativeSharingPkr
+    const triple = row.indicativeTriplePkr ?? Math.round(quad * 1.07)
+    const double = row.indicativeDoublePkr ?? Math.round(quad * 1.14)
+
+    const hotels: HajjHotelStay[] = [
+      {
+        city: "Madinah",
+        name: `${row.madinahHotelName} (${row.madinahDistanceLabel})`,
+        meal: "Half / Full Board Buffet as per package itinerary",
+      },
+      {
+        city: "Makkah",
+        name: `${row.makkahHotelName} (${row.makkahDistanceLabel})`,
+        meal: "Half / Full Board Buffet as per package itinerary",
+      },
+    ]
+
+    if (row.aziziyahStayNotes) {
+      hotels.push({
+        city: "Azizia",
+        name: row.aziziyahStayNotes,
+        meal: "Full Board Buffet during Manasik days",
+      })
+    }
+
+    return {
+      id: row.id,
+      slug: row.slug,
+      maktab,
+      code: String(idx + 1).padStart(2, "0"),
+      title: row.title,
+      tierName:
+        maktab === "A+"
+          ? "Royal VIP"
+          : maktab === "A"
+            ? "Executive"
+            : maktab === "B"
+              ? "Premium"
+              : "Silver",
+      duration: `${row.durationDays} Days`,
+      daysCount: row.durationDays,
+      camps: `Mina & Arafat camps · Maktab ${maktab} category`,
+      hotels,
+      pricing: { quad, triple, double },
+      popular: row.isFeatured,
+      regulatoryDisclaimer: row.regulatoryDisclaimer,
+    }
+  })
+}
+
+function createHajjSubmissionKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `hajj_${crypto.randomUUID().replace(/-/g, "")}`
+  }
+  return `hajj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+}
+
 export function HajjInquirySection({
+  hajjPackages,
+  packages,
   departureCities,
-  agencyWhatsapp = "03274029701",
+  agencyWhatsapp = DEFAULT_COMPANY_INFO.primaryWhatsapp,
+  secondaryPhone = DEFAULT_COMPANY_INFO.secondaryPhone,
 }: HajjInquirySectionProps = {}) {
-  const [selectedMaktab, setSelectedMaktab] = useState<"all" | "A" | "B" | "C">("all")
-  const [selectedPackageId, setSelectedPackageId] = useState<string>("hajj-a-03")
-  const [selectedRoomType, setSelectedRoomType] = useState<"quad" | "triple" | "double">("quad")
+  const explicitDbPackages =
+    packages !== undefined ? packages : hajjPackages
+
+  // SEO-025 & S15-005: Treat explicit `[]` as closed (no synthetic resurrection); fallback only when `undefined`
+  const catalogPackages = useMemo(() => {
+    if (explicitDbPackages === undefined) {
+      return HAJJ_2027_PACKAGES
+    }
+    if (explicitDbPackages.length > 0) {
+      return mapDbHajjPackagesToDefinitions(explicitDbPackages)
+    }
+    return []
+  }, [explicitDbPackages])
+
+  const [selectedMaktab, setSelectedMaktab] = useState<"all" | HajjMaktabCode>(
+    "all"
+  )
+  const [selectedPackageId, setSelectedPackageId] = useState<string>(
+    () =>
+      catalogPackages.find((p) => p.popular)?.id ??
+      catalogPackages[0]?.id ??
+      ""
+  )
+  const [selectedRoomType, setSelectedRoomType] = useState<
+    "quad" | "triple" | "double"
+  >("quad")
   const [includeQurbani, setIncludeQurbani] = useState(true)
   const [includeTrainTicket, setIncludeTrainTicket] = useState(false)
   const [bloodGroup, setBloodGroup] = useState("")
 
-  // Form State
+  // Form State (T-084: International diaspora country + free-text city)
   const [customerName, setCustomerName] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
   const [customerWhatsapp, setCustomerWhatsapp] = useState("")
+  const [customerCountry, setCustomerCountry] = useState<string>("Pakistan")
   const [customerCity, setCustomerCity] = useState(
     departureCities?.[0]?.cityName ?? "Lahore"
   )
@@ -390,32 +553,58 @@ export function HajjInquirySection({
   const [children, setChildren] = useState<number>(0)
   const [infants, setInfants] = useState<number>(0)
   const [notes, setNotes] = useState("")
+  const [honeypot, setHoneypot] = useState("")
+  const [submissionKey, setSubmissionKey] = useState(() =>
+    createHajjSubmissionKey()
+  )
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [confirmedResult, setConfirmedResult] = useState<{
     referenceNumber: string
     whatsappUrl?: string
     selectedPkgTitle?: string
   } | null>(null)
 
-  const activePackage =
-    HAJJ_2027_PACKAGES.find((p) => p.id === selectedPackageId) ??
-    HAJJ_2027_PACKAGES[2]!
+  const activePackage: HajjPackageDefinition | null =
+    catalogPackages.find((p) => p.id === selectedPackageId) ??
+    catalogPackages[0] ??
+    null
 
   const filteredPackages =
     selectedMaktab === "all"
-      ? HAJJ_2027_PACKAGES
-      : HAJJ_2027_PACKAGES.filter((p) => p.maktab === selectedMaktab)
+      ? catalogPackages
+      : catalogPackages.filter((p) => p.maktab === selectedMaktab)
 
-  function handleSelectPackage(pkg: HajjPackageDefinition, room: "quad" | "triple" | "double" = "quad") {
+  const countAPlus = catalogPackages.filter((p) => p.maktab === "A+").length
+  const countA = catalogPackages.filter((p) => p.maktab === "A").length
+  const countB = catalogPackages.filter((p) => p.maktab === "B").length
+  const countC = catalogPackages.filter((p) => p.maktab === "C").length
+
+  const citySuggestions = useMemo(() => {
+    const base = SUGGESTED_CITIES_BY_COUNTRY[customerCountry] ?? []
+    if (customerCountry === "Pakistan" && departureCities?.length) {
+      const merged = new Set<string>([
+        ...departureCities.map((c) => c.cityName),
+        ...base,
+      ])
+      return Array.from(merged)
+    }
+    return base
+  }, [customerCountry, departureCities])
+
+  function handleSelectPackage(
+    pkg: HajjPackageDefinition,
+    room: "quad" | "triple" | "double" = "quad"
+  ) {
     setSelectedPackageId(pkg.id)
     setSelectedRoomType(room)
+    setSubmissionKey(createHajjSubmissionKey())
     if (selectedMaktab !== "all" && selectedMaktab !== pkg.maktab) {
       setSelectedMaktab(pkg.maktab)
     }
 
-    // Smooth scroll to the inquiry reservation form
     const target = document.getElementById("hajj-reservation-card")
     if (target) {
       target.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -431,8 +620,10 @@ export function HajjInquirySection({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (loading) return
     setLoading(true)
     setError(null)
+    setFieldErrors({})
 
     try {
       const roomLabel =
@@ -442,48 +633,79 @@ export function HajjInquirySection({
             ? "Triple Bed"
             : "Double Bed"
 
-      const chosenPrice = activePackage.pricing[selectedRoomType]
-      const consultationType = `Maktab ${activePackage.maktab} · ${activePackage.title} · ${roomLabel}`
+      const chosenPrice = activePackage
+        ? activePackage.pricing[selectedRoomType]
+        : undefined
+      const consultationType = activePackage
+        ? `Maktab ${activePackage.maktab} · ${activePackage.title} · ${roomLabel}`
+        : `Hajj 2027 General Priority Consultation · ${roomLabel}`
 
-      const structuredNotes = [
-        `Package: Maktab ${activePackage.maktab} - ${activePackage.title}`,
-        `Duration: ${activePackage.duration}`,
-        `Selected Room: ${roomLabel} (PKR ${chosenPrice.toLocaleString()} / person)`,
-        includeQurbani ? "Qurbani: YES (+PKR 55,000/person)" : "Qurbani: NOT REQUESTED",
-        includeTrainTicket ? "Train Ticket: YES (+PKR 61,000/person)" : "Train Ticket: NOT REQUESTED",
-        bloodGroup.trim() ? `Blood Group: ${bloodGroup.trim()}` : "",
-        notes.trim() ? `Special Inquiries / Requests: ${notes.trim()}` : "",
-      ]
-        .filter(Boolean)
-        .join(" | ")
-
-      const res = await submitHajjInquiry({
+      // T-055, T-084 & SEO-004: Persist structured Hajj metadata + first-touch web attribution
+      const res = await submitHajjInquiryApplication({
+        clientSubmissionId: submissionKey,
+        honeypot,
+        attribution: readStoredAttribution(),
         hajjConsultationType: consultationType,
+        hajjPackageSlug: activePackage?.slug,
+        maktabTier: activePackage?.maktab,
+        roomType: selectedRoomType,
+        indicativePricePkr: chosenPrice,
+        durationLabel: activePackage?.duration,
+        includeQurbani,
+        includeTrainTicket,
+        bloodGroup: bloodGroup.trim() || undefined,
         passengers: { adults, children, infants },
         contact: {
           customerName: customerName.trim(),
           customerPhone: customerPhone.trim(),
           customerWhatsapp: (customerWhatsapp || customerPhone).trim(),
+          customerCountry,
           customerCity: customerCity.trim(),
           customerEmail: customerEmail.trim() || undefined,
         },
-        notes: structuredNotes,
+        notes: notes.trim() || undefined,
       })
 
       if (res.success && res.referenceNumber) {
         setConfirmedResult({
           referenceNumber: res.referenceNumber,
           whatsappUrl: res.whatsappUrl,
-          selectedPkgTitle: `${activePackage.title} (${roomLabel})`,
+          selectedPkgTitle: activePackage
+            ? `${activePackage.title} (${roomLabel})`
+            : `Hajj 2027 Priority Consultation (${roomLabel})`,
         })
       } else {
-        setError(res.error || "Failed to submit Hajj reservation inquiry.")
+        setError(res.error || "Failed to submit Hajj pre-registration inquiry.")
+        setFieldErrors(res.fieldErrors ?? {})
       }
     } catch (err: unknown) {
-      if (err instanceof Error) setError(err.message)
-      else setError("Failed to submit inquiry.")
+      setError(
+        err instanceof Error ? err.message : "Failed to submit inquiry."
+      )
     } finally {
       setLoading(false)
+    }
+  }
+
+  function handleTrackStatus() {
+    const refCode = confirmedResult?.referenceNumber ?? ""
+    const element = document.getElementById("track-status")
+    if (element) {
+      if (refCode && typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("alramlah:prefill-tracker", {
+            detail: { referenceNumber: refCode },
+          })
+        )
+      }
+      element.scrollIntoView({ behavior: "smooth" })
+      return
+    }
+    const targetUrl = refCode
+      ? `/?trackRef=${encodeURIComponent(refCode)}#track-status`
+      : "/#track-status"
+    if (typeof window !== "undefined") {
+      window.location.assign(targetUrl)
     }
   }
 
@@ -492,88 +714,143 @@ export function HajjInquirySection({
       id="hajj-inquiry"
       className="relative overflow-hidden bg-gradient-to-b from-[#062417] via-[#0A3622] to-[#041B11] py-20 text-white scroll-mt-16"
     >
-      {/* Background Islamic Pattern Overlay */}
       <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#C5A059_1px,transparent_1px)] [background-size:24px_24px]" />
 
-      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-16">
+      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-16">
         {/* ======================================================== */}
-        {/* SECTION HEADER                                          */}
+        {/* SECTION HEADER & INDICATIVE REGULATORY BANNER (`OD-09e`)  */}
         {/* ======================================================== */}
-        <div className="text-center max-w-3xl mx-auto space-y-4">
-          <div className="inline-flex items-center gap-2 rounded-full border border-gold/40 bg-black/40 px-4 py-1.5 backdrop-blur-md">
-            <span
-              dir="rtl"
-              className="font-arabic text-base text-gold font-medium"
-            >
+        <div className="text-center max-w-3xl mx-auto flex flex-col gap-4">
+          <div className="inline-flex self-center items-center gap-2 rounded-full border border-gold/40 bg-black/40 px-4 py-1.5 backdrop-blur-md">
+            <ArabicText className="text-base text-gold font-medium">
               حَجٌّ مَبْرُورٌ وَسَعْيٌ مَشْكُورٌ
-            </span>
+            </ArabicText>
             <span className="text-white/40">·</span>
             <span className="text-[11px] font-bold tracking-wider uppercase text-gold">
-              HAJJ 2027 PACKAGE GUIDE
+              INDICATIVE HAJJ 2027 PRE-REGISTRATION
             </span>
           </div>
 
           <h2 className="font-display text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl leading-tight">
-            Hajj 2027 Packages at a Glance
+            Hajj 2027 Indicative Package Guide
           </h2>
 
           <p className="text-white/80 text-sm sm:text-base leading-relaxed">
-            <strong className="text-gold font-semibold">Where Purpose Meets Excellence</strong> — All prices are per person in Pakistani Rupees (PKR). Hotels are listed in the order <span className="underline decoration-gold/60 underline-offset-4">Madinah · Makkah · Azizia</span>.
+            <strong className="text-gold font-semibold">
+              Where Purpose Meets Excellence
+            </strong>{" "}
+            — Open to Pakistani residents and overseas diaspora families worldwide. Indicative per-person figures in PKR; hotels listed in the order{" "}
+            <span className="underline decoration-gold/60 underline-offset-4">
+              Madinah · Makkah · Azizia
+            </span>
+            .
           </p>
 
-          {/* Maktab Filter Tabs */}
-          <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => setSelectedMaktab("all")}
-              className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
-                selectedMaktab === "all"
-                  ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
-                  : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
-              }`}
-            >
-              All Packages (10)
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedMaktab("A")}
-              className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
-                selectedMaktab === "A"
-                  ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
-                  : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
-              }`}
-            >
-              Maktab A (3 Packages)
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedMaktab("B")}
-              className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
-                selectedMaktab === "B"
-                  ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
-                  : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
-              }`}
-            >
-              Maktab B (4 Packages)
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedMaktab("C")}
-              className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
-                selectedMaktab === "C"
-                  ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
-                  : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
-              }`}
-            >
-              Maktab C (3 Packages)
-            </button>
+          {/* Mandatory Regulatory Disclaimer (`OD-09e`) */}
+          <div className="rounded-2xl border border-gold/40 bg-black/40 px-4 py-3 text-left text-xs text-white/85 flex items-start gap-2.5">
+            <Info className="size-4 text-gold shrink-0 mt-0.5" />
+            <span>
+              <strong className="text-gold">Regulatory Pre-Registration Notice:</strong>{" "}
+              All Hajj 2027 tariffs and Maktab structures shown below are{" "}
+              <strong>non-binding indicative pre-registration estimates</strong>{" "}
+              based on prior Maktab benchmarks. Final seat allocation, camp zones, and tariffs remain subject to official Government of Pakistan Ministry of Religious Affairs (MoRA) and Saudi Ministry of Hajj &amp; Umrah (Nusuk) 2027 announcements.
+            </span>
           </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+            <Link
+              href="/hajj-2027"
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-gold/50 bg-gold/15 px-4 py-1.5 text-xs font-bold text-gold transition-colors hover:bg-gold hover:text-emerald-950"
+            >
+              <span>View Full Hajj 2027 Maktab A+, A, B &amp; C Guide</span>
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
+
+          {/* Maktab Filter Tabs */}
+          {catalogPackages.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedMaktab("all")}
+                className={`min-h-7 rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                  selectedMaktab === "all"
+                    ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
+                    : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
+                }`}
+              >
+                All Packages ({catalogPackages.length})
+              </button>
+              {countAPlus > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMaktab("A+")}
+                  className={`min-h-7 rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                    selectedMaktab === "A+"
+                      ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
+                      : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
+                  }`}
+                >
+                  Maktab A+ ({countAPlus})
+                </button>
+              )}
+              {countA > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMaktab("A")}
+                  className={`min-h-7 rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                    selectedMaktab === "A"
+                      ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
+                      : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
+                  }`}
+                >
+                  Maktab A ({countA})
+                </button>
+              )}
+              {countB > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMaktab("B")}
+                  className={`min-h-7 rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                    selectedMaktab === "B"
+                      ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
+                      : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
+                  }`}
+                >
+                  Maktab B ({countB})
+                </button>
+              )}
+              {countC > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMaktab("C")}
+                  className={`min-h-7 rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                    selectedMaktab === "C"
+                      ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
+                      : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
+                  }`}
+                >
+                  Maktab C ({countC})
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ======================================================== */}
-        {/* 10 OFFICIAL PACKAGES GRID                                */}
+        {/* PACKAGES GRID OR EXPLICITLY CLOSED CONSULTATION NOTICE   */}
         {/* ======================================================== */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {catalogPackages.length === 0 ? (
+          <div className="mx-auto max-w-3xl w-full rounded-3xl border border-gold/40 bg-black/45 p-8 text-center backdrop-blur-xl">
+            <h3 className="font-display text-xl sm:text-2xl font-bold text-white">
+              Hajj 2027 Tier Allotments Currently Updating
+            </h3>
+            <p className="mt-2 text-xs sm:text-sm text-white/80 leading-relaxed">
+              Individual Hajj 2027 Maktab tier cards are currently paused pending official Government of Pakistan Ministry of Religious Affairs (MoRA) and Saudi Nusuk tariff notifications. You may register priority consultation interest below to receive immediate notification when official quotas open.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredPackages.map((pkg) => {
             const isSelected = selectedPackageId === pkg.id
 
@@ -586,31 +863,28 @@ export function HajjInquirySection({
                     : "border-white/15 bg-black/35 hover:border-gold/50 hover:bg-black/50"
                 }`}
               >
-                {/* Popular Badge */}
                 {pkg.popular && (
                   <div className="absolute -top-3 right-6 rounded-full bg-gold px-3 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-950 shadow-md">
-                    Most Popular
+                    Featured Tier
                   </div>
                 )}
 
-                <div className="space-y-4">
-                  {/* Category Header */}
+                <div className="flex flex-col gap-4">
                   <div className="flex items-center justify-between border-b border-white/10 pb-3">
                     <div className="flex items-center gap-2">
-                      <span className="flex size-7 items-center justify-center rounded-lg bg-gold/20 font-mono text-xs font-bold text-gold border border-gold/40">
+                      <span className="flex size-7 items-center justify-center rounded-lg bg-gold/20 font-mono tabular-nums text-xs font-bold text-gold border border-gold/40">
                         {pkg.code}
                       </span>
                       <span className="rounded-md bg-white/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/90">
                         Maktab {pkg.maktab}
                       </span>
                     </div>
-                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-900/60 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 border border-emerald-500/30">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-900/60 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 border border-emerald-500/30 tabular-nums">
                       <Clock className="size-3" />
                       {pkg.duration}
                     </span>
                   </div>
 
-                  {/* Title & Camp Category */}
                   <div>
                     <h3 className="font-display text-lg font-bold text-white leading-snug">
                       {pkg.title}
@@ -621,16 +895,20 @@ export function HajjInquirySection({
                     </div>
                   </div>
 
-                  {/* Hotel Stays & Meals */}
-                  <div className="space-y-2 rounded-2xl bg-white/5 p-3.5 border border-white/10 text-xs">
+                  <div className="flex flex-col gap-2 rounded-2xl bg-white/5 p-3.5 border border-white/10 text-xs">
                     <span className="block text-[10px] font-bold uppercase tracking-wider text-gold/80">
                       Hotel Accommodations &amp; Meals
                     </span>
                     {pkg.hotels.map((hotel, hIdx) => (
-                      <div key={hIdx} className="space-y-0.5 border-b border-white/5 pb-2 last:border-b-0 last:pb-0">
+                      <div
+                        key={hIdx}
+                        className="flex flex-col gap-0.5 border-b border-white/5 pb-2 last:border-b-0 last:pb-0"
+                      >
                         <div className="flex items-center gap-1.5 font-semibold text-white">
                           <Building className="size-3 text-gold shrink-0" />
-                          <span className="text-[11px] font-bold text-gold">{hotel.city}:</span>
+                          <span className="text-[11px] font-bold text-gold">
+                            {hotel.city}:
+                          </span>
                           <span className="truncate">{hotel.name}</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[10px] text-white/70 pl-4.5">
@@ -641,73 +919,46 @@ export function HajjInquirySection({
                     ))}
                   </div>
 
-                  {/* Rates Table (Quad, Triple, Double) */}
-                  <div className="space-y-2 pt-1">
+                  <div className="flex flex-col gap-2 pt-1">
                     <span className="block text-[10px] font-bold uppercase tracking-wider text-white/60">
-                      Price Per Person (PKR)
+                      Indicative Estimate Per Person (PKR)
                     </span>
                     <div className="grid grid-cols-3 gap-2 text-center">
-                      <div
-                        onClick={() => handleSelectPackage(pkg, "quad")}
-                        className={`cursor-pointer rounded-xl border p-2 transition-colors ${
-                          isSelected && selectedRoomType === "quad"
-                            ? "border-gold bg-gold/15 text-gold"
-                            : "border-white/10 bg-white/5 hover:border-white/30 text-white/90"
-                        }`}
-                      >
-                        <span className="block text-[10px] font-semibold text-white/70">
-                          Quad Bed
-                        </span>
-                        <span className="font-mono text-xs font-bold text-white">
-                          {(pkg.pricing.quad / 1000000).toFixed(2)}M
-                        </span>
-                        <span className="block text-[9px] text-white/50">
-                          {pkg.pricing.quad.toLocaleString()}
-                        </span>
-                      </div>
-
-                      <div
-                        onClick={() => handleSelectPackage(pkg, "triple")}
-                        className={`cursor-pointer rounded-xl border p-2 transition-colors ${
-                          isSelected && selectedRoomType === "triple"
-                            ? "border-gold bg-gold/15 text-gold"
-                            : "border-white/10 bg-white/5 hover:border-white/30 text-white/90"
-                        }`}
-                      >
-                        <span className="block text-[10px] font-semibold text-white/70">
-                          Triple Bed
-                        </span>
-                        <span className="font-mono text-xs font-bold text-white">
-                          {(pkg.pricing.triple / 1000000).toFixed(2)}M
-                        </span>
-                        <span className="block text-[9px] text-white/50">
-                          {pkg.pricing.triple.toLocaleString()}
-                        </span>
-                      </div>
-
-                      <div
-                        onClick={() => handleSelectPackage(pkg, "double")}
-                        className={`cursor-pointer rounded-xl border p-2 transition-colors ${
-                          isSelected && selectedRoomType === "double"
-                            ? "border-gold bg-gold/15 text-gold"
-                            : "border-white/10 bg-white/5 hover:border-white/30 text-white/90"
-                        }`}
-                      >
-                        <span className="block text-[10px] font-semibold text-white/70">
-                          Double Bed
-                        </span>
-                        <span className="font-mono text-xs font-bold text-white">
-                          {(pkg.pricing.double / 1000000).toFixed(2)}M
-                        </span>
-                        <span className="block text-[9px] text-white/50">
-                          {pkg.pricing.double.toLocaleString()}
-                        </span>
-                      </div>
+                      {(["quad", "triple", "double"] as const).map((tierKey) => {
+                        const rateVal = pkg.pricing[tierKey]
+                        const label =
+                          tierKey === "quad"
+                            ? "Quad Bed"
+                            : tierKey === "triple"
+                              ? "Triple Bed"
+                              : "Double Bed"
+                        return (
+                          <button
+                            key={tierKey}
+                            type="button"
+                            onClick={() => handleSelectPackage(pkg, tierKey)}
+                            className={`cursor-pointer rounded-xl border p-2 transition-colors ${
+                              isSelected && selectedRoomType === tierKey
+                                ? "border-gold bg-gold/15 text-gold"
+                                : "border-white/10 bg-white/5 hover:border-white/30 text-white/90"
+                            }`}
+                          >
+                            <span className="block text-[10px] font-semibold text-white/70">
+                              {label}
+                            </span>
+                            <span className="font-mono tabular-nums text-xs font-bold text-white">
+                              {(rateVal / 1000000).toFixed(2)}M
+                            </span>
+                            <span className="block font-mono tabular-nums text-[9px] text-white/50">
+                              {rateVal.toLocaleString()}
+                            </span>
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
 
-                {/* Card Action */}
                 <div className="pt-5">
                   <Button
                     type="button"
@@ -721,11 +972,11 @@ export function HajjInquirySection({
                     {isSelected ? (
                       <>
                         <Check className="size-4" />
-                        <span>Selected · Configure Below</span>
+                        <span>Selected · Pre-Register Below</span>
                       </>
                     ) : (
                       <>
-                        <span>Select Package</span>
+                        <span>Pre-Register Interest</span>
                         <ArrowRight className="size-3.5" />
                       </>
                     )}
@@ -734,18 +985,18 @@ export function HajjInquirySection({
               </div>
             )
           })}
-        </div>
+          </div>
+        )}
 
         {/* ======================================================== */}
         {/* INCLUDED IN EVERY PACKAGE & ADDITIONAL CHARGES BANNER     */}
         {/* ======================================================== */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 rounded-3xl border border-gold/30 bg-black/40 p-6 sm:p-8 backdrop-blur-xl">
-          {/* Left: Included in Every Package (7 cols) */}
-          <div className="space-y-4 lg:col-span-7">
+          <div className="flex flex-col gap-4 lg:col-span-7">
             <div className="flex items-center gap-2 text-gold">
               <Sparkles className="size-5" />
               <h3 className="font-display text-xl font-bold text-white">
-                Included in Every Hajj 2027 Package
+                Target Inclusions Across Hajj 2027 Tiers
               </h3>
             </div>
             <p className="text-xs text-white/70 leading-relaxed">
@@ -753,72 +1004,50 @@ export function HajjInquirySection({
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs">
-              <div className="flex items-start gap-2">
-                <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 mt-0.5">
-                  <Check className="size-3" />
+              {[
+                "Private luxury bus (Manasik days & intercity transfers)",
+                "Return air ticket (Pakistani or international gateway options)",
+                "Accommodations in Madinah, Makkah & Azizia",
+                "Mina & Arafat camps (Maktab A / B / C category)",
+                "Buffet meals as specified on each package",
+                "Religious scholar guidance & dedicated group leader",
+                "24/7 Airport meet, greet & executive ground assistance",
+              ].map((item, idx) => (
+                <div
+                  key={idx}
+                  className={`flex items-start gap-2 ${
+                    idx === 6 ? "sm:col-span-2" : ""
+                  }`}
+                >
+                  <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 mt-0.5">
+                    <Check className="size-3" />
+                  </div>
+                  <span>{item}</span>
                 </div>
-                <span>Private luxury bus (Hajj days &amp; intercity transfers)</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 mt-0.5">
-                  <Check className="size-3" />
-                </div>
-                <span>Return air ticket included</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 mt-0.5">
-                  <Check className="size-3" />
-                </div>
-                <span>Hotels in Madinah, Makkah &amp; Azizia</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 mt-0.5">
-                  <Check className="size-3" />
-                </div>
-                <span>Mina &amp; Arafat camps (Maktab A / B / C category)</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 mt-0.5">
-                  <Check className="size-3" />
-                </div>
-                <span>Buffet meals as specified on each package</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 mt-0.5">
-                  <Check className="size-3" />
-                </div>
-                <span>Professional Hajj guide &amp; dedicated group leader</span>
-              </div>
-              <div className="flex items-start gap-2 sm:col-span-2">
-                <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 mt-0.5">
-                  <Check className="size-3" />
-                </div>
-                <span>24/7 Airport meet, greet &amp; executive ground assistance</span>
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* Right: Additional Charges Card (5 cols) */}
-          <div className="lg:col-span-5 rounded-2xl border border-[#D97706]/40 bg-[#FEF3C7]/10 p-5 space-y-4 flex flex-col justify-between">
-            <div className="space-y-2">
+          <div className="lg:col-span-5 rounded-2xl border border-[#D97706]/40 bg-[#FEF3C7]/10 p-5 flex flex-col justify-between gap-4">
+            <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 text-[#F59E0B]">
                 <Info className="size-4" />
                 <h4 className="font-display text-base font-bold text-white">
-                  Additional Charges (Not Included)
+                  Optional Add-Ons (Estimated)
                 </h4>
               </div>
               <p className="text-[11px] text-white/70 leading-relaxed">
-                Package prices do not include these mandatory government &amp; optional transit charges. Please confirm current rates with our desk.
+                Indicative package figures exclude optional Adahi / Qurbani coupons and Haramain High-Speed Rail upgrades.
               </p>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="flex flex-col gap-2.5">
               <div className="flex items-center justify-between rounded-xl bg-black/40 border border-white/10 p-3">
                 <span className="text-xs font-semibold text-white/90">
-                  Qurbani (Mandatory Islamic Sacrifice)
+                  Qurbani / Adahi Sacrifice
                 </span>
-                <span className="font-mono text-sm font-extrabold text-gold">
-                  PKR 55,000
+                <span className="font-mono tabular-nums text-sm font-extrabold text-gold">
+                  ~PKR 55,000
                 </span>
               </div>
 
@@ -826,107 +1055,119 @@ export function HajjInquirySection({
                 <span className="text-xs font-semibold text-white/90">
                   Haramain High-Speed Train Ticket
                 </span>
-                <span className="font-mono text-sm font-extrabold text-gold">
-                  PKR 61,000
+                <span className="font-mono tabular-nums text-sm font-extrabold text-gold">
+                  ~PKR 61,000
                 </span>
               </div>
             </div>
 
             <p className="text-[10px] text-white/50 italic">
-              * Charges are subject to official Saudi Ministry of Hajj &amp; SAR railway tariff confirmations at booking time.
+              * Subject to official Saudi Ministry of Hajj &amp; SAR railway 2027 tariff confirmations.
             </p>
           </div>
         </div>
 
         {/* ======================================================== */}
-        {/* REQUIREMENTS & HOW TO BOOK (PDF PAGE 7)                  */}
+        {/* REQUIRED DOCUMENTS & HOW TO PRE-REGISTER                 */}
         {/* ======================================================== */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          {/* 6 Required Documents (7 cols) */}
-          <div className="lg:col-span-7 rounded-3xl border border-white/15 bg-black/35 p-6 sm:p-8 backdrop-blur-xl space-y-5">
+          <div className="lg:col-span-7 rounded-3xl border border-white/15 bg-black/35 p-6 sm:p-8 backdrop-blur-xl flex flex-col gap-5">
             <div className="flex items-center gap-2">
               <FileText className="size-5 text-gold" />
               <h3 className="font-display text-xl font-bold text-white">
-                6 Required Documents for Hajj 2027
+                6 Documents for Hajj 2027 Readiness
               </h3>
             </div>
             <p className="text-xs text-white/70 leading-relaxed">
-              To secure your registration with the Ministry of Hajj and Nusuk system, please prepare original and digital copies of:
+              Prepare digital copies ahead of the official MoRA / Nusuk quota window:
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
-                <span className="font-mono text-[10px] font-bold text-gold">01</span>
-                <h4 className="font-bold text-white">Pakistani Passport</h4>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 flex flex-col gap-1">
+                <span className="font-mono tabular-nums text-[10px] font-bold text-gold">
+                  01
+                </span>
+                <h4 className="font-bold text-white">Machine-Readable Passport</h4>
                 <p className="text-[11px] text-white/70">
-                  Machine-readable passport valid until December 2027 or later.
+                  Pakistani MRP or Overseas Pakistani / Dual-National passport valid through December 2027.
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
-                <span className="font-mono text-[10px] font-bold text-gold">02</span>
-                <h4 className="font-bold text-white">Valid CNIC / B-Form</h4>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 flex flex-col gap-1">
+                <span className="font-mono tabular-nums text-[10px] font-bold text-gold">
+                  02
+                </span>
+                <h4 className="font-bold text-white">CNIC / NICOP / B-Form</h4>
                 <p className="text-[11px] text-white/70">
-                  NADRA Smart National ID Card or NADRA B-Form for minors.
+                  NADRA Smart CNIC, Overseas NICOP/POC, or B-Form for minors.
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
-                <span className="font-mono text-[10px] font-bold text-gold">03</span>
-                <h4 className="font-bold text-white">Postal &amp; Contact Info</h4>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 flex flex-col gap-1">
+                <span className="font-mono tabular-nums text-[10px] font-bold text-gold">
+                  03
+                </span>
+                <h4 className="font-bold text-white">Residential &amp; Contact Info</h4>
                 <p className="text-[11px] text-white/70">
-                  Complete permanent residential postal address and active phone/WhatsApp.
+                  Complete residential address and active WhatsApp number.
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
-                <span className="font-mono text-[10px] font-bold text-gold">04</span>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 flex flex-col gap-1">
+                <span className="font-mono tabular-nums text-[10px] font-bold text-gold">
+                  04
+                </span>
                 <h4 className="font-bold text-white">Next of Kin Details</h4>
                 <p className="text-[11px] text-white/70">
-                  Next of kin&apos;s CNIC, verified relationship, and contact numbers.
+                  Nominee / next of kin identification, relationship, and emergency phone.
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
-                <span className="font-mono text-[10px] font-bold text-gold">05</span>
-                <h4 className="font-bold text-white">Passport Photograph</h4>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 flex flex-col gap-1">
+                <span className="font-mono tabular-nums text-[10px] font-bold text-gold">
+                  05
+                </span>
+                <h4 className="font-bold text-white">Biometric Photograph</h4>
                 <p className="text-[11px] text-white/70">
                   Recent 4 × 3 cm photograph with clean white background.
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
-                <span className="font-mono text-[10px] font-bold text-gold">06</span>
-                <h4 className="font-bold text-white">Blood Group</h4>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 flex flex-col gap-1">
+                <span className="font-mono tabular-nums text-[10px] font-bold text-gold">
+                  06
+                </span>
+                <h4 className="font-bold text-white">Blood Group Record</h4>
                 <p className="text-[11px] text-white/70">
-                  Official clinical report or driving license recording applicant&apos;s blood group.
+                  Clinical card or driving license recording applicant blood group.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* 3 Steps to Book (5 cols) */}
-          <div className="lg:col-span-5 rounded-3xl border border-gold/30 bg-gradient-to-br from-[#0A3622] to-black/60 p-6 sm:p-8 backdrop-blur-xl space-y-6 flex flex-col justify-between">
-            <div className="space-y-4">
+          <div className="lg:col-span-5 rounded-3xl border border-gold/30 bg-gradient-to-br from-[#0A3622] to-black/60 p-6 sm:p-8 backdrop-blur-xl flex flex-col justify-between gap-6">
+            <div className="flex flex-col gap-4">
               <div className="flex items-center gap-2">
                 <UserCheck className="size-5 text-gold" />
                 <h3 className="font-display text-xl font-bold text-white">
-                  How to Book in 3 Simple Steps
+                  How Pre-Registration Works
                 </h3>
               </div>
               <p className="text-xs text-white/70 leading-relaxed">
-                Secure your family&apos;s sacred Hajj reservation with personalized executive support.
+                Register priority interest with personalized executive guidance from our Askari 10 Lahore desk.
               </p>
 
-              <div className="space-y-4 pt-2">
+              <div className="flex flex-col gap-4 pt-2">
                 <div className="flex items-start gap-3">
                   <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gold font-mono text-xs font-black text-emerald-950">
                     1
                   </span>
                   <div>
-                    <h4 className="font-bold text-sm text-white">Choose Your Package</h4>
+                    <h4 className="font-bold text-sm text-white">
+                      Select Preferred Maktab Tier
+                    </h4>
                     <p className="text-xs text-white/70">
-                      Pick your preferred Maktab (A, B, or C), duration, and room type (Quad, Triple, or Double).
+                      Choose your target Maktab (A, B, or C), duration, and room occupancy.
                     </p>
                   </div>
                 </div>
@@ -936,9 +1177,11 @@ export function HajjInquirySection({
                     2
                   </span>
                   <div>
-                    <h4 className="font-bold text-sm text-white">Share Documents</h4>
+                    <h4 className="font-bold text-sm text-white">
+                      Priority Readiness Review
+                    </h4>
                     <p className="text-xs text-white/70">
-                      Send your 6 mandatory documents via WhatsApp or visit our Lahore office.
+                      Our Hajj desk verifies passport validity and diaspora/resident routing options.
                     </p>
                   </div>
                 </div>
@@ -948,9 +1191,11 @@ export function HajjInquirySection({
                     3
                   </span>
                   <div>
-                    <h4 className="font-bold text-sm text-white">Confirm Your Seat</h4>
+                    <h4 className="font-bold text-sm text-white">
+                      Official Quota Confirmation
+                    </h4>
                     <p className="text-xs text-white/70">
-                      Our Hajj directors verify your quota allotment and finalize your booking agreement.
+                      Upon official MoRA / Nusuk quota release, pre-registered families receive priority allotment confirmation.
                     </p>
                   </div>
                 </div>
@@ -958,9 +1203,25 @@ export function HajjInquirySection({
             </div>
 
             <div className="rounded-xl border border-gold/30 bg-black/40 p-3 text-center">
-              <span className="text-[11px] font-semibold text-gold block">
-                Direct Hotline: 03274029701 · 03190462638
-              </span>
+              <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] font-semibold text-gold font-mono tabular-nums">
+                <a
+                  href={toTelHref(agencyWhatsapp)}
+                  className="inline-flex min-h-6 items-center hover:underline"
+                >
+                  {agencyWhatsapp}
+                </a>
+                {secondaryPhone && (
+                  <>
+                    <span>·</span>
+                    <a
+                      href={toTelHref(secondaryPhone)}
+                      className="inline-flex min-h-6 items-center hover:underline"
+                    >
+                      {secondaryPhone}
+                    </a>
+                  </>
+                )}
+              </div>
               <span className="text-[10px] text-white/60">
                 Monday to Saturday: 9:00 AM to 8:00 PM PKT
               </span>
@@ -969,51 +1230,56 @@ export function HajjInquirySection({
         </div>
 
         {/* ======================================================== */}
-        {/* INTERACTIVE HAJJ RESERVATION INQUIRY FORM                */}
+        {/* INTERACTIVE HAJJ PRE-REGISTRATION FORM                   */}
         {/* ======================================================== */}
         <div
           id="hajj-reservation-card"
-          className="mx-auto max-w-4xl rounded-3xl border-2 border-gold/40 bg-black/60 p-6 sm:p-10 backdrop-blur-2xl shadow-2xl space-y-8 scroll-mt-20"
+          className="mx-auto max-w-4xl w-full rounded-3xl border-2 border-gold/40 bg-black/60 p-6 sm:p-10 backdrop-blur-2xl shadow-2xl flex flex-col gap-8 scroll-mt-20"
         >
           {confirmedResult ? (
-            <div className="space-y-6 py-6 text-center animate-in fade-in-50 duration-300">
+            <div className="flex flex-col gap-6 py-6 text-center animate-in fade-in-50 duration-300">
               <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-gold/20 text-gold border-2 border-gold/50">
                 <CheckCircle2 className="size-9" />
               </div>
 
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <h3 className="font-display text-2xl sm:text-3xl font-bold text-white">
-                  Hajj 2027 Reservation Inquiry Dispatched
+                  Hajj 2027 Pre-Registration Dispatched
                 </h3>
                 <p className="text-sm text-white/80 max-w-md mx-auto">
-                  Your reservation request for <strong className="text-gold">{confirmedResult.selectedPkgTitle}</strong> has been assigned to our Senior Hajj Director.
+                  Your priority pre-registration for{" "}
+                  <strong className="text-gold">
+                    {confirmedResult.selectedPkgTitle}
+                  </strong>{" "}
+                  has been assigned to our Senior Hajj Director in Lahore.
                 </p>
               </div>
 
-              <div className="mx-auto max-w-sm rounded-2xl border border-gold/40 bg-[#041D12] p-5 space-y-1 shadow-lg">
+              <div className="mx-auto max-w-sm w-full rounded-2xl border border-gold/40 bg-[#041D12] p-5 flex flex-col gap-1 shadow-lg">
                 <span className="text-[11px] font-semibold text-gold uppercase tracking-wider block">
-                  Confidential Application Reference
+                  Application Reference Code
                 </span>
-                <div className="font-mono text-2xl sm:text-3xl font-extrabold text-white tracking-wider">
+                <div className="font-mono tabular-nums text-2xl sm:text-3xl font-extrabold text-white tracking-wider">
                   {confirmedResult.referenceNumber}
                 </div>
               </div>
 
               <p className="text-xs text-white/70 max-w-md mx-auto leading-relaxed">
-                Due to Saudi quota and Maktab room assignments, our director will contact you via WhatsApp and phone to verify your Pakistani passports and confirm seat allotment.
+                Our Hajj operations team will connect with you via WhatsApp and phone to review passport validity and notify you first when official MoRA / Nusuk 2027 quotas open.
               </p>
 
-              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <div className="pt-2 flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3">
                 <a
                   href={
                     confirmedResult.whatsappUrl ||
-                    `https://wa.me/${agencyWhatsapp.replace(/\D/g, "").replace(/^03/, "923") || "923274029701"}?text=${encodeURIComponent(
-                      `As-salamu alaykum Al Ramlah Travels, I have submitted Hajj 2027 reservation inquiry ${confirmedResult.referenceNumber} for ${activePackage.title}. Please connect me with the Senior Hajj Director.`
-                    )}`
+                    toWaMeUrl(
+                      agencyWhatsapp,
+                      `Assalam-o-Alaikum Al Ramlah Travels, I have submitted Hajj 2027 pre-registration ${confirmedResult.referenceNumber} for ${activePackage?.title ?? "Hajj 2027 Consultation"}. Please connect me with the Senior Hajj Director.`
+                    )
                   }
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-gold px-7 py-3 text-sm font-bold text-emerald-950 hover:bg-gold/90 shadow-lg shadow-gold/20 transition-colors"
+                  className="w-full sm:w-auto inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-gold px-7 py-3 text-sm font-bold text-emerald-950 hover:bg-gold/90 shadow-lg shadow-gold/20 transition-colors"
                 >
                   <MessageCircle className="size-4" />
                   <span>Connect with Hajj Desk on WhatsApp</span>
@@ -1022,103 +1288,121 @@ export function HajjInquirySection({
 
                 <button
                   type="button"
-                  onClick={() => setConfirmedResult(null)}
-                  className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-xs font-semibold text-white hover:bg-white/20 transition-colors"
+                  onClick={handleTrackStatus}
+                  className="w-full sm:w-auto inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-gold/40 bg-black/40 px-5 py-3 text-xs font-semibold text-gold hover:bg-gold/15 transition-colors"
                 >
-                  Submit Another Inquiry
+                  <Search className="size-4" />
+                  <span>Track Application Status Live</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmedResult(null)
+                    setSubmissionKey(createHajjSubmissionKey())
+                  }}
+                  className="w-full sm:w-auto inline-flex min-h-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-xs font-semibold text-white hover:bg-white/20 transition-colors"
+                >
+                  Submit Another Pre-Registration
                 </button>
               </div>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
+              {/* Hidden Honeypot Trap (`T-055`) */}
+              <div className="sr-only" aria-hidden="true">
+                <label htmlFor="h-website">Company Website</label>
+                <input
+                  id="h-website"
+                  name="website"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={honeypot}
+                  onChange={(e) => setHoneypot(e.target.value)}
+                />
+              </div>
+
               {/* Selected Package Header Banner */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/15 pb-5">
                 <div>
                   <span className="text-xs font-bold text-gold uppercase tracking-wider block">
-                    Selected Hajj 2027 Package
+                    Selected Indicative Hajj 2027 Structure
                   </span>
                   <h3 className="text-xl sm:text-2xl font-bold text-white mt-0.5">
-                    Maktab {activePackage.maktab} · {activePackage.title}
+                    {activePackage
+                      ? `Maktab ${activePackage.maktab} · ${activePackage.title}`
+                      : "Hajj 2027 Priority Consultation"}
                   </h3>
                   <p className="text-xs text-white/70 mt-1">
-                    {activePackage.camps} · {activePackage.duration}
+                    {activePackage
+                      ? `${activePackage.camps} · ${activePackage.duration}`
+                      : "Priority notification upon official MoRA & Saudi Nusuk 2027 quota release"}
                   </p>
                 </div>
 
-                {/* Selected Room Pill */}
-                <div className="rounded-xl border border-gold/40 bg-gold/10 px-4 py-2 text-right">
-                  <span className="block text-[10px] font-semibold uppercase text-gold">
-                    {selectedRoomType.toUpperCase()} BED RATE
-                  </span>
-                  <span className="font-mono text-lg font-black text-white">
-                    PKR {activePackage.pricing[selectedRoomType].toLocaleString()}
-                  </span>
-                  <span className="block text-[9px] text-white/60">per person</span>
-                </div>
+                {activePackage && (
+                  <div className="rounded-xl border border-gold/40 bg-gold/10 px-4 py-2 text-right">
+                    <span className="block text-[10px] font-semibold uppercase text-gold">
+                      INDICATIVE {selectedRoomType.toUpperCase()} ESTIMATE
+                    </span>
+                    <span className="font-mono tabular-nums text-lg font-black text-white">
+                      {formatPkr(activePackage.pricing[selectedRoomType])}
+                    </span>
+                    <span className="block text-[9px] text-white/60">
+                      per person (non-binding)
+                    </span>
+                  </div>
+                )}
               </div>
 
               {error && (
-                <div className="rounded-xl bg-red-950/80 border border-red-500/50 p-4 text-xs text-red-200">
-                  {error}
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl bg-red-950/80 border border-red-500/50 p-4 text-xs text-red-200"
+                >
+                  <AlertCircle className="size-4 text-red-400 shrink-0 mt-0.5" />
+                  <span>{error}</span>
                 </div>
               )}
 
               {/* Room Selection Switcher */}
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label className="text-xs text-white/90">
                   Choose Room Accommodation Category *
                 </Label>
                 <div className="grid grid-cols-3 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRoomType("quad")}
-                    className={`rounded-xl border p-3 text-center transition-all ${
-                      selectedRoomType === "quad"
-                        ? "border-gold bg-gold/20 text-gold ring-1 ring-gold"
-                        : "border-white/15 bg-white/5 text-white/80 hover:bg-white/10"
-                    }`}
-                  >
-                    <span className="block text-xs font-bold">Quad (4-Bed)</span>
-                    <span className="font-mono text-xs font-semibold text-white block mt-0.5">
-                      PKR {activePackage.pricing.quad.toLocaleString()}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRoomType("triple")}
-                    className={`rounded-xl border p-3 text-center transition-all ${
-                      selectedRoomType === "triple"
-                        ? "border-gold bg-gold/20 text-gold ring-1 ring-gold"
-                        : "border-white/15 bg-white/5 text-white/80 hover:bg-white/10"
-                    }`}
-                  >
-                    <span className="block text-xs font-bold">Triple (3-Bed)</span>
-                    <span className="font-mono text-xs font-semibold text-white block mt-0.5">
-                      PKR {activePackage.pricing.triple.toLocaleString()}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRoomType("double")}
-                    className={`rounded-xl border p-3 text-center transition-all ${
-                      selectedRoomType === "double"
-                        ? "border-gold bg-gold/20 text-gold ring-1 ring-gold"
-                        : "border-white/15 bg-white/5 text-white/80 hover:bg-white/10"
-                    }`}
-                  >
-                    <span className="block text-xs font-bold">Double (2-Bed)</span>
-                    <span className="font-mono text-xs font-semibold text-white block mt-0.5">
-                      PKR {activePackage.pricing.double.toLocaleString()}
-                    </span>
-                  </button>
+                  {(["quad", "triple", "double"] as const).map((tierKey) => (
+                    <button
+                      key={tierKey}
+                      type="button"
+                      onClick={() => setSelectedRoomType(tierKey)}
+                      className={`rounded-xl border p-3 text-center transition-all ${
+                        selectedRoomType === tierKey
+                          ? "border-gold bg-gold/20 text-gold ring-1 ring-gold"
+                          : "border-white/15 bg-white/5 text-white/80 hover:bg-white/10"
+                      }`}
+                    >
+                      <span className="block text-xs font-bold capitalize">
+                        {tierKey === "quad"
+                          ? "Quad (4-Bed)"
+                          : tierKey === "triple"
+                            ? "Triple (3-Bed)"
+                            : "Double (2-Bed)"}
+                      </span>
+                      {activePackage && (
+                        <span className="font-mono tabular-nums text-xs font-semibold text-white block mt-0.5">
+                          {formatPkr(activePackage.pricing[tierKey])}
+                        </span>
+                      )}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Lead Pilgrim Name & City */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
+              {/* Lead Pilgrim Name, Country & City (`T-084` International Diaspora Support) */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="flex flex-col gap-1.5 sm:col-span-1">
                   <Label htmlFor="h-name" className="text-xs text-white/90">
                     Lead Pilgrim Full Name *
                   </Label>
@@ -1127,90 +1411,101 @@ export function HajjInquirySection({
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     placeholder="e.g. Al-Haj Tariq Mansoor"
+                    aria-invalid={Boolean(fieldErrors["contact.customerName"])}
                     className="border-white/20 bg-white/10 text-white placeholder:text-white/40 focus:border-gold"
                     required
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="h-city" className="text-xs text-white/90">
-                    City in Pakistan *
+
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor="h-country"
+                    className="text-xs text-white/90 flex items-center gap-1"
+                  >
+                    <Globe className="size-3 text-gold" />
+                    <span>Country of Residence *</span>
                   </Label>
-                  {departureCities && departureCities.length > 0 ? (
-                    <select
-                      id="h-city"
-                      value={customerCity}
-                      onChange={(e) => setCustomerCity(e.target.value)}
-                      className="w-full rounded-md border border-white/20 bg-[#062417] px-3 py-2 text-sm text-white focus:border-gold focus:outline-none"
-                      required
-                    >
-                      {departureCities.map((c) => (
-                        <option
-                          key={c.airportCode}
-                          value={c.cityName}
-                          className="bg-[#062417] text-white"
-                        >
-                          {c.cityName} ({c.airportCode})
-                        </option>
-                      ))}
-                      <option value="Lahore" className="bg-[#062417] text-white">
-                        Lahore
+                  <select
+                    id="h-country"
+                    value={customerCountry}
+                    onChange={(e) => {
+                      const nextCountry = e.target.value
+                      setCustomerCountry(nextCountry)
+                      const nextDefaultCity =
+                        SUGGESTED_CITIES_BY_COUNTRY[nextCountry]?.[0] ?? ""
+                      if (nextDefaultCity) {
+                        setCustomerCity(nextDefaultCity)
+                      }
+                    }}
+                    className="w-full rounded-md border border-white/20 bg-[#062417] px-3 py-2 text-sm text-white focus:border-gold focus:outline-none"
+                    required
+                  >
+                    {DIASPORA_COUNTRIES.map((country) => (
+                      <option
+                        key={country}
+                        value={country}
+                        className="bg-[#062417] text-white"
+                      >
+                        {country}
                       </option>
-                      <option value="Islamabad / Rawalpindi" className="bg-[#062417] text-white">
-                        Islamabad / Rawalpindi
-                      </option>
-                      <option value="Karachi" className="bg-[#062417] text-white">
-                        Karachi
-                      </option>
-                      <option value="Faisalabad" className="bg-[#062417] text-white">
-                        Faisalabad
-                      </option>
-                      <option value="Multan" className="bg-[#062417] text-white">
-                        Multan
-                      </option>
-                      <option value="Peshawar" className="bg-[#062417] text-white">
-                        Peshawar
-                      </option>
-                      <option value="Other" className="bg-[#062417] text-white">
-                        Other City in Pakistan
-                      </option>
-                    </select>
-                  ) : (
-                    <Input
-                      id="h-city"
-                      value={customerCity}
-                      onChange={(e) => setCustomerCity(e.target.value)}
-                      placeholder="e.g. Lahore / Islamabad / Karachi"
-                      className="border-white/20 bg-white/10 text-white placeholder:text-white/40 focus:border-gold"
-                      required
-                    />
-                  )}
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="h-city" className="text-xs text-white/90">
+                    City of Residence *
+                  </Label>
+                  <Input
+                    id="h-city"
+                    list="hajj-city-suggestions"
+                    value={customerCity}
+                    onChange={(e) => setCustomerCity(e.target.value)}
+                    placeholder={
+                      customerCountry === "Pakistan"
+                        ? "e.g. Lahore / Islamabad / Karachi"
+                        : "e.g. London / Houston / Toronto / Dubai"
+                    }
+                    aria-invalid={Boolean(fieldErrors["contact.customerCity"])}
+                    className="border-white/20 bg-white/10 text-white placeholder:text-white/40 focus:border-gold"
+                    required
+                  />
+                  <datalist id="hajj-city-suggestions">
+                    {citySuggestions.map((cityName) => (
+                      <option key={cityName} value={cityName} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
 
               {/* Phone & WhatsApp */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="h-phone" className="text-xs text-white/90">
-                    Phone Number *
+                    Phone Number (PK or International) *
                   </Label>
                   <Input
                     id="h-phone"
+                    type="tel"
                     value={customerPhone}
                     onChange={(e) => syncPhone(e.target.value)}
-                    placeholder="0327 4029701"
+                    placeholder="0327 4029701 or +44 7911 123456"
+                    aria-invalid={Boolean(fieldErrors["contact.customerPhone"])}
                     className="border-white/20 bg-white/10 text-white placeholder:text-white/40 focus:border-gold"
                     required
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="h-wa" className="text-xs text-white/90">
                     WhatsApp Number *
                   </Label>
                   <Input
                     id="h-wa"
+                    type="tel"
                     value={customerWhatsapp}
                     onChange={(e) => setCustomerWhatsapp(e.target.value)}
-                    placeholder="0327 4029701"
+                    placeholder="0327 4029701 or +44 7911 123456"
+                    aria-invalid={Boolean(fieldErrors["contact.customerWhatsapp"])}
                     className="border-white/20 bg-white/10 text-white placeholder:text-white/40 focus:border-gold"
                     required
                   />
@@ -1219,7 +1514,7 @@ export function HajjInquirySection({
 
               {/* Email & Blood Group */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="h-email" className="text-xs text-white/90">
                     Email Address (Optional)
                   </Label>
@@ -1229,12 +1524,13 @@ export function HajjInquirySection({
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
                     placeholder="tariq@example.com"
+                    aria-invalid={Boolean(fieldErrors["contact.customerEmail"])}
                     className="border-white/20 bg-white/10 text-white placeholder:text-white/40 focus:border-gold"
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="h-blood" className="text-xs text-white/90">
-                    Applicant Blood Group (Document #6)
+                    Applicant Blood Group (Document #06)
                   </Label>
                   <select
                     id="h-blood"
@@ -1242,22 +1538,23 @@ export function HajjInquirySection({
                     onChange={(e) => setBloodGroup(e.target.value)}
                     className="w-full rounded-md border border-white/20 bg-[#062417] px-3 py-2 text-sm text-white focus:border-gold focus:outline-none"
                   >
-                    <option value="" className="bg-[#062417] text-white">Select Blood Group (Optional)</option>
-                    <option value="A+" className="bg-[#062417] text-white">A+</option>
-                    <option value="A-" className="bg-[#062417] text-white">A-</option>
-                    <option value="B+" className="bg-[#062417] text-white">B+</option>
-                    <option value="B-" className="bg-[#062417] text-white">B-</option>
-                    <option value="AB+" className="bg-[#062417] text-white">AB+</option>
-                    <option value="AB-" className="bg-[#062417] text-white">AB-</option>
-                    <option value="O+" className="bg-[#062417] text-white">O+</option>
-                    <option value="O-" className="bg-[#062417] text-white">O-</option>
+                    <option value="" className="bg-[#062417] text-white">
+                      Select Blood Group (Optional)
+                    </option>
+                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(
+                      (bg) => (
+                        <option key={bg} value={bg} className="bg-[#062417] text-white">
+                          {bg}
+                        </option>
+                      )
+                    )}
                   </select>
                 </div>
               </div>
 
-              {/* Travellers Grid: Adults, Children, Infants */}
+              {/* Travellers Grid */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="h-adults" className="text-xs text-white/90">
                     Adults (12+ yrs) *
                   </Label>
@@ -1267,12 +1564,21 @@ export function HajjInquirySection({
                     min={1}
                     max={30}
                     value={adults}
-                    onChange={(e) => setAdults(Math.max(1, Number(e.target.value) || 1))}
+                    onChange={(e) => {
+                      const nextAdults = Math.max(
+                        1,
+                        Math.min(30, Number(e.target.value) || 1)
+                      )
+                      setAdults(nextAdults)
+                      if (infants > nextAdults) {
+                        setInfants(nextAdults)
+                      }
+                    }}
                     className="border-white/20 bg-white/10 text-white focus:border-gold"
                     required
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="h-children" className="text-xs text-white/90">
                     Children (2–11 yrs)
                   </Label>
@@ -1282,11 +1588,15 @@ export function HajjInquirySection({
                     min={0}
                     max={20}
                     value={children}
-                    onChange={(e) => setChildren(Math.max(0, Number(e.target.value) || 0))}
+                    onChange={(e) =>
+                      setChildren(
+                        Math.max(0, Math.min(20, Number(e.target.value) || 0))
+                      )
+                    }
                     className="border-white/20 bg-white/10 text-white focus:border-gold"
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="h-infants" className="text-xs text-white/90">
                     Infants (&lt;2 yrs)
                   </Label>
@@ -1294,16 +1604,23 @@ export function HajjInquirySection({
                     id="h-infants"
                     type="number"
                     min={0}
-                    max={10}
+                    max={Math.min(10, adults)}
                     value={infants}
-                    onChange={(e) => setInfants(Math.max(0, Number(e.target.value) || 0))}
+                    onChange={(e) =>
+                      setInfants(
+                        Math.max(
+                          0,
+                          Math.min(10, adults, Number(e.target.value) || 0)
+                        )
+                      )
+                    }
                     className="border-white/20 bg-white/10 text-white focus:border-gold"
                   />
                 </div>
               </div>
 
-              {/* Add-on Checkboxes: Qurbani & Train Ticket */}
-              <div className="rounded-2xl border border-white/15 bg-white/5 p-4 space-y-3">
+              {/* Add-on Checkboxes */}
+              <div className="rounded-2xl border border-white/15 bg-white/5 p-4 flex flex-col gap-3">
                 <span className="block text-xs font-bold text-gold uppercase tracking-wider">
                   Additional Add-On Services (Optional)
                 </span>
@@ -1317,12 +1634,15 @@ export function HajjInquirySection({
                       onChange={(e) => setIncludeQurbani(e.target.checked)}
                       className="size-4 accent-gold rounded"
                     />
-                    <label htmlFor="opt-qurbani" className="text-xs text-white cursor-pointer">
+                    <label
+                      htmlFor="opt-qurbani"
+                      className="text-xs text-white cursor-pointer"
+                    >
                       Include Official Islamic Qurbani / Adahi Arrangement
                     </label>
                   </div>
-                  <span className="font-mono text-xs font-bold text-gold">
-                    +PKR 55,000 / person
+                  <span className="font-mono tabular-nums text-xs font-bold text-gold">
+                    ~PKR 55,000 / person
                   </span>
                 </div>
 
@@ -1335,27 +1655,31 @@ export function HajjInquirySection({
                       onChange={(e) => setIncludeTrainTicket(e.target.checked)}
                       className="size-4 accent-gold rounded"
                     />
-                    <label htmlFor="opt-train" className="text-xs text-white cursor-pointer">
+                    <label
+                      htmlFor="opt-train"
+                      className="text-xs text-white cursor-pointer"
+                    >
                       Haramain High-Speed Train Intercity Transit
                     </label>
                   </div>
-                  <span className="font-mono text-xs font-bold text-gold">
-                    +PKR 61,000 / person
+                  <span className="font-mono tabular-nums text-xs font-bold text-gold">
+                    ~PKR 61,000 / person
                   </span>
                 </div>
               </div>
 
-              {/* Special Inquiries or Nusuk requests */}
-              <div className="space-y-1.5">
+              {/* Special Inquiries */}
+              <div className="flex flex-col gap-1.5">
                 <Label htmlFor="h-notes" className="text-xs text-white/90">
                   Special Accommodation, Elderly Care or Nusuk Inquiries
                 </Label>
                 <Textarea
                   id="h-notes"
                   rows={3}
+                  maxLength={1000}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Tell us about elderly family members, wheelchair assistance, next of kin contact info, or preferred departure airport..."
+                  placeholder="Tell us about elderly family members, wheelchair assistance, overseas departure airport, or preferred suite configuration..."
                   className="border-white/20 bg-white/10 text-white placeholder:text-white/40 focus:border-gold"
                 />
               </div>
@@ -1366,18 +1690,21 @@ export function HajjInquirySection({
                 className="w-full gap-2 bg-gold py-3 text-sm sm:text-base font-bold text-emerald-950 hover:bg-gold/90 shadow-xl shadow-gold/20"
               >
                 {loading && <Loader2 className="size-4 animate-spin" />}
-                <span>Confirm &amp; Reserve Hajj 2027 Seat</span>
+                <span>Submit Indicative Hajj 2027 Pre-Registration</span>
               </Button>
 
-              {/* Direct Booking Helpline */}
               <div className="border-t border-white/10 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-white/70">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="size-4 text-gold shrink-0" />
-                  <span>Where Purpose Meets Excellence · Dedicated Hajj Operations Desk</span>
+                  <span>
+                    Where Purpose Meets Excellence · Askari 10 Lahore Hajj Desk
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Phone className="size-3.5 text-gold shrink-0" />
-                  <span className="font-mono text-gold font-bold">03274029701 · 03190462638</span>
+                  <span className="font-mono tabular-nums text-gold font-bold">
+                    {[agencyWhatsapp, secondaryPhone].filter(Boolean).join(" · ")}
+                  </span>
                 </div>
               </div>
             </form>

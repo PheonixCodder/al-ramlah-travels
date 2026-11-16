@@ -1,4 +1,3 @@
-import "dotenv/config"
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 import sharp from "sharp"
@@ -19,16 +18,24 @@ import {
 import type { SocialPostPayload } from "../lib/social/types"
 
 describe("OAuth Token Encryption and Decryption (AES-256-GCM)", () => {
-  it("encrypts and decrypts OAuth tokens in a round trip", () => {
+  it("encrypts and decrypts OAuth tokens in a round trip using v2 HKDF vault envelope", () => {
     const sensitiveToken =
       "ya29.a0AfH6SMB_google_oauth_refresh_token_example_1234567890_xyz"
     const encrypted = encryptToken(sensitiveToken)
 
     assert.ok(encrypted.length > 0)
     const parts = encrypted.split(":")
-    assert.equal(parts.length, 3)
+    assert.equal(parts.length, 5)
 
-    const [ivHex, authTagHex, ciphertextHex] = parts
+    const [version, kid, ivHex, authTagHex, ciphertextHex] = parts as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ]
+    assert.equal(version, "v2")
+    assert.ok(kid.length > 0)
     assert.equal(ivHex.length, 24) // 12 bytes IV
     assert.equal(authTagHex.length, 32) // 16 bytes auth tag
     assert.ok(ciphertextHex.length > 0)
@@ -47,9 +54,9 @@ describe("OAuth Token Encryption and Decryption (AES-256-GCM)", () => {
     assert.notEqual(enc2, enc3)
     assert.notEqual(enc1, enc3)
 
-    const iv1 = enc1.split(":")[0]
-    const iv2 = enc2.split(":")[0]
-    const iv3 = enc3.split(":")[0]
+    const iv1 = enc1.split(":")[2]
+    const iv2 = enc2.split(":")[2]
+    const iv3 = enc3.split(":")[2]
 
     assert.notEqual(iv1, iv2)
     assert.notEqual(iv2, iv3)
@@ -61,10 +68,16 @@ describe("OAuth Token Encryption and Decryption (AES-256-GCM)", () => {
 
   it("rejects tampered auth tag by throwing an authentication error", () => {
     const encrypted = encryptToken("test_secret_token_data")
-    const [ivHex, authTagHex, ctHex] = encrypted.split(":")
+    const [ver, kid, ivHex, authTagHex, ctHex] = encrypted.split(":") as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ]
 
     const flippedTag = (authTagHex[0] === "0" ? "1" : "0") + authTagHex.slice(1)
-    const tamperedPayload = `${ivHex}:${flippedTag}:${ctHex}`
+    const tamperedPayload = `${ver}:${kid}:${ivHex}:${flippedTag}:${ctHex}`
 
     assert.throws(() => {
       decryptToken(tamperedPayload)
@@ -73,10 +86,16 @@ describe("OAuth Token Encryption and Decryption (AES-256-GCM)", () => {
 
   it("rejects tampered ciphertext by throwing an authentication error", () => {
     const encrypted = encryptToken("test_secret_token_data")
-    const [ivHex, authTagHex, ctHex] = encrypted.split(":")
+    const [ver, kid, ivHex, authTagHex, ctHex] = encrypted.split(":") as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ]
 
     const flippedCt = (ctHex[0] === "a" ? "b" : "a") + ctHex.slice(1)
-    const tamperedPayload = `${ivHex}:${authTagHex}:${flippedCt}`
+    const tamperedPayload = `${ver}:${kid}:${ivHex}:${authTagHex}:${flippedCt}`
 
     assert.throws(() => {
       decryptToken(tamperedPayload)
@@ -85,10 +104,16 @@ describe("OAuth Token Encryption and Decryption (AES-256-GCM)", () => {
 
   it("rejects tampered IV by throwing an authentication error", () => {
     const encrypted = encryptToken("test_secret_token_data")
-    const [ivHex, authTagHex, ctHex] = encrypted.split(":")
+    const [ver, kid, ivHex, authTagHex, ctHex] = encrypted.split(":") as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ]
 
     const flippedIv = (ivHex[0] === "e" ? "f" : "e") + ivHex.slice(1)
-    const tamperedPayload = `${flippedIv}:${authTagHex}:${ctHex}`
+    const tamperedPayload = `${ver}:${kid}:${flippedIv}:${authTagHex}:${ctHex}`
 
     assert.throws(() => {
       decryptToken(tamperedPayload)
@@ -204,8 +229,9 @@ describe("Social Provider Adapters Validation (Core 5)", () => {
     assert.equal(Object.keys(SOCIAL_PROVIDERS).length, 5)
 
     assert.throws(() => {
-      // @ts-expect-error Testing invalid provider id
-      getSocialProvider("unsupported_network")
+      const invalidProvider =
+        "unsupported_network" as unknown as Parameters<typeof getSocialProvider>[0]
+      getSocialProvider(invalidProvider)
     }, /Unsupported social provider/)
   })
 
@@ -387,10 +413,10 @@ describe("Social Provider Adapters Validation (Core 5)", () => {
       )
     })
 
-    it("TikTok: rejects captions exceeding 2000 characters", () => {
+    it("TikTok: rejects captions exceeding 2200 characters", () => {
       const longRes = tiktokProvider.validateSocialPost({
         id: "tt-2",
-        caption: "T".repeat(2001),
+        caption: "T".repeat(2201),
         media: [
           { url: "https://r2.alramlahtravels.com/reel.mp4", type: "video" },
         ],
@@ -398,7 +424,7 @@ describe("Social Provider Adapters Validation (Core 5)", () => {
       assert.equal(longRes.valid, false)
       assert.ok(
         longRes.errors.some((err) =>
-          err.includes("TikTok caption exceeds limit of 2,000 characters")
+          err.includes("TikTok caption exceeds limit of 2,200 characters")
         )
       )
     })
@@ -519,7 +545,7 @@ describe("Social Provider Adapters Validation (Core 5)", () => {
       assert.equal(imageRes.valid, false)
       assert.ok(
         imageRes.errors.includes(
-          "YouTube attachment must be an MP4 video file."
+          "YouTube attachment must be an MP4, MOV, or WebM video file."
         )
       )
     })

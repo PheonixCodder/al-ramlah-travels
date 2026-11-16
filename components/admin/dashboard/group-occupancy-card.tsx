@@ -2,9 +2,16 @@ import * as React from "react"
 import Link from "next/link"
 import { Boxes, Calendar, ArrowRight } from "lucide-react"
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { computeSafeOccupancyPercent } from "./overview-metrics"
 
 export interface GroupDepartureOccupancyItem {
   id: string
@@ -36,14 +43,14 @@ export function GroupOccupancyCard({
               <span>Group Departures Seat Allotment</span>
             </CardTitle>
             <CardDescription className="text-xs text-muted-foreground">
-              Live capacity monitoring for fixed Umrah departure batches
+              Live capacity monitoring for upcoming active Umrah batches
             </CardDescription>
           </div>
           <Button
             variant="outline"
             size="sm"
             className="text-xs font-semibold hover:border-gold"
-            render={<Link href="/admin/groups" />}
+            render={<Link href="/admin/catalog?tab=groups" />}
             nativeButton={false}
           >
             <span>All Batches</span>
@@ -55,13 +62,18 @@ export function GroupOccupancyCard({
       <CardContent className="space-y-4 pt-4">
         {departures.length === 0 ? (
           <p className="text-xs text-muted-foreground italic text-center py-4">
-            No active group departure batches found.
+            No upcoming active group departure batches found.
           </p>
         ) : (
           departures.map((batch) => {
-            const percentFilled = Math.min(
-              100,
-              Math.round((batch.bookedSeats / batch.totalSeats) * 100)
+            const safeTotalSeats = Math.max(0, Math.floor(batch.totalSeats || 0))
+            const safeBookedSeats = Math.max(
+              0,
+              Math.floor(batch.bookedSeats || 0)
+            )
+            const percentFilled = computeSafeOccupancyPercent(
+              safeBookedSeats,
+              safeTotalSeats
             )
 
             return (
@@ -94,24 +106,24 @@ export function GroupOccupancyCard({
                   <Badge
                     variant="outline"
                     className={`text-[10px] font-semibold uppercase ${
-                      batch.status === "sold_out"
+                      batch.status === "sold_out" || batch.status === "closed"
                         ? "border-red-300 bg-red-100 text-red-800"
                         : batch.status === "filling_fast"
-                        ? "border-amber-300 bg-amber-100 text-amber-800"
-                        : "border-emerald-300 bg-emerald-100 text-emerald-800"
+                          ? "border-amber-300 bg-amber-100 text-amber-800"
+                          : "border-emerald-300 bg-emerald-100 text-emerald-800"
                     }`}
                   >
                     {batch.status.replace(/_/g, " ")}
                   </Badge>
                 </div>
 
-                {/* Seat Progress Bar */}
+                {/* Seat Progress Bar (`totalSeats === 0` guarded against NaN% / Infinity%) */}
                 <div className="mt-3">
                   <div className="flex items-center justify-between text-[11px] mb-1">
-                    <span className="text-muted-foreground">
-                      Booked: {batch.bookedSeats} / {batch.totalSeats} Seats
+                    <span className="text-muted-foreground tabular-nums">
+                      Booked: {safeBookedSeats} / {safeTotalSeats} Seats
                     </span>
-                    <span className="font-mono font-bold text-foreground">
+                    <span className="font-mono font-bold text-foreground tabular-nums">
                       {percentFilled}% Filled
                     </span>
                   </div>
@@ -121,8 +133,8 @@ export function GroupOccupancyCard({
                         percentFilled >= 100
                           ? "bg-red-600"
                           : percentFilled >= 75
-                          ? "bg-amber-500"
-                          : "bg-emerald-600"
+                            ? "bg-amber-500"
+                            : "bg-emerald-600"
                       }`}
                       style={{ width: `${percentFilled}%` }}
                     />

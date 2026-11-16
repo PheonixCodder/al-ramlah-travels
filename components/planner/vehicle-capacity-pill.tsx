@@ -1,17 +1,17 @@
 "use client"
 
 import React from "react"
-import type * as schema from "@/db/schema"
 import {
   calculateVehicleQuantity,
   type VehicleCapacitySpec,
 } from "@/lib/domain/vehicle-capacity"
+import type { PlannerVehicleItem } from "./planner-context"
 import { Users, Sparkles } from "lucide-react"
 
 interface VehicleCapacityPillProps {
   bedAndSeatCount: number
-  vehicle: typeof schema.vehicles.$inferSelect | undefined
-  allVehicles?: (typeof schema.vehicles.$inferSelect)[]
+  vehicle: PlannerVehicleItem | undefined
+  allVehicles?: PlannerVehicleItem[]
   onSelectVehicle?: (vehicleId: string) => void
 }
 
@@ -48,7 +48,7 @@ export function VehicleCapacityPill({
       {result.suggestUpgrade && (
         <div className="flex flex-col gap-1.5 rounded-lg border border-[#C5A059]/40 bg-[#FAF7F0] p-2 text-[11px] text-[#686E65]">
           <div className="flex items-center gap-1.5">
-            <Sparkles className="size-3.5 text-[#8F6E2A] shrink-0" />
+            <Sparkles className="size-3.5 text-[#7A5C1E] shrink-0" />
             <span>
               <strong className="text-[#0A3622]">Capacity Advisory:</strong>{" "}
               {bedAndSeatCount} passengers exceeds single-vehicle capacity (

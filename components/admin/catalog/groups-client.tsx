@@ -279,7 +279,7 @@ export function GroupsClient({
                   {/* Gifted Inclusions */}
                   {pkg.giftedInclusions && pkg.giftedInclusions.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
-                      <span className="text-[11px] font-semibold text-gold flex items-center gap-1">
+                      <span className="text-[11px] font-semibold text-gold-text flex items-center gap-1">
                         <Gift className="size-3" /> Gifts:
                       </span>
                       {pkg.giftedInclusions.map((gift, idx) => (
@@ -447,7 +447,7 @@ export function GroupsClient({
                               batch.status === "open"
                                 ? "bg-emerald-100 text-emerald-900 border-emerald-300"
                                 : batch.status === "filling_fast"
-                                ? "bg-amber-100 text-amber-900 border-amber-300 animate-pulse"
+                                ? "bg-amber-100 text-amber-900 border-amber-300"
                                 : batch.status === "sold_out"
                                 ? "bg-red-100 text-red-900 border-red-300"
                                 : "bg-muted text-muted-foreground"

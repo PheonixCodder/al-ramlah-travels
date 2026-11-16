@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm"
 import {
   boolean,
+  check,
   index,
   integer,
   pgEnum,
@@ -55,7 +57,8 @@ export const heroSlides = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_hero_active").on(table.isActive),
@@ -81,11 +84,13 @@ export const testimonials = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_testimonial_active").on(table.isActive),
     index("idx_testimonial_featured").on(table.isFeatured),
+    check("chk_testimonials_rating", sql`${table.rating} BETWEEN 1 AND 5`),
   ]
 )
 
@@ -103,7 +108,8 @@ export const faqs = pgTable(
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_faq_category").on(table.category),
@@ -123,15 +129,24 @@ export const contactMessages = pgTable(
     message: text("message").notNull(),
     status: messageStatusEnum("status").notNull().default("unread"),
     adminNotes: text("admin_notes"),
+    utmSource: varchar("utm_source", { length: 120 }),
+    utmMedium: varchar("utm_medium", { length: 120 }),
+    utmCampaign: varchar("utm_campaign", { length: 160 }),
+    utmContent: varchar("utm_content", { length: 160 }),
+    utmTerm: varchar("utm_term", { length: 160 }),
+    landingPage: text("landing_page"),
+    httpReferrer: text("http_referrer"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("idx_contact_status").on(table.status),
     index("idx_contact_created").on(table.createdAt),
+    index("idx_contact_messages_utm_source").on(table.utmSource),
   ]
 )

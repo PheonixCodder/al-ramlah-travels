@@ -1,28 +1,28 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  upsertFaq,
   upsertHeroSlide,
   upsertTestimonial,
-  upsertFaq,
 } from "@/app/actions/cms"
-import { Plus, Loader2 } from "lucide-react"
+import { Loader2, Plus } from "lucide-react"
 
 // ==========================================
 // HERO SLIDE DIALOG
@@ -54,7 +54,9 @@ export function HeroSlideDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [badge, setBadge] = useState(slide?.badge ?? "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ")
+  const [badge, setBadge] = useState(
+    slide?.badge ?? "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ"
+  )
   const [title, setTitle] = useState(
     slide?.title ?? "Sacred Journeys Crafted with Dignity & Comfort"
   )
@@ -81,6 +83,29 @@ export function HeroSlideDialog({
   const [isActive, setIsActive] = useState(slide?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(slide?.sortOrder ?? 0)
 
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setBadge(slide?.badge ?? "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ")
+    setTitle(slide?.title ?? "Sacred Journeys Crafted with Dignity & Comfort")
+    setSubtitle(
+      slide?.subtitle ??
+        "Bespoke Umrah packages, verified Haramain luxury hotels, and private transfers for your family."
+    )
+    setImageUrl(
+      slide?.imageUrl ??
+        "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=1600"
+    )
+    setPrimaryCtaLabel(slide?.primaryCtaLabel ?? "Plan Custom Umrah")
+    setPrimaryCtaUrl(slide?.primaryCtaUrl ?? "#custom-builder")
+    setSecondaryCtaLabel(
+      slide?.secondaryCtaLabel ?? "Explore Group Packages"
+    )
+    setSecondaryCtaUrl(slide?.secondaryCtaUrl ?? "#group-packages")
+    setIsActive(slide?.isActive ?? true)
+    setSortOrder(slide?.sortOrder ?? 0)
+  }, [open, slide])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -104,7 +129,7 @@ export function HeroSlideDialog({
         setOpen(false)
         router.refresh()
       } else {
-        setError("Failed to save slide.")
+        setError(res.error || "Failed to save slide.")
       }
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message)
@@ -121,23 +146,28 @@ export function HeroSlideDialog({
           trigger ? (
             (trigger as React.ReactElement)
           ) : (
-            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
               <Plus className="size-4" />
               <span>Add Slide</span>
             </Button>
           )
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        key={open ? (slide?.id ?? "new") : "closed"}
+        className="sm:max-w-md"
+      >
         <DialogHeader>
-          <DialogTitle>{slide ? "Edit Hero Slide" : "Add Hero Slide"}</DialogTitle>
+          <DialogTitle>
+            {slide ? "Edit Hero Slide" : "Add Hero Slide"}
+          </DialogTitle>
           <DialogDescription>
             Hero headline, Arabic badge, background visual, and CTAs.
           </DialogDescription>
         </DialogHeader>
 
         {error && (
-          <div className="rounded-lg bg-red-50 p-2 text-xs text-red-800">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-800">
             {error}
           </div>
         )}
@@ -147,9 +177,11 @@ export function HeroSlideDialog({
             <Label htmlFor="hs-badge">Arabic Top Badge</Label>
             <Input
               id="hs-badge"
+              lang="ar"
+              dir="rtl"
               value={badge}
               onChange={(e) => setBadge(e.target.value)}
-              className="font-arabic text-sm text-gold"
+              className="font-arabic text-sm text-gold-text"
             />
           </div>
 
@@ -243,7 +275,7 @@ export function HeroSlideDialog({
                 type="number"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="w-14 h-7 text-xs"
+                className="w-14 h-7 text-xs font-mono"
               />
             </div>
           </div>
@@ -255,7 +287,7 @@ export function HeroSlideDialog({
             <Button
               type="submit"
               disabled={loading}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
             >
               {loading && <Loader2 className="size-4 animate-spin" />}
               <span>{slide ? "Save Slide" : "Create Slide"}</span>
@@ -312,6 +344,22 @@ export function TestimonialDialog({
   const [isActive, setIsActive] = useState(testimonial?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(testimonial?.sortOrder ?? 0)
 
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setPilgrimName(testimonial?.pilgrimName ?? "")
+    setCity(testimonial?.city ?? "Lahore")
+    setQuote(testimonial?.quote ?? "")
+    setPackageOrJourneyType(
+      testimonial?.packageOrJourneyType ?? "Custom Family Umrah"
+    )
+    setRating(testimonial?.rating ?? 5)
+    setAvatarUrl(testimonial?.avatarUrl ?? "")
+    setIsFeatured(testimonial?.isFeatured ?? true)
+    setIsActive(testimonial?.isActive ?? true)
+    setSortOrder(testimonial?.sortOrder ?? 0)
+  }, [open, testimonial])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -334,7 +382,7 @@ export function TestimonialDialog({
         setOpen(false)
         router.refresh()
       } else {
-        setError("Failed to save testimonial.")
+        setError(res.error || "Failed to save testimonial.")
       }
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message)
@@ -351,14 +399,17 @@ export function TestimonialDialog({
           trigger ? (
             (trigger as React.ReactElement)
           ) : (
-            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
               <Plus className="size-4" />
               <span>Add Testimonial</span>
             </Button>
           )
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        key={open ? (testimonial?.id ?? "new") : "closed"}
+        className="sm:max-w-md"
+      >
         <DialogHeader>
           <DialogTitle>
             {testimonial ? "Edit Pilgrim Review" : "Add Pilgrim Review"}
@@ -369,7 +420,7 @@ export function TestimonialDialog({
         </DialogHeader>
 
         {error && (
-          <div className="rounded-lg bg-red-50 p-2 text-xs text-red-800">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-800">
             {error}
           </div>
         )}
@@ -433,6 +484,8 @@ export function TestimonialDialog({
                 <option value={5}>5 Stars ★★★★★</option>
                 <option value={4}>4 Stars ★★★★☆</option>
                 <option value={3}>3 Stars ★★★☆☆</option>
+                <option value={2}>2 Stars ★★☆☆☆</option>
+                <option value={1}>1 Star ★☆☆☆☆</option>
               </select>
             </div>
             <div className="space-y-1">
@@ -476,7 +529,7 @@ export function TestimonialDialog({
                 type="number"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="w-14 h-7 text-xs"
+                className="w-14 h-7 text-xs font-mono"
               />
             </div>
           </div>
@@ -488,7 +541,7 @@ export function TestimonialDialog({
             <Button
               type="submit"
               disabled={loading}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
             >
               {loading && <Loader2 className="size-4 animate-spin" />}
               <span>{testimonial ? "Save Changes" : "Create Review"}</span>
@@ -533,6 +586,16 @@ export function FaqDialog({
   const [isActive, setIsActive] = useState(faq?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(faq?.sortOrder ?? 0)
 
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setCategory(faq?.category ?? "general")
+    setQuestion(faq?.question ?? "")
+    setAnswer(faq?.answer ?? "")
+    setIsActive(faq?.isActive ?? true)
+    setSortOrder(faq?.sortOrder ?? 0)
+  }, [open, faq])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -551,7 +614,7 @@ export function FaqDialog({
         setOpen(false)
         router.refresh()
       } else {
-        setError("Failed to save FAQ.")
+        setError(res.error || "Failed to save FAQ.")
       }
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message)
@@ -568,23 +631,27 @@ export function FaqDialog({
           trigger ? (
             (trigger as React.ReactElement)
           ) : (
-            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
               <Plus className="size-4" />
               <span>Add FAQ</span>
             </Button>
           )
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        key={open ? (faq?.id ?? "new") : "closed"}
+        className="sm:max-w-md"
+      >
         <DialogHeader>
           <DialogTitle>{faq ? "Edit FAQ" : "Add FAQ Question"}</DialogTitle>
           <DialogDescription>
-            Help prospective pilgrims understand visa rules, payments, and accommodation.
+            Help prospective pilgrims understand visa rules, payments, and
+            accommodation.
           </DialogDescription>
         </DialogHeader>
 
         {error && (
-          <div className="rounded-lg bg-red-50 p-2 text-xs text-red-800">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-800">
             {error}
           </div>
         )}
@@ -609,11 +676,11 @@ export function FaqDialog({
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
             >
               <option value="general">General Inquiries</option>
-              <option value="visa">Saudi Visa & Passports</option>
-              <option value="hotels">Hotels & Room Sharing</option>
-              <option value="transport">Vehicles & Bullet Train</option>
+              <option value="visa">Saudi Visa &amp; Passports</option>
+              <option value="hotels">Hotels &amp; Room Sharing</option>
+              <option value="transport">Vehicles &amp; Bullet Train</option>
               <option value="packages">Group Packages</option>
-              <option value="hajj">Hajj 1447H Consultations</option>
+              <option value="hajj">Hajj 2027 Pre-Registration</option>
             </select>
           </div>
 
@@ -659,7 +726,7 @@ export function FaqDialog({
                 type="number"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="w-14 h-7 text-xs"
+                className="w-14 h-7 text-xs font-mono"
               />
             </div>
           </div>
@@ -671,7 +738,7 @@ export function FaqDialog({
             <Button
               type="submit"
               disabled={loading}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
             >
               {loading && <Loader2 className="size-4 animate-spin" />}
               <span>{faq ? "Save Changes" : "Create FAQ"}</span>

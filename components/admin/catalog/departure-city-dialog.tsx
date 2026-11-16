@@ -1,23 +1,23 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertDepartureCity } from "@/app/actions/catalog"
-import { Plus, Loader2 } from "lucide-react"
+import { Loader2, Plus } from "lucide-react"
 
 export interface DepartureCityData {
   id?: string
@@ -48,6 +48,16 @@ export function DepartureCityDialog({
   const [isActive, setIsActive] = useState(city?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(city?.sortOrder ?? 0)
 
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setCityName(city?.cityName ?? "")
+    setAirportCode(city?.airportCode ?? "")
+    setAirportName(city?.airportName ?? "")
+    setIsActive(city?.isActive ?? true)
+    setSortOrder(city?.sortOrder ?? 0)
+  }, [open, city])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -66,7 +76,7 @@ export function DepartureCityDialog({
         setOpen(false)
         router.refresh()
       } else {
-        setError("Failed to save departure gateway.")
+        setError(res.error || "Failed to save departure gateway.")
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -86,20 +96,24 @@ export function DepartureCityDialog({
           trigger ? (
             (trigger as React.ReactElement)
           ) : (
-            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
               <Plus className="size-4" />
               <span>Add City Gateway</span>
             </Button>
           )
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        key={open ? (city?.id ?? "new") : "closed"}
+        className="sm:max-w-md"
+      >
         <DialogHeader>
           <DialogTitle>
             {city ? `Edit ${city.cityName}` : "Add Departure City Gateway"}
           </DialogTitle>
           <DialogDescription>
-            Pakistani international airport origin for group packages and custom flights.
+            Pakistani international airport origin for group packages and custom
+            flights.
           </DialogDescription>
         </DialogHeader>
 
@@ -165,7 +179,7 @@ export function DepartureCityDialog({
                 type="number"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="w-14 h-7 text-xs"
+                className="w-14 h-7 text-xs font-mono"
               />
             </div>
           </div>
@@ -177,7 +191,7 @@ export function DepartureCityDialog({
             <Button
               type="submit"
               disabled={loading}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
             >
               {loading && <Loader2 className="size-4 animate-spin" />}
               <span>{city ? "Save Changes" : "Create City"}</span>

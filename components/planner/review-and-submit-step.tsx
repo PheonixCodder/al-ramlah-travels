@@ -1,13 +1,17 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
-import { usePlanner, type StayConfig } from "./planner-context"
+import React, { useRef, useState } from "react"
+import {
+  usePlanner,
+  type StayConfig,
+  type PlannerSubmissionPayload,
+} from "./planner-context"
 import { formatDisplayDate } from "./planner-date-picker"
 import {
   submitCustomApplication,
   type CustomApplicationResult,
 } from "@/app/actions/applications"
-import type { CustomJourneyApplicationInput } from "@/lib/validations/application"
+import { readStoredAttribution } from "@/lib/seo/utm"
 import { formatCitySequence } from "@/lib/domain"
 import {
   Calendar,
@@ -91,6 +95,10 @@ export function ReviewAndSubmitStep() {
     ziyarat,
     derived,
     catalog,
+    contactDraft,
+    updateContactDraft,
+    clientSubmissionId,
+    resetSubmissionSession,
     goToStep,
   } = usePlanner()
 
@@ -109,37 +117,18 @@ export function ReviewAndSubmitStep() {
   )
   const airline = airlines.find((a) => a.id === flights.preferredAirlineId)
 
-  // Smart Pakistani City Default: initialize or sync from selected departure city
-  const defaultCity = depCity?.cityName?.split("/")[0]?.trim() || "Lahore"
-  const [customerName, setCustomerName] = useState("")
-  const [customerPhone, setCustomerPhone] = useState("")
-  const [customerWhatsapp, setCustomerWhatsapp] = useState("")
-  const [customerCity, setCustomerCity] = useState(defaultCity)
-  const [cityTouched, setCityTouched] = useState(false)
-  const [customerEmail, setCustomerEmail] = useState("")
-  const [specialRequests, setSpecialRequests] = useState("")
-  const [sameAsPhone, setSameAsPhone] = useState(true)
-
-  useEffect(() => {
-    if (!cityTouched && depCity?.cityName) {
-      const city = depCity.cityName.split("/")[0]?.trim()
-      if (city) {
-        setCustomerCity(city)
-      }
-    }
-  }, [depCity?.cityName, cityTouched])
-
+  const [honeypot, setHoneypot] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [result, setResult] = useState<CustomApplicationResult | null>(null)
   const [copied, setCopied] = useState(false)
+  const inFlightRef = useRef(false)
 
-  // Filter active segments accurately
   const activeSegments = transport.segments.filter(
     (s) => presetMode !== "transport_only" || s.enabled !== false
   )
 
-  // Resolve Ziyarat vehicle and landmarks
   const roadVehicles = vehicles.filter(
     (v) => v.category !== "train" && (v.isActive === undefined || v.isActive)
   )
@@ -152,20 +141,21 @@ export function ReviewAndSubmitStep() {
     ziyarat.selectedPlaceIds.includes(p.id)
   )
 
-  const handlePhoneChange = (val: string) => {
-    setCustomerPhone(val)
-    if (sameAsPhone) {
-      setCustomerWhatsapp(val)
-    }
-  }
+  const includeAirportRouting = hasCityLegs || pillars.flights
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (inFlightRef.current || isLoading) return
+    inFlightRef.current = true
     setError(null)
+    setFieldErrors({})
     setIsLoading(true)
 
     try {
-      const fullPayload: CustomJourneyApplicationInput = {
+      const fullPayload: PlannerSubmissionPayload = {
+        clientSubmissionId,
+        honeypot,
+        attribution: readStoredAttribution(),
         presetMode,
         includeVisa: pillars.visa,
         includeFlights: pillars.flights,
@@ -180,8 +170,8 @@ export function ReviewAndSubmitStep() {
         ksaArrivalDate: dates.arrivalDate,
         ksaDepartureDate: dates.departureDate,
         citySequence: hasCityLegs ? itinerary.citySequence : undefined,
-        entryAirport: hasCityLegs ? itinerary.entryAirport : undefined,
-        exitAirport: hasCityLegs ? itinerary.exitAirport : undefined,
+        entryAirport: includeAirportRouting ? itinerary.entryAirport : undefined,
+        exitAirport: includeAirportRouting ? itinerary.exitAirport : undefined,
         departureCityId: pillars.flights
           ? flights.departureCityId || undefined
           : undefined,
@@ -208,16 +198,14 @@ export function ReviewAndSubmitStep() {
             }))
           : undefined,
         transportSegments: pillars.transport
-          ? transport.segments
-              .filter((s) => s.enabled !== false)
-              .map((s, idx) => ({
-                segmentOrder: idx + 1,
-                sectorId: s.sectorId,
-                serviceType: s.serviceType,
-                vehicleId: s.vehicleId,
-                pickupTime: s.pickupTime,
-                scheduledDate: s.scheduledDate,
-              }))
+          ? activeSegments.map((s, idx) => ({
+              segmentOrder: idx + 1,
+              sectorId: s.sectorId,
+              serviceType: s.serviceType,
+              vehicleId: s.vehicleId,
+              pickupTime: s.serviceType === "private" ? s.pickupTime : undefined,
+              scheduledDate: s.scheduledDate,
+            }))
           : undefined,
         ziyaratScope: pillars.ziyarat ? ziyarat.scope : undefined,
         ziyaratVehicleId: pillars.ziyarat
@@ -231,12 +219,15 @@ export function ReviewAndSubmitStep() {
             )
           : undefined,
         contact: {
-          customerName: customerName.trim(),
-          customerPhone: customerPhone.trim(),
-          customerWhatsapp: (sameAsPhone ? customerPhone : customerWhatsapp).trim(),
-          customerCity: customerCity.trim(),
-          customerEmail: customerEmail.trim() || undefined,
-          specialRequests: specialRequests.trim() || undefined,
+          customerName: contactDraft.customerName.trim(),
+          customerPhone: contactDraft.customerPhone.trim(),
+          customerWhatsapp: (contactDraft.sameAsPhone
+            ? contactDraft.customerPhone
+            : contactDraft.customerWhatsapp
+          ).trim(),
+          customerCity: contactDraft.customerCity.trim(),
+          customerEmail: contactDraft.customerEmail.trim() || undefined,
+          specialRequests: contactDraft.specialRequests.trim() || undefined,
         },
       }
 
@@ -250,10 +241,14 @@ export function ReviewAndSubmitStep() {
         }
       } else {
         setError(res.error || "Failed to submit request. Please check inputs.")
+        if (res.fieldErrors) {
+          setFieldErrors(res.fieldErrors)
+        }
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Submission failed.")
     } finally {
+      inFlightRef.current = false
       setIsLoading(false)
     }
   }
@@ -267,9 +262,24 @@ export function ReviewAndSubmitStep() {
   }
 
   const handleTrackStatus = () => {
+    const refCode = result?.referenceNumber ?? ""
     const element = document.getElementById("track-status")
     if (element) {
+      if (refCode && typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("alramlah:prefill-tracker", {
+            detail: { referenceNumber: refCode },
+          })
+        )
+      }
       element.scrollIntoView({ behavior: "smooth" })
+      return
+    }
+    const targetUrl = refCode
+      ? `/?trackRef=${encodeURIComponent(refCode)}#track-status`
+      : "/#track-status"
+    if (typeof window !== "undefined") {
+      window.location.assign(targetUrl)
     }
   }
 
@@ -284,7 +294,7 @@ export function ReviewAndSubmitStep() {
             <CheckCircle2 className="size-9" />
           </div>
 
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-[#7A5C1E]">
             Official Pilgrimage Dispatch
           </span>
           <h2 className="font-display text-2xl sm:text-3xl font-extrabold text-[#0A3622] mt-1">
@@ -296,11 +306,11 @@ export function ReviewAndSubmitStep() {
 
           {/* Reference Number Card */}
           <div className="mt-6 flex w-full max-w-md flex-col items-center justify-center rounded-2xl border border-[#C5A059]/50 bg-[#FAF7F0] p-5 shadow-xs">
-            <span className="text-[11px] font-bold tracking-wider uppercase text-[#8F6E2A]">
+            <span className="text-[11px] font-bold tracking-wider uppercase text-[#7A5C1E]">
               Official Reference Code
             </span>
             <div className="flex items-center gap-3 mt-1.5">
-              <span className="font-mono text-2xl sm:text-3xl font-black tracking-wider text-[#0A3622]">
+              <span className="font-mono text-2xl sm:text-3xl font-black tracking-wider text-[#0A3622] tabular-nums">
                 {result.referenceNumber}
               </span>
               <button
@@ -324,7 +334,7 @@ export function ReviewAndSubmitStep() {
 
           {/* Pricing Confirmation if Visa Only */}
           {result.isVisaOnly && result.calculatedVisaTotalPkr && (
-            <div className="mt-4 w-full max-w-md rounded-xl bg-[#FAF7F0] border border-[#E6DEC8] p-4 text-center">
+            <div className="mt-4 w-full max-w-md rounded-xl bg-[#FAF7F0] border border-[#E6DEC8] p-4 text-center tabular-nums">
               <span className="text-xs text-[#686E65]">Locked Total (PKR):</span>
               <div className="font-mono text-xl sm:text-2xl font-black text-[#0A3622] my-0.5">
                 PKR {result.calculatedVisaTotalPkr.toLocaleString()}
@@ -364,6 +374,7 @@ export function ReviewAndSubmitStep() {
               type="button"
               onClick={() => {
                 setResult(null)
+                resetSubmissionSession()
                 goToStep("setup")
               }}
               className="flex items-center justify-center gap-1.5 text-xs text-[#686E65] hover:text-[#0A3622] mt-2 font-medium"
@@ -386,11 +397,10 @@ export function ReviewAndSubmitStep() {
       {/* CARD 1: Review Your Journey Summary Card                  */}
       {/* ========================================================= */}
       <div className="w-full rounded-2xl border border-[#E6DEC8] bg-white p-5 sm:p-6 shadow-xs">
-        {/* Header */}
         <div className="mb-4 flex items-center justify-between border-b border-[#E6DEC8]/60 pb-3">
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
-              Step 6 of 6 · Final Verification
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
+              Final Verification
             </span>
             <h3 className="text-base sm:text-lg font-bold text-[#0A3622]">
               Review Your Configured Pilgrimage
@@ -402,7 +412,7 @@ export function ReviewAndSubmitStep() {
           <button
             type="button"
             onClick={() => goToStep("setup")}
-            className="flex items-center gap-1 rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-2.5 py-1 text-[11px] font-semibold text-[#8F6E2A] hover:bg-[#F5EFE6] transition-colors"
+            className="flex items-center gap-1 rounded-lg border border-[#E6DEC8] bg-[#FAF7F0] px-2.5 py-1 text-[11px] font-semibold text-[#7A5C1E] hover:bg-[#F5EFE6] transition-colors"
           >
             <Pencil className="size-3" />
             <span>Edit Setup</span>
@@ -411,43 +421,44 @@ export function ReviewAndSubmitStep() {
 
         {/* Top 2-Column Overview Strip: Travel Window & Pilgrims */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-          {/* Box 1: Travel Window */}
           <div className="flex items-center gap-3 rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] p-3.5">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white border border-[#C5A059]/40 text-[#8F6E2A]">
-              <Calendar className="size-5 text-[#8F6E2A]" />
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white border border-[#C5A059]/40 text-[#7A5C1E]">
+              <Calendar className="size-5 text-[#7A5C1E]" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E] tabular-nums">
                   Travel Window ({dates.totalKsaDays} Days in KSA)
                 </span>
-                {hasCityLegs && (
+                {includeAirportRouting && (
                   <span className="rounded-full bg-white border border-[#E6DEC8] px-2 py-0.5 text-[9px] font-bold text-[#0A3622]">
-                    {itinerary.citySequence ? `${formatCitySequence(itinerary.citySequence)} · ` : ""}Entry: {itinerary.entryAirport} · Exit: {itinerary.exitAirport}
+                    {hasCityLegs && itinerary.citySequence
+                      ? `${formatCitySequence(itinerary.citySequence)} · `
+                      : ""}
+                    Entry: {itinerary.entryAirport} · Exit: {itinerary.exitAirport}
                   </span>
                 )}
               </div>
-              <p className="text-xs sm:text-sm font-bold text-[#1A1D1A] mt-0.5">
+              <p className="text-xs sm:text-sm font-bold text-[#1A1D1A] mt-0.5 tabular-nums">
                 {formatDisplayDate(dates.arrivalDate)} → {formatDisplayDate(dates.departureDate)}
               </p>
             </div>
           </div>
 
-          {/* Box 2: Pilgrims */}
           <div className="flex items-center gap-3 rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] p-3.5">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white border border-[#C5A059]/40 text-[#8F6E2A]">
-              <Users className="size-5 text-[#8F6E2A]" />
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white border border-[#C5A059]/40 text-[#7A5C1E]">
+              <Users className="size-5 text-[#7A5C1E]" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
                   Pilgrim Count
                 </span>
-                <span className="rounded-full bg-white border border-[#E6DEC8] px-2 py-0.5 text-[9px] font-bold text-[#0A3622]">
+                <span className="rounded-full bg-white border border-[#E6DEC8] px-2 py-0.5 text-[9px] font-bold text-[#0A3622] tabular-nums">
                   {travellers.bedAndSeatCount} Beds &amp; Seats · {travellers.totalPassportCount} Passports
                 </span>
               </div>
-              <p className="text-xs sm:text-sm font-bold text-[#1A1D1A] mt-0.5">
+              <p className="text-xs sm:text-sm font-bold text-[#1A1D1A] mt-0.5 tabular-nums">
                 {travellers.adults} Adults
                 {travellers.children > 0
                   ? `, ${travellers.children} Children`
@@ -462,7 +473,6 @@ export function ReviewAndSubmitStep() {
 
         {/* Itemized Active Service Pillar Sections */}
         <div className="flex flex-col gap-3">
-          {/* 1. Umrah Visa */}
           {pillars.visa && (
             <div className="flex items-center justify-between rounded-xl border border-[#E6DEC8] bg-[#FAF7F0]/60 p-3.5">
               <div className="flex items-center gap-3">
@@ -474,18 +484,18 @@ export function ReviewAndSubmitStep() {
                     <h4 className="text-xs font-bold text-[#1A1D1A]">
                       Umrah Visa Processing
                     </h4>
-                    <span className="rounded-full bg-white border border-[#E6DEC8] px-2 py-0.2 text-[9px] font-semibold text-[#8F6E2A]">
+                    <span className="rounded-full bg-white border border-[#E6DEC8] px-2 py-0.2 text-[9px] font-semibold text-[#7A5C1E]">
                       {dates.totalKsaDays <= 30 ? "Short-Term (≤30 Days)" : "Long-Term (>30 Days)"}
                     </span>
                   </div>
-                  <p className="text-[11px] text-[#686E65] mt-0.5">
+                  <p className="text-[11px] text-[#686E65] mt-0.5 tabular-nums">
                     {travellers.totalPassportCount} {travellers.totalPassportCount === 1 ? "Passport" : "Passports"} · Comprehensive Medical Health Insurance Included
                   </p>
                 </div>
               </div>
               <div className="text-right shrink-0">
                 {isVisaOnly ? (
-                  <span className="font-mono text-xs sm:text-sm font-extrabold text-[#0A3622]">
+                  <span className="font-mono text-xs sm:text-sm font-extrabold text-[#0A3622] tabular-nums">
                     PKR {visaCalc.totalVisaCostPkr.toLocaleString()}
                   </span>
                 ) : (
@@ -498,7 +508,6 @@ export function ReviewAndSubmitStep() {
             </div>
           )}
 
-          {/* 2. Return Flights */}
           {pillars.flights && (
             <div className="flex flex-col gap-2 rounded-xl border border-[#E6DEC8] bg-[#FAF7F0]/60 p-3.5">
               <div className="flex items-center justify-between">
@@ -511,14 +520,14 @@ export function ReviewAndSubmitStep() {
                       Return Airfare
                     </h4>
                     <p className="text-[11px] text-[#686E65]">
-                      From {depCity?.cityName ?? "Pakistan"} ({depCity?.airportCode ?? "Pakistan"}) → {itinerary.entryAirport === "JED" ? "Jeddah (JED)" : "Madinah (MED)"} · Return from {itinerary.exitAirport === "JED" ? "Jeddah (JED)" : "Madinah (MED)"}
+                      From {depCity?.cityName ?? "Pakistan"} ({depCity?.airportCode ?? "PAK"}) → {itinerary.entryAirport === "JED" ? "Jeddah (JED)" : "Madinah (MED)"} · Return from {itinerary.exitAirport === "JED" ? "Jeddah (JED)" : "Madinah (MED)"}
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => goToStep("flights")}
-                  className="text-[11px] font-semibold text-[#8F6E2A] hover:underline flex items-center gap-1 shrink-0"
+                  className="text-[11px] font-semibold text-[#7A5C1E] hover:underline flex items-center gap-1 shrink-0"
                 >
                   <span>Edit</span>
                   <Pencil className="size-3" />
@@ -528,7 +537,7 @@ export function ReviewAndSubmitStep() {
                 <span className="rounded-full bg-white border border-[#E6DEC8] px-2.5 py-0.5 text-[10px] font-bold text-[#0A3622]">
                   {flights.routeType === "direct" ? "Direct Flight" : "1-Stop Flight"}
                 </span>
-                <span className="rounded-full bg-white border border-[#E6DEC8] px-2.5 py-0.5 text-[10px] font-bold text-[#8F6E2A]">
+                <span className="rounded-full bg-white border border-[#E6DEC8] px-2.5 py-0.5 text-[10px] font-bold text-[#7A5C1E]">
                   {flights.cabinClass === "business" ? "Business Class" : "Economy Class"}
                 </span>
                 <span className="rounded-full bg-white border border-[#E6DEC8] px-2.5 py-0.5 text-[10px] font-medium text-[#686E65]">
@@ -538,7 +547,6 @@ export function ReviewAndSubmitStep() {
             </div>
           )}
 
-          {/* 3. Haramain Hotels */}
           {pillars.hotels && (
             <div className="flex flex-col gap-2.5 rounded-xl border border-[#E6DEC8] bg-[#FAF7F0]/60 p-3.5">
               <div className="flex items-center justify-between">
@@ -547,7 +555,7 @@ export function ReviewAndSubmitStep() {
                     <Building className="size-4.5 text-[#0A3622]" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-[#1A1D1A]">
+                    <h4 className="text-xs font-bold text-[#1A1D1A] tabular-nums">
                       Haramain Hotels ({itinerary.stays.length} {itinerary.stays.length === 1 ? "Stay" : "Stays"})
                     </h4>
                     <p className="text-[11px] text-[#686E65]">
@@ -558,7 +566,7 @@ export function ReviewAndSubmitStep() {
                 <button
                   type="button"
                   onClick={() => goToStep("hotels")}
-                  className="text-[11px] font-semibold text-[#8F6E2A] hover:underline flex items-center gap-1 shrink-0"
+                  className="text-[11px] font-semibold text-[#7A5C1E] hover:underline flex items-center gap-1 shrink-0"
                 >
                   <span>Edit</span>
                   <Pencil className="size-3" />
@@ -576,7 +584,7 @@ export function ReviewAndSubmitStep() {
                       className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-[#1A1D1A] bg-white p-3 rounded-xl border border-[#E6DEC8]/80 shadow-2xs"
                     >
                       <div className="flex items-start gap-2.5">
-                        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 text-[10px] font-bold text-[#8F6E2A] mt-0.5">
+                        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 text-[10px] font-bold text-[#7A5C1E] mt-0.5 tabular-nums">
                           {stay.stayOrder}
                         </span>
                         <div>
@@ -585,12 +593,12 @@ export function ReviewAndSubmitStep() {
                               {stay.city === "makkah" ? "Makkah" : "Madinah"}: {hotel?.name ?? (stay.city === "makkah" ? "Makkah Hotel" : "Madinah Hotel")}
                             </span>
                             {hotel?.starRating && (
-                              <span className="rounded-full bg-[#FAF7F0] border border-[#C5A059]/30 px-1.5 py-0.2 text-[9px] font-bold text-[#8F6E2A]">
+                              <span className="rounded-full bg-[#FAF7F0] border border-[#C5A059]/30 px-1.5 py-0.2 text-[9px] font-bold text-[#7A5C1E]">
                                 {hotel.starRating}-Star
                               </span>
                             )}
                           </div>
-                          <p className="text-[#686E65] text-[11px] mt-0.5">
+                          <p className="text-[#686E65] text-[11px] mt-0.5 tabular-nums">
                             {stay.nights} {stay.nights === 1 ? "Night" : "Nights"} ({formatDisplayDate(stay.checkInDate)} → {formatDisplayDate(stay.checkOutDate)})
                           </p>
                         </div>
@@ -599,7 +607,7 @@ export function ReviewAndSubmitStep() {
                         <span className="text-[10px] font-semibold text-[#0A3622] bg-[#FAF7F0] border border-[#C5A059]/40 px-2 py-0.5 rounded-full">
                           {roomLabel}
                         </span>
-                        <span className="text-[10px] font-semibold text-[#8F6E2A] bg-white border border-[#E6DEC8] px-2 py-0.5 rounded-full capitalize">
+                        <span className="text-[10px] font-semibold text-[#7A5C1E] bg-white border border-[#E6DEC8] px-2 py-0.5 rounded-full capitalize">
                           {(stay.mealPlan ?? "room_only").replace("_", " ")}
                         </span>
                       </div>
@@ -610,7 +618,6 @@ export function ReviewAndSubmitStep() {
             </div>
           )}
 
-          {/* 4. Ground Transport */}
           {pillars.transport && (
             <div className="flex flex-col gap-2.5 rounded-xl border border-[#E6DEC8] bg-[#FAF7F0]/60 p-3.5">
               <div className="flex items-center justify-between">
@@ -619,7 +626,7 @@ export function ReviewAndSubmitStep() {
                     <Car className="size-4.5 text-[#0A3622]" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-[#1A1D1A]">
+                    <h4 className="text-xs font-bold text-[#1A1D1A] tabular-nums">
                       Ground Transport ({activeSegments.length} {activeSegments.length === 1 ? "Transfer" : "Transfers"})
                     </h4>
                     <p className="text-[11px] text-[#686E65]">
@@ -630,7 +637,7 @@ export function ReviewAndSubmitStep() {
                 <button
                   type="button"
                   onClick={() => goToStep("transport")}
-                  className="text-[11px] font-semibold text-[#8F6E2A] hover:underline flex items-center gap-1 shrink-0"
+                  className="text-[11px] font-semibold text-[#7A5C1E] hover:underline flex items-center gap-1 shrink-0"
                 >
                   <span>Edit</span>
                   <Pencil className="size-3" />
@@ -649,29 +656,29 @@ export function ReviewAndSubmitStep() {
                       className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-[#1A1D1A] bg-white p-3 rounded-xl border border-[#E6DEC8]/80 shadow-2xs"
                     >
                       <div className="flex items-start gap-2.5">
-                        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 text-[10px] font-bold text-[#8F6E2A] mt-0.5">
+                        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 text-[10px] font-bold text-[#7A5C1E] mt-0.5 tabular-nums">
                           {idx + 1}
                         </span>
                         <div>
                           <span className="font-bold text-[#0A3622]">
                             {sector?.label ?? "Transfer Sector"}
                           </span>
-                          <div className="flex items-center gap-2 text-[11px] text-[#686E65] mt-0.5 flex-wrap">
+                          <div className="flex items-center gap-2 text-[11px] text-[#686E65] mt-0.5 flex-wrap tabular-nums">
                             <span>{formatDisplayDate(seg.scheduledDate)}</span>
                             <span>•</span>
                             <span className="font-medium text-[#1A1D1A]">
                               {veh?.name ?? "Private Vehicle"}
                             </span>
                             <span>•</span>
-                            <span className="text-[#8F6E2A] font-semibold">
+                            <span className="text-[#7A5C1E] font-semibold">
                               {isPrivate ? formatPickupTime(seg.pickupTime) : "Fixed Schedule"}
                             </span>
                           </div>
                         </div>
                       </div>
                       <div className="self-start sm:self-auto pl-7 sm:pl-0">
-                        <span className="rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-2 py-0.5 text-[10px] font-bold text-[#8F6E2A] uppercase">
-                          {isPrivate ? "Private Fleet" : "Shared Coach"}
+                        <span className="rounded-full bg-[#FAF7F0] border border-[#C5A059]/40 px-2 py-0.5 text-[10px] font-bold text-[#7A5C1E] uppercase">
+                          {isPrivate ? "Private Fleet" : "Shared Coach / Rail"}
                         </span>
                       </div>
                     </div>
@@ -681,7 +688,6 @@ export function ReviewAndSubmitStep() {
             </div>
           )}
 
-          {/* 5. Sacred Ziyarat Tours */}
           {pillars.ziyarat && (
             <div className="flex flex-col gap-2.5 rounded-xl border border-[#E6DEC8] bg-[#FAF7F0]/60 p-3.5">
               <div className="flex items-center justify-between">
@@ -690,7 +696,7 @@ export function ReviewAndSubmitStep() {
                     <Compass className="size-4.5 text-[#0A3622]" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-[#1A1D1A]">
+                    <h4 className="text-xs font-bold text-[#1A1D1A] tabular-nums">
                       Sacred Historical Ziyarat ({ziyarat.selectedPlaceIds.length} {ziyarat.selectedPlaceIds.length === 1 ? "Site" : "Sites"})
                     </h4>
                     <p className="text-[11px] text-[#686E65]">
@@ -701,7 +707,7 @@ export function ReviewAndSubmitStep() {
                 <button
                   type="button"
                   onClick={() => goToStep("ziyarat")}
-                  className="text-[11px] font-semibold text-[#8F6E2A] hover:underline flex items-center gap-1 shrink-0"
+                  className="text-[11px] font-semibold text-[#7A5C1E] hover:underline flex items-center gap-1 shrink-0"
                 >
                   <span>Edit</span>
                   <Pencil className="size-3" />
@@ -717,7 +723,7 @@ export function ReviewAndSubmitStep() {
                     >
                       <span className="size-1 rounded-full bg-[#C5A059]" />
                       <span>{place.name}</span>
-                      <span className="text-[9px] text-[#8F6E2A] font-semibold">
+                      <span className="text-[9px] text-[#7A5C1E] font-semibold">
                         ({place.city === "makkah" ? "Makkah" : "Madinah"})
                       </span>
                     </span>
@@ -734,7 +740,7 @@ export function ReviewAndSubmitStep() {
       {/* ========================================================= */}
       <div id="lead-contact-form" className="w-full rounded-2xl border border-[#C5A059] bg-white p-5 sm:p-6 shadow-md">
         <div className="mb-4">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
             Contact &amp; Submission
           </span>
           <h3 className="text-base sm:text-lg font-bold text-[#0A3622]">
@@ -746,13 +752,30 @@ export function ReviewAndSubmitStep() {
         </div>
 
         {error && (
-          <div className="mb-4 flex items-start gap-2 rounded-xl bg-[#FEE2E2] border border-[#DC2626]/30 p-3 text-xs text-[#991B1B]">
+          <div
+            role="alert"
+            className="mb-4 flex items-start gap-2 rounded-xl bg-[#FEE2E2] border border-[#DC2626]/30 p-3 text-xs text-[#991B1B]"
+          >
             <AlertCircle className="size-4 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+          {/* Hidden Anti-Spam Honeypot (T-055) */}
+          <div aria-hidden="true" className="sr-only">
+            <label htmlFor="lead-website-hp">Website</label>
+            <input
+              id="lead-website-hp"
+              name="website"
+              type="text"
+              tabIndex={-1}
+              autoComplete="off"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+            />
+          </div>
+
           {/* Row 1: Full Name * and Phone / WhatsApp * side-by-side */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -766,11 +789,24 @@ export function ReviewAndSubmitStep() {
                 id="lead-full-name"
                 type="text"
                 required
+                aria-invalid={Boolean(fieldErrors["contact.customerName"])}
+                aria-describedby={
+                  fieldErrors["contact.customerName"]
+                    ? "lead-err-name"
+                    : undefined
+                }
                 placeholder="e.g. Muhammad Usman Farooq"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
+                value={contactDraft.customerName}
+                onChange={(e) =>
+                  updateContactDraft({ customerName: e.target.value })
+                }
                 className="w-full rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-2.5 text-xs sm:text-sm font-medium text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
               />
+              {fieldErrors["contact.customerName"] && (
+                <p id="lead-err-name" className="mt-1 text-[11px] font-medium text-[#991B1B]">
+                  {fieldErrors["contact.customerName"]}
+                </p>
+              )}
             </div>
 
             <div>
@@ -784,35 +820,61 @@ export function ReviewAndSubmitStep() {
                 id="lead-phone"
                 type="tel"
                 required
-                placeholder="0327 4029701"
-                value={customerPhone}
-                onChange={(e) => handlePhoneChange(e.target.value)}
+                aria-invalid={Boolean(fieldErrors["contact.customerPhone"])}
+                aria-describedby={
+                  fieldErrors["contact.customerPhone"]
+                    ? "lead-err-phone"
+                    : undefined
+                }
+                placeholder="0327 4029701 or +44 7700 900123"
+                value={contactDraft.customerPhone}
+                onChange={(e) =>
+                  updateContactDraft({ customerPhone: e.target.value })
+                }
                 className="w-full rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-2.5 text-xs sm:text-sm font-medium text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
               />
+              {fieldErrors["contact.customerPhone"] && (
+                <p id="lead-err-phone" className="mt-1 text-[11px] font-medium text-[#991B1B]">
+                  {fieldErrors["contact.customerPhone"]}
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Row 2: City in Pakistan * and Email Address (Optional) side-by-side */}
+          {/* Row 2: City of Residence * and Email Address (Optional) side-by-side */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label
                 htmlFor="lead-city"
                 className="block text-xs font-semibold text-[#1A1D1A] mb-1"
               >
-                City in Pakistan *
+                City of Residence *
               </label>
               <input
                 id="lead-city"
                 type="text"
                 required
-                placeholder="e.g. Lahore / Islamabad / Karachi"
-                value={customerCity}
-                onChange={(e) => {
-                  setCityTouched(true)
-                  setCustomerCity(e.target.value)
-                }}
+                aria-invalid={Boolean(fieldErrors["contact.customerCity"])}
+                aria-describedby={
+                  fieldErrors["contact.customerCity"]
+                    ? "lead-err-city"
+                    : undefined
+                }
+                placeholder="e.g. Lahore / Islamabad / London / Dubai"
+                value={contactDraft.customerCity}
+                onChange={(e) =>
+                  updateContactDraft({
+                    cityTouched: true,
+                    customerCity: e.target.value,
+                  })
+                }
                 className="w-full rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-2.5 text-xs sm:text-sm font-medium text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
               />
+              {fieldErrors["contact.customerCity"] && (
+                <p id="lead-err-city" className="mt-1 text-[11px] font-medium text-[#991B1B]">
+                  {fieldErrors["contact.customerCity"]}
+                </p>
+              )}
             </div>
 
             <div>
@@ -825,11 +887,24 @@ export function ReviewAndSubmitStep() {
               <input
                 id="lead-email"
                 type="email"
+                aria-invalid={Boolean(fieldErrors["contact.customerEmail"])}
+                aria-describedby={
+                  fieldErrors["contact.customerEmail"]
+                    ? "lead-err-email"
+                    : undefined
+                }
                 placeholder="name@example.com"
-                value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
+                value={contactDraft.customerEmail}
+                onChange={(e) =>
+                  updateContactDraft({ customerEmail: e.target.value })
+                }
                 className="w-full rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-2.5 text-xs sm:text-sm font-medium text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
               />
+              {fieldErrors["contact.customerEmail"] && (
+                <p id="lead-err-email" className="mt-1 text-[11px] font-medium text-[#991B1B]">
+                  {fieldErrors["contact.customerEmail"]}
+                </p>
+              )}
             </div>
           </div>
 
@@ -838,8 +913,10 @@ export function ReviewAndSubmitStep() {
             <input
               id="lead-same-whatsapp"
               type="checkbox"
-              checked={sameAsPhone}
-              onChange={(e) => setSameAsPhone(e.target.checked)}
+              checked={contactDraft.sameAsPhone}
+              onChange={(e) =>
+                updateContactDraft({ sameAsPhone: e.target.checked })
+              }
               className="size-4 accent-[#0A3622] rounded cursor-pointer"
             />
             <label
@@ -850,7 +927,7 @@ export function ReviewAndSubmitStep() {
             </label>
           </div>
 
-          {!sameAsPhone && (
+          {!contactDraft.sameAsPhone && (
             <div>
               <label
                 htmlFor="lead-whatsapp"
@@ -862,11 +939,24 @@ export function ReviewAndSubmitStep() {
                 id="lead-whatsapp"
                 type="tel"
                 required
-                placeholder="0327 4029701"
-                value={customerWhatsapp}
-                onChange={(e) => setCustomerWhatsapp(e.target.value)}
+                aria-invalid={Boolean(fieldErrors["contact.customerWhatsapp"])}
+                aria-describedby={
+                  fieldErrors["contact.customerWhatsapp"]
+                    ? "lead-err-whatsapp"
+                    : undefined
+                }
+                placeholder="0327 4029701 or +44 7700 900123"
+                value={contactDraft.customerWhatsapp}
+                onChange={(e) =>
+                  updateContactDraft({ customerWhatsapp: e.target.value })
+                }
                 className="w-full rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-2.5 text-xs sm:text-sm font-medium text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
               />
+              {fieldErrors["contact.customerWhatsapp"] && (
+                <p id="lead-err-whatsapp" className="mt-1 text-[11px] font-medium text-[#991B1B]">
+                  {fieldErrors["contact.customerWhatsapp"]}
+                </p>
+              )}
             </div>
           )}
 
@@ -881,26 +971,33 @@ export function ReviewAndSubmitStep() {
             <textarea
               id="lead-special-requests"
               rows={2}
-              placeholder="e.g. Traveling with elderly parents; wheelchair assistance requested at airports and Haramain High Speed train."
-              value={specialRequests}
-              onChange={(e) => setSpecialRequests(e.target.value)}
+              aria-invalid={Boolean(fieldErrors["contact.specialRequests"])}
+              placeholder="e.g. Traveling with elderly parents; wheelchair assistance requested at airports and Haramain High-Speed Rail."
+              value={contactDraft.specialRequests}
+              onChange={(e) =>
+                updateContactDraft({ specialRequests: e.target.value })
+              }
               className="w-full rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-2.5 text-xs sm:text-sm font-medium text-[#1A1D1A] transition-colors focus:border-[#C5A059] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
             />
+            {fieldErrors["contact.specialRequests"] && (
+              <p className="mt-1 text-[11px] font-medium text-[#991B1B]">
+                {fieldErrors["contact.specialRequests"]}
+              </p>
+            )}
           </div>
 
           {/* Pricing & Submission Footer */}
           <div className="mt-2 pt-4 border-t border-[#E6DEC8] flex flex-col gap-3">
-            {/* Rate Summary Strip */}
             <div className="rounded-xl border border-[#C5A059]/40 bg-[#FAF7F0] p-4 text-center">
               {isVisaOnly ? (
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#8F6E2A]">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C1E]">
                     Guaranteed Fixed Total
                   </span>
-                  <div className="font-mono text-2xl sm:text-3xl font-black text-[#0A3622] my-0.5">
+                  <div className="font-mono text-2xl sm:text-3xl font-black text-[#0A3622] my-0.5 tabular-nums">
                     PKR {visaCalc.totalVisaCostPkr.toLocaleString()}
                   </div>
-                  <p className="text-[11px] text-[#686E65]">
+                  <p className="text-[11px] text-[#686E65] tabular-nums">
                     {travellers.totalPassportCount} × PKR {visaCalc.pricePerPassportPkr.toLocaleString()} • No hidden taxes or processing fees
                   </p>
                 </div>
@@ -922,12 +1019,12 @@ export function ReviewAndSubmitStep() {
               type="submit"
               disabled={
                 isLoading ||
-                !customerName.trim() ||
-                !customerPhone.trim() ||
-                !customerCity.trim() ||
+                !contactDraft.customerName.trim() ||
+                !contactDraft.customerPhone.trim() ||
+                !contactDraft.customerCity.trim() ||
                 Boolean(result?.success)
               }
-              className="w-full h-12 bg-[#0A3622] hover:bg-[#0F4C31] text-white font-bold text-sm sm:text-base rounded-xl shadow-md shadow-[#0A3622]/20 transition-all flex items-center justify-center gap-2 border border-[#C5A059]/40 cursor-pointer disabled:cursor-not-allowed"
+              className="w-full h-12 bg-[#0A3622] hover:bg-[#0F4C31] text-white font-bold text-sm sm:text-base rounded-xl shadow-md shadow-[#0A3622]/20 transition-all flex items-center justify-center gap-2 border border-[#C5A059]/40 cursor-pointer disabled:cursor-not-allowed tabular-nums"
             >
               {isLoading ? (
                 <>

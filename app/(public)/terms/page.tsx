@@ -1,176 +1,267 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { FileText, Scale } from "lucide-react"
+import { PublicBreadcrumbs } from "@/components/layout/breadcrumbs"
+import { TrustLegalCrosslinks } from "@/components/seo/trust-legal-crosslinks"
+import { toTelHref } from "@/lib/company-info"
+import { JsonLd, ORGANIZATION_JSONLD_ID } from "@/lib/seo/json-ld"
+import { buildPublicMetadata, CANONICAL_ORIGIN } from "@/lib/seo/metadata"
+import { getCachedCompanyInfo } from "@/lib/seo/public-queries"
 
-export const metadata: Metadata = {
-  title: "Terms of Service | Al Ramlah Travels",
+export const revalidate = 300
+
+// Spec 0025 §3 #18 (`57`c title, `151`c description, self-canonical `/terms`)
+export const metadata: Metadata = buildPublicMetadata({
+  path: "/terms",
+  title: "Terms of Service & Booking Conditions | Al Ramlah Travels",
   description:
-    "Terms of Service, booking policies, visa processing conditions, and sacred travel guidelines for Al Ramlah Travels.",
-}
+    "Review official Al Ramlah Travels booking terms governing Saudi Umrah visa processing, custom pilgrimage quotes, group seats & Hajj 2027 registrations.",
+})
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  const company = await getCachedCompanyInfo()
+  const legalEntityName = company.legalEntityName || company.agencyName
+  const primaryTelHref = toTelHref(company.primaryWhatsapp)
+
+  const termsWebPageJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "@id": `${CANONICAL_ORIGIN}/terms#webpage`,
+    url: `${CANONICAL_ORIGIN}/terms`,
+    name: "Terms of Service & Pilgrimage Booking Conditions",
+    inLanguage: "en-PK",
+    publisher: {
+      "@id": ORGANIZATION_JSONLD_ID,
+    },
+  }
+
   return (
-    <div className="bg-[#FAF7F0] py-12 md:py-16">
+    <div className="bg-[#FAF7F0] min-h-screen py-14 sm:py-20">
+      <JsonLd data={termsWebPageJsonLd} />
+
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-        {/* Header Breadcrumb & Title */}
-        <div className="mb-10 text-center">
-          <span className="inline-block rounded-full bg-[#062E22]/10 px-4 py-1 text-xs font-semibold tracking-wider text-[#062E22] uppercase">
-            Legal & Compliance
-          </span>
-          <h1 className="mt-3 font-serif text-3xl font-bold tracking-tight text-[#062E22] sm:text-4xl">
-            Terms of Service
-          </h1>
-          <p className="mt-2 text-sm text-[#062E22]/70">
-            Last Updated: November 2026 • Al Ramlah Travels (Pvt) Ltd.
-          </p>
-        </div>
+        <PublicBreadcrumbs
+          items={[{ label: "Terms of Service", href: "/terms" }]}
+          className="mb-8"
+        />
 
-        {/* Content Card */}
-        <div className="rounded-2xl border border-[#C8A24A]/30 bg-white p-6 shadow-sm sm:p-10">
-          <div className="space-y-8 text-sm leading-relaxed text-[#062E22]/85">
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                1. Acceptance of Terms
+        <article className="rounded-3xl border border-[#E6DEC8] bg-white p-8 sm:p-12 shadow-sm space-y-10">
+          <header className="space-y-3 border-b border-[#E6DEC8] pb-6">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#7A5C1E]/40 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
+              <FileText className="size-3.5 text-[#7A5C1E]" />
+              <span>Pilgrimage Booking Agreement &amp; Conditions</span>
+            </div>
+            <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#0A3622]">
+              Terms of Service &amp; Pilgrimage Booking Conditions
+            </h1>
+            <p className="text-xs sm:text-sm text-[#4A5048]">
+              Issued by <strong>{legalEntityName}</strong> &middot; Verified
+              Pilgrimage Operations (2026–2027)
+            </p>
+          </header>
+
+          <div className="space-y-8 text-sm leading-relaxed text-[#1A1D1A]">
+            <section className="space-y-2.5">
+              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                1. Scope of Agency Services
               </h2>
-              <p className="mt-2">
-                By accessing, browsing, or utilizing the services provided by{" "}
-                <strong>Al Ramlah Travels</strong> (&quot;Company&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) via our website,
-                WhatsApp business lines, or in-person at our registered office, you agree to be bound by these
-                Terms of Service and our Privacy Policy. If you do not agree to these terms, please do not proceed
-                with booking inquiries or service submissions.
+              <p className="text-[#4A5048]">
+                {legalEntityName} coordinates Umrah visa processing, international
+                return airfare, Makkah and Madinah hotel accommodations, Kingdom
+                ground transport, guided historical Ziyarat excursions, and
+                Indicative Hajj 2027 pre-registration advisory services subject to
+                the regulations of the Government of Pakistan and the Kingdom of
+                Saudi Arabia Ministry of Hajj &amp; Umrah.
               </p>
             </section>
 
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                2. Umrah, Hajj &amp; Sacred Visa Processing Services
+            <section className="space-y-2.5">
+              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                2. Visa Tier Calculation, Live Quotations &amp; Payment Locking
               </h2>
-              <p className="mt-2">
-                Al Ramlah Travels acts as an authorized travel facilitator connecting pilgrims with licensed Saudi Umrah
-                companies, hotel operators in Makkah and Madinah, transport sector providers, and airlines.
-              </p>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
+              <ul className="list-disc pl-5 space-y-1.5 text-[#4A5048]">
                 <li>
-                  <strong>Visa Approvals:</strong> Kingdom of Saudi Arabia (KSA) Umrah, Tourist, or Transit visas are
-                  issued at the sole discretion of the Ministry of Foreign Affairs (MOFA) and the Ministry of Hajj and
-                  Umrah. Al Ramlah Travels does not guarantee visa issuance or specific processing timelines.
+                  <strong>Server-Calculated Visa Tiers:</strong> Umrah visa duration
+                  tiers (<code className="font-mono">Short-Term &le;30 days</code>{" "}
+                  vs. <code className="font-mono">Long-Term &gt;30 days</code>) are
+                  automatically calculated from your KSA arrival and departure
+                  dates.
                 </li>
                 <li>
-                  <strong>Visa Duration Tiers:</strong> Visa validity tiers (short-term &le;30 days vs. long-term &gt;30
-                  days) are determined strictly based on confirmed KSA arrival and departure dates.
+                  <strong>Live Rate Confirmation:</strong> Only standalone{" "}
+                  <strong>Visa-Only</strong> bookings display an immediate fixed PKR
+                  rate. Whenever volatile services (Flights, Haramain Hotels, Ground
+                  Transport, or Ziyarat) are included, rates remain{" "}
+                  <em>&ldquo;Live Rate &mdash; Confirmed upon submission&rdquo;</em>{" "}
+                  until an official numbered quotation is issued by our quoting desk
+                  and accepted with verified deposit payment within its stated{" "}
+                  <code className="font-mono">validUntil</code> window.
                 </li>
                 <li>
-                  <strong>Passport Validity:</strong> Every pilgrim, including infants and children, must possess a
-                  machine-readable passport with a minimum of 6 months validity from the scheduled date of departure.
+                  <strong>Seat &amp; Voucher Release:</strong> Submitting a web
+                  inquiry soft-registers your request without deducting confirmed
+                  aircraft inventory; official confirmation vouchers unlock strictly
+                  after quotation approval and verified deposit or full payment
+                  receipt.
                 </li>
               </ul>
             </section>
 
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                3. Flight, Hotel &amp; Ground Transport Bookings
+            <section className="space-y-2.5">
+              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                3. Airport Routing, Bed &amp; Vehicle Capacity Rules
               </h2>
-              <p className="mt-2">
-                All accommodation and transport reservations are subject to the terms and availability of the respective
-                service suppliers:
-              </p>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
+              <ul className="list-disc pl-5 space-y-1.5 text-[#4A5048]">
                 <li>
-                  <strong>Room Occupancy:</strong> Hotel rooms in Makkah and Madinah are allocated based on confirmed bed
-                  counts (Double, Triple, Quad, or Sharing). Infants under 2 years do not receive an individual bed.
+                  <strong>Makkah Entry Routing:</strong> Makkah has no civilian
+                  airport; all itineraries commencing in Makkah route inbound
+                  flights into King Abdulaziz International Airport, Jeddah (
+                  <code className="font-mono">JED</code>) with onward ground transit
+                  to Makkah.
                 </li>
                 <li>
-                  <strong>Check-in &amp; Check-out Times:</strong> Standard hotel check-in in Saudi Arabia is 16:00 (4:00
-                  PM) and check-out is 12:00 (12:00 PM). Early check-in or late check-out is subject to hotel discretion
-                  and potential surcharges.
-                </li>
-                <li>
-                  <strong>Ground Transfers:</strong> Private and shared transfers between Jeddah (JED), Madinah (MED),
-                  Makkah, and Ziyarat holy sites operate strictly according to confirmed group schedules and vehicle seat
-                  capacities.
+                  <strong>Passenger &amp; Infant Capacities:</strong> Hotel bed
+                  allocations and vehicle seat capacities count{" "}
+                  <strong>Adults + Children (2–11 yrs)</strong>.{" "}
+                  <strong>Infants (&lt;2 yrs)</strong> require a valid passport,
+                  Umrah visa, and airline lap-infant ticket, and occupy{" "}
+                  <strong className="tabular-nums">0</strong> hotel beds and{" "}
+                  <strong className="tabular-nums">0</strong> vehicle seats.
                 </li>
               </ul>
             </section>
 
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                4. Pricing, Currency &amp; Quotation Worksheets
+            <section className="space-y-2.5">
+              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                4. Passport Validity &amp; Saudi Immigration Compliance
               </h2>
-              <p className="mt-2">
-                Unless explicitly marked as a guaranteed instant-rate Visa Only purchase, all dynamic itineraries
-                involving international airfare, fluctuating SAR/PKR exchange rates, or peak season hotel surcharges
-                (such as Ramadan or Hajj periods) are provided as dynamic estimates and are confirmed upon official
-                Admin Quote Worksheet issuance.
+              <p className="text-[#4A5048]">
+                Pilgrims must hold a machine-readable passport valid for at least{" "}
+                <strong>6 months</strong> beyond KSA entry (or through December 2027
+                for Hajj 2027 pre-registration), valid NADRA CNIC / B-Form, and
+                required vaccination certificates. Visa issuance, border entry, and
+                Rawdah / Nusuk permit slots remain at the sovereign discretion of
+                Saudi authorities.
               </p>
             </section>
 
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                5. Cancellations, Amendments &amp; Refunds
+            <section className="space-y-2.5">
+              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                5. Non-Refundable Visas, Airlines &amp; Cancellation Schedule
               </h2>
-              <p className="mt-2">
-                Cancellation terms vary based on supplier deadlines and Saudi regulatory mandates:
-              </p>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                <li>
-                  <strong>Visa Fees:</strong> Government visa issuance and system transmission fees are non-refundable
-                  once an application has been submitted to Saudi authorities.
-                </li>
-                <li>
-                  <strong>Hotels &amp; Flights:</strong> Airline ticket refunds and hotel cancellations follow the specific
-                  fare rules and cancellation policies of the respective carrier and property. Non-refundable promotional
-                  rates cannot be refunded.
-                </li>
-              </ul>
-            </section>
-
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                6. Pilgrim Conduct &amp; Local Laws
-              </h2>
-              <p className="mt-2">
-                Pilgrims must adhere strictly to the laws and customs of the Kingdom of Saudi Arabia, the regulations of
-                the Ministry of Hajj and Umrah, and the rules of the Two Holy Mosques (Masjid al-Haram and Masjid
-                an-Nabawi). Al Ramlah Travels accepts no responsibility for delays, deportations, or penalties resulting
-                from non-compliance with local laws or overstaying visa validity.
+              <p className="text-[#4A5048]">
+                Transmitted Saudi MOFA/Nusuk/Masar visa fees and group block airline
+                seats are <strong>100% non-refundable</strong>. Hotel and ground
+                service cancellations—including strict non-refundable blackout rules
+                during Ramadan, Last Ashra, and Hajj—are governed by our{" "}
+                <Link
+                  href="/refund-policy"
+                  className="inline-flex min-h-6 items-center font-bold text-[#0A3622] underline hover:text-[#7A5C1E]"
+                >
+                  Cancellation &amp; Refund Policy
+                </Link>
+                , which forms an integral part of these Terms.
               </p>
             </section>
 
-            <section>
-              <h2 className="font-serif text-xl font-semibold text-[#062E22]">
-                7. Registered Office &amp; Contact Details
+            <section className="space-y-2.5">
+              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                6. Indicative Hajj 2027 Pre-Registration Notice
               </h2>
-              <p className="mt-2">
-                For official correspondence, booking amendments, or compliance inquiries:
+              <p className="text-[#4A5048]">
+                Published Hajj 2027 package tiers (Maktab A+, A, B, and C) represent
+                non-binding indicative pre-registration estimates based on prior
+                season benchmarks. Final Maktab allotments, flight schedules, SAR
+                exchange adjustments, Qurbani/train tariffs, and binding package
+                contracts take effect only upon official announcement by Pakistan&apos;s
+                Ministry of Religious Affairs (MoRA) and Saudi Nusuk authorities.
               </p>
-              <div className="mt-3 rounded-lg border border-[#C8A24A]/20 bg-[#FAF7F0] p-4 text-xs sm:text-sm">
-                <p className="font-semibold text-[#062E22]">Al Ramlah Travels (Pvt) Ltd.</p>
-                <p className="mt-1">
-                  <strong>Office Address:</strong> Office # 16, Street # 2, Main Commercial Market, Sector E, Askari-X,
-                  Lahore, Pakistan
+            </section>
+
+            <section className="space-y-3 rounded-2xl border border-[#7A5C1E]/35 bg-[#FAF7F0] p-6">
+              <div className="flex items-center gap-2">
+                <Scale className="size-5 text-[#7A5C1E]" />
+                <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                  7. Governing Law, Lahore Jurisdiction &amp; Official Contact
+                </h2>
+              </div>
+              <p className="text-[#4A5048]">
+                These Terms of Service are governed by the laws of the{" "}
+                <strong>Islamic Republic of Pakistan</strong>, alongside our{" "}
+                <Link
+                  href="/privacy"
+                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                >
+                  Privacy Policy &amp; Data Protection Notice
+                </Link>{" "}
+                and{" "}
+                <Link
+                  href="/refund-policy"
+                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                >
+                  Booking Cancellation &amp; Refund Policy
+                </Link>
+                , and operational answers in our{" "}
+                <Link
+                  href="/faq"
+                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                >
+                  Frequently Asked Questions
+                </Link>
+                . The <strong>competent courts at Lahore, Punjab</strong> shall
+                exercise exclusive jurisdiction over any dispute arising out of
+                or relating to bookings with {legalEntityName}.
+              </p>
+              <div tabIndex={0} className="overflow-x-auto rounded-xl border border-[#E6DEC8] bg-white">
+                <table className="w-full text-left text-xs border-collapse">
+                  <caption className="sr-only">
+                    Governing law, currency, and voucher release summary
+                  </caption>
+                  <thead className="border-b border-[#E6DEC8] bg-[#FAF7F0] text-[#0A3622]">
+                    <tr>
+                      <th scope="col" className="px-3 py-2 font-bold">Clause</th>
+                      <th scope="col" className="px-3 py-2 font-bold">Binding Condition</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E6DEC8] text-[#4A5048]">
+                    <tr>
+                      <td className="px-3 py-2 font-semibold text-[#1A1D1A]">Settlement Currency</td>
+                      <td className="px-3 py-2">100% Pakistani Rupees (PKR) via verified agency channels</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 font-semibold text-[#1A1D1A]">Exclusive Jurisdiction</td>
+                      <td className="px-3 py-2">Competent courts at Lahore, Punjab, Pakistan</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="pt-1 text-xs sm:text-sm text-[#1A1D1A] space-y-1.5">
+                <p>
+                  <strong>Headquarters:</strong> {legalEntityName},{" "}
+                  {company.officeAddress}
                 </p>
-                <p className="mt-1">
-                  <strong>Email:</strong>{" "}
-                  <a href="mailto:alramlahtravels@gmail.com" className="text-[#062E22] underline hover:text-[#C8A24A]">
-                    alramlahtravels@gmail.com
+                <p className="tabular-nums">
+                  <strong>Direct Desk:</strong>{" "}
+                  <a
+                    href={primaryTelHref}
+                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                  >
+                    {company.hotlineDisplay}
+                  </a>{" "}
+                  &middot;{" "}
+                  <a
+                    href={`mailto:${company.supportEmail}`}
+                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                  >
+                    {company.supportEmail}
                   </a>
-                </p>
-                <p className="mt-1">
-                  <strong>WhatsApp &amp; Phone:</strong> +92 327 4029701 / +92 319 0462638
                 </p>
               </div>
             </section>
           </div>
+        </article>
 
-          <div className="mt-8 border-t border-[#062E22]/10 pt-6 text-center text-xs text-[#062E22]/60">
-            <Link href="/privacy" className="text-[#062E22] underline hover:text-[#C8A24A]">
-              View our Privacy Policy
-            </Link>{" "}
-            •{" "}
-            <Link href="/" className="text-[#062E22] underline hover:text-[#C8A24A]">
-              Return to Homepage
-            </Link>
-          </div>
-        </div>
+        <TrustLegalCrosslinks currentPath="/terms" />
       </div>
     </div>
   )

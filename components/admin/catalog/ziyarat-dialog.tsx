@@ -1,24 +1,24 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { upsertZiyaratPlace } from "@/app/actions/catalog"
-import { Plus, Loader2 } from "lucide-react"
+import { Loader2, Plus } from "lucide-react"
 
 export interface ZiyaratData {
   id?: string
@@ -57,6 +57,18 @@ export function ZiyaratDialog({
   const [isActive, setIsActive] = useState(place?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(place?.sortOrder ?? 0)
 
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setCity(place?.city ?? defaultCity)
+    setName(place?.name ?? "")
+    setArabicName(place?.arabicName ?? "")
+    setDescription(place?.description ?? "")
+    setImageUrl(place?.imageUrl ?? "")
+    setIsActive(place?.isActive ?? true)
+    setSortOrder(place?.sortOrder ?? 0)
+  }, [open, place, defaultCity])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -77,7 +89,7 @@ export function ZiyaratDialog({
         setOpen(false)
         router.refresh()
       } else {
-        setError("Failed to save Ziyarat place.")
+        setError(res.error || "Failed to save Ziyarat place.")
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -97,14 +109,17 @@ export function ZiyaratDialog({
           trigger ? (
             (trigger as React.ReactElement)
           ) : (
-            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
               <Plus className="size-4" />
               <span>Add Sacred Place</span>
             </Button>
           )
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        key={open ? (place?.id ?? "new") : "closed"}
+        className="sm:max-w-md"
+      >
         <DialogHeader>
           <DialogTitle>
             {place ? `Edit ${place.name}` : "Add Sacred Ziyarat Site"}
@@ -149,17 +164,20 @@ export function ZiyaratDialog({
             <Label htmlFor="z-arabic">Arabic Name (الاسم بالعربية)</Label>
             <Input
               id="z-arabic"
+              lang="ar"
+              dir="rtl"
               value={arabicName}
               onChange={(e) => setArabicName(e.target.value)}
               placeholder="e.g. غار حراء - جبل النور"
-              dir="rtl"
               className="font-arabic text-base"
               required
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="z-desc">Historical & Spiritual Description</Label>
+            <Label htmlFor="z-desc">
+              Historical &amp; Spiritual Description
+            </Label>
             <Textarea
               id="z-desc"
               rows={3}
@@ -199,7 +217,7 @@ export function ZiyaratDialog({
                 type="number"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="w-14 h-7 text-xs"
+                className="w-14 h-7 text-xs font-mono"
               />
             </div>
           </div>
@@ -211,7 +229,7 @@ export function ZiyaratDialog({
             <Button
               type="submit"
               disabled={loading}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
             >
               {loading && <Loader2 className="size-4 animate-spin" />}
               <span>{place ? "Save Changes" : "Create Site"}</span>

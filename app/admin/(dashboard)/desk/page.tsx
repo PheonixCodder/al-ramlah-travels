@@ -314,6 +314,13 @@ export default async function AdminDeskPage({
         message: schema.contactMessages.message,
         status: schema.contactMessages.status,
         adminNotes: schema.contactMessages.adminNotes,
+        utmSource: schema.contactMessages.utmSource,
+        utmMedium: schema.contactMessages.utmMedium,
+        utmCampaign: schema.contactMessages.utmCampaign,
+        utmContent: schema.contactMessages.utmContent,
+        utmTerm: schema.contactMessages.utmTerm,
+        landingPage: schema.contactMessages.landingPage,
+        httpReferrer: schema.contactMessages.httpReferrer,
         createdAt: schema.contactMessages.createdAt,
       })
       .from(schema.contactMessages)

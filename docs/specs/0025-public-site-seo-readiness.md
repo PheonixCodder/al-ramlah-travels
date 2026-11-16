@@ -1,9 +1,9 @@
 # 0025. Public Site SEO, Generative Engine Optimization (GEO) & Attribution Readiness (Phase B)
 
-- **Status**: Approved for Execution — Wave 5 Architecture Complete (`2026-11-15`)
+- **Status**: Complete — Gate B Certified (`2026-11-16` — `31/31` Canonical `SEO-ID`s & `88/88` Raw `S01`–`S16` Findings Verified Closed across `GB-01`..`GB-08`; `90.2 / 100` Grade `A` Empirical Score; `731/731` Unit/W3/W6/Integration Tests & `26/26` Playwright `J1`–`J23` E2E Green)
 - **Slice**: Slice 44 (Feature #48)
 - **Workflow Tier**: Beta (`/architect` → `/develop` → `/check verify` → `/test` → `/sync`)
-- **Date**: 2026-11-15
+- **Date**: 2026-11-15 (Gate B Certified: 2026-11-16)
 - **Prerequisite Gate**: `Spec 0024` Gate A Certified (`HEAD 6c54d4c` on `audit/production-hardening`)
 - **Companion Artifacts**:
   - Kickoff Charter & Owner Decisions: [`docs/audit/SWARM_PROMPT.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/SWARM_PROMPT.md), [`docs/audit/OWNER_DECISIONS.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/OWNER_DECISIONS.md)
@@ -11,6 +11,8 @@
   - Wave 5 Specialist Audit Reports (`16` reports): [`docs/audit/seo/findings/S01.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/seo/findings/S01.md) .. [`S16.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/seo/findings/S16.md)
   - Wave 5 Master Triage (`88` raw → `31` canonical `SEO-001`..`SEO-031`): [`docs/audit/seo/02-seo-triage.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/seo/02-seo-triage.md)
   - Wave 6 Zero-Collision Ownership Map (`F-SEO-PLAT` → `4` Parallel `W6B` Fixers → `F-SEO-QA`): [`docs/audit/seo/02-seo-ownership.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/seo/02-seo-ownership.md)
+  - Wave 6 Remediation Log & Empirical Post-Fix Score (`90.2 / 100` — Grade `A`): [`docs/audit/seo/03-seo-fix-log.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/seo/03-seo-fix-log.md), [`docs/audit/seo/post-fix/score_report.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/seo/post-fix/score_report.md)
+  - Wave 7 Independent Verification & Gate B Sign-Off: [`docs/audit/seo/verification/V-SEO-01.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/seo/verification/V-SEO-01.md), [`docs/audit/seo/verification/V-SEO-02.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/seo/verification/V-SEO-02.md), [`docs/audit/seo/04-seo-verification.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/seo/04-seo-verification.md), [`docs/audit/SEO_READINESS.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/SEO_READINESS.md), [`docs/audit/FINAL_REPORT.md`](file:///c:/dev/al-ramlah-travels/web/docs/audit/FINAL_REPORT.md)
 
 ---
 

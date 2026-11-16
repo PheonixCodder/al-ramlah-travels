@@ -60,6 +60,31 @@ describe("W6A F-SEO-PLAT: Discovery (robots/sitemap/llms.txt), Edge X-Robots-Tag
       "/voucher/",
       "/quote/",
     ])
+    expect(
+      rules.some(
+        (r) =>
+          Array.isArray(r.userAgent) &&
+          r.userAgent.includes("CCBot") &&
+          r.userAgent.includes("Bytespider") &&
+          r.disallow === "/"
+      )
+    ).toBe(true)
+
+    const previousVercelEnv = process.env.VERCEL_ENV
+    try {
+      process.env.VERCEL_ENV = "preview"
+      const previewRobots = robots()
+      expect(previewRobots).toEqual({
+        rules: [{ userAgent: "*", disallow: "/" }],
+      })
+      expect(previewRobots.sitemap).toBeUndefined()
+    } finally {
+      if (previousVercelEnv === undefined) {
+        delete process.env.VERCEL_ENV
+      } else {
+        process.env.VERCEL_ENV = previousVercelEnv
+      }
+    }
 
     const entries = await sitemap()
     const urls = entries.map((e) => e.url)

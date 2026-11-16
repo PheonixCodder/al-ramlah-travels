@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { RotateCcw, Scale, ShieldAlert } from "lucide-react"
 import { PublicBreadcrumbs } from "@/components/layout/breadcrumbs"
 import { toWaMeUrl } from "@/components/public/public-utils"
@@ -123,7 +124,7 @@ export default async function RefundPolicyPage() {
                 and air tickets) follow this schedule:
               </p>
 
-              <div className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
+              <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-[#FAF7F0] text-[#0A3622] border-b border-[#E6DEC8]">
                     <tr>
@@ -235,9 +236,31 @@ export default async function RefundPolicyPage() {
               <p className="text-[#4A5048]">
                 This Cancellation &amp; Refund Policy is governed by and construed
                 in accordance with the laws of the{" "}
-                <strong>Islamic Republic of Pakistan</strong>. Any dispute or claim
-                arising out of a booking or refund settlement shall be subject to
-                the <strong>exclusive jurisdiction of the competent courts at Lahore, Punjab</strong>.
+                <strong>Islamic Republic of Pakistan</strong> and forms an
+                integral part of our{" "}
+                <Link
+                  href="/terms"
+                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                >
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link
+                  href="/privacy"
+                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                >
+                  Privacy Policy
+                </Link>{" "}
+                (see also our{" "}
+                <Link
+                  href="/faq"
+                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                >
+                  Frequently Asked Questions
+                </Link>
+                ). Any dispute or claim arising out of a booking or refund
+                settlement shall be subject to the{" "}
+                <strong>exclusive jurisdiction of the competent courts at Lahore, Punjab</strong>.
               </p>
               <div className="pt-1 text-xs sm:text-sm text-[#1A1D1A] space-y-1.5">
                 <p>

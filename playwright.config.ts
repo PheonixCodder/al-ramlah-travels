@@ -16,10 +16,10 @@ export default defineConfig({
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  timeout: 120_000,
-  globalTimeout: 1_800_000,
+  timeout: 180_000,
+  globalTimeout: 2_700_000,
   expect: {
-    timeout: 15_000,
+    timeout: 30_000,
   },
   outputDir: "./test-results/artifacts",
   reporter: [

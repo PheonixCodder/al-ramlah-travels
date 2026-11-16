@@ -67,9 +67,9 @@ export async function generateMetadata({
     if (!gateway) {
       return buildPublicMetadata({
         path: "/umrah-packages",
-        title: "Gateway Not Found | Al Ramlah Travels",
+        title: "Departure Gateway Not Found | Al Ramlah Travels",
         description:
-          "The requested Umrah departure city page is unavailable. Explore verified departures from Lahore (LHE), Karachi (KHI), and Islamabad (ISB).",
+          "The requested Umrah departure city page is unavailable. Explore verified group departures from Lahore (LHE), Karachi (KHI), and Islamabad (ISB) now.",
         noIndex: true,
       })
     }
@@ -224,7 +224,7 @@ export default async function UmrahPackageDetailPage({
                 Published PKR Occupancy &amp; Infant Tariff Breakdown
               </h2>
 
-              <div className="overflow-x-auto rounded-2xl border border-[#E6DEC8] bg-white shadow-xs">
+              <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8] bg-white shadow-xs">
                 <table className="w-full min-w-[620px] border-collapse text-left text-xs sm:text-sm">
                   <caption className="border-b border-[#E6DEC8] bg-[#FAF7F0] px-4 py-3 text-left text-xs font-medium text-[#4A5048]">
                     Per-pilgrim Pakistani Rupee (PKR) tariff schedule for {pkg.title}. Unpublished tiers render as On Request.
@@ -334,7 +334,7 @@ export default async function UmrahPackageDetailPage({
 
               {/* Optional Multi-Hotel Upgrade Matrix (`OD-09b`: `<= 0` = On Request) */}
               {pkg.multiHotelOptions && pkg.multiHotelOptions.length > 0 ? (
-                <div className="overflow-x-auto rounded-2xl border border-[#E6DEC8] bg-white shadow-xs">
+                <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8] bg-white shadow-xs">
                   <table className="w-full min-w-[680px] border-collapse text-left text-xs sm:text-sm">
                     <caption className="border-b border-[#E6DEC8] bg-[#FAF7F0] px-4 py-3 text-left text-xs font-medium text-[#4A5048]">
                       Alternative Selectable Haramain Hotel Combinations on {pkg.title}
@@ -635,6 +635,12 @@ export default async function UmrahPackageDetailPage({
             className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-1.5 text-xs font-semibold text-[#0A3622] hover:border-[#0A3622]"
           >
             Sacred Haramain Ziyarat Guide
+          </Link>
+          <Link
+            href="/faq"
+            className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-1.5 text-xs font-semibold text-[#0A3622] hover:border-[#0A3622]"
+          >
+            Frequently Asked Questions (FAQ)
           </Link>
         </nav>
       </div>

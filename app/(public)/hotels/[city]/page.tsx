@@ -1,5 +1,6 @@
 import * as React from "react"
 import type { Metadata } from "next"
+import Link from "next/link"
 import { notFound } from "next/navigation"
 import {
   HOTEL_SPOKE_CONFIGS,
@@ -55,11 +56,79 @@ export default async function HotelCitySpokePage({
     getCachedCompanyInfo(),
   ])
 
+  const isMakkah = normalized === "makkah"
+
   return (
-    <GuidesHotelsSpokeView
-      city={normalized}
-      hotels={hotels}
-      companyInfo={companyInfo}
-    />
+    <div className="bg-[#FAF7F0]">
+      <GuidesHotelsSpokeView
+        city={normalized}
+        hotels={hotels}
+        companyInfo={companyInfo}
+      />
+
+      <aside
+        aria-label="Haramain accommodation booking rules and related pilgrimage guides"
+        className="mx-auto max-w-6xl px-4 pb-14 sm:px-6 lg:px-8"
+      >
+        <div className="rounded-3xl border border-[#E6DEC8] bg-white p-6 sm:p-8 shadow-xs space-y-5">
+          <h2 className="font-display text-xl font-bold text-[#0A3622]">
+            {isMakkah
+              ? "Makkah Courtyard & Shuttle Rooming Policy"
+              : "Madinah Markaziyah & Gate 25 Rooming Policy"}
+          </h2>
+          <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
+            <table className="w-full text-left text-xs sm:text-sm border-collapse">
+              <caption className="sr-only">
+                Accommodation rate confirmation and bed allocation policy
+              </caption>
+              <thead className="bg-[#FAF7F0] text-[#0A3622] border-b border-[#E6DEC8]">
+                <tr>
+                  <th scope="col" className="px-4 py-2.5 font-bold">Policy Dimension</th>
+                  <th scope="col" className="px-4 py-2.5 font-bold">Verified Standard</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E6DEC8] text-[#4A5048]">
+                <tr>
+                  <td className="px-4 py-2.5 font-semibold text-[#1A1D1A]">Tariff Confirmation</td>
+                  <td className="px-4 py-2.5">
+                    100% volatile seasonal inventory — Live Rate — Confirmed upon submission
+                  </td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5 font-semibold text-[#1A1D1A]">
+                    {isMakkah ? "Jeddah (JED) Entry Transfer" : "Masjid an-Nabawi Gate Access"}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {isMakkah
+                      ? "Makkah has no civilian airport; inbound Makkah-first flights land at Jeddah (JED) with direct ground transfer"
+                      : "Northern and Southern Markaziyah properties provide flat pedestrian access toward Ladies Gate 25"}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ul className="flex flex-wrap gap-2.5 text-xs font-semibold">
+            <li>
+              <Link
+                href={isMakkah ? "/hotels/madinah" : "/hotels/makkah"}
+                className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]"
+              >
+                {isMakkah ? "Madinah Markaziyah Hotels" : "Makkah Clock Tower & Courtyard Hotels"}
+              </Link>
+            </li>
+            <li>
+              <Link href="/umrah-packages" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Fixed-Departure Umrah Packages
+              </Link>
+            </li>
+            <li>
+              <Link href="/faq" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Frequently Asked Questions (FAQ)
+              </Link>
+            </li>
+          </ul>
+        </div>
+      </aside>
+    </div>
   )
 }

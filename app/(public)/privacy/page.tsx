@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { Database, FileCheck2, Lock, ShieldCheck } from "lucide-react"
 import { PublicBreadcrumbs } from "@/components/layout/breadcrumbs"
 import { toWaMeUrl } from "@/components/public/public-utils"
@@ -126,7 +127,7 @@ export default async function PrivacyPolicyPage() {
                 infrastructure providers under strict security controls:
               </p>
 
-              <div className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
+              <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-[#FAF7F0] text-[#0A3622] border-b border-[#E6DEC8]">
                     <tr>
@@ -243,7 +244,7 @@ export default async function PrivacyPolicyPage() {
                 cross-site tracking pixels on public pilgrimage pages:
               </p>
 
-              <div className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
+              <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-[#FAF7F0] text-[#0A3622] border-b border-[#E6DEC8]">
                     <tr>
@@ -443,7 +444,14 @@ export default async function PrivacyPolicyPage() {
                     className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
                   >
                     Submit DSAR via WhatsApp
-                  </a>
+                  </a>{" "}
+                  &middot;{" "}
+                  <Link
+                    href="/faq"
+                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                  >
+                    Frequently Asked Questions (FAQ)
+                  </Link>
                 </p>
               </div>
             </section>

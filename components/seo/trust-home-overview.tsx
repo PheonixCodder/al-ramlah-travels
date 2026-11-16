@@ -313,7 +313,7 @@ export function TrustHomeOverview(): React.ReactElement {
   return (
     <section
       aria-labelledby="haramain-service-overview-heading"
-      className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-8"
+      className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-8 px-4 sm:px-6 lg:px-8"
     >
       <div className="flex flex-col gap-3 max-w-4xl">
         <span className="inline-flex self-start items-center rounded-full border border-[#7A5C1E]/30 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
@@ -330,7 +330,7 @@ export function TrustHomeOverview(): React.ReactElement {
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded-3xl border border-[#E6DEC8] bg-white shadow-xs">
+      <div tabIndex={0} className="overflow-x-auto rounded-3xl border border-[#E6DEC8] bg-white shadow-xs">
         <table className="w-full text-left text-xs sm:text-sm border-collapse">
           <caption className="sr-only">
             Overview of Al Ramlah Travels Umrah packages, city gateways, Saudi visa pricing modes, Haramain hotels, Ziyarat tours, and Hajj 2027 pre-registration

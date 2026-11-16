@@ -539,6 +539,8 @@ export function ConnectionsSettingsClient({
 
   // Auto-open candidate selector if redirected from OAuth callback (?oauth_select= or ?selectAccount=)
   useEffect(() => {
+    if (!isSuperAdmin) return
+
     const urlSelect =
       searchParams.get("oauth_select") ||
       searchParams.get("selectAccount") ||
@@ -560,6 +562,7 @@ export function ConnectionsSettingsClient({
       }
     }
   }, [
+    isSuperAdmin,
     searchParams,
     oauthSelectProvider,
     pendingIntegrationId,

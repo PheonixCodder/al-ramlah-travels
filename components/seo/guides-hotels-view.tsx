@@ -154,7 +154,7 @@ export function GuidesHotelsSpokeView({
           </p>
         </div>
 
-        <div className="overflow-x-auto rounded-2xl border border-[#DFD6C1] bg-white shadow-sm">
+        <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#DFD6C1] bg-white shadow-sm">
           <table className="w-full min-w-[920px] border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-[#DFD6C1] bg-[#0A3622] text-xs font-bold uppercase tracking-wider text-white">
@@ -302,7 +302,7 @@ export function GuidesHotelsSpokeView({
             </p>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-[#DFD6C1] bg-white shadow-sm">
+          <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#DFD6C1] bg-white shadow-sm">
             <table className="w-full min-w-[820px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-[#DFD6C1] bg-[#FAF7F0] text-xs font-bold uppercase tracking-wider text-[#0A3622]">

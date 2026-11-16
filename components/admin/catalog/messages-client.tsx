@@ -378,10 +378,23 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                       {new Date(selectedMessage.createdAt).toLocaleString()}
                     </span>
                   </div>
-                  {(selectedMessage.utmCampaign ||
+                  {(selectedMessage.utmSource ||
+                    selectedMessage.utmCampaign ||
                     selectedMessage.landingPage ||
                     selectedMessage.httpReferrer) && (
                     <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                      {selectedMessage.utmSource && (
+                        <Badge
+                          variant="outline"
+                          className="border-emerald-700/30 bg-emerald-50/70 font-mono text-[10px] font-semibold text-emerald-900"
+                        >
+                          {`${selectedMessage.utmSource.charAt(0).toUpperCase()}${selectedMessage.utmSource.slice(1)}${
+                            selectedMessage.utmMedium
+                              ? ` ${selectedMessage.utmMedium.toUpperCase()}`
+                              : ""
+                          }`}
+                        </Badge>
+                      )}
                       {selectedMessage.utmCampaign && (
                         <Badge
                           variant="outline"

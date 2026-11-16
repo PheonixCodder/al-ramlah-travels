@@ -69,45 +69,67 @@ export async function instrumentBrowserContext(
     instrumentPage(newPage)
   })
 
+  // Prevent Next.js `<Link>` automatic viewport prefetch stampedes (`rootMargin: '200px'`)
+  // from saturating Chromium's 6-connection HTTP/1.1 pool and single-worker SSR during E2E journeys.
+  await context.addInitScript(() => {
+    const NativeIntersectionObserver = window.IntersectionObserver
+    if (typeof NativeIntersectionObserver !== "function") return
+    const PatchedIO = function (
+      this: IntersectionObserver,
+      callback: IntersectionObserverCallback,
+      options?: IntersectionObserverInit
+    ): IntersectionObserver {
+      if (options && options.rootMargin === "200px") {
+        return {
+          root: null,
+          rootMargin: "200px",
+          scrollMargin: "0px",
+          thresholds: [0],
+          observe() {},
+          unobserve() {},
+          disconnect() {},
+          takeRecords() {
+            return []
+          },
+        } as unknown as IntersectionObserver
+      }
+      return new NativeIntersectionObserver(callback, options)
+    } as unknown as typeof IntersectionObserver
+    PatchedIO.prototype = NativeIntersectionObserver.prototype
+    window.IntersectionObserver = PatchedIO
+  })
+
+  await context.route(
+    /^https?:\/\/(?!127\.0\.0\.1(?::|\/|$)|localhost(?::|\/|$)|\[?::1\]?(?::|\/|$))/i,
+    async (route) => {
+      const reqUrl = route.request().url()
+      // Hermetically fulfill external browser asset/font requests in <1ms so window `load` + React hydration finish immediately
+      const resourceType = route.request().resourceType()
+      if (
+        resourceType === "stylesheet" ||
+        reqUrl.toLowerCase().includes("fonts.googleapis.com")
+      ) {
+        await route.fulfill({
+          status: 200,
+          contentType: "text/css; charset=utf-8",
+          body: "",
+        })
+        return
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        body: ONE_BY_ONE_PNG,
+      })
+    }
+  )
+
   await context.route("**/_next/image*", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "image/png",
       headers: { "cache-control": "public, max-age=31536000, immutable" },
-      body: ONE_BY_ONE_PNG,
-    })
-  })
-
-  await context.route(/^https?:\/\//i, async (route) => {
-    const reqUrl = route.request().url()
-    let parsed: URL
-    try {
-      parsed = new URL(reqUrl)
-    } catch {
-      await route.continue()
-      return
-    }
-
-    const host = parsed.hostname.toLowerCase()
-    if (host === "127.0.0.1" || host === "localhost" || host === "::1") {
-      await route.continue()
-      return
-    }
-
-    // Hermetically fulfill external browser asset/font requests in <1ms so window `load` + React hydration finish immediately
-    const resourceType = route.request().resourceType()
-    if (resourceType === "stylesheet" || host.includes("fonts.googleapis.com")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "text/css; charset=utf-8",
-        body: "",
-      })
-      return
-    }
-
-    await route.fulfill({
-      status: 200,
-      contentType: "image/png",
       body: ONE_BY_ONE_PNG,
     })
   })

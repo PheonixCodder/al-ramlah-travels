@@ -1,0 +1,2909 @@
+{
+  "project_dir": "C:\\dev\\al-ramlah-travels\\web",
+  "live_url": "http://127.0.0.1:3124",
+  "overall_score": 90.2,
+  "grade": "A",
+  "pillar_breakdown": {
+    "technical_seo_cwv": {
+      "score": 20.0,
+      "max": 20
+    },
+    "meta_ctr_optimization": {
+      "score": 15.0,
+      "max": 15
+    },
+    "hub_and_spoke_architecture": {
+      "score": 13.0,
+      "max": 15
+    },
+    "entity_nap_and_schema": {
+      "score": 12.0,
+      "max": 15
+    },
+    "ai_geo_liftability": {
+      "score": 15.2,
+      "max": 20
+    },
+    "internal_linking": {
+      "score": 15.0,
+      "max": 15
+    }
+  },
+  "prioritized_actions": [
+    {
+      "priority": "P1",
+      "pillar": "Entity & NAP",
+      "action": "Multiple phone number formats found across codebase (['050 123 4567', '1 050 123 4567', '+1 (555) 234-5678', '(312) 555-0199', '312-555-0199', '+1 (555) 123-4567', '092 327 4029', '+1 (312) 555-0199', '+1-416-555-0198', '+1 (416) 555-0198']). Standardize to one exact string everywhere for strict NAP consistency (Lesson 2)."
+    }
+  ],
+  "keyword_and_fanout": {
+    "seed_keyword": "umrah packages from lahore",
+    "industry": "hajj and umrah travel agency",
+    "location": "United States",
+    "transactional_customer_keywords": [
+      "umrah packages from lahore services for hajj and umrah travel agency",
+      "hajj and umrah travel agency umrah packages from lahore company in United States",
+      "hire umrah packages from lahore specialist for hajj and umrah travel agency",
+      "umrah packages from lahore pricing and packages for hajj and umrah travel agency",
+      "enterprise umrah packages from lahore provider United States"
+    ],
+    "google_autocomplete_long_tail": [
+      "umrah packages from lahore",
+      "umrah packages from lahore 2026",
+      "umrah packages from lahore 2026 price",
+      "umrah packages from lahore price",
+      "umrah packages from lahore pakistan",
+      "umrah packages from lahore 2025",
+      "umrah packages from lahore for family",
+      "umrah packages from lahore to jeddah",
+      "umrah packages from lahore 15 days",
+      "umrah package from lahore pakistan 2026"
+    ],
+    "hidden_ai_fan_out_queries": [
+      {
+        "dimension": "Cost & ROI Mechanics",
+        "fan_out_query": "What is the average cost of umrah packages from lahore for a hajj and umrah travel agency business in United States and what drives pricing?"
+      },
+      {
+        "dimension": "Methodology Comparison (X vs Y)",
+        "fan_out_query": "In-house umrah packages from lahore vs dedicated hajj and umrah travel agency umrah packages from lahore agency: pros, cons, and break-even point"
+      },
+      {
+        "dimension": "Compliance & Risk Factors",
+        "fan_out_query": "What compliance, security, or operational mistakes do hajj and umrah travel agency companies make with umrah packages from lahore?"
+      },
+      {
+        "dimension": "Implementation Timeline & Deliverables",
+        "fan_out_query": "What does a 90-day umrah packages from lahore implementation roadmap look like for hajj and umrah travel agency?"
+      },
+      {
+        "dimension": "Vendor Evaluation Criteria",
+        "fan_out_query": "What specific credentials, case studies, and SLAs should a hajj and umrah travel agency buyer verify before hiring for umrah packages from lahore?"
+      },
+      {
+        "dimension": "Edge Cases & Multi-Location Scaling",
+        "fan_out_query": "How do multi-location hajj and umrah travel agency businesses standardize umrah packages from lahore across regional branches?"
+      }
+    ],
+    "expert_only_citation_queries": [
+      "How a 10-to-50 location hajj and umrah travel agency group should structure umrah packages from lahore workflows across local branches in United States",
+      "Step-by-step umrah packages from lahore architecture for regulated hajj and umrah travel agency teams handling legacy migration constraints",
+      "Real-world umrah packages from lahore cost-per-acquisition benchmarks for mid-market hajj and umrah travel agency companies (United States case study)"
+    ],
+    "gsc_page_2_refresh_candidates": []
+  },
+  "details": {
+    "codebase_audit": {
+      "project_dir": "C:\\dev\\al-ramlah-travels\\web",
+      "total_routes_scanned": 40,
+      "has_root_metadata": true,
+      "has_metadata_base": true,
+      "has_sitemap": true,
+      "has_robots": true,
+      "has_llms_txt": true,
+      "routes_with_metadata": 40,
+      "routes_with_jsonld": 9,
+      "client_component_routes": 0,
+      "raw_img_tags": 0,
+      "images_missing_alt": 0,
+      "hub_and_spoke_status": "pass",
+      "differentiation_checks": [],
+      "title_length_issues": [],
+      "description_length_issues": [],
+      "url_issues": [],
+      "passed": [
+        "Root layout found (app\\layout.tsx)",
+        "Root layout exports metadata / generateMetadata",
+        "metadataBase configured in root layout",
+        "Sitemap configuration found (app/sitemap.ts, public/sitemap.xml, or next-sitemap)",
+        "Robots configuration found (app/robots.ts or public/robots.txt)",
+        "llms.txt found for agentic documentation discovery"
+      ],
+      "warnings": [],
+      "errors": [],
+      "routes": [
+        {
+          "route": "/",
+          "file": "app/(public)/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Umrah Packages Pakistan & Hajj 2027 | Al Ramlah Travels",
+          "description": "Plan custom Umrah packages from Lahore, Karachi & Islamabad, Saudi Umrah visas, 5-star Haramain hotels, and Hajj 2027 tours with Al Ramlah Travels now.",
+          "has_canonical": true,
+          "has_open_graph": false,
+          "has_json_ld": true,
+          "h1_count": 0,
+          "word_count_estimate": 900
+        },
+        {
+          "route": "/about",
+          "file": "app/(public)/about/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "About Our Askari 10 Lahore Cantt Desk | Al Ramlah Travels",
+          "description": "Meet Al Ramlah Travels at Sector C, Askari 10, Lahore Cantt: dedicated Haramain pilgrimage specialists serving Pakistani families and global diaspora now.",
+          "has_canonical": true,
+          "has_open_graph": false,
+          "has_json_ld": true,
+          "h1_count": 1,
+          "word_count_estimate": 579
+        },
+        {
+          "route": "/contact",
+          "file": "app/(public)/contact/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Contact Lahore Cantt Umrah Desk & Map | Al Ramlah Travels",
+          "description": "Visit Al Ramlah Travels at Office 38, Street 1, Sector C, Askari 10, Lahore Cantt or call +92 327 4029701 on WhatsApp for Umrah, visa & Hajj 2027 quotes.",
+          "has_canonical": true,
+          "has_open_graph": false,
+          "has_json_ld": true,
+          "h1_count": 1,
+          "word_count_estimate": 649
+        },
+        {
+          "route": "/faq",
+          "file": "app/(public)/faq/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Umrah, Saudi Visa & Hajj 2027 FAQs | Al Ramlah Travels",
+          "description": "Get verified answers on Saudi Umrah visa rules, Jeddah-to-Makkah transfers, infant fares, overseas NICOP passports, wheelchair support & Nusuk permits.",
+          "has_canonical": true,
+          "has_open_graph": false,
+          "has_json_ld": true,
+          "h1_count": 1,
+          "word_count_estimate": 452
+        },
+        {
+          "route": "/hajj-2027",
+          "file": "app/(public)/hajj-2027/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": null,
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 181
+        },
+        {
+          "route": "/hotels/[city]",
+          "file": "app/(public)/hotels/[city]/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": null,
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 273
+        },
+        {
+          "route": "/privacy",
+          "file": "app/(public)/privacy/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Privacy Policy & Pilgrim Data Safety | Al Ramlah Travels",
+          "description": "Read how Al Ramlah Travels safeguards pilgrim personal data, passport scans, sessionStorage attribution keys, sub-processors, retention, and DSAR rights.",
+          "has_canonical": true,
+          "has_open_graph": false,
+          "has_json_ld": true,
+          "h1_count": 1,
+          "word_count_estimate": 1020
+        },
+        {
+          "route": "/refund-policy",
+          "file": "app/(public)/refund-policy/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Booking Cancellation & Refund Policy | Al Ramlah Travels",
+          "description": "Review our official cancellation schedule, non-refundable Saudi visa and airline fare rules, Ramadan/Hajj blackout terms, and PKR refund procedures now.",
+          "has_canonical": true,
+          "has_open_graph": false,
+          "has_json_ld": true,
+          "h1_count": 1,
+          "word_count_estimate": 770
+        },
+        {
+          "route": "/terms",
+          "file": "app/(public)/terms/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Terms of Service & Booking Conditions | Al Ramlah Travels",
+          "description": "Review official Al Ramlah Travels booking terms governing Saudi Umrah visa processing, custom pilgrimage quotes, group seats & Hajj 2027 registrations.",
+          "has_canonical": true,
+          "has_open_graph": false,
+          "has_json_ld": true,
+          "h1_count": 1,
+          "word_count_estimate": 726
+        },
+        {
+          "route": "/umrah-packages",
+          "file": "app/(public)/umrah-packages/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": null,
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": true,
+          "h1_count": 1,
+          "word_count_estimate": 681
+        },
+        {
+          "route": "/umrah-packages/from-[city]",
+          "file": "app/(public)/umrah-packages/from-[city]/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Departure Gateway Not Found | Al Ramlah Travels",
+          "description": "The requested Umrah departure city page is unavailable. Explore verified group departures from Lahore (LHE), Karachi (KHI), and Islamabad (ISB) now.",
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 244
+        },
+        {
+          "route": "/umrah-packages/[slug]",
+          "file": "app/(public)/umrah-packages/[slug]/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Departure Gateway Not Found | Al Ramlah Travels",
+          "description": "The requested Umrah departure city page is unavailable. Explore verified group departures from Lahore (LHE), Karachi (KHI), and Islamabad (ISB) now.",
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": true,
+          "h1_count": 1,
+          "word_count_estimate": 951
+        },
+        {
+          "route": "/umrah-visa",
+          "file": "app/(public)/umrah-visa/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": null,
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 152
+        },
+        {
+          "route": "/voucher/[token]",
+          "file": "app/(public)/voucher/[token]/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": null,
+          "description": "Cryptographically signed Haramain pilgrimage service confirmation voucher issued by Al Ramlah Travels with verified KSA hotel, flight, and fleet schedule.",
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 1,
+          "word_count_estimate": 516
+        },
+        {
+          "route": "/ziyarat",
+          "file": "app/(public)/ziyarat/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": null,
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 156
+        },
+        {
+          "route": "/ziyarat/[city]",
+          "file": "app/(public)/ziyarat/[city]/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": null,
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 272
+        },
+        {
+          "route": "/admin/login",
+          "file": "app/admin/(auth)/login/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Staff & Super Admin Sign In | Al Ramlah Travels Admin",
+          "description": "Secure staff and super admin authentication portal for Al Ramlah Travels Askari 10 Lahore Cantt pilgrimage operations, quoting desk, and CRM.",
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 79
+        },
+        {
+          "route": "/admin",
+          "file": "app/admin/(dashboard)/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Executive Operations Overview | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 1,
+          "word_count_estimate": 259
+        },
+        {
+          "route": "/admin/applications",
+          "file": "app/admin/(dashboard)/applications/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Applications Pipeline Queue | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 1,
+          "word_count_estimate": 740
+        },
+        {
+          "route": "/admin/applications/[id]",
+          "file": "app/admin/(dashboard)/applications/[id]/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Pilgrim Application Dossier | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 400
+        },
+        {
+          "route": "/admin/applications/[id]/voucher",
+          "file": "app/admin/(dashboard)/applications/[id]/voucher/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Official Pilgrim Confirmation Voucher | Al Ramlah Travels",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 1,
+          "word_count_estimate": 659
+        },
+        {
+          "route": "/admin/campaigns",
+          "file": "app/admin/(dashboard)/campaigns/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Campaigns & Multi-Channel Outreach | Al Ramlah Travels Admin",
+          "description": "Core 5 social calendar & composer, ban-safe WhatsApp distribution queue, official Meta Cloud API broadcasts, and 14-day VIP outreach CRM.",
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 1101
+        },
+        {
+          "route": "/admin/catalog",
+          "file": "app/admin/(dashboard)/catalog/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Catalog & Dynamic Inventory | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 258
+        },
+        {
+          "route": "/admin/content",
+          "file": "app/admin/(dashboard)/content/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Website CMS & FAQs Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 45
+        },
+        {
+          "route": "/admin/desk",
+          "file": "app/admin/(dashboard)/desk/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Pilgrim Inbox & Quote Desk | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 770
+        },
+        {
+          "route": "/admin/distribution",
+          "file": "app/admin/(dashboard)/distribution/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "WhatsApp Queue Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 43
+        },
+        {
+          "route": "/admin/flights",
+          "file": "app/admin/(dashboard)/flights/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Airlines & Gateways Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 44
+        },
+        {
+          "route": "/admin/groups",
+          "file": "app/admin/(dashboard)/groups/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Group Packages Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 43
+        },
+        {
+          "route": "/admin/hotels",
+          "file": "app/admin/(dashboard)/hotels/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Haramain Hotels Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 43
+        },
+        {
+          "route": "/admin/messages",
+          "file": "app/admin/(dashboard)/messages/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Contact Inquiries Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 43
+        },
+        {
+          "route": "/admin/outreach",
+          "file": "app/admin/(dashboard)/outreach/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "14-Day VIP Outreach Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 44
+        },
+        {
+          "route": "/admin/post-lookup",
+          "file": "app/admin/(dashboard)/post-lookup/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Post Reverse-Lookup Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 43
+        },
+        {
+          "route": "/admin/settings",
+          "file": "app/admin/(dashboard)/settings/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Settings & Connections Center | Al Ramlah Travels Admin",
+          "description": "Manage social publishing OAuth integrations, Meta WhatsApp Cloud API credentials, Oracle Gotenberg PDF microservice, agency branding and staff RBAC.",
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 533
+        },
+        {
+          "route": "/admin/social",
+          "file": "app/admin/(dashboard)/social/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Core 5 Social Hub Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 45
+        },
+        {
+          "route": "/admin/studio",
+          "file": "app/admin/(dashboard)/studio/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "4K Poster & Package Studio | Al Ramlah Travels Admin",
+          "description": "Finished 4K Poster & Package Studio — Drop your finished 4K Gemini Ultra posters or PDFs, extract package cards, track wholesale commissions, and publish live.",
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 234
+        },
+        {
+          "route": "/admin/supplier-flyers",
+          "file": "app/admin/(dashboard)/supplier-flyers/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Supplier Flyer Studio Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 44
+        },
+        {
+          "route": "/admin/transport",
+          "file": "app/admin/(dashboard)/transport/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Transport Fleet Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 43
+        },
+        {
+          "route": "/admin/users",
+          "file": "app/admin/(dashboard)/users/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Staff Role Accounts Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 44
+        },
+        {
+          "route": "/admin/visa",
+          "file": "app/admin/(dashboard)/visa/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Saudi Visa Tariffs Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 44
+        },
+        {
+          "route": "/admin/ziyarat",
+          "file": "app/admin/(dashboard)/ziyarat/page.tsx",
+          "is_client_component": false,
+          "has_page_metadata": true,
+          "title": "Ziyarat Landmarks Redirect | Al Ramlah Travels Admin",
+          "description": null,
+          "has_canonical": false,
+          "has_open_graph": false,
+          "has_json_ld": false,
+          "h1_count": 0,
+          "word_count_estimate": 43
+        }
+      ]
+    },
+    "nap_audit": {
+      "files_scanned": 574,
+      "detected_phones": {
+        "050 123 4567": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "lib/phone.ts"
+        ],
+        "1 050 123 4567": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "lib/phone.ts"
+        ],
+        "+1 (555) 234-5678": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "lib/phone.ts"
+        ],
+        "(312) 555-0199": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "lib/phone.ts"
+        ],
+        "312-555-0199": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "lib/phone.ts"
+        ],
+        "+1 (555) 123-4567": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "lib/validations/whatsapp-linked-device.ts"
+        ],
+        "092 327 4029": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-dom/phone-ssot.test.ts"
+        ],
+        "+1 (312) 555-0199": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-dom/phone-ssot.test.ts"
+        ],
+        "+1-416-555-0198": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-pub/diaspora-and-brand-consistency.test.ts"
+        ],
+        "+1 (416) 555-0198": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-pub/diaspora-and-brand-consistency.test.ts"
+        ]
+      },
+      "detected_emails": {
+        "%@g.us": [
+          "app/actions/whatsapp-linked-device.ts",
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json"
+        ],
+        "name@alramlahtravels.com": [
+          "components/admin/auth/admin-login-client.tsx",
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json"
+        ],
+        "alramlahtravels@gmail.com": [
+          "components/admin/catalog/settings-client.tsx",
+          "db/schema/settings.ts",
+          "db/seed.ts",
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json"
+        ],
+        "tariq@alramlahtravels.com": [
+          "components/admin/catalog/users-client.tsx",
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json"
+        ],
+        "admin@alramlahtravels.com": [
+          "components/layout/admin-topbar.tsx",
+          "db/seed.ts",
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json"
+        ],
+        "staff@alramlahtravels.com": [
+          "db/seed.ts",
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json"
+        ],
+        "info@alramlahtravels.com": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "drizzle/meta/0000_snapshot.json"
+        ],
+        "concierge@alramlahtravels.com": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "lib/env.ts"
+        ],
+        "noreply@alramlahtravels.com": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "lib/security/mailer.ts"
+        ],
+        "923274029701@s.whatsapp.net": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "lib/validations/whatsapp-linked-device.ts"
+        ],
+        "120363024849102938@g.us": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/trigger-v4-webhook-and-realtime-copilot.test.ts"
+        ],
+        "923214629700@s.whatsapp.net": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/whatsapp-multi-number-system.test.ts"
+        ],
+        "923198463538@s.whatsapp.net": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/whatsapp-multi-number-system.test.ts"
+        ],
+        "120363024888888888@g.us": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/whatsapp-multi-number-system.test.ts"
+        ],
+        "923214629700-1612345678@g.us": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/whatsapp-multi-number-system.test.ts"
+        ],
+        "e2e-superadmin@alramlahtravels.com": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/e2e/helpers/db.ts"
+        ],
+        "e2e-staff@alramlahtravels.com": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/e2e/helpers/db.ts"
+        ],
+        "e2e-deactivated@alramlahtravels.com": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/e2e/helpers/db.ts"
+        ],
+        "120363049999999999@g.us": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/unit/contract-fakes.test.ts"
+        ],
+        "pilgrim@alramlahtravels.com": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-admin/catalog-softdelete-and-cms.test.ts"
+        ],
+        "concierge@alramlah.pk": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-desk/quotation-pdf-fidelity.test.ts"
+        ],
+        "care@alramlah.com": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-desk/quotation-pdf-security.test.ts"
+        ],
+        "14@s.whatsapp.net": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-dom/phone-ssot.test.ts"
+        ],
+        "120363041234567890@g.us": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-dom/phone-ssot.test.ts"
+        ],
+        "923190462638@s.whatsapp.net": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-dom/phone-ssot.test.ts"
+        ],
+        "120363044556677889@g.us": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-jobs/wa-group-campaign-task.test.ts"
+        ],
+        "03214629700@s.whatsapp.net": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-jobs/wa-group-campaign-task.test.ts"
+        ],
+        "pass@ep-cool-resonance.ap-southeast-1.aws.neon.tech": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-plat/db-schema-migrations-and-seed.test.ts"
+        ],
+        "strong_secret@ep-calm-pond.ap-southeast-1.aws.neon.tech": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-plat/env-validation.test.ts"
+        ],
+        "strong_secret@ep-calm-pond-pooler.ap-southeast-1.aws.neon.tech": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-plat/env-validation.test.ts"
+        ],
+        "tariq.mahmood@gmail.com": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-studio/quoting-copilot-safety.test.ts"
+        ],
+        "12036304198273645@g.us": [
+          "docs/audit/seo/baseline/nap_audit.json",
+          "docs/audit/seo/baseline/score_report.json",
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w3/f-wa/bridge-and-brand-truth.test.ts"
+        ],
+        "secret@chatgpt.com": [
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "docs/audit/seo/post-fix/score_report.json",
+          "tests/w6/f-seo-plat/utm-attribution.test.ts",
+          "tests/w6/f-seo-shell/shell-and-attribution.test.ts"
+        ],
+        "pass@claude.ai": [
+          "docs/audit/seo/post-fix/nap_audit.json",
+          "tests/integration/seo-utm-attribution.integration.test.ts"
+        ]
+      },
+      "organization_names_detected": [],
+      "social_entity_profiles": {
+        "youtube": [
+          "https://www.youtube.com/shorts/${videoId}`",
+          "https://www.youtube.com/watch?v=${videoId}`",
+          "https://youtube.com/...",
+          "https://youtube.com/@alramlahtravels"
+        ],
+        "instagram": [
+          "https://instagram.com/...",
+          "https://instagram.com/alramlahtravels",
+          "https://instagram.com/p/claim-lock-test",
+          "https://www.instagram.com/${cleanHandle}/`",
+          "https://www.instagram.com/alramlahtravels/",
+          "https://www.instagram.com/p/${entityId}/`,",
+          "https://www.instagram.com/p/${igMediaId}`",
+          "https://www.instagram.com/p/${item.shortcode",
+          "https://www.instagram.com/p/C9RecoveredXYZ/",
+          "https://www.instagram.com/p/C9_${publishedId}/`,",
+          "https://www.instagram.com/p/test/",
+          "https://www.instagram.com/p/viral/",
+          "https://www.instagram.com/reel/E2EReel999/",
+          "https://www.instagram.com/reel/xyz/"
+        ],
+        "tiktok": [
+          "https://tiktok.com/@...",
+          "https://tiktok.com/@alramlahtravels",
+          "https://www.tiktok.com/@${cleanHandle}`",
+          "https://www.tiktok.com/@${userHandle}/video/${publicPostId}`",
+          "https://www.tiktok.com/@alramlahtravels/video/7198765432109876543",
+          "https://www.tiktok.com/@alramlahtravels/video/743000111222333",
+          "https://www.tiktok.com/v2/auth/authorize/?${params.toString("
+        ],
+        "linkedin": [],
+        "x_twitter": []
+      },
+      "nap_consistent": false,
+      "issues": [
+        "Multiple phone number formats found across codebase (['050 123 4567', '1 050 123 4567', '+1 (555) 234-5678', '(312) 555-0199', '312-555-0199', '+1 (555) 123-4567', '092 327 4029', '+1 (312) 555-0199', '+1-416-555-0198', '+1 (416) 555-0198']). Standardize to one exact string everywhere for strict NAP consistency (Lesson 2)."
+      ],
+      "recommendations": []
+    },
+    "geo_liftability": {
+      "routes_evaluated": 40,
+      "average_liftability_score": 71.6,
+      "total_paragraphs_over_200_words": 0,
+      "pages_with_tables": 15,
+      "pages_with_bullet_lists": 20,
+      "pages_with_faq": 17,
+      "page_evaluations": [
+        {
+          "route": "/",
+          "file": "app/(public)/page.tsx",
+          "liftability_score": 95,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": true,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/about",
+          "file": "app/(public)/about/page.tsx",
+          "liftability_score": 95,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": true,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/contact",
+          "file": "app/(public)/contact/page.tsx",
+          "liftability_score": 95,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": true,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/faq",
+          "file": "app/(public)/faq/page.tsx",
+          "liftability_score": 95,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": true,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/hajj-2027",
+          "file": "app/(public)/hajj-2027/page.tsx",
+          "liftability_score": 90,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/hotels/[city]",
+          "file": "app/(public)/hotels/[city]/page.tsx",
+          "liftability_score": 90,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/privacy",
+          "file": "app/(public)/privacy/page.tsx",
+          "liftability_score": 95,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": true,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/refund-policy",
+          "file": "app/(public)/refund-policy/page.tsx",
+          "liftability_score": 95,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": true,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/terms",
+          "file": "app/(public)/terms/page.tsx",
+          "liftability_score": 95,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": true,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/umrah-packages",
+          "file": "app/(public)/umrah-packages/page.tsx",
+          "liftability_score": 95,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": true,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/umrah-packages/from-[city]",
+          "file": "app/(public)/umrah-packages/from-[city]/page.tsx",
+          "liftability_score": 90,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/umrah-packages/[slug]",
+          "file": "app/(public)/umrah-packages/[slug]/page.tsx",
+          "liftability_score": 95,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": true,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/umrah-visa",
+          "file": "app/(public)/umrah-visa/page.tsx",
+          "liftability_score": 90,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/voucher/[token]",
+          "file": "app/(public)/voucher/[token]/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/ziyarat",
+          "file": "app/(public)/ziyarat/page.tsx",
+          "liftability_score": 90,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/ziyarat/[city]",
+          "file": "app/(public)/ziyarat/[city]/page.tsx",
+          "liftability_score": 90,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": true,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/login",
+          "file": "app/admin/(auth)/login/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin",
+          "file": "app/admin/(dashboard)/page.tsx",
+          "liftability_score": 70,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/applications",
+          "file": "app/admin/(dashboard)/applications/page.tsx",
+          "liftability_score": 70,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/applications/[id]",
+          "file": "app/admin/(dashboard)/applications/[id]/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/applications/[id]/voucher",
+          "file": "app/admin/(dashboard)/applications/[id]/voucher/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/campaigns",
+          "file": "app/admin/(dashboard)/campaigns/page.tsx",
+          "liftability_score": 70,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/catalog",
+          "file": "app/admin/(dashboard)/catalog/page.tsx",
+          "liftability_score": 80,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": false,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/content",
+          "file": "app/admin/(dashboard)/content/page.tsx",
+          "liftability_score": 65,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": true,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/desk",
+          "file": "app/admin/(dashboard)/desk/page.tsx",
+          "liftability_score": 70,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": true,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/distribution",
+          "file": "app/admin/(dashboard)/distribution/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/flights",
+          "file": "app/admin/(dashboard)/flights/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/groups",
+          "file": "app/admin/(dashboard)/groups/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/hotels",
+          "file": "app/admin/(dashboard)/hotels/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/messages",
+          "file": "app/admin/(dashboard)/messages/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/outreach",
+          "file": "app/admin/(dashboard)/outreach/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/post-lookup",
+          "file": "app/admin/(dashboard)/post-lookup/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/settings",
+          "file": "app/admin/(dashboard)/settings/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/social",
+          "file": "app/admin/(dashboard)/social/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/studio",
+          "file": "app/admin/(dashboard)/studio/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/supplier-flyers",
+          "file": "app/admin/(dashboard)/supplier-flyers/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/transport",
+          "file": "app/admin/(dashboard)/transport/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/users",
+          "file": "app/admin/(dashboard)/users/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/visa",
+          "file": "app/admin/(dashboard)/visa/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        },
+        {
+          "route": "/admin/ziyarat",
+          "file": "app/admin/(dashboard)/ziyarat/page.tsx",
+          "liftability_score": 55,
+          "paragraphs_over_200_words": 0,
+          "has_bullet_lists": false,
+          "has_data_tables": false,
+          "has_faq_section": false,
+          "has_concrete_stats": false,
+          "has_json_ld_schema": false,
+          "ai_fluff_phrases_detected": []
+        }
+      ]
+    },
+    "internal_links": {
+      "total_routes": 40,
+      "orphan_contextual_routes": [],
+      "shared_navigation_targets": [
+        "/",
+        "/about",
+        "/admin",
+        "/admin/applications",
+        "/admin/campaigns",
+        "/admin/settings",
+        "/contact",
+        "/faq",
+        "/hajj-2027",
+        "/hotels/madinah",
+        "/hotels/makkah",
+        "/privacy",
+        "/refund-policy",
+        "/terms",
+        "/umrah-packages",
+        "/umrah-packages/from-lahore",
+        "/umrah-visa",
+        "/ziyarat",
+        "/ziyarat/madinah",
+        "/ziyarat/makkah"
+      ],
+      "weak_anchor_texts": [],
+      "recommended_internal_links": [
+        {
+          "source_route": "/",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "city",
+            "from",
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 1.0
+        },
+        {
+          "source_route": "/hotels/[city]",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "city",
+            "from",
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 1.0
+        },
+        {
+          "source_route": "/umrah-packages",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "city",
+            "from",
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 1.0
+        },
+        {
+          "source_route": "/umrah-packages/[slug]",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "city",
+            "from",
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 1.0
+        },
+        {
+          "source_route": "/",
+          "target_route": "/umrah-packages/[slug]",
+          "matched_terms": [
+            "packages",
+            "slug",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.75
+        },
+        {
+          "source_route": "/about",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "from",
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.75
+        },
+        {
+          "source_route": "/contact",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "from",
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.75
+        },
+        {
+          "source_route": "/hajj-2027",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "from",
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.75
+        },
+        {
+          "source_route": "/privacy",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "city",
+            "from",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.75
+        },
+        {
+          "source_route": "/umrah-packages/from-[city]",
+          "target_route": "/umrah-packages/[slug]",
+          "matched_terms": [
+            "packages",
+            "slug",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.75
+        },
+        {
+          "source_route": "/umrah-visa",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "from",
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.75
+        },
+        {
+          "source_route": "/voucher/[token]",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "city",
+            "from",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.75
+        },
+        {
+          "source_route": "/ziyarat/[city]",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "city",
+            "from",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.75
+        },
+        {
+          "source_route": "/admin/campaigns",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "city",
+            "from",
+            "packages"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.75
+        },
+        {
+          "source_route": "/admin/campaigns",
+          "target_route": "/admin/supplier-flyers",
+          "matched_terms": [
+            "admin",
+            "flyers",
+            "supplier"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.75
+        },
+        {
+          "source_route": "/admin/studio",
+          "target_route": "/admin/supplier-flyers",
+          "matched_terms": [
+            "admin",
+            "flyers",
+            "supplier"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.75
+        },
+        {
+          "source_route": "/",
+          "target_route": "/hotels/[city]",
+          "matched_terms": [
+            "city",
+            "hotels"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/",
+          "target_route": "/ziyarat/[city]",
+          "matched_terms": [
+            "city",
+            "ziyarat"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/about",
+          "target_route": "/umrah-packages/[slug]",
+          "matched_terms": [
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/about",
+          "target_route": "/umrah-packages",
+          "matched_terms": [
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/about",
+          "target_route": "/umrah-visa",
+          "matched_terms": [
+            "umrah",
+            "visa"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/contact",
+          "target_route": "/umrah-packages/[slug]",
+          "matched_terms": [
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/faq",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "from",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/faq",
+          "target_route": "/umrah-visa",
+          "matched_terms": [
+            "umrah",
+            "visa"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/hajj-2027",
+          "target_route": "/umrah-packages/[slug]",
+          "matched_terms": [
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/hotels/[city]",
+          "target_route": "/umrah-packages/[slug]",
+          "matched_terms": [
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/privacy",
+          "target_route": "/contact",
+          "matched_terms": [
+            "contact"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": true,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/privacy",
+          "target_route": "/hotels/[city]",
+          "matched_terms": [
+            "city",
+            "hotels"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/privacy",
+          "target_route": "/umrah-visa",
+          "matched_terms": [
+            "umrah",
+            "visa"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/refund-policy",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "from",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/refund-policy",
+          "target_route": "/umrah-visa",
+          "matched_terms": [
+            "umrah",
+            "visa"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/terms",
+          "target_route": "/contact",
+          "matched_terms": [
+            "contact"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": true,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/terms",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "from",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/terms",
+          "target_route": "/umrah-visa",
+          "matched_terms": [
+            "umrah",
+            "visa"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/umrah-packages",
+          "target_route": "/umrah-packages/[slug]",
+          "matched_terms": [
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/umrah-packages",
+          "target_route": "/hotels/[city]",
+          "matched_terms": [
+            "city",
+            "hotels"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/umrah-packages",
+          "target_route": "/ziyarat/[city]",
+          "matched_terms": [
+            "city",
+            "ziyarat"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/umrah-packages/[slug]",
+          "target_route": "/hotels/[city]",
+          "matched_terms": [
+            "city",
+            "hotels"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/umrah-packages/[slug]",
+          "target_route": "/ziyarat/[city]",
+          "matched_terms": [
+            "city",
+            "ziyarat"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/umrah-visa",
+          "target_route": "/umrah-packages/[slug]",
+          "matched_terms": [
+            "packages",
+            "umrah"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/voucher/[token]",
+          "target_route": "/umrah-visa",
+          "matched_terms": [
+            "umrah",
+            "visa"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/voucher/[token]",
+          "target_route": "/ziyarat/[city]",
+          "matched_terms": [
+            "city",
+            "ziyarat"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/login",
+          "target_route": "/admin/desk",
+          "matched_terms": [
+            "admin",
+            "desk"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin",
+          "target_route": "/contact",
+          "matched_terms": [
+            "contact"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": true,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "from",
+            "packages"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin",
+          "target_route": "/admin/applications/[id]/voucher",
+          "matched_terms": [
+            "admin",
+            "applications"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin",
+          "target_route": "/admin/applications/[id]",
+          "matched_terms": [
+            "admin",
+            "applications"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications",
+          "target_route": "/admin/desk",
+          "matched_terms": [
+            "admin",
+            "desk"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications",
+          "target_route": "/admin/applications/[id]/voucher",
+          "matched_terms": [
+            "admin",
+            "applications"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications",
+          "target_route": "/admin/applications/[id]",
+          "matched_terms": [
+            "admin",
+            "applications"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications/[id]",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "city",
+            "from"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications/[id]",
+          "target_route": "/hotels/[city]",
+          "matched_terms": [
+            "city",
+            "hotels"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications/[id]",
+          "target_route": "/admin/settings",
+          "matched_terms": [
+            "admin",
+            "settings"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications/[id]",
+          "target_route": "/admin/supplier-flyers",
+          "matched_terms": [
+            "admin",
+            "supplier"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications/[id]",
+          "target_route": "/admin/applications/[id]/voucher",
+          "matched_terms": [
+            "admin",
+            "applications"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications/[id]",
+          "target_route": "/admin/hotels",
+          "matched_terms": [
+            "admin",
+            "hotels"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications/[id]/voucher",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "city",
+            "from"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications/[id]/voucher",
+          "target_route": "/admin/visa",
+          "matched_terms": [
+            "admin",
+            "visa"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications/[id]/voucher",
+          "target_route": "/admin/applications",
+          "matched_terms": [
+            "admin",
+            "applications"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications/[id]/voucher",
+          "target_route": "/admin/ziyarat",
+          "matched_terms": [
+            "admin",
+            "ziyarat"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications/[id]/voucher",
+          "target_route": "/ziyarat/[city]",
+          "matched_terms": [
+            "city",
+            "ziyarat"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/applications/[id]/voucher",
+          "target_route": "/admin/applications/[id]",
+          "matched_terms": [
+            "admin",
+            "applications"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/campaigns",
+          "target_route": "/contact",
+          "matched_terms": [
+            "contact"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": true,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/campaigns",
+          "target_route": "/admin/distribution",
+          "matched_terms": [
+            "admin",
+            "distribution"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/campaigns",
+          "target_route": "/admin/studio",
+          "matched_terms": [
+            "admin",
+            "studio"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/campaigns",
+          "target_route": "/admin/outreach",
+          "matched_terms": [
+            "admin",
+            "outreach"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/campaigns",
+          "target_route": "/admin/settings",
+          "matched_terms": [
+            "admin",
+            "settings"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/campaigns",
+          "target_route": "/admin/social",
+          "matched_terms": [
+            "admin",
+            "social"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/campaigns",
+          "target_route": "/admin/post-lookup",
+          "matched_terms": [
+            "admin",
+            "post"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/catalog",
+          "target_route": "/admin/visa",
+          "matched_terms": [
+            "admin",
+            "visa"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/catalog",
+          "target_route": "/admin/supplier-flyers",
+          "matched_terms": [
+            "admin",
+            "supplier"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/catalog",
+          "target_route": "/admin/hotels",
+          "matched_terms": [
+            "admin",
+            "hotels"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/content",
+          "target_route": "/admin/catalog",
+          "matched_terms": [
+            "admin",
+            "catalog"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/desk",
+          "target_route": "/contact",
+          "matched_terms": [
+            "contact"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": true,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/desk",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "from",
+            "packages"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/desk",
+          "target_route": "/admin/studio",
+          "matched_terms": [
+            "admin",
+            "studio"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/desk",
+          "target_route": "/admin/messages",
+          "matched_terms": [
+            "admin",
+            "messages"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/desk",
+          "target_route": "/admin/settings",
+          "matched_terms": [
+            "admin",
+            "settings"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/desk",
+          "target_route": "/admin/applications",
+          "matched_terms": [
+            "admin",
+            "applications"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/desk",
+          "target_route": "/admin/supplier-flyers",
+          "matched_terms": [
+            "admin",
+            "supplier"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/desk",
+          "target_route": "/admin/applications/[id]/voucher",
+          "matched_terms": [
+            "admin",
+            "applications"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/desk",
+          "target_route": "/admin/catalog",
+          "matched_terms": [
+            "admin",
+            "catalog"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/desk",
+          "target_route": "/admin/applications/[id]",
+          "matched_terms": [
+            "admin",
+            "applications"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/distribution",
+          "target_route": "/admin/campaigns",
+          "matched_terms": [
+            "admin",
+            "campaigns"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/flights",
+          "target_route": "/admin/catalog",
+          "matched_terms": [
+            "admin",
+            "catalog"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/groups",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "from",
+            "packages"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/groups",
+          "target_route": "/admin/studio",
+          "matched_terms": [
+            "admin",
+            "studio"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/hotels",
+          "target_route": "/admin/catalog",
+          "matched_terms": [
+            "admin",
+            "catalog"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/messages",
+          "target_route": "/contact",
+          "matched_terms": [
+            "contact"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": true,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/messages",
+          "target_route": "/admin/catalog",
+          "matched_terms": [
+            "admin",
+            "catalog"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/outreach",
+          "target_route": "/admin/campaigns",
+          "matched_terms": [
+            "admin",
+            "campaigns"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/post-lookup",
+          "target_route": "/admin/desk",
+          "matched_terms": [
+            "admin",
+            "desk"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/settings",
+          "target_route": "/admin/users",
+          "matched_terms": [
+            "admin",
+            "users"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/settings",
+          "target_route": "/admin/social",
+          "matched_terms": [
+            "admin",
+            "social"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/settings",
+          "target_route": "/admin/catalog",
+          "matched_terms": [
+            "admin",
+            "catalog"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/social",
+          "target_route": "/admin/campaigns",
+          "matched_terms": [
+            "admin",
+            "campaigns"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/studio",
+          "target_route": "/umrah-packages/from-[city]",
+          "matched_terms": [
+            "from",
+            "packages"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/studio",
+          "target_route": "/admin/catalog",
+          "matched_terms": [
+            "admin",
+            "catalog"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/studio",
+          "target_route": "/admin/groups",
+          "matched_terms": [
+            "admin",
+            "groups"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        },
+        {
+          "source_route": "/admin/studio",
+          "target_route": "/admin/hotels",
+          "matched_terms": [
+            "admin",
+            "hotels"
+          ],
+          "is_orphan_target": false,
+          "is_money_page_target": false,
+          "priority_score": 0.5
+        }
+      ],
+      "jev_api_status": "partial_or_error: HTTP 401 from https://openrouter.ai/api/alpha/decisions: {\"error\":{\"message\":\"Missing Authentication header\",\"code\":401}}",
+      "jev_decisions": [],
+      "jev_full_crawler_command": "uv run \"C:\\Users\\ubaid\\.gemini\\config\\skills\\nextjs-business-seo-geo-auditor\\scripts\\jev_internal_links\\scripts\\run.py\" http://127.0.0.1:3124"
+    },
+    "live_audit": {
+      "url": "http://127.0.0.1:3124",
+      "status": "completed",
+      "http_status": 200,
+      "load_time_seconds": 0.237,
+      "meta": {
+        "title": "Umrah Packages Pakistan &amp; Hajj 2027 | Al Ramlah Travels",
+        "title_length": 59,
+        "description": "Plan custom Umrah packages from Lahore, Karachi &amp; Islamabad, Saudi Umrah visas, 5-star Haramain hotels, and Hajj 2027 tours with Al Ramlah Travels now.",
+        "description_length": 155,
+        "canonical": "https://alramlahtravels.com",
+        "has_og_title": true,
+        "has_og_image": false,
+        "has_twitter_card": true,
+        "h1_count": 1,
+        "h1_texts": [
+          "Umrah Packages, Saudi Visas &amp; Hajj 2027 Journeys from Pakistan"
+        ]
+      },
+      "json_ld_count": 1,
+      "json_ld_schemas": [
+        [
+          {
+            "@context": "https://schema.org",
+            "@type": "TravelAgency",
+            "@id": "https://alramlahtravels.com/#organization",
+            "name": "Al Ramlah Travels",
+            "legalName": "Al Ramlah Travels",
+            "slogan": "Where Purpose Meets Excellence",
+            "url": "https://alramlahtravels.com",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://alramlahtravels.com/logo.jpg"
+            },
+            "image": "https://alramlahtravels.com/logo.jpg",
+            "telephone": "+923274029701",
+            "email": "alramlahtravels@gmail.com",
+            "priceRange": "PKR",
+            "currenciesAccepted": "PKR",
+            "areaServed": [
+              {
+                "@type": "Country",
+                "name": "Pakistan"
+              },
+              {
+                "@type": "Country",
+                "name": "United Kingdom"
+              },
+              {
+                "@type": "Country",
+                "name": "United States"
+              },
+              {
+                "@type": "Country",
+                "name": "Canada"
+              },
+              {
+                "@type": "Country",
+                "name": "United Arab Emirates"
+              }
+            ],
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": "Office No. 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
+              "addressLocality": "Lahore",
+              "addressRegion": "Punjab",
+              "postalCode": "54810",
+              "addressCountry": "PK"
+            },
+            "hasMap": "https://maps.google.com/?q=Sector+C+Askari+10+Airport+Road+Lahore+Cantt",
+            "openingHoursSpecification": [
+              {
+                "@type": "OpeningHoursSpecification",
+                "dayOfWeek": [
+                  "Monday",
+                  "Tuesday",
+                  "Wednesday",
+                  "Thursday",
+                  "Friday",
+                  "Saturday"
+                ],
+                "opens": "09:00",
+                "closes": "20:00"
+              }
+            ],
+            "contactPoint": [
+              {
+                "@type": "ContactPoint",
+                "telephone": "+923274029701",
+                "contactType": "customer service",
+                "areaServed": [
+                  "PK",
+                  "GB",
+                  "US",
+                  "CA",
+                  "AE"
+                ],
+                "availableLanguage": [
+                  "English",
+                  "Urdu"
+                ]
+              },
+              {
+                "@type": "ContactPoint",
+                "telephone": "+923190462638",
+                "contactType": "reservations",
+                "areaServed": [
+                  "PK",
+                  "GB",
+                  "US",
+                  "CA",
+                  "AE"
+                ],
+                "availableLanguage": [
+                  "English",
+                  "Urdu"
+                ]
+              }
+            ],
+            "sameAs": [
+              "https://facebook.com/alramlahtravels",
+              "https://instagram.com/alramlahtravels",
+              "https://youtube.com/@alramlahtravels",
+              "https://tiktok.com/@alramlahtravels"
+            ]
+          },
+          {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "@id": "https://alramlahtravels.com/#website",
+            "url": "https://alramlahtravels.com",
+            "name": "Al Ramlah Travels",
+            "inLanguage": "en-PK",
+            "publisher": {
+              "@id": "https://alramlahtravels.com/#organization"
+            }
+          },
+          {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is the difference between short-term and long-term Umrah visas?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Visas for Kingdom of Saudi Arabia stays of 30 days or fewer are categorized as short-term, while stays from 31 up to 90 days are categorized as long-term. Both tiers include mandatory Saudi healthcare and emergency medical insurance, and our Journey Planner automatically calculates the applicable visa tier from your KSA arrival and departure dates using live published PKR rates."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Which airport should I select for an itinerary that begins in Makkah?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Makkah does not have a civilian airport. All itineraries starting with Makkah land at King Abdulaziz International Airport in Jeddah (JED). From Jeddah Airport, Al Ramlah provides direct ground transfer via private vehicle (approx. 75 minutes) or tickets for the Haramain High-Speed Train."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What is the difference between walking distance and shuttle hotels?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Walking hotels are situated between 0 and 750 meters from the outer courtyards of the Haramain and require no transport. Shuttle hotels are situated beyond 1,000 meters and provide continuous, 24/7 dedicated air-conditioned bus transfers to designated terminal stops near the Haram courtyards."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do children and infants affect our hotel room and vehicle bookings?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Adults (12+ yrs) and children (2–11 yrs) count toward hotel beds and vehicle seats. Infants under 2 years of age require a valid passport, Saudi visa, and infant airline ticket, but occupy zero hotel beds and zero vehicle seats. When booking private rooms or vehicles, our capacity calculations count adults and children, saving you unnecessary room charges."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can we customize an existing group package departure date?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Group packages operate on fixed group departure batches to secure bulk wholesale airline and hotel rates. If you require custom travel dates, our 5-pillar Custom Journey Planner allows you to configure your exact dates and select identical hotels with private transfers."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What documents and Saudi Visa Bio steps are required for Pakistani passport holders?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Applicants require a machine-readable passport valid for at least 6 months from travel, a CNIC or B-Form copy, a white-background digital photograph, and mobile fingerprint enrollment through the official Saudi Visa Bio smartphone app. Children under 12 and senior citizens over 80 are exempt from app biometrics under current Saudi consular rules."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can overseas Pakistanis (UK, USA, Canada, UAE) book Umrah packages and visas with Al Ramlah Travels?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Overseas diaspora families holding NICOP/POC cards or foreign passports can coordinate land-only Haramain hotel suites, private GMC Yukon or Hyundai Staria transfers, and visa processing so overseas relatives and Pakistan-departing family members check into the exact same Makkah and Madinah hotels together."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do Quad, Triple, Double, and Sharing room allocations work in Makkah and Madinah?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Double rooms accommodate 2 beds, Triple rooms accommodate 3 beds, and Quad rooms accommodate 4 beds for private family occupancy. Sharing occupancy allocates individual beds in gender-segregated shared rooms for solo pilgrims seeking lower per-person package rates."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Should our family choose the Haramain High-Speed Train or a private SUV/van between Makkah and Madinah?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "The Haramain High-Speed Train connects Makkah and Madinah in roughly 2 hours 20 minutes with station-to-hotel transfers and strict per-passenger baggage dimensions. A private GMC Yukon XL, Hyundai Staria, or Toyota HiAce provides door-to-door hotel lobby pickup, flexible Miqat (Bir Ali) stops, and generous luggage capacity for families and elderly pilgrims."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Why does Visa-Only show an immediate fixed PKR total while hotel and flight custom itineraries show Live Rate?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Standalone Umrah visa processing follows published regulatory PKR tiers, allowing immediate fixed pricing. Airline seats, Haramain hotel allotments, and seasonal KSA transport fluctuate daily by date and occupancy, so custom multi-service itineraries are verified by our Lahore quoting desk before issuing a binding itemized PKR proposal."
+                }
+              }
+            ]
+          }
+        ]
+      ],
+      "robots_txt": {
+        "exists": true,
+        "has_sitemap_directive": true,
+        "ai_crawlers": {
+          "GPTBot": "mentioned_in_robots",
+          "OAI-SearchBot": "mentioned_in_robots",
+          "ChatGPT-User": "mentioned_in_robots",
+          "ClaudeBot": "mentioned_in_robots",
+          "Claude-SearchBot": "mentioned_in_robots",
+          "Claude-User": "inherits_wildcard",
+          "PerplexityBot": "mentioned_in_robots",
+          "Perplexity-User": "inherits_wildcard",
+          "Google-Extended": "mentioned_in_robots",
+          "Googlebot": "inherits_wildcard"
+        }
+      },
+      "sitemap_xml": {
+        "exists": true,
+        "url_count": 24,
+        "sample_urls": [
+          "https://alramlahtravels.com",
+          "https://alramlahtravels.com/umrah-packages",
+          "https://alramlahtravels.com/umrah-packages/from-lahore",
+          "https://alramlahtravels.com/umrah-packages/from-karachi",
+          "https://alramlahtravels.com/umrah-packages/from-islamabad",
+          "https://alramlahtravels.com/hajj-2027",
+          "https://alramlahtravels.com/umrah-visa",
+          "https://alramlahtravels.com/hotels/makkah",
+          "https://alramlahtravels.com/hotels/madinah",
+          "https://alramlahtravels.com/ziyarat",
+          "https://alramlahtravels.com/ziyarat/makkah",
+          "https://alramlahtravels.com/ziyarat/madinah",
+          "https://alramlahtravels.com/about",
+          "https://alramlahtravels.com/contact",
+          "https://alramlahtravels.com/faq",
+          "https://alramlahtravels.com/privacy",
+          "https://alramlahtravels.com/terms",
+          "https://alramlahtravels.com/refund-policy",
+          "https://alramlahtravels.com/umrah-packages/economy-bronze-21-day-long-stay",
+          "https://alramlahtravels.com/umrah-packages/executive-gold-14-day-umrah",
+          "https://alramlahtravels.com/umrah-packages/classic-silver-14-day-family-umrah",
+          "https://alramlahtravels.com/umrah-packages/e2e-secondary-silver-umrah",
+          "https://alramlahtravels.com/umrah-packages/e2e-december-gold-umrah",
+          "https://alramlahtravels.com/umrah-packages/royal-ramadan-15-day-luxury-umrah"
+        ]
+      },
+      "llms_txt_exists": true
+    }
+  }
+}

@@ -292,6 +292,7 @@ test.describe("J1–J5 Public Pilgrim Journeys, Legal Truth, Mobile & WCAG 2.2 A
   test("J5: Public Status Tracker anti-enumeration, redacted DTO, legal pages truth, dark-OS light-theme lock, mobile viewports & WCAG Axe", async ({
     browser,
   }) => {
+    await clearAuthRateLimits()
     const { db } = getE2eDb()
     const uniqueRef = `ART-20261115-E2EJ5${Date.now().toString().slice(-4)}`
 

@@ -68,7 +68,7 @@ export function UmrahDeparturesSchedule({
   }
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-[#E6DEC8] bg-white shadow-xs">
+    <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8] bg-white shadow-xs">
       <table className="w-full min-w-[760px] border-collapse text-left text-xs sm:text-sm">
         <caption className="border-b border-[#E6DEC8] bg-[#FAF7F0] px-4 py-3 text-left text-xs font-medium text-[#4A5048]">
           {caption}

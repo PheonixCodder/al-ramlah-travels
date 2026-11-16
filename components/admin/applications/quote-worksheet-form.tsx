@@ -1668,7 +1668,7 @@ export function QuoteWorksheetForm({
                   size="sm"
                   disabled={isSubmitting || grandTotalPkr <= 0}
                   onClick={() => handleSave("approved")}
-                  className="bg-emerald-600 text-white hover:bg-emerald-700 text-xs"
+                  className="bg-emerald-800 text-white hover:bg-emerald-900 text-xs"
                 >
                   <CheckCircle className="size-3.5" />
                   <span>Approve Booking</span>

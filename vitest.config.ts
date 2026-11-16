@@ -5,6 +5,7 @@ import { defineConfig } from "vitest/config"
 const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
+  envDir: false,
   resolve: {
     alias: {
       "@": ROOT_DIR,
@@ -17,6 +18,8 @@ export default defineConfig({
     include: [
       "tests/unit/**/*.test.ts",
       "tests/integration/**/*.test.ts",
+      "tests/seo/**/*.test.ts",
+      "tests/seo/**/*.test.tsx",
       "tests/w6/**/*.test.ts",
       "tests/w6/**/*.test.tsx",
     ],

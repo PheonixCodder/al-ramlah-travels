@@ -210,6 +210,7 @@ export function buildNextConfig(
     },
     images: {
       remotePatterns,
+      ...(isAuditLocal ? { unoptimized: true } : {}),
     },
     async redirects() {
       return [

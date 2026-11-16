@@ -1,4 +1,5 @@
 import * as React from "react"
+import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { eq, desc, asc, inArray } from "drizzle-orm"
@@ -12,6 +13,11 @@ import { ApplicationDossier } from "@/components/admin/applications/application-
 import { QuoteWorksheetForm } from "@/components/admin/applications/quote-worksheet-form"
 import { calculateApplicationRateHints } from "@/lib/domain/quote-hints"
 import { resolveSignedQuotationPdfUrl } from "@/lib/posters/render-quotation-pdf"
+
+export const metadata: Metadata = {
+  title: "Pilgrim Application Dossier | Al Ramlah Travels Admin",
+  robots: { index: false, follow: false },
+}
 
 const uuidParamSchema = z.string().uuid()
 
@@ -177,6 +183,13 @@ export default async function ApplicationDetailPage({
       {/* Breadcrumb & Navigation */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Link
+            href="/admin"
+            className="hover:text-foreground inline-flex items-center gap-1 transition-colors"
+          >
+            Overview
+          </Link>
+          <ChevronRight className="size-3 text-muted-foreground/60" />
           <Link
             href="/admin/applications"
             className="hover:text-foreground inline-flex items-center gap-1 transition-colors"

@@ -187,6 +187,33 @@ export default async function UmrahPackagesHubPage() {
           </div>
 
           <UmrahPackageComparisonTable packages={packages} />
+
+          <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0]/60">
+            <table className="w-full text-left text-xs border-collapse">
+              <caption className="sr-only">
+                Summary of group room occupancy capacities and infant 0-bed 0-seat rules
+              </caption>
+              <thead className="border-b border-[#E6DEC8] text-[#0A3622]">
+                <tr>
+                  <th scope="col" className="px-4 py-2.5 font-bold">Occupancy Tier</th>
+                  <th scope="col" className="px-4 py-2.5 font-bold">Beds &amp; KSA Fleet Seats</th>
+                  <th scope="col" className="px-4 py-2.5 font-bold">Pricing Basis</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E6DEC8] text-[#4A5048]">
+                <tr>
+                  <td className="px-4 py-2 font-semibold text-[#1A1D1A]">Sharing / Quad / Triple / Double</td>
+                  <td className="px-4 py-2">100% allocated per Adult + Child</td>
+                  <td className="px-4 py-2">Fixed PKR per bed (unpublished tiers: On Request)</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2 font-semibold text-[#1A1D1A]">Infant (&lt;2 Years)</td>
+                  <td className="px-4 py-2">0 Hotel Beds · 0 Vehicle Seats</td>
+                  <td className="px-4 py-2">Saudi Umrah E-Visa + Infant Air Ticket Tariff</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
 
         {/* Detailed Package Cards Grid */}
@@ -396,6 +423,12 @@ export default async function UmrahPackagesHubPage() {
               className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-1.5 text-xs font-semibold text-[#0A3622] hover:border-[#0A3622]"
             >
               Hajj 2027 Maktab Pre-Registration
+            </Link>
+            <Link
+              href="/faq"
+              className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-1.5 text-xs font-semibold text-[#0A3622] hover:border-[#0A3622]"
+            >
+              Frequently Asked Questions (FAQ)
             </Link>
             <Link
               href="/?preset=complete_umrah#journey-builder"

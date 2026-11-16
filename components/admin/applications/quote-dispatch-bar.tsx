@@ -269,7 +269,7 @@ export function QuoteDispatchBar({
             href={waUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-emerald-700"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-800/30 bg-emerald-800 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-emerald-900"
             title="Open WhatsApp Click-to-Chat with itemized quotation"
           >
             <MessageSquare className="size-3.5" />

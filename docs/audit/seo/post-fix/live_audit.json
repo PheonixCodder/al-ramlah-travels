@@ -1,0 +1,273 @@
+{
+  "url": "http://127.0.0.1:3124",
+  "status": "completed",
+  "http_status": 200,
+  "load_time_seconds": 0.561,
+  "meta": {
+    "title": "Umrah Packages Pakistan &amp; Hajj 2027 | Al Ramlah Travels",
+    "title_length": 59,
+    "description": "Plan custom Umrah packages from Lahore, Karachi &amp; Islamabad, Saudi Umrah visas, 5-star Haramain hotels, and Hajj 2027 tours with Al Ramlah Travels now.",
+    "description_length": 155,
+    "canonical": "https://alramlahtravels.com",
+    "has_og_title": true,
+    "has_og_image": false,
+    "has_twitter_card": true,
+    "h1_count": 1,
+    "h1_texts": [
+      "Umrah Packages, Saudi Visas &amp; Hajj 2027 Journeys from Pakistan"
+    ]
+  },
+  "json_ld_count": 1,
+  "json_ld_schemas": [
+    [
+      {
+        "@context": "https://schema.org",
+        "@type": "TravelAgency",
+        "@id": "https://alramlahtravels.com/#organization",
+        "name": "Al Ramlah Travels",
+        "legalName": "Al Ramlah Travels",
+        "slogan": "Where Purpose Meets Excellence",
+        "url": "https://alramlahtravels.com",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://alramlahtravels.com/logo.jpg"
+        },
+        "image": "https://alramlahtravels.com/logo.jpg",
+        "telephone": "+923274029701",
+        "email": "alramlahtravels@gmail.com",
+        "priceRange": "PKR",
+        "currenciesAccepted": "PKR",
+        "areaServed": [
+          {
+            "@type": "Country",
+            "name": "Pakistan"
+          },
+          {
+            "@type": "Country",
+            "name": "United Kingdom"
+          },
+          {
+            "@type": "Country",
+            "name": "United States"
+          },
+          {
+            "@type": "Country",
+            "name": "Canada"
+          },
+          {
+            "@type": "Country",
+            "name": "United Arab Emirates"
+          }
+        ],
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": "Office No. 38, Street 1, Sector C, Askari 10, Airport Road, Lahore Cantt",
+          "addressLocality": "Lahore",
+          "addressRegion": "Punjab",
+          "postalCode": "54810",
+          "addressCountry": "PK"
+        },
+        "hasMap": "https://maps.google.com/?q=Sector+C+Askari+10+Airport+Road+Lahore+Cantt",
+        "openingHoursSpecification": [
+          {
+            "@type": "OpeningHoursSpecification",
+            "dayOfWeek": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday",
+              "Saturday"
+            ],
+            "opens": "09:00",
+            "closes": "20:00"
+          }
+        ],
+        "contactPoint": [
+          {
+            "@type": "ContactPoint",
+            "telephone": "+923274029701",
+            "contactType": "customer service",
+            "areaServed": [
+              "PK",
+              "GB",
+              "US",
+              "CA",
+              "AE"
+            ],
+            "availableLanguage": [
+              "English",
+              "Urdu"
+            ]
+          },
+          {
+            "@type": "ContactPoint",
+            "telephone": "+923190462638",
+            "contactType": "reservations",
+            "areaServed": [
+              "PK",
+              "GB",
+              "US",
+              "CA",
+              "AE"
+            ],
+            "availableLanguage": [
+              "English",
+              "Urdu"
+            ]
+          }
+        ],
+        "sameAs": [
+          "https://facebook.com/alramlahtravels",
+          "https://instagram.com/alramlahtravels",
+          "https://youtube.com/@alramlahtravels",
+          "https://tiktok.com/@alramlahtravels"
+        ]
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "@id": "https://alramlahtravels.com/#website",
+        "url": "https://alramlahtravels.com",
+        "name": "Al Ramlah Travels",
+        "inLanguage": "en-PK",
+        "publisher": {
+          "@id": "https://alramlahtravels.com/#organization"
+        }
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is the difference between short-term and long-term Umrah visas?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Visas for Kingdom of Saudi Arabia stays of 30 days or fewer are categorized as short-term, while stays from 31 up to 90 days are categorized as long-term. Both tiers include mandatory Saudi healthcare and emergency medical insurance, and our Journey Planner automatically calculates the applicable visa tier from your KSA arrival and departure dates using live published PKR rates."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Which airport should I select for an itinerary that begins in Makkah?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Makkah does not have a civilian airport. All itineraries starting with Makkah land at King Abdulaziz International Airport in Jeddah (JED). From Jeddah Airport, Al Ramlah provides direct ground transfer via private vehicle (approx. 75 minutes) or tickets for the Haramain High-Speed Train."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What is the difference between walking distance and shuttle hotels?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Walking hotels are situated between 0 and 750 meters from the outer courtyards of the Haramain and require no transport. Shuttle hotels are situated beyond 1,000 meters and provide continuous, 24/7 dedicated air-conditioned bus transfers to designated terminal stops near the Haram courtyards."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How do children and infants affect our hotel room and vehicle bookings?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Adults (12+ yrs) and children (2–11 yrs) count toward hotel beds and vehicle seats. Infants under 2 years of age require a valid passport, Saudi visa, and infant airline ticket, but occupy zero hotel beds and zero vehicle seats. When booking private rooms or vehicles, our capacity calculations count adults and children, saving you unnecessary room charges."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can we customize an existing group package departure date?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Group packages operate on fixed group departure batches to secure bulk wholesale airline and hotel rates. If you require custom travel dates, our 5-pillar Custom Journey Planner allows you to configure your exact dates and select identical hotels with private transfers."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What documents and Saudi Visa Bio steps are required for Pakistani passport holders?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Applicants require a machine-readable passport valid for at least 6 months from travel, a CNIC or B-Form copy, a white-background digital photograph, and mobile fingerprint enrollment through the official Saudi Visa Bio smartphone app. Children under 12 and senior citizens over 80 are exempt from app biometrics under current Saudi consular rules."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can overseas Pakistanis (UK, USA, Canada, UAE) book Umrah packages and visas with Al Ramlah Travels?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Overseas diaspora families holding NICOP/POC cards or foreign passports can coordinate land-only Haramain hotel suites, private GMC Yukon or Hyundai Staria transfers, and visa processing so overseas relatives and Pakistan-departing family members check into the exact same Makkah and Madinah hotels together."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How do Quad, Triple, Double, and Sharing room allocations work in Makkah and Madinah?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Double rooms accommodate 2 beds, Triple rooms accommodate 3 beds, and Quad rooms accommodate 4 beds for private family occupancy. Sharing occupancy allocates individual beds in gender-segregated shared rooms for solo pilgrims seeking lower per-person package rates."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Should our family choose the Haramain High-Speed Train or a private SUV/van between Makkah and Madinah?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "The Haramain High-Speed Train connects Makkah and Madinah in roughly 2 hours 20 minutes with station-to-hotel transfers and strict per-passenger baggage dimensions. A private GMC Yukon XL, Hyundai Staria, or Toyota HiAce provides door-to-door hotel lobby pickup, flexible Miqat (Bir Ali) stops, and generous luggage capacity for families and elderly pilgrims."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Why does Visa-Only show an immediate fixed PKR total while hotel and flight custom itineraries show Live Rate?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Standalone Umrah visa processing follows published regulatory PKR tiers, allowing immediate fixed pricing. Airline seats, Haramain hotel allotments, and seasonal KSA transport fluctuate daily by date and occupancy, so custom multi-service itineraries are verified by our Lahore quoting desk before issuing a binding itemized PKR proposal."
+            }
+          }
+        ]
+      }
+    ]
+  ],
+  "robots_txt": {
+    "exists": true,
+    "has_sitemap_directive": true,
+    "ai_crawlers": {
+      "GPTBot": "mentioned_in_robots",
+      "OAI-SearchBot": "mentioned_in_robots",
+      "ChatGPT-User": "mentioned_in_robots",
+      "ClaudeBot": "mentioned_in_robots",
+      "Claude-SearchBot": "mentioned_in_robots",
+      "Claude-User": "inherits_wildcard",
+      "PerplexityBot": "mentioned_in_robots",
+      "Perplexity-User": "inherits_wildcard",
+      "Google-Extended": "mentioned_in_robots",
+      "Googlebot": "inherits_wildcard"
+    }
+  },
+  "sitemap_xml": {
+    "exists": true,
+    "url_count": 24,
+    "sample_urls": [
+      "https://alramlahtravels.com",
+      "https://alramlahtravels.com/umrah-packages",
+      "https://alramlahtravels.com/umrah-packages/from-lahore",
+      "https://alramlahtravels.com/umrah-packages/from-karachi",
+      "https://alramlahtravels.com/umrah-packages/from-islamabad",
+      "https://alramlahtravels.com/hajj-2027",
+      "https://alramlahtravels.com/umrah-visa",
+      "https://alramlahtravels.com/hotels/makkah",
+      "https://alramlahtravels.com/hotels/madinah",
+      "https://alramlahtravels.com/ziyarat",
+      "https://alramlahtravels.com/ziyarat/makkah",
+      "https://alramlahtravels.com/ziyarat/madinah",
+      "https://alramlahtravels.com/about",
+      "https://alramlahtravels.com/contact",
+      "https://alramlahtravels.com/faq",
+      "https://alramlahtravels.com/privacy",
+      "https://alramlahtravels.com/terms",
+      "https://alramlahtravels.com/refund-policy",
+      "https://alramlahtravels.com/umrah-packages/economy-bronze-21-day-long-stay",
+      "https://alramlahtravels.com/umrah-packages/executive-gold-14-day-umrah",
+      "https://alramlahtravels.com/umrah-packages/classic-silver-14-day-family-umrah",
+      "https://alramlahtravels.com/umrah-packages/e2e-secondary-silver-umrah",
+      "https://alramlahtravels.com/umrah-packages/e2e-december-gold-umrah",
+      "https://alramlahtravels.com/umrah-packages/royal-ramadan-15-day-luxury-umrah"
+    ]
+  },
+  "llms_txt_exists": true
+}

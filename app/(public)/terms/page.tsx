@@ -187,11 +187,54 @@ export default async function TermsPage() {
               </div>
               <p className="text-[#4A5048]">
                 These Terms of Service are governed by the laws of the{" "}
-                <strong>Islamic Republic of Pakistan</strong>. The{" "}
-                <strong>competent courts at Lahore, Punjab</strong> shall exercise
-                exclusive jurisdiction over any dispute arising out of or relating
-                to bookings with {legalEntityName}.
+                <strong>Islamic Republic of Pakistan</strong>, alongside our{" "}
+                <Link
+                  href="/privacy"
+                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                >
+                  Privacy Policy &amp; Data Protection Notice
+                </Link>{" "}
+                and{" "}
+                <Link
+                  href="/refund-policy"
+                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                >
+                  Booking Cancellation &amp; Refund Policy
+                </Link>
+                , and operational answers in our{" "}
+                <Link
+                  href="/faq"
+                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                >
+                  Frequently Asked Questions
+                </Link>
+                . The <strong>competent courts at Lahore, Punjab</strong> shall
+                exercise exclusive jurisdiction over any dispute arising out of
+                or relating to bookings with {legalEntityName}.
               </p>
+              <div tabIndex={0} className="overflow-x-auto rounded-xl border border-[#E6DEC8] bg-white">
+                <table className="w-full text-left text-xs border-collapse">
+                  <caption className="sr-only">
+                    Governing law, currency, and voucher release summary
+                  </caption>
+                  <thead className="border-b border-[#E6DEC8] bg-[#FAF7F0] text-[#0A3622]">
+                    <tr>
+                      <th scope="col" className="px-3 py-2 font-bold">Clause</th>
+                      <th scope="col" className="px-3 py-2 font-bold">Binding Condition</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E6DEC8] text-[#4A5048]">
+                    <tr>
+                      <td className="px-3 py-2 font-semibold text-[#1A1D1A]">Settlement Currency</td>
+                      <td className="px-3 py-2">100% Pakistani Rupees (PKR) via verified agency channels</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 font-semibold text-[#1A1D1A]">Exclusive Jurisdiction</td>
+                      <td className="px-3 py-2">Competent courts at Lahore, Punjab, Pakistan</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
               <div className="pt-1 text-xs sm:text-sm text-[#1A1D1A] space-y-1.5">
                 <p>
                   <strong>Headquarters:</strong> {legalEntityName},{" "}

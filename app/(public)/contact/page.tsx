@@ -218,7 +218,7 @@ export default async function ContactPage() {
               </h2>
             </div>
 
-            <div className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
+            <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
               <table className="w-full text-left text-xs sm:text-sm border-collapse">
                 <caption className="sr-only">
                   Al Ramlah Travels Askari 10 Lahore Cantt operating hours in Pakistan Standard Time

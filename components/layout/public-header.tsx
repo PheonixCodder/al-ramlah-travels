@@ -113,9 +113,9 @@ export function PublicHeader({
     <div className="w-full">
       {/* Top Utility Strip */}
       <div className="border-b border-primary-foreground/10 bg-primary px-4 py-1.5 text-xs text-primary-foreground sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-1">
           {/* Left: Contact Hotlines */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 sm:gap-x-4">
             <a
               href={telHref}
               className="inline-flex min-h-6 items-center gap-1.5 transition-colors hover:text-gold"
@@ -202,7 +202,7 @@ export function PublicHeader({
           {/* Brand Logo & Bilingual Title */}
           <Link
             href="/"
-            className="group flex min-h-6 shrink-0 items-center gap-3"
+            className="group flex min-h-6 min-w-0 items-center gap-2.5 sm:gap-3"
           >
             <div className="relative size-11 shrink-0 overflow-hidden rounded-xl border border-gold/30 bg-card p-0.5 shadow-xs transition-transform group-hover:scale-105">
               <Image

@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     absolute: "Official Pilgrimage Confirmation Voucher | Al Ramlah Travels",
   },
   description:
-    "Cryptographically verified Haramain service confirmation voucher issued by Al Ramlah Travels.",
+    "Cryptographically signed Haramain pilgrimage service confirmation voucher issued by Al Ramlah Travels with verified KSA hotel, flight, and fleet schedule.",
   robots: {
     index: false,
     follow: false,

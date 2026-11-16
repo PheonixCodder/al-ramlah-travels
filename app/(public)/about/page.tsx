@@ -246,7 +246,7 @@ export default async function AboutPage() {
             </p>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
+          <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
             <table className="w-full text-left text-xs sm:text-sm border-collapse">
               <caption className="sr-only">
                 Al Ramlah Travels operational service standards across visas, group packages, Haramain hotels, transport, and Hajj 2027

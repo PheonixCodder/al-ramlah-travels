@@ -1,6 +1,7 @@
 import * as React from "react"
 import type { Metadata } from "next"
 import dynamic from "next/dynamic"
+import Link from "next/link"
 import { asc, eq } from "drizzle-orm"
 import { db } from "@/db"
 import * as schema from "@/db/schema"
@@ -381,7 +382,7 @@ export default async function HomePage() {
   ]
 
   return (
-    <div className="flex flex-col">
+    <div className="flex w-full min-w-0 flex-col overflow-x-clip">
       <JsonLd data={homeJsonLdGraph} />
 
       {/* 1. Hero Visual Carousel Slider (Stable SSR H1 + Next.js 16 preload Slide 0) */}
@@ -424,6 +425,103 @@ export default async function HomePage() {
         testimonials={testimonialsData}
         faqs={homeFaqs}
       />
+
+      {/* 6B. At-a-Glance Haramain Rules & Dedicated Spoke Directory */}
+      <aside
+        aria-label="Haramain booking rules summary and pilgrimage guide directory"
+        className="w-full border-t border-[#E6DEC8] bg-[#FAF7F0] py-10"
+      >
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-5">
+          <h2 className="font-display text-xl sm:text-2xl font-bold text-[#0A3622]">
+            Verified Haramain Pilgrimage Rules &amp; Dedicated Hub Directory
+          </h2>
+          <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8] bg-white">
+            <table className="w-full text-left text-xs sm:text-sm border-collapse">
+              <caption className="sr-only">
+                Summary of visa calculation, volatile pricing, Makkah airport routing, and infant allocation rules
+              </caption>
+              <thead className="bg-[#FAF7F0] text-[#0A3622] border-b border-[#E6DEC8]">
+                <tr>
+                  <th scope="col" className="px-4 py-2.5 font-bold">Pilgrimage Rule</th>
+                  <th scope="col" className="px-4 py-2.5 font-bold">Guaranteed Platform Standard</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E6DEC8] text-[#4A5048]">
+                <tr>
+                  <td className="px-4 py-2.5 font-semibold text-[#1A1D1A]">Saudi Visa Duration &amp; Pricing</td>
+                  <td className="px-4 py-2.5">100% server-calculated from KSA Arrival &amp; Departure dates; standalone Visa Only displays fixed PKR rates</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5 font-semibold text-[#1A1D1A]">Makkah Airport &amp; Infant Allotments</td>
+                  <td className="px-4 py-2.5">Makkah-first routes enter via Jeddah (JED); Infants (&lt;2 yrs) require visa &amp; airfare with 0 hotel beds and 0 fleet seats</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ul className="flex flex-wrap gap-2.5 text-xs font-semibold">
+            <li>
+              <Link href="/umrah-packages" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-white px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Group Umrah Packages
+              </Link>
+            </li>
+            <li>
+              <Link href="/umrah-packages/from-lahore" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-white px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Umrah from Lahore (LHE)
+              </Link>
+            </li>
+            <li>
+              <Link href="/umrah-packages/from-karachi" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-white px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Umrah from Karachi (KHI)
+              </Link>
+            </li>
+            <li>
+              <Link href="/umrah-packages/from-islamabad" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-white px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Umrah from Islamabad (ISB)
+              </Link>
+            </li>
+            <li>
+              <Link href="/umrah-visa" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-white px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Saudi Umrah Visa PKR Rates
+              </Link>
+            </li>
+            <li>
+              <Link href="/hajj-2027" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-white px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Hajj 2027 Pre-Registration
+              </Link>
+            </li>
+            <li>
+              <Link href="/hotels/makkah" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-white px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Makkah Courtyard Hotels
+              </Link>
+            </li>
+            <li>
+              <Link href="/hotels/madinah" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-white px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Madinah Markaziyah Hotels
+              </Link>
+            </li>
+            <li>
+              <Link href="/ziyarat" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-white px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Sacred Haramain Ziyarat
+              </Link>
+            </li>
+            <li>
+              <Link href="/faq" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-white px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Frequently Asked Questions
+              </Link>
+            </li>
+            <li>
+              <Link href="/about" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-white px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                About Askari 10 Lahore Office
+              </Link>
+            </li>
+            <li>
+              <Link href="/contact" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-white px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+                Contact Concierge Desk
+              </Link>
+            </li>
+          </ul>
+        </div>
+      </aside>
 
       {/* 7. Dedicated Concierge & Askari 10 Lahore Headquarters Contact */}
       <ContactSection settings={contactInfo} />

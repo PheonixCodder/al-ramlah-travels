@@ -1,0 +1,1125 @@
+{
+  "total_routes": 40,
+  "orphan_contextual_routes": [],
+  "shared_navigation_targets": [
+    "/",
+    "/about",
+    "/admin",
+    "/admin/applications",
+    "/admin/campaigns",
+    "/admin/settings",
+    "/contact",
+    "/faq",
+    "/hajj-2027",
+    "/hotels/madinah",
+    "/hotels/makkah",
+    "/privacy",
+    "/refund-policy",
+    "/terms",
+    "/umrah-packages",
+    "/umrah-packages/from-lahore",
+    "/umrah-visa",
+    "/ziyarat",
+    "/ziyarat/madinah",
+    "/ziyarat/makkah"
+  ],
+  "weak_anchor_texts": [],
+  "recommended_internal_links": [
+    {
+      "source_route": "/",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "city",
+        "from",
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 1.0
+    },
+    {
+      "source_route": "/hotels/[city]",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "city",
+        "from",
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 1.0
+    },
+    {
+      "source_route": "/umrah-packages",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "city",
+        "from",
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 1.0
+    },
+    {
+      "source_route": "/umrah-packages/[slug]",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "city",
+        "from",
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 1.0
+    },
+    {
+      "source_route": "/",
+      "target_route": "/umrah-packages/[slug]",
+      "matched_terms": [
+        "packages",
+        "slug",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/about",
+      "target_route": "/umrah-packages",
+      "matched_terms": [
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/about",
+      "target_route": "/umrah-visa",
+      "matched_terms": [
+        "umrah",
+        "visa"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/about",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "from",
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/contact",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "from",
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/faq",
+      "target_route": "/umrah-visa",
+      "matched_terms": [
+        "umrah",
+        "visa"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/hajj-2027",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "from",
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/privacy",
+      "target_route": "/umrah-visa",
+      "matched_terms": [
+        "umrah",
+        "visa"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/privacy",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "city",
+        "from",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/refund-policy",
+      "target_route": "/umrah-visa",
+      "matched_terms": [
+        "umrah",
+        "visa"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/terms",
+      "target_route": "/umrah-visa",
+      "matched_terms": [
+        "umrah",
+        "visa"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/umrah-packages/from-[city]",
+      "target_route": "/umrah-packages/[slug]",
+      "matched_terms": [
+        "packages",
+        "slug",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/umrah-visa",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "from",
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/voucher/[token]",
+      "target_route": "/umrah-visa",
+      "matched_terms": [
+        "umrah",
+        "visa"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/voucher/[token]",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "city",
+        "from",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/ziyarat/[city]",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "city",
+        "from",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/supplier-flyers",
+      "matched_terms": [
+        "admin",
+        "flyers",
+        "supplier"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "city",
+        "from",
+        "packages"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/admin/studio",
+      "target_route": "/admin/supplier-flyers",
+      "matched_terms": [
+        "admin",
+        "flyers",
+        "supplier"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.75
+    },
+    {
+      "source_route": "/",
+      "target_route": "/ziyarat/[city]",
+      "matched_terms": [
+        "city",
+        "ziyarat"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/",
+      "target_route": "/hotels/[city]",
+      "matched_terms": [
+        "city",
+        "hotels"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/about",
+      "target_route": "/hajj-2027",
+      "matched_terms": [
+        "hajj"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/about",
+      "target_route": "/umrah-packages/[slug]",
+      "matched_terms": [
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/contact",
+      "target_route": "/umrah-packages/[slug]",
+      "matched_terms": [
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/faq",
+      "target_route": "/umrah-packages",
+      "matched_terms": [
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/faq",
+      "target_route": "/hajj-2027",
+      "matched_terms": [
+        "hajj"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/faq",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "from",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/hajj-2027",
+      "target_route": "/umrah-packages/[slug]",
+      "matched_terms": [
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/hotels/[city]",
+      "target_route": "/umrah-visa",
+      "matched_terms": [
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/hotels/[city]",
+      "target_route": "/umrah-packages/[slug]",
+      "matched_terms": [
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/privacy",
+      "target_route": "/hotels/[city]",
+      "matched_terms": [
+        "city",
+        "hotels"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/privacy",
+      "target_route": "/umrah-packages",
+      "matched_terms": [
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/privacy",
+      "target_route": "/contact",
+      "matched_terms": [
+        "contact"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/privacy",
+      "target_route": "/hajj-2027",
+      "matched_terms": [
+        "hajj"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/refund-policy",
+      "target_route": "/umrah-packages",
+      "matched_terms": [
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/refund-policy",
+      "target_route": "/hajj-2027",
+      "matched_terms": [
+        "hajj"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/refund-policy",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "from",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/terms",
+      "target_route": "/ziyarat",
+      "matched_terms": [
+        "ziyarat"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/terms",
+      "target_route": "/umrah-packages",
+      "matched_terms": [
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/terms",
+      "target_route": "/contact",
+      "matched_terms": [
+        "contact"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/terms",
+      "target_route": "/hajj-2027",
+      "matched_terms": [
+        "hajj"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/terms",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "from",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/umrah-packages",
+      "target_route": "/ziyarat/[city]",
+      "matched_terms": [
+        "city",
+        "ziyarat"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/umrah-packages",
+      "target_route": "/hotels/[city]",
+      "matched_terms": [
+        "city",
+        "hotels"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/umrah-packages",
+      "target_route": "/umrah-packages/[slug]",
+      "matched_terms": [
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/umrah-packages/[slug]",
+      "target_route": "/ziyarat/[city]",
+      "matched_terms": [
+        "city",
+        "ziyarat"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/umrah-packages/[slug]",
+      "target_route": "/hotels/[city]",
+      "matched_terms": [
+        "city",
+        "hotels"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/umrah-visa",
+      "target_route": "/umrah-packages/[slug]",
+      "matched_terms": [
+        "packages",
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/voucher/[token]",
+      "target_route": "/ziyarat",
+      "matched_terms": [
+        "ziyarat"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/voucher/[token]",
+      "target_route": "/ziyarat/[city]",
+      "matched_terms": [
+        "city",
+        "ziyarat"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/voucher/[token]",
+      "target_route": "/umrah-packages",
+      "matched_terms": [
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/ziyarat/[city]",
+      "target_route": "/umrah-packages",
+      "matched_terms": [
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/ziyarat/[city]",
+      "target_route": "/umrah-visa",
+      "matched_terms": [
+        "umrah"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/login",
+      "target_route": "/admin/desk",
+      "matched_terms": [
+        "admin",
+        "desk"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin",
+      "target_route": "/ziyarat",
+      "matched_terms": [
+        "ziyarat"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin",
+      "target_route": "/admin/applications/[id]",
+      "matched_terms": [
+        "admin",
+        "applications"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin",
+      "target_route": "/umrah-packages",
+      "matched_terms": [
+        "packages"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin",
+      "target_route": "/contact",
+      "matched_terms": [
+        "contact"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin",
+      "target_route": "/umrah-visa",
+      "matched_terms": [
+        "visa"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin",
+      "target_route": "/admin/applications/[id]/voucher",
+      "matched_terms": [
+        "admin",
+        "applications"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "from",
+        "packages"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications",
+      "target_route": "/admin/applications/[id]",
+      "matched_terms": [
+        "admin",
+        "applications"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications",
+      "target_route": "/admin/desk",
+      "matched_terms": [
+        "admin",
+        "desk"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications",
+      "target_route": "/admin/applications/[id]/voucher",
+      "matched_terms": [
+        "admin",
+        "applications"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]",
+      "target_route": "/admin/hotels",
+      "matched_terms": [
+        "admin",
+        "hotels"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]",
+      "target_route": "/admin/settings",
+      "matched_terms": [
+        "admin",
+        "settings"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]",
+      "target_route": "/hotels/[city]",
+      "matched_terms": [
+        "city",
+        "hotels"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]",
+      "target_route": "/admin/supplier-flyers",
+      "matched_terms": [
+        "admin",
+        "supplier"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]",
+      "target_route": "/admin/applications/[id]/voucher",
+      "matched_terms": [
+        "admin",
+        "applications"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "city",
+        "from"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]/voucher",
+      "target_route": "/ziyarat",
+      "matched_terms": [
+        "ziyarat"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]/voucher",
+      "target_route": "/ziyarat/[city]",
+      "matched_terms": [
+        "city",
+        "ziyarat"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]/voucher",
+      "target_route": "/admin/applications/[id]",
+      "matched_terms": [
+        "admin",
+        "applications"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]/voucher",
+      "target_route": "/admin/ziyarat",
+      "matched_terms": [
+        "admin",
+        "ziyarat"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]/voucher",
+      "target_route": "/admin/applications",
+      "matched_terms": [
+        "admin",
+        "applications"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]/voucher",
+      "target_route": "/umrah-visa",
+      "matched_terms": [
+        "visa"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]/voucher",
+      "target_route": "/admin/visa",
+      "matched_terms": [
+        "admin",
+        "visa"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/applications/[id]/voucher",
+      "target_route": "/umrah-packages/from-[city]",
+      "matched_terms": [
+        "city",
+        "from"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/settings",
+      "matched_terms": [
+        "admin",
+        "settings"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/studio",
+      "matched_terms": [
+        "admin",
+        "studio"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/umrah-packages",
+      "matched_terms": [
+        "packages"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/distribution",
+      "matched_terms": [
+        "admin",
+        "distribution"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/post-lookup",
+      "matched_terms": [
+        "admin",
+        "post"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/contact",
+      "matched_terms": [
+        "contact"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/social",
+      "matched_terms": [
+        "admin",
+        "social"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/campaigns",
+      "target_route": "/admin/outreach",
+      "matched_terms": [
+        "admin",
+        "outreach"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/catalog",
+      "target_route": "/admin/hotels",
+      "matched_terms": [
+        "admin",
+        "hotels"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/catalog",
+      "target_route": "/hajj-2027",
+      "matched_terms": [
+        "hajj"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/catalog",
+      "target_route": "/admin/supplier-flyers",
+      "matched_terms": [
+        "admin",
+        "supplier"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/catalog",
+      "target_route": "/umrah-visa",
+      "matched_terms": [
+        "visa"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": true,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/catalog",
+      "target_route": "/admin/visa",
+      "matched_terms": [
+        "admin",
+        "visa"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/content",
+      "target_route": "/admin/catalog",
+      "matched_terms": [
+        "admin",
+        "catalog"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/desk",
+      "target_route": "/admin/settings",
+      "matched_terms": [
+        "admin",
+        "settings"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/desk",
+      "target_route": "/admin/studio",
+      "matched_terms": [
+        "admin",
+        "studio"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/desk",
+      "target_route": "/admin/applications/[id]",
+      "matched_terms": [
+        "admin",
+        "applications"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    },
+    {
+      "source_route": "/admin/desk",
+      "target_route": "/admin/applications",
+      "matched_terms": [
+        "admin",
+        "applications"
+      ],
+      "is_orphan_target": false,
+      "is_money_page_target": false,
+      "priority_score": 0.5
+    }
+  ],
+  "jev_api_status": "partial_or_error: HTTP 401 from https://openrouter.ai/api/alpha/decisions: {\"error\":{\"message\":\"Missing Authentication header\",\"code\":401}}",
+  "jev_decisions": [],
+  "jev_full_crawler_command": "uv run \"C:\\Users\\ubaid\\.gemini\\config\\skills\\nextjs-business-seo-geo-auditor\\scripts\\jev_internal_links\\scripts\\run.py\" http://127.0.0.1:3124"
+}

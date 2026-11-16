@@ -178,7 +178,7 @@ export function MarketingSections({
   const activeFaqs = resolveHomeFaqs(faqs)
 
   return (
-    <div className="flex flex-col gap-24 py-16 bg-background">
+    <div className="flex w-full min-w-0 flex-col gap-24 bg-background py-16">
       {/* ======================================================== */}
       {/* 0. AT-A-GLANCE HARAMAIN SERVICE & GATEWAY TABLE (GEO)     */}
       {/* ======================================================== */}

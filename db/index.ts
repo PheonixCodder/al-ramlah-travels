@@ -108,10 +108,8 @@ function getOrCreateGlobalDatabase(): ManagedDatabaseInstance {
   }
 
   const created = createDatabaseClient(url)
-  if (process.env.NODE_ENV !== "production") {
-    globalForDb.__alRamlahManagedDb = created
-    globalForDb.__alRamlahManagedDbUrl = url
-  }
+  globalForDb.__alRamlahManagedDb = created
+  globalForDb.__alRamlahManagedDbUrl = url
   return created
 }
 

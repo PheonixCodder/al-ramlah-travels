@@ -687,7 +687,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                   className={cn(
                     "text-[10px] font-semibold cursor-pointer select-none",
                     s.isActive
-                      ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                      ? "bg-emerald-800 text-white hover:bg-emerald-900"
                       : "bg-muted text-muted-foreground hover:bg-muted/80"
                   )}
                   onClick={() => handleToggleActive(s)}

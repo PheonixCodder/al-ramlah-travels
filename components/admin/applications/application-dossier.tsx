@@ -242,6 +242,18 @@ export function ApplicationDossier({
           </span>
           {hasAttribution && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+              {application.utmSource && (
+                <Badge
+                  variant="outline"
+                  className="border-emerald-700/30 bg-emerald-50/70 font-mono text-[11px] font-semibold text-emerald-900"
+                >
+                  {`${application.utmSource.charAt(0).toUpperCase()}${application.utmSource.slice(1)}${
+                    application.utmMedium
+                      ? ` ${application.utmMedium.toUpperCase()}`
+                      : ""
+                  }`}
+                </Badge>
+              )}
               {application.utmCampaign && (
                 <Badge
                   variant="outline"

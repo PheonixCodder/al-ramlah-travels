@@ -43,13 +43,21 @@ const srcImgPkg = path.join(WEB_ROOT, "node_modules", "@img")
 const dstImgPkg = path.join(STANDALONE_DIR, "node_modules", "@img")
 const dstLibvipsWin = path.join(
   dstImgPkg,
+  "sharp-win32-x64",
+  "lib",
+  "libvips-42.dll"
+)
+const dstLibvipsAltWin = path.join(
+  dstImgPkg,
   "sharp-libvips-win32-x64",
   "lib",
   "libvips-42.dll"
 )
 if (
   fs.existsSync(srcImgPkg) &&
-  (process.platform === "win32" ? !fs.existsSync(dstLibvipsWin) : !fs.existsSync(dstImgPkg))
+  (process.platform === "win32"
+    ? !fs.existsSync(dstLibvipsWin) && !fs.existsSync(dstLibvipsAltWin)
+    : !fs.existsSync(dstImgPkg))
 ) {
   fs.cpSync(srcImgPkg, dstImgPkg, { recursive: true, force: true })
 }
@@ -60,30 +68,41 @@ if (
   process.env.AUDIT_E2E_LOCAL === "1" &&
   (dbUrl.includes("127.0.0.1") || dbUrl.includes("localhost"))
 ) {
-  const port = process.env.PORT || "3123"
-  const serverSrc = fs.readFileSync(STANDALONE_SERVER, "utf8")
-  const emptyAllowed = '"allowedOrigins":[]'
-  if (serverSrc.includes(emptyAllowed)) {
-    const patched = serverSrc.replace(
-      emptyAllowed,
-      `"allowedOrigins":["127.0.0.1:${port}","localhost:${port}","127.0.0.1","localhost"]`
-    )
-    fs.writeFileSync(STANDALONE_SERVER, patched, "utf8")
-  }
+  const patchedMarkerPath = path.join(STANDALONE_DIR, ".e2e-patched-build-id")
+  const patchedBuildId = fs.existsSync(patchedMarkerPath)
+    ? fs.readFileSync(patchedMarkerPath, "utf8").trim()
+    : ""
 
-  const serverChunksDir = path.join(STANDALONE_DIR, ".next", "server", "chunks")
-  if (fs.existsSync(serverChunksDir)) {
-    for (const name of fs.readdirSync(serverChunksDir)) {
-      if (!name.endsWith(".js")) continue
-      const chunkFile = path.join(serverChunksDir, name)
-      const chunkText = fs.readFileSync(chunkFile, "utf8")
-      if (chunkText.includes("upgrade-insecure-requests")) {
-        fs.writeFileSync(
-          chunkFile,
-          chunkText.replace(/["']upgrade-insecure-requests["']/g, '""'),
-          "utf8"
-        )
+  if (!currentBuildId || currentBuildId !== patchedBuildId) {
+    const port = process.env.PORT || "3123"
+    const serverSrc = fs.readFileSync(STANDALONE_SERVER, "utf8")
+    const emptyAllowed = '"allowedOrigins":[]'
+    if (serverSrc.includes(emptyAllowed)) {
+      const patched = serverSrc.replace(
+        emptyAllowed,
+        `"allowedOrigins":["127.0.0.1:${port}","localhost:${port}","127.0.0.1","localhost"]`
+      )
+      fs.writeFileSync(STANDALONE_SERVER, patched, "utf8")
+    }
+
+    const serverChunksDir = path.join(STANDALONE_DIR, ".next", "server", "chunks")
+    if (fs.existsSync(serverChunksDir)) {
+      for (const name of fs.readdirSync(serverChunksDir)) {
+        if (!name.endsWith(".js")) continue
+        const chunkFile = path.join(serverChunksDir, name)
+        const chunkText = fs.readFileSync(chunkFile, "utf8")
+        if (chunkText.includes("upgrade-insecure-requests")) {
+          fs.writeFileSync(
+            chunkFile,
+            chunkText.replace(/["']upgrade-insecure-requests["']/g, '""'),
+            "utf8"
+          )
+        }
       }
+    }
+
+    if (currentBuildId) {
+      fs.writeFileSync(patchedMarkerPath, currentBuildId, "utf8")
     }
   }
 

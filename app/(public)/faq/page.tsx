@@ -72,19 +72,19 @@ export default async function FaqPage() {
           </p>
 
           {/* Category Jump Pills */}
-          <nav
-            aria-label="FAQ categories"
-            className="flex flex-wrap items-center gap-2.5 pt-2"
-          >
-            {sections.map((section) => (
-              <a
-                key={section.category}
-                href={`#faq-cat-${section.category}`}
-                className="inline-flex min-h-8 items-center rounded-full border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold text-[#0A3622] hover:border-[#7A5C1E] hover:text-[#7A5C1E] transition-colors"
-              >
-                {section.category.toUpperCase()} ({section.items.length})
-              </a>
-            ))}
+          <nav aria-label="FAQ categories" className="pt-2">
+            <ul className="flex flex-wrap items-center gap-2.5">
+              {sections.map((section) => (
+                <li key={section.category}>
+                  <a
+                    href={`#faq-cat-${section.category}`}
+                    className="inline-flex min-h-8 items-center rounded-full border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold text-[#0A3622] hover:border-[#7A5C1E] hover:text-[#7A5C1E] transition-colors"
+                  >
+                    {section.category.toUpperCase()} ({section.items.length})
+                  </a>
+                </li>
+              ))}
+            </ul>
           </nav>
         </header>
 
@@ -99,7 +99,7 @@ export default async function FaqPage() {
           >
             Quick-Reference Haramain Booking Rules
           </h2>
-          <div className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
+          <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
             <table className="w-full text-left text-xs sm:text-sm border-collapse">
               <caption className="sr-only">
                 Summary of Saudi Umrah visa tiers, Makkah entry airport rules, infant allotments, and Hajj 2027 pre-registration status

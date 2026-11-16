@@ -1,8 +1,11 @@
 "use client"
 
 import React from "react"
-import type * as schema from "@/db/schema"
-import { type TransportSegmentConfig } from "./planner-context"
+import {
+  type PlannerTransportSectorItem,
+  type PlannerVehicleItem,
+  type TransportSegmentConfig,
+} from "./planner-context"
 import { VehicleCapacityPill } from "./vehicle-capacity-pill"
 import { PlannerDatePicker, formatDisplayDate } from "./planner-date-picker"
 import { getTodayPktIso } from "@/components/public/public-utils"
@@ -21,8 +24,8 @@ import { cn } from "@/lib/utils"
 
 interface SegmentCardProps {
   segment: TransportSegmentConfig
-  sector: typeof schema.transportSectors.$inferSelect | undefined
-  vehicles: (typeof schema.vehicles.$inferSelect)[]
+  sector: PlannerTransportSectorItem | undefined
+  vehicles: PlannerVehicleItem[]
   bedAndSeatCount: number
   useSameVehicle: boolean
   presetMode?: string

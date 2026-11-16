@@ -11,12 +11,12 @@ const Image = (
     ? (NextImage as { default: React.ComponentType<ImageProps> }).default
     : NextImage
 ) as React.ComponentType<ImageProps>
-import type * as schema from "@/db/schema"
+import type { PlannerHotelItem } from "./planner-context"
 import { Star, Footprints, Bus, Check, Sparkles, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface HotelCardProps {
-  hotel: typeof schema.hotels.$inferSelect
+  hotel: PlannerHotelItem
   isSelected: boolean
   onSelect: () => void
 }

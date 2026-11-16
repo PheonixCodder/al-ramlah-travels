@@ -2,15 +2,20 @@
 
 import * as React from "react"
 import { useMemo, useState } from "react"
+import dynamic from "next/dynamic"
 import Image from "next/image"
 import Link from "next/link"
+import type { BookingModalPackage } from "./group-booking-modal"
 import {
-  type BookingModalPackage,
-  GroupBookingModal,
-} from "./group-booking-modal"
-import { getTodayPktIso, toWaMeUrl } from "@/components/public/public-utils"
+  formatPkr,
+  getTodayPktIso,
+  toWaMeUrl,
+} from "@/components/public/public-utils"
+import { ArabicText } from "@/components/public/arabic-text"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
+  ArrowRight,
   Calendar,
   Plane,
   Building2,
@@ -20,7 +25,12 @@ import {
   Sparkles,
   MessageCircle,
   Compass,
+  MapPin,
 } from "lucide-react"
+
+const LazyGroupBookingModal = dynamic(() =>
+  import("./group-booking-modal").then((mod) => mod.GroupBookingModal)
+)
 
 export interface PublicGroupPackageItem extends BookingModalPackage {
   slug: string
@@ -53,6 +63,16 @@ interface GroupPackagesSectionProps {
   agencyWhatsapp?: string
 }
 
+const CITY_GATEWAY_SPOKES = [
+  { label: "From Lahore (LHE)", href: "/umrah-packages/from-lahore" },
+  { label: "From Karachi (KHI)", href: "/umrah-packages/from-karachi" },
+  { label: "From Islamabad (ISB)", href: "/umrah-packages/from-islamabad" },
+] as const
+
+function formatTierPriceOrOnRequest(val: number | null | undefined): string {
+  return typeof val === "number" && val > 0 ? formatPkr(val) : "On Request"
+}
+
 export function GroupPackagesSection({
   packages = [],
   agencyWhatsapp,
@@ -76,6 +96,11 @@ export function GroupPackagesSection({
 
   const [selectedTier, setSelectedTier] = useState<string>("all")
   const [selectedCity, setSelectedCity] = useState<string>("all")
+  const [modalTarget, setModalTarget] = useState<{
+    pkg: PublicGroupPackageItem
+    selectedBatchId?: string
+  } | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
 
   const citiesMap = new Map<string, string>()
   activePackages.forEach((p) => {
@@ -117,27 +142,40 @@ export function GroupPackagesSection({
               </h2>
 
               <p className="text-xs sm:text-sm text-white/85 leading-relaxed">
-                Our team is currently finalizing upcoming seasonal flight blocks and luxury 5-star hotel allotments in Makkah and Madinah with our airline and hospitality partners. Use our Custom Umrah Journey Planner above or message our Pilgrim Concierge on WhatsApp for bespoke dates.
+                Our team is currently finalizing upcoming seasonal flight blocks and luxury 5-star hotel allotments in Makkah and Madinah with our airline and hospitality partners. Explore our Umrah Packages Hub, city gateways, or message our Pilgrim Concierge on WhatsApp for bespoke dates.
               </p>
 
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                 <Link
-                  href="/#journey-builder"
-                  className="inline-flex items-center gap-2 rounded-xl bg-gold hover:bg-gold/90 text-primary px-5 py-2.5 text-xs font-bold transition-all shadow-md"
+                  href="/umrah-packages"
+                  className="inline-flex min-h-9 items-center gap-2 rounded-xl bg-gold hover:bg-gold/90 text-primary px-5 py-2.5 text-xs font-bold transition-all shadow-md"
                 >
                   <Compass className="size-4" />
-                  <span>Plan Custom Journey Above</span>
+                  <span>Explore All Umrah Packages</span>
                 </Link>
 
                 <a
                   href={waUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 text-xs font-semibold backdrop-blur-xs transition-all"
+                  className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 text-xs font-semibold backdrop-blur-xs transition-all"
                 >
                   <MessageCircle className="size-4 text-emerald-400" />
                   <span>Message Pilgrim Concierge</span>
                 </a>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                {CITY_GATEWAY_SPOKES.map((spoke) => (
+                  <Link
+                    key={spoke.href}
+                    href={spoke.href}
+                    className="inline-flex min-h-6 items-center gap-1 rounded-full border border-gold/30 bg-white/5 px-3 py-1 text-xs text-white/85 transition-colors hover:border-gold hover:text-gold"
+                  >
+                    <MapPin className="size-3 text-gold" />
+                    <span>{spoke.label}</span>
+                  </Link>
+                ))}
               </div>
             </div>
           </div>
@@ -148,8 +186,8 @@ export function GroupPackagesSection({
 
   return (
     <section id="group-packages" className="py-20 bg-background scroll-mt-16">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-12">
-        {/* Section Header */}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-10">
+        {/* Section Header + Crawlable Hub & City Gateway Links */}
         <div className="text-center max-w-3xl mx-auto flex flex-col gap-3">
           <Badge className="self-center bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
             Pre-Built Fixed Departures
@@ -158,57 +196,56 @@ export function GroupPackagesSection({
             Curated Group Umrah Packages
           </h2>
           <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-            Experience the companionship of fellow pilgrims, guided religious scholars, guaranteed group flight allotments, and luxury Haram courtyard hotels at fixed rates.
+            Experience the companionship of fellow pilgrims, guided religious scholars, guaranteed group flight allotments, and luxury Haram courtyard hotels at fixed PKR rates.
           </p>
+
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+            <Link
+              href="/umrah-packages"
+              className="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+            >
+              <span>Compare All Umrah Packages</span>
+              <ArrowRight className="size-3.5" />
+            </Link>
+            {CITY_GATEWAY_SPOKES.map((spoke) => (
+              <Link
+                key={spoke.href}
+                href={spoke.href}
+                className="inline-flex min-h-7 items-center gap-1 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-foreground transition-colors hover:border-gold hover:text-primary"
+              >
+                <MapPin className="size-3 text-gold-text" />
+                <span>{spoke.label}</span>
+              </Link>
+            ))}
+          </div>
         </div>
 
-        {/* Filter Controls */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl border border-border bg-card p-4 shadow-xs">
+        {/* Filter Controls (`SEO-005`: includes bronze & economy support) */}
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-4 rounded-2xl border border-border bg-card p-4 shadow-xs">
           <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-muted p-1 text-xs">
-            <button
-              type="button"
-              onClick={() => setSelectedTier("all")}
-              className={`rounded-lg px-3.5 py-1.5 font-medium transition-colors ${
-                selectedTier === "all"
-                  ? "bg-card text-foreground shadow-xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              All Tiers ({activePackages.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedTier("vip_5star")}
-              className={`rounded-lg px-3.5 py-1.5 font-medium transition-colors ${
-                selectedTier === "vip_5star"
-                  ? "bg-card text-amber-900 shadow-xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              VIP 5-Star
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedTier("gold")}
-              className={`rounded-lg px-3.5 py-1.5 font-medium transition-colors ${
-                selectedTier === "gold"
-                  ? "bg-card text-emerald-900 shadow-xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Gold Luxury
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedTier("silver")}
-              className={`rounded-lg px-3.5 py-1.5 font-medium transition-colors ${
-                selectedTier === "silver"
-                  ? "bg-card text-foreground shadow-xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Silver Premium
-            </button>
+            {(
+              [
+                { key: "all", label: `All Tiers (${activePackages.length})` },
+                { key: "vip_5star", label: "VIP 5-Star" },
+                { key: "gold", label: "Gold Luxury" },
+                { key: "silver", label: "Silver Premium" },
+                { key: "bronze", label: "Bronze Value" },
+                { key: "economy", label: "Economy" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setSelectedTier(tab.key)}
+                className={`min-h-7 rounded-lg px-3 py-1.5 font-medium transition-colors ${
+                  selectedTier === tab.key
+                    ? "bg-card text-foreground shadow-xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
           <div className="flex items-center gap-2 text-xs">
@@ -257,15 +294,31 @@ export function GroupPackagesSection({
                   )
                 : 0
 
+            const effectiveSharingPrice =
+              primaryBatch?.sharingPriceOverridePkr !== null &&
+              primaryBatch?.sharingPriceOverridePkr !== undefined
+                ? primaryBatch.sharingPriceOverridePkr
+                : pkg.sharingPricePkr !== undefined
+                  ? pkg.sharingPricePkr
+                  : pkg.quadPricePkr
+            const effectiveQuadPrice =
+              primaryBatch?.quadPriceOverridePkr ?? pkg.quadPricePkr
+            const effectiveTriplePrice =
+              primaryBatch?.triplePriceOverridePkr ?? pkg.triplePricePkr
+            const effectiveDoublePrice =
+              primaryBatch?.doublePriceOverridePkr ?? pkg.doublePricePkr
+
+            const packageHref = `/umrah-packages/${pkg.slug}`
+
             return (
               <div
                 key={pkg.id}
                 className="flex flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all hover:shadow-md hover:border-gold/60"
               >
                 <div>
-                  {/* Package Banner Header */}
-                  <div className="relative h-64 sm:h-72 w-full bg-muted overflow-hidden">
-                    {pkg.bannerUrl && (
+                  {/* Package Banner Header with Branded Haramain Geometric Fallback (`SEO-030`) */}
+                  <div className="relative h-64 sm:h-72 w-full bg-[#0A3622] overflow-hidden">
+                    {pkg.bannerUrl ? (
                       <Image
                         src={pkg.bannerUrl}
                         alt={pkg.title}
@@ -273,6 +326,18 @@ export function GroupPackagesSection({
                         className="object-cover object-top"
                         sizes="(max-width: 1024px) 100vw, 50vw"
                       />
+                    ) : (
+                      <div
+                        aria-hidden="true"
+                        className="absolute inset-0 bg-gradient-to-br from-[#0A3622] via-[#0F5132] to-[#062014]"
+                      >
+                        <div className="bg-haramain-dark-pattern absolute inset-0 opacity-45" />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-20">
+                          <ArabicText className="text-4xl font-bold text-gold">
+                            لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ
+                          </ArabicText>
+                        </div>
+                      </div>
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/20" />
 
@@ -303,7 +368,12 @@ export function GroupPackagesSection({
 
                     <div className="absolute bottom-3 left-4 right-4 text-white">
                       <h3 className="font-display text-xl sm:text-2xl font-bold leading-snug">
-                        {pkg.title}
+                        <Link
+                          href={packageHref}
+                          className="inline-flex min-h-6 items-center hover:text-gold transition-colors"
+                        >
+                          {pkg.title}
+                        </Link>
                       </h3>
                       {primaryBatch?.departureCity && (
                         <div className="flex items-center gap-2 text-xs text-white/80 mt-1">
@@ -326,10 +396,13 @@ export function GroupPackagesSection({
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 rounded-xl bg-muted/20 p-3.5 border border-border/70 text-xs">
                         {pkg.makkahHotel && (
                           <div className="flex flex-col gap-1">
-                            <span className="font-semibold text-emerald-800 flex items-center gap-1">
+                            <Link
+                              href="/hotels/makkah"
+                              className="inline-flex min-h-6 items-center gap-1 font-semibold text-emerald-800 hover:underline"
+                            >
                               <Building2 className="size-3.5" />
-                              Makkah Al-Mukarramah
-                            </span>
+                              <span>Makkah Al-Mukarramah</span>
+                            </Link>
                             <p className="font-medium text-foreground line-clamp-1">
                               {pkg.makkahHotel.name}
                             </p>
@@ -342,10 +415,13 @@ export function GroupPackagesSection({
 
                         {pkg.madinahHotel && (
                           <div className="flex flex-col gap-1">
-                            <span className="font-semibold text-amber-800 flex items-center gap-1">
+                            <Link
+                              href="/hotels/madinah"
+                              className="inline-flex min-h-6 items-center gap-1 font-semibold text-amber-800 hover:underline"
+                            >
                               <Building2 className="size-3.5" />
-                              Madinah Al-Munawwarah
-                            </span>
+                              <span>Madinah Al-Munawwarah</span>
+                            </Link>
                             <p className="font-medium text-foreground line-clamp-1">
                               {pkg.madinahHotel.name}
                             </p>
@@ -432,6 +508,7 @@ export function GroupPackagesSection({
                       </div>
                     )}
 
+                    {/* Multi-Hotel Options (`OD-09b`: 0-tier renders "On Request", never "PKR 0") */}
                     {pkg.multiHotelOptions &&
                       pkg.multiHotelOptions.length > 0 && (
                         <div className="flex flex-col gap-1.5">
@@ -439,25 +516,44 @@ export function GroupPackagesSection({
                             Selectable Hotel Tier Options (Choose in Booking Modal):
                           </span>
                           <div className="flex flex-col gap-1.5">
-                            {pkg.multiHotelOptions.map((opt, i) => (
-                              <div
-                                key={opt.pkgCode || i}
-                                className="flex items-center justify-between rounded-lg border border-border/60 bg-card p-2 text-xs gap-2"
-                              >
-                                <div>
-                                  <span className="font-bold text-foreground">
-                                    {opt.label}
-                                  </span>
-                                  <span className="block text-[10px] text-muted-foreground">
-                                    {opt.makkahHotelName} ({opt.makkahDistance}) ·{" "}
-                                    {opt.madinahHotelName} ({opt.madinahDistance})
+                            {pkg.multiHotelOptions.map((opt, i) => {
+                              const positivePrices = [
+                                opt.sharingPricePkr,
+                                opt.quadPricePkr,
+                                opt.triplePricePkr,
+                                opt.doublePricePkr,
+                              ].filter(
+                                (n): n is number =>
+                                  typeof n === "number" && n > 0
+                              )
+                              const lowestPositive =
+                                positivePrices.length > 0
+                                  ? Math.min(...positivePrices)
+                                  : 0
+                              return (
+                                <div
+                                  key={opt.pkgCode || i}
+                                  className="flex items-center justify-between rounded-lg border border-border/60 bg-card p-2 text-xs gap-2"
+                                >
+                                  <div>
+                                    <span className="font-bold text-foreground">
+                                      {opt.label}
+                                    </span>
+                                    <span className="block text-[10px] text-muted-foreground">
+                                      {opt.makkahHotelName} ({opt.makkahDistance}) ·{" "}
+                                      {opt.madinahHotelName} ({opt.madinahDistance})
+                                    </span>
+                                  </div>
+                                  <span className="font-mono tabular-nums text-xs font-bold text-emerald-800 shrink-0">
+                                    {opt.quadPricePkr > 0
+                                      ? `From ${formatPkr(opt.quadPricePkr)}`
+                                      : lowestPositive > 0
+                                        ? `From ${formatPkr(lowestPositive)}`
+                                        : "On Request"}
                                   </span>
                                 </div>
-                                <span className="font-mono tabular-nums text-xs font-bold text-emerald-800 shrink-0">
-                                  From PKR {opt.quadPricePkr.toLocaleString()}
-                                </span>
-                              </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         </div>
                       )}
@@ -495,7 +591,7 @@ export function GroupPackagesSection({
                       </div>
                     )}
 
-                    {/* Per-Person Pricing Matrix (4 Tiers) */}
+                    {/* Per-Person Pricing Matrix (4 Tiers — `OD-09b` 0 = "On Request") */}
                     <div className="flex flex-col gap-1.5">
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                         <div className="rounded-xl border border-border/80 bg-muted/15 p-2">
@@ -503,12 +599,7 @@ export function GroupPackagesSection({
                             Sharing Bed
                           </span>
                           <span className="font-mono text-xs sm:text-sm font-extrabold text-foreground tabular-nums">
-                            PKR{" "}
-                            {(
-                              primaryBatch?.sharingPriceOverridePkr ??
-                              pkg.sharingPricePkr ??
-                              pkg.quadPricePkr
-                            ).toLocaleString()}
+                            {formatTierPriceOrOnRequest(effectiveSharingPrice)}
                           </span>
                         </div>
                         <div className="rounded-xl border border-border/80 bg-muted/15 p-2">
@@ -516,11 +607,7 @@ export function GroupPackagesSection({
                             Quad (4-Bed)
                           </span>
                           <span className="font-mono text-xs sm:text-sm font-extrabold text-foreground tabular-nums">
-                            PKR{" "}
-                            {(
-                              primaryBatch?.quadPriceOverridePkr ??
-                              pkg.quadPricePkr
-                            ).toLocaleString()}
+                            {formatTierPriceOrOnRequest(effectiveQuadPrice)}
                           </span>
                         </div>
                         <div className="rounded-xl border border-border/80 bg-muted/15 p-2">
@@ -528,11 +615,7 @@ export function GroupPackagesSection({
                             Triple (3-Bed)
                           </span>
                           <span className="font-mono text-xs sm:text-sm font-extrabold text-foreground tabular-nums">
-                            PKR{" "}
-                            {(
-                              primaryBatch?.triplePriceOverridePkr ??
-                              pkg.triplePricePkr
-                            ).toLocaleString()}
+                            {formatTierPriceOrOnRequest(effectiveTriplePrice)}
                           </span>
                         </div>
                         <div className="rounded-xl border border-border/80 bg-muted/15 p-2">
@@ -540,40 +623,64 @@ export function GroupPackagesSection({
                             Double (2-Bed)
                           </span>
                           <span className="font-mono text-xs sm:text-sm font-extrabold text-foreground tabular-nums">
-                            PKR{" "}
-                            {(
-                              primaryBatch?.doublePriceOverridePkr ??
-                              pkg.doublePricePkr
-                            ).toLocaleString()}
+                            {formatTierPriceOrOnRequest(effectiveDoublePrice)}
                           </span>
                         </div>
                       </div>
-                      {pkg.infantPricePkr !== undefined && pkg.infantPricePkr > 0 && (
-                        <div className="text-right text-[10px] text-muted-foreground tabular-nums">
-                          Infants (&lt;2 yrs):{" "}
-                          <strong className="text-foreground">
-                            PKR {pkg.infantPricePkr.toLocaleString()}
-                          </strong>{" "}
-                          (Includes Umrah Visa &amp; Air Ticket; 0 Beds/Seats)
-                        </div>
-                      )}
+                      {pkg.infantPricePkr !== undefined &&
+                        pkg.infantPricePkr > 0 && (
+                          <div className="text-right text-[10px] text-muted-foreground tabular-nums">
+                            Infants (&lt;2 yrs):{" "}
+                            <strong className="text-foreground">
+                              {formatPkr(pkg.infantPricePkr)}
+                            </strong>{" "}
+                            (Includes Umrah Visa &amp; Air Ticket; 0 Beds/Seats)
+                          </div>
+                        )}
                     </div>
                   </div>
                 </div>
 
                 {/* Card Footer CTA */}
-                <div className="border-t border-border p-4 bg-muted/10 flex flex-col gap-2.5">
-                  <GroupBookingModal
-                    pkg={pkg}
-                    selectedBatchId={primaryBatch?.id}
-                    agencyWhatsapp={agencyWhatsapp}
-                  />
+                <div className="border-t border-border p-4 bg-muted/10 flex flex-col gap-2.5 sm:flex-row sm:items-center">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setModalTarget({
+                        pkg,
+                        selectedBatchId: primaryBatch?.id,
+                      })
+                      setModalOpen(true)
+                    }}
+                    className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs sm:text-sm"
+                  >
+                    Book Package Seats
+                  </Button>
+                  <Link
+                    href={packageHref}
+                    className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-gold hover:text-primary"
+                  >
+                    <span>View Full Itinerary &amp; Dates</span>
+                    <ArrowRight className="size-3.5 text-gold-text" />
+                  </Link>
                 </div>
               </div>
             )
           })}
         </div>
       </div>
+
+      {modalTarget && (
+        <LazyGroupBookingModal
+          key={`${modalTarget.pkg.id}-${modalTarget.selectedBatchId ?? "default"}`}
+          pkg={modalTarget.pkg}
+          selectedBatchId={modalTarget.selectedBatchId}
+          agencyWhatsapp={agencyWhatsapp}
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          hideTrigger
+        />
+      )}
     </section>
   )
 }

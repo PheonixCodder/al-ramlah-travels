@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -18,13 +18,19 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { submitGroupBookingApplication } from "@/app/actions/applications"
-import { getTodayPktIso, toWaMeUrl } from "@/components/public/public-utils"
+import {
+  formatPkr,
+  getTodayPktIso,
+  toWaMeUrl,
+} from "@/components/public/public-utils"
+import { readStoredAttribution } from "@/lib/seo/utm"
 import {
   CheckCircle2,
   AlertCircle,
   Loader2,
   MessageCircle,
   Building2,
+  Search,
 } from "lucide-react"
 import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
 
@@ -73,11 +79,14 @@ export interface BookingModalPackage {
   }[]
 }
 
-interface GroupBookingModalProps {
+export interface GroupBookingModalProps {
   pkg: BookingModalPackage
   selectedBatchId?: string
   trigger?: React.ReactNode
   agencyWhatsapp?: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  hideTrigger?: boolean
 }
 
 function createSubmissionKey(prefix: string): string {
@@ -87,13 +96,43 @@ function createSubmissionKey(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
 }
 
+function formatTierOrOnRequest(price: number): string {
+  return price > 0 ? formatPkr(price) : "On Request"
+}
+
+function getLowestPositiveOptionPrice(opt: BookingModalHotelOption): number {
+  const positives = [
+    opt.sharingPricePkr,
+    opt.quadPricePkr,
+    opt.triplePricePkr,
+    opt.doublePricePkr,
+  ].filter((n) => typeof n === "number" && n > 0)
+  return positives.length > 0 ? Math.min(...positives) : 0
+}
+
 export function GroupBookingModal({
   pkg,
   selectedBatchId,
   trigger,
   agencyWhatsapp = DEFAULT_COMPANY_INFO.primaryWhatsapp,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  hideTrigger = false,
 }: GroupBookingModalProps) {
-  const [open, setOpen] = useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+  const isControlled = controlledOpen !== undefined
+  const open = isControlled ? controlledOpen : uncontrolledOpen
+
+  const setOpen = React.useCallback(
+    (nextOpen: boolean) => {
+      if (!isControlled) {
+        setUncontrolledOpen(nextOpen)
+      }
+      controlledOnOpenChange?.(nextOpen)
+    },
+    [controlledOnOpenChange, isControlled]
+  )
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -125,6 +164,20 @@ export function GroupBookingModal({
       : (availableBatches[0]?.id ?? "")
   )
 
+  useEffect(() => {
+    if (
+      selectedBatchId &&
+      availableBatches.some((b) => b.id === selectedBatchId)
+    ) {
+      setBatchId(selectedBatchId)
+    } else if (
+      availableBatches.length > 0 &&
+      !availableBatches.some((b) => b.id === batchId)
+    ) {
+      setBatchId(availableBatches[0]!.id)
+    }
+  }, [availableBatches, batchId, selectedBatchId])
+
   const [selectedHotelOptionCode, setSelectedHotelOptionCode] =
     useState<string>("")
   const [roomType, setRoomType] = useState<
@@ -144,7 +197,8 @@ export function GroupBookingModal({
   const [customerEmail, setCustomerEmail] = useState("")
   const [specialRequests, setSpecialRequests] = useState("")
 
-  const activeBatch = availableBatches.find((d) => d.id === batchId) ?? availableBatches[0]
+  const activeBatch =
+    availableBatches.find((d) => d.id === batchId) ?? availableBatches[0]
   const remainingSeats = activeBatch
     ? activeBatch.totalSeats - activeBatch.bookedSeats
     : 0
@@ -162,20 +216,47 @@ export function GroupBookingModal({
     [pkg.multiHotelOptions, selectedHotelOptionCode]
   )
 
+  // OD-09b: Preserve 0-value tiers as 0 ("On Request") instead of masking with quadPricePkr
   const sharingTierRate = matchedHotelOption
-    ? (matchedHotelOption.sharingPricePkr ?? matchedHotelOption.quadPricePkr)
-    : (activeBatch?.sharingPriceOverridePkr ??
-      pkg.sharingPricePkr ??
-      pkg.quadPricePkr)
+    ? matchedHotelOption.sharingPricePkr
+    : activeBatch?.sharingPriceOverridePkr !== null &&
+        activeBatch?.sharingPriceOverridePkr !== undefined
+      ? activeBatch.sharingPriceOverridePkr
+      : pkg.sharingPricePkr !== undefined
+        ? pkg.sharingPricePkr
+        : pkg.quadPricePkr
+
   const quadTierRate = matchedHotelOption
     ? matchedHotelOption.quadPricePkr
     : (activeBatch?.quadPriceOverridePkr ?? pkg.quadPricePkr)
+
   const tripleTierRate = matchedHotelOption
     ? matchedHotelOption.triplePricePkr
     : (activeBatch?.triplePriceOverridePkr ?? pkg.triplePricePkr)
+
   const doubleTierRate = matchedHotelOption
     ? matchedHotelOption.doublePricePkr
     : (activeBatch?.doublePriceOverridePkr ?? pkg.doublePricePkr)
+
+  useEffect(() => {
+    const ratesByTier: Record<
+      "quad" | "sharing" | "triple" | "double",
+      number
+    > = {
+      quad: quadTierRate,
+      sharing: sharingTierRate,
+      triple: tripleTierRate,
+      double: doubleTierRate,
+    }
+    if (ratesByTier[roomType] <= 0) {
+      const firstPositive = (
+        ["quad", "sharing", "triple", "double"] as const
+      ).find((key) => ratesByTier[key] > 0)
+      if (firstPositive) {
+        setRoomType(firstPositive)
+      }
+    }
+  }, [doubleTierRate, quadTierRate, roomType, sharingTierRate, tripleTierRate])
 
   let pricePerPerson = quadTierRate
   if (roomType === "sharing") pricePerPerson = sharingTierRate
@@ -185,7 +266,7 @@ export function GroupBookingModal({
 
   const infantPrice = pkg.infantPricePkr ?? 65000
   const estimatedTotal =
-    pricePerPerson * partySeatCount + infants * infantPrice
+    Math.max(0, pricePerPerson) * partySeatCount + infants * infantPrice
 
   function syncPhoneToWhatsapp(val: string) {
     setCustomerPhone(val)
@@ -196,7 +277,7 @@ export function GroupBookingModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (loading || isOverCapacity || !activeBatch) return
+    if (loading || isOverCapacity || !activeBatch || pricePerPerson <= 0) return
     setLoading(true)
     setError(null)
     setFieldErrors({})
@@ -205,6 +286,7 @@ export function GroupBookingModal({
       const res = await submitGroupBookingApplication({
         clientSubmissionId: submissionKey,
         honeypot,
+        attribution: readStoredAttribution(),
         groupPackageId: pkg.id,
         groupDepartureId: activeBatch.id,
         roomOccupancyTier: roomType,
@@ -221,7 +303,6 @@ export function GroupBookingModal({
         specialRequests: specialRequests || undefined,
       })
 
-      // T-054: Surface server validation & capacity errors explicitly via role="alert"
       if (!res.success || !res.referenceNumber) {
         setError(
           res.error ||
@@ -233,7 +314,8 @@ export function GroupBookingModal({
 
       setSuccessResult({
         referenceNumber: res.referenceNumber,
-        grandTotalPkr: res.grandTotalPkr ?? res.estimatedTotalPkr ?? estimatedTotal,
+        grandTotalPkr:
+          res.grandTotalPkr ?? res.estimatedTotalPkr ?? estimatedTotal,
         whatsappUrl: res.whatsappUrl,
       })
     } catch (err: unknown) {
@@ -255,6 +337,39 @@ export function GroupBookingModal({
     setOpen(false)
   }
 
+  function handleTrackStatus() {
+    const refCode = successResult?.referenceNumber ?? ""
+    setOpen(false)
+    const element = document.getElementById("track-status")
+    if (element) {
+      if (refCode && typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("alramlah:prefill-tracker", {
+            detail: { referenceNumber: refCode },
+          })
+        )
+      }
+      setTimeout(() => {
+        element.scrollIntoView({ behavior: "smooth" })
+      }, 100)
+      return
+    }
+    const targetUrl = refCode
+      ? `/?trackRef=${encodeURIComponent(refCode)}#track-status`
+      : "/#track-status"
+    if (typeof window !== "undefined") {
+      window.location.assign(targetUrl)
+    }
+  }
+
+  const standardQuadRate = activeBatch?.quadPriceOverridePkr ?? pkg.quadPricePkr
+  const standardFallbackPositive = [
+    sharingTierRate,
+    standardQuadRate,
+    activeBatch?.triplePriceOverridePkr ?? pkg.triplePricePkr,
+    activeBatch?.doublePriceOverridePkr ?? pkg.doublePricePkr,
+  ].filter((n) => typeof n === "number" && n > 0)
+
   return (
     <Dialog
       open={open}
@@ -266,17 +381,19 @@ export function GroupBookingModal({
         }
       }}
     >
-      <DialogTrigger
-        render={
-          trigger ? (
-            (trigger as React.ReactElement)
-          ) : (
-            <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs sm:text-sm">
-              Book Package Seats
-            </Button>
-          )
-        }
-      />
+      {!hideTrigger && (
+        <DialogTrigger
+          render={
+            trigger ? (
+              (trigger as React.ReactElement)
+            ) : (
+              <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs sm:text-sm">
+                Book Package Seats
+              </Button>
+            )
+          }
+        />
+      )}
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
         {successResult ? (
           <div className="flex flex-col gap-6 py-6 text-center">
@@ -289,7 +406,9 @@ export function GroupBookingModal({
                 Group Booking Inquiry Recorded!
               </h3>
               <p className="text-sm text-muted-foreground">
-                Your provisional reservation request on <strong>{pkg.title}</strong> is queued for ticketing confirmation.
+                Your provisional reservation request on{" "}
+                <strong>{pkg.title}</strong> is queued for ticketing
+                confirmation.
               </p>
             </div>
 
@@ -303,16 +422,17 @@ export function GroupBookingModal({
               <div className="text-xs text-muted-foreground pt-1 border-t border-border/80 flex justify-between">
                 <span>Total Estimated Cost:</span>
                 <span className="font-bold font-mono tabular-nums text-emerald-800">
-                  PKR {successResult.grandTotalPkr.toLocaleString()}
+                  {formatPkr(successResult.grandTotalPkr)}
                 </span>
               </div>
             </div>
 
             <p className="text-xs text-muted-foreground max-w-md mx-auto">
-              Our dedicated Lahore ticketing concierge will contact you within 24 hours to verify passport copies and confirm seat deposit.
+              Our dedicated Lahore ticketing concierge will contact you within
+              24 hours to verify passport copies and confirm seat deposit.
             </p>
 
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <div className="flex flex-col gap-2.5 pt-2 max-w-sm mx-auto w-full">
               <a
                 href={
                   successResult.whatsappUrl ||
@@ -323,15 +443,25 @@ export function GroupBookingModal({
                 }
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg bg-emerald-700 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-800"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-800"
               >
                 <MessageCircle className="size-4" />
                 <span>Instant WhatsApp Concierge</span>
               </a>
               <Button
+                type="button"
                 variant="outline"
+                onClick={handleTrackStatus}
+                className="w-full gap-1.5 text-xs sm:text-sm"
+              >
+                <Search className="size-3.5 text-gold-text" />
+                <span>Track Application Status Live</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
                 onClick={handleReset}
-                className="w-full sm:w-auto text-xs sm:text-sm"
+                className="w-full text-xs text-muted-foreground"
               >
                 Close Window
               </Button>
@@ -356,7 +486,11 @@ export function GroupBookingModal({
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2" noValidate>
+            <form
+              onSubmit={handleSubmit}
+              className="flex flex-col gap-4 py-2"
+              noValidate
+            >
               {/* Hidden Honeypot Trap (`T-055`) */}
               <div className="sr-only" aria-hidden="true">
                 <label htmlFor={`gb-website-${pkg.id}`}>Company Website</label>
@@ -413,7 +547,7 @@ export function GroupBookingModal({
                 )}
               </div>
 
-              {/* Selectable Multi-Hotel Tier Options (`T-054`) */}
+              {/* Selectable Multi-Hotel Tier Options (`T-054` & `OD-09b`) */}
               {pkg.multiHotelOptions && pkg.multiHotelOptions.length > 0 && (
                 <fieldset className="flex flex-col gap-2">
                   <legend className="text-xs font-semibold text-foreground flex items-center gap-1.5 mb-1">
@@ -445,23 +579,28 @@ export function GroupBookingModal({
                         </span>
                       </div>
                       <span className="font-mono tabular-nums font-bold text-emerald-800">
-                        Quad PKR{" "}
-                        {(
-                          activeBatch?.quadPriceOverridePkr ?? pkg.quadPricePkr
-                        ).toLocaleString()}
+                        {standardQuadRate > 0
+                          ? `Quad ${formatPkr(standardQuadRate)}`
+                          : standardFallbackPositive.length > 0
+                            ? `From ${formatPkr(Math.min(...standardFallbackPositive))}`
+                            : "On Request"}
                       </span>
                     </label>
 
                     {pkg.multiHotelOptions.map((opt) => {
                       const codeKey = opt.pkgCode || opt.label
                       const isChosen = selectedHotelOptionCode === codeKey
+                      const lowestOptPrice = getLowestPositiveOptionPrice(opt)
+                      const isAllZero = lowestOptPrice <= 0
                       return (
                         <label
                           key={codeKey}
-                          className={`flex cursor-pointer items-center justify-between rounded-xl border p-2.5 text-xs transition-all gap-2 ${
-                            isChosen
-                              ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                              : "border-border bg-card hover:bg-muted/30"
+                          className={`flex items-center justify-between rounded-xl border p-2.5 text-xs transition-all gap-2 ${
+                            isAllZero
+                              ? "cursor-not-allowed border-border/60 bg-muted/30 opacity-65"
+                              : isChosen
+                                ? "cursor-pointer border-primary bg-primary/5 ring-1 ring-primary/30"
+                                : "cursor-pointer border-border bg-card hover:bg-muted/30"
                           }`}
                         >
                           <div className="flex items-start gap-2">
@@ -469,8 +608,10 @@ export function GroupBookingModal({
                               type="radio"
                               name={`hotel-option-${pkg.id}`}
                               value={codeKey}
+                              disabled={isAllZero}
                               checked={isChosen}
                               onChange={() => {
+                                if (isAllZero) return
                                 setSelectedHotelOptionCode(codeKey)
                                 setSubmissionKey(createSubmissionKey("grp"))
                               }}
@@ -487,7 +628,11 @@ export function GroupBookingModal({
                             </div>
                           </div>
                           <span className="font-mono tabular-nums font-bold text-emerald-800 shrink-0">
-                            Quad PKR {opt.quadPricePkr.toLocaleString()}
+                            {opt.quadPricePkr > 0
+                              ? `Quad ${formatPkr(opt.quadPricePkr)}`
+                              : lowestOptPrice > 0
+                                ? `From ${formatPkr(lowestOptPrice)}`
+                                : "On Request"}
                           </span>
                         </label>
                       )
@@ -496,79 +641,63 @@ export function GroupBookingModal({
                 </fieldset>
               )}
 
-              {/* Room Sharing Tier */}
+              {/* Room Sharing Tier (`OD-09b`: <=0 renders "On Request" & disables selection) */}
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold">
                   Select Room Sharing Tier
                 </Label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setRoomType("sharing")}
-                    className={`rounded-xl border p-2.5 text-center transition-all ${
-                      roomType === "sharing"
-                        ? "border-primary bg-primary/5 text-foreground ring-2 ring-primary/30"
-                        : "border-border bg-card hover:bg-muted/30 text-muted-foreground"
-                    }`}
-                  >
-                    <span className="block text-xs font-bold text-foreground">
-                      Sharing Bed
-                    </span>
-                    <span className="font-mono tabular-nums text-xs font-semibold text-emerald-800">
-                      PKR {sharingTierRate.toLocaleString()}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setRoomType("quad")}
-                    className={`rounded-xl border p-2.5 text-center transition-all ${
-                      roomType === "quad"
-                        ? "border-primary bg-primary/5 text-foreground ring-2 ring-primary/30"
-                        : "border-border bg-card hover:bg-muted/30 text-muted-foreground"
-                    }`}
-                  >
-                    <span className="block text-xs font-bold text-foreground">
-                      Quad (4-Bed)
-                    </span>
-                    <span className="font-mono tabular-nums text-xs font-semibold text-emerald-800">
-                      PKR {quadTierRate.toLocaleString()}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setRoomType("triple")}
-                    className={`rounded-xl border p-2.5 text-center transition-all ${
-                      roomType === "triple"
-                        ? "border-primary bg-primary/5 text-foreground ring-2 ring-primary/30"
-                        : "border-border bg-card hover:bg-muted/30 text-muted-foreground"
-                    }`}
-                  >
-                    <span className="block text-xs font-bold text-foreground">
-                      Triple (3-Bed)
-                    </span>
-                    <span className="font-mono tabular-nums text-xs font-semibold text-emerald-800">
-                      PKR {tripleTierRate.toLocaleString()}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setRoomType("double")}
-                    className={`rounded-xl border p-2.5 text-center transition-all ${
-                      roomType === "double"
-                        ? "border-primary bg-primary/5 text-foreground ring-2 ring-primary/30"
-                        : "border-border bg-card hover:bg-muted/30 text-muted-foreground"
-                    }`}
-                  >
-                    <span className="block text-xs font-bold text-foreground">
-                      Double (2-Bed)
-                    </span>
-                    <span className="font-mono tabular-nums text-xs font-semibold text-emerald-800">
-                      PKR {doubleTierRate.toLocaleString()}
-                    </span>
-                  </button>
+                  {(
+                    [
+                      {
+                        key: "sharing" as const,
+                        label: "Sharing Bed",
+                        rate: sharingTierRate,
+                      },
+                      {
+                        key: "quad" as const,
+                        label: "Quad (4-Bed)",
+                        rate: quadTierRate,
+                      },
+                      {
+                        key: "triple" as const,
+                        label: "Triple (3-Bed)",
+                        rate: tripleTierRate,
+                      },
+                      {
+                        key: "double" as const,
+                        label: "Double (2-Bed)",
+                        rate: doubleTierRate,
+                      },
+                    ] as const
+                  ).map((item) => {
+                    const isZeroTier = item.rate <= 0
+                    const isSelected = roomType === item.key && !isZeroTier
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        disabled={isZeroTier}
+                        onClick={() => {
+                          if (!isZeroTier) setRoomType(item.key)
+                        }}
+                        className={`rounded-xl border p-2.5 text-center transition-all ${
+                          isZeroTier
+                            ? "cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground opacity-65"
+                            : isSelected
+                              ? "border-primary bg-primary/5 text-foreground ring-2 ring-primary/30"
+                              : "border-border bg-card hover:bg-muted/30 text-muted-foreground"
+                        }`}
+                      >
+                        <span className="block text-xs font-bold text-foreground">
+                          {item.label}
+                        </span>
+                        <span className="font-mono tabular-nums text-xs font-semibold text-emerald-800">
+                          {formatTierOrOnRequest(item.rate)}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 
@@ -759,16 +888,22 @@ export function GroupBookingModal({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-gold/30 bg-gold/5 p-3 text-xs gap-1">
                 <div>
                   <span className="text-muted-foreground block tabular-nums">
-                    Estimated Total ({partySeatCount} seat
-                    {partySeatCount === 1 ? "" : "s"} × PKR{" "}
-                    {pricePerPerson.toLocaleString()}
-                    {infants > 0
-                      ? ` + ${infants} infant${infants > 1 ? "s" : ""} × PKR ${infantPrice.toLocaleString()}`
-                      : ""}
-                    ):
+                    {pricePerPerson > 0 ? (
+                      <>
+                        Estimated Total ({partySeatCount} seat
+                        {partySeatCount === 1 ? "" : "s"} ×{" "}
+                        {formatPkr(pricePerPerson)}
+                        {infants > 0
+                          ? ` + ${infants} infant${infants > 1 ? "s" : ""} × ${formatPkr(infantPrice)}`
+                          : ""}
+                        ):
+                      </>
+                    ) : (
+                      "Selected room tier requires bespoke confirmation:"
+                    )}
                   </span>
                   <span className="font-mono tabular-nums text-base font-extrabold text-foreground">
-                    PKR {estimatedTotal.toLocaleString()}
+                    {pricePerPerson > 0 ? formatPkr(estimatedTotal) : "On Request"}
                   </span>
                 </div>
                 <Badge
@@ -785,7 +920,12 @@ export function GroupBookingModal({
                 </DialogClose>
                 <Button
                   type="submit"
-                  disabled={loading || isOverCapacity || !activeBatch}
+                  disabled={
+                    loading ||
+                    isOverCapacity ||
+                    !activeBatch ||
+                    pricePerPerson <= 0
+                  }
                   className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   {loading && <Loader2 className="size-4 animate-spin" />}

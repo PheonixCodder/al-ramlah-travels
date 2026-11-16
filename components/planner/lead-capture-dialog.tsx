@@ -14,6 +14,7 @@ import {
   submitCustomApplication,
   type CustomApplicationResult,
 } from "@/app/actions/applications"
+import { readStoredAttribution } from "@/lib/seo/utm"
 import {
   usePlanner,
   type PlannerSubmissionPayload,
@@ -70,6 +71,7 @@ export function LeadCaptureDialog({
         ...payload,
         clientSubmissionId: payload.clientSubmissionId || clientSubmissionId,
         honeypot,
+        attribution: readStoredAttribution(),
         contact: {
           customerName: contactDraft.customerName.trim(),
           customerPhone: contactDraft.customerPhone.trim(),
@@ -109,10 +111,25 @@ export function LeadCaptureDialog({
   }
 
   const handleTrackStatus = () => {
+    const refCode = result?.referenceNumber ?? ""
     onClose()
     const element = document.getElementById("track-status")
     if (element) {
+      if (refCode && typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("alramlah:prefill-tracker", {
+            detail: { referenceNumber: refCode },
+          })
+        )
+      }
       element.scrollIntoView({ behavior: "smooth" })
+      return
+    }
+    const targetUrl = refCode
+      ? `/?trackRef=${encodeURIComponent(refCode)}#track-status`
+      : "/#track-status"
+    if (typeof window !== "undefined") {
+      window.location.assign(targetUrl)
     }
   }
 

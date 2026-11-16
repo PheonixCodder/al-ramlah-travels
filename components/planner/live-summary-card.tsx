@@ -1,13 +1,17 @@
 "use client"
 
 import React, { useState } from "react"
+import dynamic from "next/dynamic"
 import {
   usePlanner,
   type PlannerSubmissionPayload,
 } from "./planner-context"
 import { formatDisplayDate } from "./planner-date-picker"
-import { LeadCaptureDialog } from "./lead-capture-dialog"
 import { formatCitySequence } from "@/lib/domain"
+
+const LeadCaptureDialog = dynamic(() =>
+  import("./lead-capture-dialog").then((mod) => mod.LeadCaptureDialog)
+)
 import {
   Calendar,
   Users,
@@ -386,14 +390,15 @@ export function LiveSummaryCard() {
         </div>
       </div>
 
-      {/* Lead Capture Dialog */}
-      <LeadCaptureDialog
-        isOpen={isDialogOpen}
-        onClose={() => setIsDialogOpen(false)}
-        payload={submissionPayload}
-        isVisaOnly={isVisaOnly}
-        calculatedVisaTotalPkr={visaCalc.totalVisaCostPkr}
-      />
+      {isDialogOpen && (
+        <LeadCaptureDialog
+          isOpen={isDialogOpen}
+          onClose={() => setIsDialogOpen(false)}
+          payload={submissionPayload}
+          isVisaOnly={isVisaOnly}
+          calculatedVisaTotalPkr={visaCalc.totalVisaCostPkr}
+        />
+      )}
     </>
   )
 }

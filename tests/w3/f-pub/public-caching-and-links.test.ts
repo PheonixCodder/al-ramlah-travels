@@ -41,24 +41,25 @@ describe("F-PUB T-057: ISR Caching (revalidate = 300), Below-Fold Dynamic Import
     assert.match(homeSource, /dynamic\(\s*\(\)\s*=>/)
   })
 
-  it("uses root-relative /#... section links (never bare #...) in PublicHeader and PublicFooter so sub-page navigation works", () => {
+  it("uses root-relative /#... section links (never bare #...) for interactive tools and crawlable hub routes in PublicHeader and PublicFooter so sub-page navigation works", () => {
     const headerHtml = renderToStaticMarkup(React.createElement(PublicHeader))
     const footerHtml = renderToStaticMarkup(React.createElement(PublicFooter))
 
     assert.ok(headerHtml.includes('href="/#journey-builder"'))
-    assert.ok(headerHtml.includes('href="/#group-packages"'))
-    assert.ok(headerHtml.includes('href="/#hajj-inquiry"'))
     assert.ok(headerHtml.includes('href="/#track-status"'))
-    assert.ok(headerHtml.includes('href="/#contact"'))
+    assert.ok(headerHtml.includes('href="/umrah-packages"'))
+    assert.ok(headerHtml.includes('href="/hajj-2027"'))
+    assert.ok(headerHtml.includes('href="/contact"'))
     assert.ok(
       !/href="#[^"]+"/.test(headerHtml),
       "PublicHeader must not render bare href='#...' links"
     )
 
     assert.ok(footerHtml.includes('href="/#journey-builder"'))
-    assert.ok(footerHtml.includes('href="/#group-packages"'))
-    assert.ok(footerHtml.includes('href="/#hajj-inquiry"'))
     assert.ok(footerHtml.includes('href="/#track-status"'))
+    assert.ok(footerHtml.includes('href="/umrah-packages"'))
+    assert.ok(footerHtml.includes('href="/hajj-2027"'))
+    assert.ok(footerHtml.includes('href="/contact"'))
     assert.ok(
       !/href="#[^"]+"/.test(footerHtml),
       "PublicFooter must not render bare href='#...' links"

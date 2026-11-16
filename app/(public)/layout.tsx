@@ -1,31 +1,22 @@
 import * as React from "react"
-import { db } from "@/db"
-import { eq } from "drizzle-orm"
-import * as schema from "@/db/schema"
-import { getCompanyInfo } from "@/lib/company-info"
+import { getCachedCompanyInfo } from "@/lib/company-info"
 import { PublicHeader } from "@/components/layout/public-header"
 import { PublicFooter } from "@/components/layout/public-footer"
 import { WhatsAppFab } from "@/components/layout/whatsapp-fab"
+import { UtmTracker } from "@/components/seo/utm-tracker"
 
 export default async function PublicLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  let settings: typeof schema.agencySettings.$inferSelect | null = null
-  try {
-    settings =
-      (await db.query.agencySettings.findFirst({
-        where: eq(schema.agencySettings.id, "default"),
-      })) ?? null
-  } catch (err) {
-    console.error("Failed to query agencySettings in PublicLayout:", err)
-  }
-
-  const info = getCompanyInfo(settings)
+  const info = await getCachedCompanyInfo()
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      <React.Suspense fallback={null}>
+        <UtmTracker />
+      </React.Suspense>
       <PublicHeader
         agencyPhone={info.primaryWhatsapp}
         secondaryPhone={info.secondaryPhone}
@@ -38,17 +29,17 @@ export default async function PublicLayout({
         secondaryPhone={info.secondaryPhone}
         whatsappNumber={info.primaryWhatsapp}
         agencyName={info.agencyName}
-        legalEntityName={settings?.legalEntityName ?? info.agencyName}
+        legalEntityName={info.legalEntityName}
         supportEmail={info.supportEmail}
         officeAddress={info.officeAddress}
-        dtsLicense={settings?.dtsLicense ?? null}
-        moraLicense={settings?.moraLicense ?? null}
-        iataCode={settings?.iataCode ?? null}
-        ntnNumber={settings?.ntnNumber ?? null}
-        facebookUrl={settings?.facebookUrl ?? null}
-        instagramUrl={settings?.instagramUrl ?? null}
-        youtubeUrl={settings?.youtubeUrl ?? null}
-        tiktokUrl={settings?.tiktokUrl ?? null}
+        dtsLicense={info.dtsLicense}
+        moraLicense={info.moraLicense}
+        iataCode={info.iataCode}
+        ntnNumber={info.ntnNumber}
+        facebookUrl={info.facebookUrl}
+        instagramUrl={info.instagramUrl}
+        youtubeUrl={info.youtubeUrl}
+        tiktokUrl={info.tiktokUrl}
       />
       <WhatsAppFab whatsappNumber={info.primaryWhatsapp} />
     </div>

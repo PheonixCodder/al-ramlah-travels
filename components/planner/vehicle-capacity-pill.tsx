@@ -1,17 +1,17 @@
 "use client"
 
 import React from "react"
-import type * as schema from "@/db/schema"
 import {
   calculateVehicleQuantity,
   type VehicleCapacitySpec,
 } from "@/lib/domain/vehicle-capacity"
+import type { PlannerVehicleItem } from "./planner-context"
 import { Users, Sparkles } from "lucide-react"
 
 interface VehicleCapacityPillProps {
   bedAndSeatCount: number
-  vehicle: typeof schema.vehicles.$inferSelect | undefined
-  allVehicles?: (typeof schema.vehicles.$inferSelect)[]
+  vehicle: PlannerVehicleItem | undefined
+  allVehicles?: PlannerVehicleItem[]
   onSelectVehicle?: (vehicleId: string) => void
 }
 

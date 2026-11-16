@@ -1,62 +1,65 @@
 import type { Metadata } from "next"
-import Link from "next/link"
-import { ArrowLeft, Database, FileCheck2, Lock, ShieldCheck } from "lucide-react"
-import { db } from "@/db"
-import * as schema from "@/db/schema"
-import { getCompanyInfo } from "@/lib/company-info"
+import { Database, FileCheck2, Lock, ShieldCheck } from "lucide-react"
+import { PublicBreadcrumbs } from "@/components/layout/breadcrumbs"
 import { toWaMeUrl } from "@/components/public/public-utils"
+import { TrustLegalCrosslinks } from "@/components/seo/trust-legal-crosslinks"
+import { toTelHref } from "@/lib/company-info"
+import { JsonLd, ORGANIZATION_JSONLD_ID } from "@/lib/seo/json-ld"
+import { buildPublicMetadata, CANONICAL_ORIGIN } from "@/lib/seo/metadata"
+import { getCachedCompanyInfo } from "@/lib/seo/public-queries"
 
 export const revalidate = 300
 
-export const metadata: Metadata = {
-  title: "Privacy Policy & Data Protection | Al Ramlah Travels",
+// Spec 0025 §3 #17 (`56`c title, `153`c description, self-canonical `/privacy`)
+export const metadata: Metadata = buildPublicMetadata({
+  path: "/privacy",
+  title: "Privacy Policy & Pilgrim Data Safety | Al Ramlah Travels",
   description:
-    "How Al Ramlah Travels protects pilgrim personal data, passport records, sub-processor disclosures, cookie usage, retention schedules, and DSAR rights.",
-}
+    "Read how Al Ramlah Travels safeguards pilgrim personal data, passport scans, sessionStorage attribution keys, sub-processors, retention, and DSAR rights.",
+})
 
 export default async function PrivacyPolicyPage() {
-  const [settings] = await db.select().from(schema.agencySettings).limit(1)
-  const company = getCompanyInfo(settings)
-  const legalEntityName =
-    settings?.legalEntityName?.trim() || company.agencyName
+  const company = await getCachedCompanyInfo()
+  const legalEntityName = company.legalEntityName || company.agencyName
   const waDsarHref = toWaMeUrl(
     company.primaryWhatsapp,
     "Assalam-o-Alaikum Al Ramlah Travels, I would like to submit a Data Subject Access / Deletion Request (DSAR)."
   )
+  const primaryTelHref = toTelHref(company.primaryWhatsapp)
+
+  const privacyWebPageJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "@id": `${CANONICAL_ORIGIN}/privacy#webpage`,
+    url: `${CANONICAL_ORIGIN}/privacy`,
+    name: "Privacy Policy & Personal Data Protection Notice",
+    inLanguage: "en-PK",
+    publisher: {
+      "@id": ORGANIZATION_JSONLD_ID,
+    },
+  }
 
   return (
     <div className="bg-[#FAF7F0] min-h-screen py-14 sm:py-20">
+      <JsonLd data={privacyWebPageJsonLd} />
+
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-[#0A3622] hover:text-[#7A5C1E] transition-colors"
-          >
-            <ArrowLeft className="size-4" />
-            <span>Back to Home</span>
-          </Link>
-          <div className="flex items-center gap-3 text-xs font-semibold text-[#0A3622]">
-            <Link href="/terms" className="hover:underline">
-              Terms of Service
-            </Link>
-            <span className="text-[#C5A059]">&bull;</span>
-            <Link href="/refund-policy" className="hover:underline">
-              Refund Policy
-            </Link>
-          </div>
-        </div>
+        <PublicBreadcrumbs
+          items={[{ label: "Privacy Policy", href: "/privacy" }]}
+          className="mb-8"
+        />
 
         <article className="rounded-3xl border border-[#E6DEC8] bg-white p-8 sm:p-12 shadow-sm space-y-10">
           {/* Header */}
           <header className="space-y-3 border-b border-[#E6DEC8] pb-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#C5A059]/40 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
-              <ShieldCheck className="size-3.5 text-[#C5A059]" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#7A5C1E]/40 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
+              <ShieldCheck className="size-3.5 text-[#7A5C1E]" />
               <span>Pilgrim Data Governance &amp; Privacy Notice</span>
             </div>
             <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#0A3622]">
-              Privacy Policy
+              Privacy Policy &amp; Personal Data Protection Notice
             </h1>
-            <p className="text-xs sm:text-sm text-[#686E65]">
+            <p className="text-xs sm:text-sm text-[#4A5048]">
               Controller: <strong>{legalEntityName}</strong> &middot; Effective &amp;
               Verified for 2026–2027 Pilgrimage Operations
             </p>
@@ -88,6 +91,18 @@ export default async function PrivacyPolicyPage() {
                   transport legs, and special mobility/dietary notes.
                 </li>
                 <li>
+                  <strong>First-Touch Web Attribution Metadata:</strong> Optional
+                  campaign query tags (<code className="font-mono text-xs">utm_source</code>,{" "}
+                  <code className="font-mono text-xs">utm_medium</code>,{" "}
+                  <code className="font-mono text-xs">utm_campaign</code>,{" "}
+                  <code className="font-mono text-xs">utm_content</code>,{" "}
+                  <code className="font-mono text-xs">utm_term</code>), initial
+                  relative <code className="font-mono text-xs">landing_page</code>{" "}
+                  path, and sanitized external{" "}
+                  <code className="font-mono text-xs">http_referrer</code> attached
+                  strictly when you submit an inquiry form.
+                </li>
+                <li>
                   <strong>Identity &amp; Visa Documentation (Booked Pilgrims):</strong>{" "}
                   Machine-readable passport bio-pages, CNIC / NADRA B-Form copies,
                   white-background visa photographs, next-of-kin details, and
@@ -100,7 +115,7 @@ export default async function PrivacyPolicyPage() {
             {/* 2. Sub-Processors & Cloud Infrastructure */}
             <section className="space-y-3">
               <div className="flex items-center gap-2">
-                <Database className="size-5 text-[#C5A059]" />
+                <Database className="size-5 text-[#7A5C1E]" />
                 <h2 className="font-display text-xl font-bold text-[#0A3622]">
                   2. Authorized Sub-Processors &amp; Cloud Storage Architecture
                 </h2>
@@ -115,9 +130,15 @@ export default async function PrivacyPolicyPage() {
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-[#FAF7F0] text-[#0A3622] border-b border-[#E6DEC8]">
                     <tr>
-                      <th className="px-4 py-3 font-bold">Sub-Processor</th>
-                      <th className="px-4 py-3 font-bold">Operational Role</th>
-                      <th className="px-4 py-3 font-bold">Safeguards</th>
+                      <th scope="col" className="px-4 py-3 font-bold">
+                        Sub-Processor
+                      </th>
+                      <th scope="col" className="px-4 py-3 font-bold">
+                        Operational Role
+                      </th>
+                      <th scope="col" className="px-4 py-3 font-bold">
+                        Safeguards
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E6DEC8] text-[#4A5048]">
@@ -199,7 +220,7 @@ export default async function PrivacyPolicyPage() {
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-[#686E65]">
+              <p className="text-xs text-[#4A5048]">
                 In addition, confirmed bookings are transmitted to official Kingdom
                 of Saudi Arabia visa platforms (MOFA / Nusuk / Masar), IATA
                 airlines, and contracted Makkah/Madinah hotels strictly to issue
@@ -207,60 +228,110 @@ export default async function PrivacyPolicyPage() {
               </p>
             </section>
 
-            {/* 3. Cookies & Local Session Storage */}
+            {/* 3. Cookies & Local Session Storage (`SEO-028` — `alramlah_attribution_v1` Disclosed) */}
             <section className="space-y-3">
               <div className="flex items-center gap-2">
-                <Lock className="size-5 text-[#C5A059]" />
+                <Lock className="size-5 text-[#7A5C1E]" />
                 <h2 className="font-display text-xl font-bold text-[#0A3622]">
                   3. Cookies &amp; Browser Storage Disclosure
                 </h2>
               </div>
               <p className="text-[#4A5048]">
-                We use strictly necessary security cookies and ephemeral tab
-                storage. We do not deploy third-party behavioral advertising cookies
-                or cross-site tracking pixels on public pilgrimage pages:
+                We use strictly necessary security cookies and ephemeral first-party
+                browser tab storage (<code className="font-mono text-xs">sessionStorage</code>).
+                We do not deploy third-party behavioral advertising cookies or
+                cross-site tracking pixels on public pilgrimage pages:
               </p>
-              <ul className="list-disc pl-5 space-y-1.5 text-[#4A5048]">
-                <li>
-                  <strong>
-                    <code className="font-mono text-xs">
-                      better-auth.session_token
-                    </code>{" "}
-                    (Strictly Necessary):
-                  </strong>{" "}
-                  <code className="font-mono text-xs">HttpOnly</code>,{" "}
-                  <code className="font-mono text-xs">Secure</code>,{" "}
-                  <code className="font-mono text-xs">SameSite=Lax</code>{" "}
-                  authentication and CSRF protection cookies issued only to
-                  authenticated administrative staff.
-                </li>
-                <li>
-                  <strong>
-                    <code className="font-mono text-xs">
-                      social_oauth_state_*
-                    </code>{" "}
-                    (Strictly Necessary):
-                  </strong>{" "}
-                  Short-lived (10-minute) <code className="font-mono text-xs">HttpOnly</code>{" "}
-                  CSRF state verification cookie used solely during administrative
-                  OAuth account linking.
-                </li>
-                <li>
-                  <strong>
-                    Browser <code className="font-mono text-xs">sessionStorage</code>{" "}
-                    (<code className="font-mono text-xs">alramlah_planner_draft_v1</code>):
-                  </strong>{" "}
-                  Stores non-PII Umrah itinerary selections (dates, hotel choices,
-                  and passenger counts—never passport numbers or contact PII) within
-                  your active browser tab so you do not lose progress on refresh.
-                </li>
-              </ul>
+
+              <div className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
+                <table className="w-full text-left text-xs sm:text-sm">
+                  <thead className="bg-[#FAF7F0] text-[#0A3622] border-b border-[#E6DEC8]">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 font-bold">
+                        Key / Cookie Name
+                      </th>
+                      <th scope="col" className="px-4 py-3 font-bold">
+                        Mechanism &amp; Lifetime
+                      </th>
+                      <th scope="col" className="px-4 py-3 font-bold">
+                        Purpose &amp; Stored Fields
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E6DEC8] text-[#4A5048]">
+                    <tr>
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[#1A1D1A]">
+                        better-auth.session_token
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-xs">HttpOnly</code>,{" "}
+                        <code className="font-mono text-xs">Secure</code>,{" "}
+                        <code className="font-mono text-xs">SameSite=Lax</code>{" "}
+                        cookie (Staff only)
+                      </td>
+                      <td className="px-4 py-3">
+                        Strictly necessary authentication and CSRF protection for
+                        signed-in administrative staff.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[#1A1D1A]">
+                        social_oauth_state_*
+                      </td>
+                      <td className="px-4 py-3">
+                        10-minute <code className="font-mono text-xs">HttpOnly</code>{" "}
+                        cookie (Staff only)
+                      </td>
+                      <td className="px-4 py-3">
+                        CSRF state verification during administrative social account
+                        OAuth linking.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[#1A1D1A]">
+                        alramlah_planner_draft_v1
+                      </td>
+                      <td className="px-4 py-3">
+                        First-party <code className="font-mono text-xs">sessionStorage</code>{" "}
+                        (Cleared when tab closes)
+                      </td>
+                      <td className="px-4 py-3">
+                        Preserves non-PII Umrah planner selections (dates, hotel
+                        ids, passenger counts—never passport numbers or contact PII)
+                        across page refreshes.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[#1A1D1A]">
+                        alramlah_attribution_v1
+                      </td>
+                      <td className="px-4 py-3">
+                        First-party <code className="font-mono text-xs">sessionStorage</code>{" "}
+                        (Cleared when tab closes)
+                      </td>
+                      <td className="px-4 py-3">
+                        Stores non-PII first-touch campaign parameters (
+                        <code className="font-mono text-xs">utm_source</code>,{" "}
+                        <code className="font-mono text-xs">utm_medium</code>,{" "}
+                        <code className="font-mono text-xs">utm_campaign</code>,{" "}
+                        <code className="font-mono text-xs">utm_content</code>,{" "}
+                        <code className="font-mono text-xs">utm_term</code>),
+                        relative <code className="font-mono text-xs">landing_page</code>,
+                        and sanitized external{" "}
+                        <code className="font-mono text-xs">http_referrer</code> so
+                        our concierge desk knows which pilgrimage guide or campaign
+                        assisted your inquiry.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </section>
 
-            {/* 4. Retention Schedule */}
+            {/* 4. Retention Schedule (`OD-06` — Gate A Verified) */}
             <section className="space-y-3">
               <div className="flex items-center gap-2">
-                <FileCheck2 className="size-5 text-[#C5A059]" />
+                <FileCheck2 className="size-5 text-[#7A5C1E]" />
                 <h2 className="font-display text-xl font-bold text-[#0A3622]">
                   4. Data Retention Schedule &amp; Automated Purging
                 </h2>
@@ -273,7 +344,7 @@ export default async function PrivacyPolicyPage() {
                   <h3 className="font-bold text-[#0A3622] text-sm">
                     Passports &amp; Identity Scans
                   </h3>
-                  <p className="text-xs text-[#686E65]">
+                  <p className="text-xs text-[#4A5048]">
                     Passport bio-page scans, CNIC/B-Form images, and visa photos in
                     private R2 storage are automatically purged 60 days after your
                     scheduled KSA return date.
@@ -287,7 +358,7 @@ export default async function PrivacyPolicyPage() {
                   <h3 className="font-bold text-[#0A3622] text-sm">
                     Unbooked Inquiries &amp; Leads
                   </h3>
-                  <p className="text-xs text-[#686E65]">
+                  <p className="text-xs text-[#4A5048]">
                     Web inquiries and WhatsApp intake threads that do not convert to
                     confirmed bookings are purged or anonymized 24 months after last
                     activity.
@@ -301,7 +372,7 @@ export default async function PrivacyPolicyPage() {
                   <h3 className="font-bold text-[#0A3622] text-sm">
                     Financial &amp; Tax Ledgers
                   </h3>
-                  <p className="text-xs text-[#686E65]">
+                  <p className="text-xs text-[#4A5048]">
                     Confirmed booking invoices and payment ledgers are retained for
                     6 years pursuant to Section 174 of the Pakistan Income Tax
                     Ordinance, 2001.
@@ -327,7 +398,7 @@ export default async function PrivacyPolicyPage() {
             </section>
 
             {/* 6. DSAR Rights & Verified Contact */}
-            <section className="space-y-3 rounded-2xl border border-[#C5A059]/40 bg-[#FAF7F0] p-6">
+            <section className="space-y-3 rounded-2xl border border-[#7A5C1E]/35 bg-[#FAF7F0] p-6">
               <h2 className="font-display text-xl font-bold text-[#0A3622]">
                 6. Your Data Rights &amp; DSAR Deletion / Access Workflow
               </h2>
@@ -340,7 +411,7 @@ export default async function PrivacyPolicyPage() {
                 reference and registered phone number. Verified requests are
                 completed within <strong>14 business days</strong>:
               </p>
-              <div className="pt-1 space-y-1 text-xs sm:text-sm text-[#1A1D1A]">
+              <div className="pt-1 space-y-1.5 text-xs sm:text-sm text-[#1A1D1A]">
                 <p>
                   <strong>Legal Entity:</strong> {legalEntityName}
                 </p>
@@ -351,26 +422,35 @@ export default async function PrivacyPolicyPage() {
                   <strong>Privacy &amp; DSAR Email:</strong>{" "}
                   <a
                     href={`mailto:${company.supportEmail}?subject=DSAR%20Privacy%20Request`}
-                    className="font-semibold text-[#0A3622] underline"
+                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
                   >
                     {company.supportEmail}
                   </a>
                 </p>
                 <p>
-                  <strong>Verified WhatsApp Concierge:</strong>{" "}
+                  <strong>Verified Phone &amp; WhatsApp Concierge:</strong>{" "}
+                  <a
+                    href={primaryTelHref}
+                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline tabular-nums"
+                  >
+                    {company.hotlineDisplay}
+                  </a>{" "}
+                  &middot;{" "}
                   <a
                     href={waDsarHref}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-semibold text-[#0A3622] underline tabular-nums"
+                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
                   >
-                    {company.hotlineDisplay}
+                    Submit DSAR via WhatsApp
                   </a>
                 </p>
               </div>
             </section>
           </div>
         </article>
+
+        <TrustLegalCrosslinks currentPath="/privacy" />
       </div>
     </div>
   )

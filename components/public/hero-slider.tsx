@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useSyncExternalStore } from "react"
 import NextImage, { type ImageProps } from "next/image"
 
 const Image = (
@@ -21,7 +21,7 @@ import {
   ShieldCheck,
   Clock,
   Sparkles,
-  Award,
+  Plane,
   ArrowRight,
 } from "lucide-react"
 
@@ -37,35 +37,46 @@ export interface PublicHeroSlide {
   secondaryCtaUrl?: string | null
 }
 
+export const HOME_HERO_PRIMARY_H1 =
+  "Umrah Packages, Saudi Visas & Hajj 2027 Journeys from Pakistan"
+
 const DEFAULT_SLIDES: PublicHeroSlide[] = [
   {
     badge: "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
     title: "Sacred Journeys Crafted with Dignity & Comfort",
     subtitle:
-      "Where Purpose Meets Excellence — Bespoke Umrah planning, 50-meter courtyard hotels, and private GMC transfers across the Haramain.",
+      "Where Purpose Meets Excellence — Bespoke Umrah planning from Lahore, Karachi & Islamabad, 50-meter Haram courtyard hotels, and private GMC transfers.",
     imageUrl:
       "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=85&w=1920",
     primaryCtaLabel: "Build Custom Umrah Journey",
     primaryCtaUrl: "/#journey-builder",
-    secondaryCtaLabel: "Explore Pre-Built Group Packages",
-    secondaryCtaUrl: "/#group-packages",
+    secondaryCtaLabel: "Explore Group Umrah Packages",
+    secondaryCtaUrl: "/umrah-packages",
   },
   {
     badge: "لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ",
     title: "Walk to the Holy Sanctuary in Just 50 Meters",
     subtitle:
-      "Direct Kaaba-view suites in Makkah Clock Royal Tower and footsteps from Bab As-Salam in Madinah Al-Munawwarah.",
+      "Direct Kaaba-view suites in Makkah Clock Royal Tower and footsteps from Bab As-Salam & Ladies Gate 25 in Madinah Al-Munawwarah.",
     imageUrl:
       "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&q=85&w=1920",
     primaryCtaLabel: "Plan Family Pilgrimage",
     primaryCtaUrl: "/#journey-builder",
-    secondaryCtaLabel: "Hajj 2027 Package Guide",
-    secondaryCtaUrl: "/#hajj-inquiry",
+    secondaryCtaLabel: "Hajj 2027 Maktab Guide",
+    secondaryCtaUrl: "/hajj-2027",
   },
 ]
 
-function normalizeCtaHref(href: string): string {
-  const trimmed = href.trim()
+export function normalizeHeroCtaHref(href: string): string {
+  const trimmed = (href || "").trim()
+  if (
+    trimmed === "#custom-builder" ||
+    trimmed === "/#custom-builder" ||
+    trimmed === "#custom-journey" ||
+    trimmed === "/#custom-journey"
+  ) {
+    return "/#journey-builder"
+  }
   if (trimmed.startsWith("#")) {
     return `/${trimmed}`
   }
@@ -76,6 +87,30 @@ function containsArabicScript(value: string): boolean {
   return /[\u0600-\u06FF]/.test(value)
 }
 
+const noopSubscribe = () => () => {}
+
+function subscribeReducedMotion(onStoreChange: () => void): () => void {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return () => {}
+  }
+  const mq = window.matchMedia("(prefers-reduced-motion: reduce)")
+  mq.addEventListener("change", onStoreChange)
+  return () => mq.removeEventListener("change", onStoreChange)
+}
+
+function getReducedMotionSnapshot(): boolean {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return false
+  }
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+}
+
 interface HeroSliderProps {
   slides?: PublicHeroSlide[]
 }
@@ -83,23 +118,18 @@ interface HeroSliderProps {
 export function HeroSlider({ slides = [] }: HeroSliderProps) {
   const activeSlides = slides.length > 0 ? slides : DEFAULT_SLIDES
   const [current, setCurrent] = useState(0)
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+  // S03-002 & T-085: Lazily mount slides 1..N only after client hydration so initial SSR/LCP fetches strictly Slide 0
+  const hasHydrated = useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false
+  )
+  const prefersReducedMotion = useSyncExternalStore(
+    subscribeReducedMotion,
+    getReducedMotionSnapshot,
+    () => false
+  )
   const [isPausedByInteraction, setIsPausedByInteraction] = useState(false)
-
-  // T-085: Subscribe to OS prefers-reduced-motion media query
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return
-    }
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)")
-    setPrefersReducedMotion(mq.matches)
-
-    const onChange = (event: MediaQueryListEvent) => {
-      setPrefersReducedMotion(event.matches)
-    }
-    mq.addEventListener("change", onChange)
-    return () => mq.removeEventListener("change", onChange)
-  }, [])
 
   // T-085: Pause auto-rotation when reduced-motion is requested or pointer/keyboard focus is inside
   useEffect(() => {
@@ -142,43 +172,45 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
     >
       {/* Background Visual Carousel */}
       <div className="relative h-[640px] sm:h-[700px] lg:h-[760px] w-full">
-        {activeSlides.map((s, idx) => (
-          <div
-            key={s.id ?? idx}
-            aria-hidden={idx !== current}
-            className={`absolute inset-0 ${
-              prefersReducedMotion
-                ? ""
-                : "transition-opacity duration-1000 ease-in-out"
-            } ${
-              idx === current
-                ? "opacity-100 z-10"
-                : "opacity-0 z-0 pointer-events-none"
-            }`}
-          >
-            <Image
-              src={s.imageUrl}
-              alt={s.title}
-              fill
-              priority={idx === 0}
-              className={`object-cover object-center ${
+        {activeSlides.map((s, idx) => {
+          const shouldMountSlide = idx === 0 || hasHydrated
+          if (!shouldMountSlide) {
+            return null
+          }
+          return (
+            <div
+              key={s.id ?? idx}
+              aria-hidden={idx !== current}
+              className={`absolute inset-0 ${
                 prefersReducedMotion
                   ? ""
-                  : "scale-105 transition-transform duration-10000"
+                  : "transition-opacity duration-700 ease-in-out"
+              } ${
+                idx === current
+                  ? "opacity-100 z-10"
+                  : "opacity-0 z-0 pointer-events-none"
               }`}
-              sizes="100vw"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/65 to-black/30" />
-            <div className="absolute inset-0 bg-gradient-to-t from-emerald-950 via-transparent to-black/40" />
-          </div>
-        ))}
+            >
+              <Image
+                src={s.imageUrl}
+                alt={s.title}
+                fill
+                preload={idx === 0}
+                className="object-cover object-center"
+                sizes="100vw"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/65 to-black/30" />
+              <div className="absolute inset-0 bg-gradient-to-t from-emerald-950 via-transparent to-black/40" />
+            </div>
+          )
+        })}
 
         {/* Hero Content Overlay */}
         <div className="relative z-20 mx-auto flex h-full max-w-7xl flex-col justify-center px-4 sm:px-6 lg:px-8">
-          <div className="max-w-2xl flex flex-col gap-6">
+          <div className="max-w-2xl flex flex-col gap-5">
             {/* Arabic Calligraphy Banner Badge */}
             {slide.badge && (
-              <div className="inline-flex self-start items-center gap-2 rounded-full border border-gold/40 bg-black/40 px-4 py-1.5 backdrop-blur-md">
+              <div className="inline-flex self-start items-center gap-2 rounded-full border border-gold/40 bg-black/45 px-4 py-1.5 backdrop-blur-md">
                 {containsArabicScript(slide.badge) ? (
                   <ArabicText className="text-base sm:text-lg text-gold font-medium tracking-wide">
                     {slide.badge}
@@ -191,13 +223,18 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
               </div>
             )}
 
-            {/* Main Display Headline */}
-            <h1 className="font-display text-3xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl leading-[1.15]">
-              {slide.title}
+            {/* Stable SSR Primary Semantic H1 (`SEO-023`, `S04-002`) */}
+            <h1 className="text-xs sm:text-sm font-bold uppercase tracking-[0.14em] text-gold">
+              {HOME_HERO_PRIMARY_H1}
             </h1>
 
+            {/* Rotating Slide Display Headline (`<h2>` preserving single document `<h1>`) */}
+            <h2 className="font-display text-3xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl leading-[1.15]">
+              {slide.title}
+            </h2>
+
             {/* Subtitle */}
-            <p className="text-base sm:text-lg text-white/85 leading-relaxed font-sans max-w-xl">
+            <p className="text-base sm:text-lg text-white/90 leading-relaxed font-sans max-w-xl">
               {slide.subtitle}
             </p>
 
@@ -206,8 +243,8 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
               <Button
                 size="lg"
                 nativeButton={false}
-                render={<Link href={normalizeCtaHref(slide.primaryCtaUrl)} />}
-                className="gap-2 bg-gold px-7 py-3 text-sm sm:text-base font-bold text-emerald-950 hover:bg-gold/90 shadow-lg shadow-gold/20"
+                render={<Link href={normalizeHeroCtaHref(slide.primaryCtaUrl)} />}
+                className="min-h-11 gap-2 bg-gold px-7 py-3 text-sm sm:text-base font-bold text-emerald-950 hover:bg-gold/90 shadow-lg shadow-gold/20"
               >
                 <span>{slide.primaryCtaLabel}</span>
                 <ArrowRight className="size-4" />
@@ -219,9 +256,9 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
                   variant="outline"
                   nativeButton={false}
                   render={
-                    <Link href={normalizeCtaHref(slide.secondaryCtaUrl)} />
+                    <Link href={normalizeHeroCtaHref(slide.secondaryCtaUrl)} />
                   }
-                  className="border-white/30 bg-white/10 px-6 py-3 text-sm sm:text-base font-medium text-white backdrop-blur-xs hover:bg-white/20 hover:text-white"
+                  className="min-h-11 border-white/35 bg-white/10 px-6 py-3 text-sm sm:text-base font-medium text-white backdrop-blur-xs hover:bg-white/20 hover:text-white"
                 >
                   <span>{slide.secondaryCtaLabel}</span>
                 </Button>
@@ -272,47 +309,55 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
         )}
       </div>
 
-      {/* Trust Metrics Bar */}
+      {/* Truthful Operational Standards Bar (`OD-10` — zero fabricated headcounts) */}
       <div className="relative z-30 border-t border-gold/20 bg-emerald-950/95 py-5 px-4 backdrop-blur-md sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-4 text-center sm:grid-cols-4 lg:gap-8">
           <div className="flex flex-col items-center justify-center gap-1">
             <div className="flex items-center gap-1.5 text-gold">
-              <Award className="size-4" />
-              <span className="font-mono tabular-nums text-xl sm:text-2xl font-extrabold text-white">
-                15,000+
+              <Plane className="size-4" />
+              <span className="font-mono tabular-nums text-lg sm:text-xl font-extrabold text-white">
+                LHE · KHI · ISB
               </span>
             </div>
-            <span className="text-xs text-white/70">Pilgrims Served Since 2014</span>
+            <span className="text-xs text-white/80">
+              Pakistan &amp; Diaspora Gateways
+            </span>
           </div>
 
           <div className="flex flex-col items-center justify-center gap-1">
             <div className="flex items-center gap-1.5 text-gold">
               <Clock className="size-4" />
-              <span className="font-mono tabular-nums text-xl sm:text-2xl font-extrabold text-white">
+              <span className="font-mono tabular-nums text-lg sm:text-xl font-extrabold text-white">
                 24h SLA
               </span>
             </div>
-            <span className="text-xs text-white/70">Guaranteed Quote Turnaround</span>
+            <span className="text-xs text-white/80">
+              Itemized PKR Quote Turnaround
+            </span>
           </div>
 
           <div className="flex flex-col items-center justify-center gap-1">
             <div className="flex items-center gap-1.5 text-gold">
               <Sparkles className="size-4" />
-              <span className="font-mono tabular-nums text-xl sm:text-2xl font-extrabold text-white">
-                50-Meter
+              <span className="font-mono tabular-nums text-lg sm:text-xl font-extrabold text-white">
+                0–50m
               </span>
             </div>
-            <span className="text-xs text-white/70">Courtyard Luxury Properties</span>
+            <span className="text-xs text-white/80">
+              Haramain Courtyard Properties
+            </span>
           </div>
 
           <div className="flex flex-col items-center justify-center gap-1">
             <div className="flex items-center gap-1.5 text-gold">
               <ShieldCheck className="size-4" />
-              <span className="font-mono tabular-nums text-xl sm:text-2xl font-extrabold text-white">
-                100%
+              <span className="font-mono tabular-nums text-lg sm:text-xl font-extrabold text-white">
+                Askari 10
               </span>
             </div>
-            <span className="text-xs text-white/70">Verified Luxury Services</span>
+            <span className="text-xs text-white/80">
+              Lahore Cantt Concierge Desk
+            </span>
           </div>
         </div>
       </div>

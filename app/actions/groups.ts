@@ -8,6 +8,7 @@ import { db, withTransaction } from "@/db"
 import * as schema from "@/db/schema"
 import { recordAuditLog } from "@/lib/audit-log"
 import { requireAdmin } from "@/lib/auth-guard"
+import { revalidatePublicSeoPaths } from "@/lib/seo/revalidate-public"
 import {
   groupDepartureSchema,
   groupPackageSchema,
@@ -69,13 +70,20 @@ function isUniqueConstraintError(err: unknown): boolean {
   return combined.includes("23505") || combined.includes("unique constraint")
 }
 
-function revalidateGroupInventoryPaths(): void {
-  revalidatePath("/")
-  revalidatePath("/admin")
-  revalidatePath("/admin/studio")
-  revalidatePath("/admin/desk")
-  revalidatePath("/admin/catalog")
-  revalidatePath("/admin/groups")
+function revalidateGroupInventoryPaths(
+  extraSlugs?: ReadonlyArray<string | null | undefined>
+): void {
+  try {
+    revalidatePath("/")
+    revalidatePath("/admin")
+    revalidatePath("/admin/studio")
+    revalidatePath("/admin/desk")
+    revalidatePath("/admin/catalog")
+    revalidatePath("/admin/groups")
+  } catch {
+    // Safe no-op outside Next.js incremental cache runtime
+  }
+  revalidatePublicSeoPaths(extraSlugs)
 }
 
 // ==========================================
@@ -96,13 +104,22 @@ export async function upsertGroupPackage(rawInput: unknown) {
   const validated = parsed.data
 
   try {
+    let previousSlug: string | null = null
     const result = await withTransaction(async (tx) => {
       if (validated.id) {
+        const [existingRow] = await tx
+          .select({ slug: schema.groupPackages.slug })
+          .from(schema.groupPackages)
+          .where(eq(schema.groupPackages.id, validated.id))
+          .limit(1)
+        previousSlug = existingRow?.slug ?? null
+        const resolvedSlug = validated.slug || existingRow?.slug || validated.slug
+
         const [updated] = await tx
           .update(schema.groupPackages)
           .set({
             title: validated.title,
-            slug: validated.slug,
+            slug: resolvedSlug,
             tier: validated.tier,
             durationDays: validated.durationDays,
             makkahNights: validated.makkahNights,
@@ -157,7 +174,7 @@ export async function upsertGroupPackage(rawInput: unknown) {
             entityType: "group_package",
             entityId: updated.id,
             after: {
-              slug: validated.slug,
+              slug: updated.slug,
               isActive: validated.isActive,
             },
           },
@@ -216,7 +233,7 @@ export async function upsertGroupPackage(rawInput: unknown) {
     })
 
     if (result.success) {
-      revalidateGroupInventoryPaths()
+      revalidateGroupInventoryPaths([previousSlug, result.data.slug])
     }
     return result
   } catch (err: unknown) {
@@ -247,11 +264,14 @@ export async function toggleGroupPackageActive(id: string, isActive: boolean) {
     }
   }
 
+  let toggledSlug: string | null = null
   await withTransaction(async (tx) => {
-    await tx
+    const [updated] = await tx
       .update(schema.groupPackages)
       .set({ isActive: activeCheck.data, updatedAt: new Date() })
       .where(eq(schema.groupPackages.id, idCheck.data))
+      .returning({ slug: schema.groupPackages.slug })
+    toggledSlug = updated?.slug ?? null
 
     if (!activeCheck.data) {
       await tx
@@ -275,7 +295,7 @@ export async function toggleGroupPackageActive(id: string, isActive: boolean) {
     )
   })
 
-  revalidateGroupInventoryPaths()
+  revalidateGroupInventoryPaths([toggledSlug])
   return { success: true as const }
 }
 
@@ -291,6 +311,13 @@ export async function deleteGroupPackage(id: string) {
     }
   }
 
+  const [existingPkg] = await db
+    .select({ slug: schema.groupPackages.slug })
+    .from(schema.groupPackages)
+    .where(eq(schema.groupPackages.id, idCheck.data))
+    .limit(1)
+  const targetSlug = existingPkg?.slug ?? null
+
   try {
     await db
       .delete(schema.groupPackages)
@@ -304,7 +331,7 @@ export async function deleteGroupPackage(id: string) {
       entityId: idCheck.data,
     })
 
-    revalidateGroupInventoryPaths()
+    revalidateGroupInventoryPaths([targetSlug])
     return {
       success: true as const,
       softDeleted: false as const,
@@ -338,7 +365,7 @@ export async function deleteGroupPackage(id: string) {
         )
       })
 
-      revalidateGroupInventoryPaths()
+      revalidateGroupInventoryPaths([targetSlug])
       const msg =
         "This group package is referenced by existing applications or departure batches and cannot be permanently deleted. It has been deactivated and open departures closed instead."
       return {

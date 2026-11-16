@@ -2,9 +2,12 @@
 
 import * as React from "react"
 import { useMemo, useState } from "react"
+import Link from "next/link"
 import { submitHajjInquiryApplication } from "@/app/actions/applications"
 import { ArabicText } from "@/components/public/arabic-text"
-import { toWaMeUrl } from "@/components/public/public-utils"
+import { formatPkr, toWaMeUrl } from "@/components/public/public-utils"
+import { readStoredAttribution } from "@/lib/seo/utm"
+import { toTelHref } from "@/lib/company-info"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -28,6 +31,7 @@ import {
   ExternalLink,
   AlertCircle,
   Globe,
+  Search,
 } from "lucide-react"
 import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
 
@@ -55,6 +59,7 @@ export interface PublicHajjPackageItem {
 
 export interface HajjInquirySectionProps {
   hajjPackages?: PublicHajjPackageItem[]
+  packages?: PublicHajjPackageItem[]
   departureCities?: { cityName: string; airportCode: string }[]
   agencyWhatsapp?: string
   secondaryPhone?: string
@@ -66,13 +71,15 @@ export interface HajjHotelStay {
   meal: string
 }
 
+export type HajjMaktabCode = "A+" | "A" | "B" | "C"
+
 export interface HajjPackageDefinition {
   id: string
   slug: string
-  maktab: "A" | "B" | "C"
+  maktab: HajjMaktabCode
   code: string
   title: string
-  tierName: "Executive" | "Premium" | "Silver"
+  tierName: "Royal VIP" | "Executive" | "Premium" | "Silver"
   duration: string
   daysCount: number
   camps: string
@@ -421,10 +428,16 @@ const SUGGESTED_CITIES_BY_COUNTRY: Record<string, string[]> = {
   "Saudi Arabia": ["Riyadh", "Jeddah", "Dammam"],
 }
 
-function coerceMaktabCode(raw: string): "A" | "B" | "C" {
-  const upper = raw.trim().toUpperCase()
-  if (upper.includes("B")) return "B"
-  if (upper.includes("C")) return "C"
+export function coerceMaktabCode(raw: string): HajjMaktabCode {
+  const cleaned = (raw || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\bMAKTAB\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (/(?:^|[\s(])A\+/.test(cleaned)) return "A+"
+  if (/\bB\b/.test(cleaned)) return "B"
+  if (/\bC\b/.test(cleaned)) return "C"
   return "A"
 }
 
@@ -464,7 +477,14 @@ function mapDbHajjPackagesToDefinitions(
       maktab,
       code: String(idx + 1).padStart(2, "0"),
       title: row.title,
-      tierName: maktab === "A" ? "Executive" : maktab === "B" ? "Premium" : "Silver",
+      tierName:
+        maktab === "A+"
+          ? "Royal VIP"
+          : maktab === "A"
+            ? "Executive"
+            : maktab === "B"
+              ? "Premium"
+              : "Silver",
       duration: `${row.durationDays} Days`,
       daysCount: row.durationDays,
       camps: `Mina & Arafat camps · Maktab ${maktab} category`,
@@ -484,27 +504,34 @@ function createHajjSubmissionKey(): string {
 }
 
 export function HajjInquirySection({
-  hajjPackages = [],
+  hajjPackages,
+  packages,
   departureCities,
   agencyWhatsapp = DEFAULT_COMPANY_INFO.primaryWhatsapp,
   secondaryPhone = DEFAULT_COMPANY_INFO.secondaryPhone,
 }: HajjInquirySectionProps = {}) {
-  // T-084 & OD-09e: Hydrate from DB hajjPackages when populated, with indicative 2027 catalog fallback
-  const catalogPackages = useMemo(() => {
-    if (hajjPackages.length > 0) {
-      return mapDbHajjPackagesToDefinitions(hajjPackages)
-    }
-    return HAJJ_2027_PACKAGES
-  }, [hajjPackages])
+  const explicitDbPackages =
+    packages !== undefined ? packages : hajjPackages
 
-  const [selectedMaktab, setSelectedMaktab] = useState<"all" | "A" | "B" | "C">(
+  // SEO-025 & S15-005: Treat explicit `[]` as closed (no synthetic resurrection); fallback only when `undefined`
+  const catalogPackages = useMemo(() => {
+    if (explicitDbPackages === undefined) {
+      return HAJJ_2027_PACKAGES
+    }
+    if (explicitDbPackages.length > 0) {
+      return mapDbHajjPackagesToDefinitions(explicitDbPackages)
+    }
+    return []
+  }, [explicitDbPackages])
+
+  const [selectedMaktab, setSelectedMaktab] = useState<"all" | HajjMaktabCode>(
     "all"
   )
   const [selectedPackageId, setSelectedPackageId] = useState<string>(
     () =>
       catalogPackages.find((p) => p.popular)?.id ??
       catalogPackages[0]?.id ??
-      "hajj-a-03"
+      ""
   )
   const [selectedRoomType, setSelectedRoomType] = useState<
     "quad" | "triple" | "double"
@@ -540,15 +567,17 @@ export function HajjInquirySection({
     selectedPkgTitle?: string
   } | null>(null)
 
-  const activePackage =
+  const activePackage: HajjPackageDefinition | null =
     catalogPackages.find((p) => p.id === selectedPackageId) ??
-    catalogPackages[0]!
+    catalogPackages[0] ??
+    null
 
   const filteredPackages =
     selectedMaktab === "all"
       ? catalogPackages
       : catalogPackages.filter((p) => p.maktab === selectedMaktab)
 
+  const countAPlus = catalogPackages.filter((p) => p.maktab === "A+").length
   const countA = catalogPackages.filter((p) => p.maktab === "A").length
   const countB = catalogPackages.filter((p) => p.maktab === "B").length
   const countC = catalogPackages.filter((p) => p.maktab === "C").length
@@ -604,19 +633,24 @@ export function HajjInquirySection({
             ? "Triple Bed"
             : "Double Bed"
 
-      const chosenPrice = activePackage.pricing[selectedRoomType]
-      const consultationType = `Maktab ${activePackage.maktab} · ${activePackage.title} · ${roomLabel}`
+      const chosenPrice = activePackage
+        ? activePackage.pricing[selectedRoomType]
+        : undefined
+      const consultationType = activePackage
+        ? `Maktab ${activePackage.maktab} · ${activePackage.title} · ${roomLabel}`
+        : `Hajj 2027 General Priority Consultation · ${roomLabel}`
 
-      // T-055 & T-084: Persist structured Hajj metadata in hajjInquiryJson without overflowing specialRequests
+      // T-055, T-084 & SEO-004: Persist structured Hajj metadata + first-touch web attribution
       const res = await submitHajjInquiryApplication({
         clientSubmissionId: submissionKey,
         honeypot,
+        attribution: readStoredAttribution(),
         hajjConsultationType: consultationType,
-        hajjPackageSlug: activePackage.slug,
-        maktabTier: activePackage.maktab,
+        hajjPackageSlug: activePackage?.slug,
+        maktabTier: activePackage?.maktab,
         roomType: selectedRoomType,
         indicativePricePkr: chosenPrice,
-        durationLabel: activePackage.duration,
+        durationLabel: activePackage?.duration,
         includeQurbani,
         includeTrainTicket,
         bloodGroup: bloodGroup.trim() || undefined,
@@ -636,7 +670,9 @@ export function HajjInquirySection({
         setConfirmedResult({
           referenceNumber: res.referenceNumber,
           whatsappUrl: res.whatsappUrl,
-          selectedPkgTitle: `${activePackage.title} (${roomLabel})`,
+          selectedPkgTitle: activePackage
+            ? `${activePackage.title} (${roomLabel})`
+            : `Hajj 2027 Priority Consultation (${roomLabel})`,
         })
       } else {
         setError(res.error || "Failed to submit Hajj pre-registration inquiry.")
@@ -648,6 +684,28 @@ export function HajjInquirySection({
       )
     } finally {
       setLoading(false)
+    }
+  }
+
+  function handleTrackStatus() {
+    const refCode = confirmedResult?.referenceNumber ?? ""
+    const element = document.getElementById("track-status")
+    if (element) {
+      if (refCode && typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("alramlah:prefill-tracker", {
+            detail: { referenceNumber: refCode },
+          })
+        )
+      }
+      element.scrollIntoView({ behavior: "smooth" })
+      return
+    }
+    const targetUrl = refCode
+      ? `/?trackRef=${encodeURIComponent(refCode)}#track-status`
+      : "/#track-status"
+    if (typeof window !== "undefined") {
+      window.location.assign(targetUrl)
     }
   }
 
@@ -699,65 +757,100 @@ export function HajjInquirySection({
             </span>
           </div>
 
-          {/* Maktab Filter Tabs */}
-          <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => setSelectedMaktab("all")}
-              className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
-                selectedMaktab === "all"
-                  ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
-                  : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
-              }`}
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+            <Link
+              href="/hajj-2027"
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-gold/50 bg-gold/15 px-4 py-1.5 text-xs font-bold text-gold transition-colors hover:bg-gold hover:text-emerald-950"
             >
-              All Packages ({catalogPackages.length})
-            </button>
-            {countA > 0 && (
-              <button
-                type="button"
-                onClick={() => setSelectedMaktab("A")}
-                className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
-                  selectedMaktab === "A"
-                    ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
-                    : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
-                }`}
-              >
-                Maktab A ({countA})
-              </button>
-            )}
-            {countB > 0 && (
-              <button
-                type="button"
-                onClick={() => setSelectedMaktab("B")}
-                className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
-                  selectedMaktab === "B"
-                    ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
-                    : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
-                }`}
-              >
-                Maktab B ({countB})
-              </button>
-            )}
-            {countC > 0 && (
-              <button
-                type="button"
-                onClick={() => setSelectedMaktab("C")}
-                className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
-                  selectedMaktab === "C"
-                    ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
-                    : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
-                }`}
-              >
-                Maktab C ({countC})
-              </button>
-            )}
+              <span>View Full Hajj 2027 Maktab A+, A, B &amp; C Guide</span>
+              <ArrowRight className="size-3.5" />
+            </Link>
           </div>
+
+          {/* Maktab Filter Tabs */}
+          {catalogPackages.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedMaktab("all")}
+                className={`min-h-7 rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                  selectedMaktab === "all"
+                    ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
+                    : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
+                }`}
+              >
+                All Packages ({catalogPackages.length})
+              </button>
+              {countAPlus > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMaktab("A+")}
+                  className={`min-h-7 rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                    selectedMaktab === "A+"
+                      ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
+                      : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
+                  }`}
+                >
+                  Maktab A+ ({countAPlus})
+                </button>
+              )}
+              {countA > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMaktab("A")}
+                  className={`min-h-7 rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                    selectedMaktab === "A"
+                      ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
+                      : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
+                  }`}
+                >
+                  Maktab A ({countA})
+                </button>
+              )}
+              {countB > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMaktab("B")}
+                  className={`min-h-7 rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                    selectedMaktab === "B"
+                      ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
+                      : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
+                  }`}
+                >
+                  Maktab B ({countB})
+                </button>
+              )}
+              {countC > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMaktab("C")}
+                  className={`min-h-7 rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                    selectedMaktab === "C"
+                      ? "bg-gold text-emerald-950 shadow-md shadow-gold/20"
+                      : "bg-white/10 text-white/80 hover:bg-white/20 border border-white/15"
+                  }`}
+                >
+                  Maktab C ({countC})
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ======================================================== */}
-        {/* PACKAGES GRID                                            */}
+        {/* PACKAGES GRID OR EXPLICITLY CLOSED CONSULTATION NOTICE   */}
         {/* ======================================================== */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {catalogPackages.length === 0 ? (
+          <div className="mx-auto max-w-3xl w-full rounded-3xl border border-gold/40 bg-black/45 p-8 text-center backdrop-blur-xl">
+            <h3 className="font-display text-xl sm:text-2xl font-bold text-white">
+              Hajj 2027 Tier Allotments Currently Updating
+            </h3>
+            <p className="mt-2 text-xs sm:text-sm text-white/80 leading-relaxed">
+              Individual Hajj 2027 Maktab tier cards are currently paused pending official Government of Pakistan Ministry of Religious Affairs (MoRA) and Saudi Nusuk tariff notifications. You may register priority consultation interest below to receive immediate notification when official quotas open.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredPackages.map((pkg) => {
             const isSelected = selectedPackageId === pkg.id
 
@@ -892,7 +985,8 @@ export function HajjInquirySection({
               </div>
             )
           })}
-        </div>
+          </div>
+        )}
 
         {/* ======================================================== */}
         {/* INCLUDED IN EVERY PACKAGE & ADDITIONAL CHARGES BANNER     */}
@@ -1109,9 +1203,25 @@ export function HajjInquirySection({
             </div>
 
             <div className="rounded-xl border border-gold/30 bg-black/40 p-3 text-center">
-              <span className="text-[11px] font-semibold text-gold block font-mono tabular-nums">
-                Direct Hotline: {[agencyWhatsapp, secondaryPhone].filter(Boolean).join(" · ")}
-              </span>
+              <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] font-semibold text-gold font-mono tabular-nums">
+                <a
+                  href={toTelHref(agencyWhatsapp)}
+                  className="inline-flex min-h-6 items-center hover:underline"
+                >
+                  {agencyWhatsapp}
+                </a>
+                {secondaryPhone && (
+                  <>
+                    <span>·</span>
+                    <a
+                      href={toTelHref(secondaryPhone)}
+                      className="inline-flex min-h-6 items-center hover:underline"
+                    >
+                      {secondaryPhone}
+                    </a>
+                  </>
+                )}
+              </div>
               <span className="text-[10px] text-white/60">
                 Monday to Saturday: 9:00 AM to 8:00 PM PKT
               </span>
@@ -1158,18 +1268,18 @@ export function HajjInquirySection({
                 Our Hajj operations team will connect with you via WhatsApp and phone to review passport validity and notify you first when official MoRA / Nusuk 2027 quotas open.
               </p>
 
-              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <div className="pt-2 flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3">
                 <a
                   href={
                     confirmedResult.whatsappUrl ||
                     toWaMeUrl(
                       agencyWhatsapp,
-                      `Assalam-o-Alaikum Al Ramlah Travels, I have submitted Hajj 2027 pre-registration ${confirmedResult.referenceNumber} for ${activePackage.title}. Please connect me with the Senior Hajj Director.`
+                      `Assalam-o-Alaikum Al Ramlah Travels, I have submitted Hajj 2027 pre-registration ${confirmedResult.referenceNumber} for ${activePackage?.title ?? "Hajj 2027 Consultation"}. Please connect me with the Senior Hajj Director.`
                     )
                   }
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-gold px-7 py-3 text-sm font-bold text-emerald-950 hover:bg-gold/90 shadow-lg shadow-gold/20 transition-colors"
+                  className="w-full sm:w-auto inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-gold px-7 py-3 text-sm font-bold text-emerald-950 hover:bg-gold/90 shadow-lg shadow-gold/20 transition-colors"
                 >
                   <MessageCircle className="size-4" />
                   <span>Connect with Hajj Desk on WhatsApp</span>
@@ -1178,11 +1288,20 @@ export function HajjInquirySection({
 
                 <button
                   type="button"
+                  onClick={handleTrackStatus}
+                  className="w-full sm:w-auto inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-gold/40 bg-black/40 px-5 py-3 text-xs font-semibold text-gold hover:bg-gold/15 transition-colors"
+                >
+                  <Search className="size-4" />
+                  <span>Track Application Status Live</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => {
                     setConfirmedResult(null)
                     setSubmissionKey(createHajjSubmissionKey())
                   }}
-                  className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-xs font-semibold text-white hover:bg-white/20 transition-colors"
+                  className="w-full sm:w-auto inline-flex min-h-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-xs font-semibold text-white hover:bg-white/20 transition-colors"
                 >
                   Submit Another Pre-Registration
                 </button>
@@ -1211,24 +1330,30 @@ export function HajjInquirySection({
                     Selected Indicative Hajj 2027 Structure
                   </span>
                   <h3 className="text-xl sm:text-2xl font-bold text-white mt-0.5">
-                    Maktab {activePackage.maktab} · {activePackage.title}
+                    {activePackage
+                      ? `Maktab ${activePackage.maktab} · ${activePackage.title}`
+                      : "Hajj 2027 Priority Consultation"}
                   </h3>
                   <p className="text-xs text-white/70 mt-1">
-                    {activePackage.camps} · {activePackage.duration}
+                    {activePackage
+                      ? `${activePackage.camps} · ${activePackage.duration}`
+                      : "Priority notification upon official MoRA & Saudi Nusuk 2027 quota release"}
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-gold/40 bg-gold/10 px-4 py-2 text-right">
-                  <span className="block text-[10px] font-semibold uppercase text-gold">
-                    INDICATIVE {selectedRoomType.toUpperCase()} ESTIMATE
-                  </span>
-                  <span className="font-mono tabular-nums text-lg font-black text-white">
-                    PKR {activePackage.pricing[selectedRoomType].toLocaleString()}
-                  </span>
-                  <span className="block text-[9px] text-white/60">
-                    per person (non-binding)
-                  </span>
-                </div>
+                {activePackage && (
+                  <div className="rounded-xl border border-gold/40 bg-gold/10 px-4 py-2 text-right">
+                    <span className="block text-[10px] font-semibold uppercase text-gold">
+                      INDICATIVE {selectedRoomType.toUpperCase()} ESTIMATE
+                    </span>
+                    <span className="font-mono tabular-nums text-lg font-black text-white">
+                      {formatPkr(activePackage.pricing[selectedRoomType])}
+                    </span>
+                    <span className="block text-[9px] text-white/60">
+                      per person (non-binding)
+                    </span>
+                  </div>
+                )}
               </div>
 
               {error && (
@@ -1265,9 +1390,11 @@ export function HajjInquirySection({
                             ? "Triple (3-Bed)"
                             : "Double (2-Bed)"}
                       </span>
-                      <span className="font-mono tabular-nums text-xs font-semibold text-white block mt-0.5">
-                        PKR {activePackage.pricing[tierKey].toLocaleString()}
-                      </span>
+                      {activePackage && (
+                        <span className="font-mono tabular-nums text-xs font-semibold text-white block mt-0.5">
+                          {formatPkr(activePackage.pricing[tierKey])}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>

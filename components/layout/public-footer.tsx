@@ -22,7 +22,15 @@ import {
   ArrowUpRight,
   ExternalLink,
 } from "lucide-react"
-import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
+import {
+  BRAND_ARABIC_NAME,
+  BRAND_WEBSITE_DOMAIN,
+} from "@/lib/constants/brand"
+import {
+  DEFAULT_COMPANY_INFO,
+  formatPkPhoneDisplay,
+  toTelHref,
+} from "@/lib/company-info"
 import { ArabicText } from "@/components/public/arabic-text"
 import { toWaMeUrl } from "@/components/public/public-utils"
 
@@ -59,6 +67,37 @@ function cleanHttpUrl(val: string | null | undefined): string | null {
   return null
 }
 
+const UMRAH_AND_HAJJ_LINKS = [
+  { label: "Group Umrah Packages", href: "/umrah-packages" },
+  { label: "Umrah Packages from Lahore", href: "/umrah-packages/from-lahore" },
+  { label: "Umrah Packages from Karachi", href: "/umrah-packages/from-karachi" },
+  {
+    label: "Umrah Packages from Islamabad",
+    href: "/umrah-packages/from-islamabad",
+  },
+  { label: "Saudi Umrah Visa Rates", href: "/umrah-visa" },
+  { label: "Hajj 2027 Pre-Registration", href: "/hajj-2027" },
+] as const
+
+const HOTELS_AND_ZIYARAT_LINKS = [
+  { label: "Makkah Courtyard & Shuttle Hotels", href: "/hotels/makkah" },
+  { label: "Madinah Markaziyah Hotels", href: "/hotels/madinah" },
+  { label: "Haramain Ziyarat Guide", href: "/ziyarat" },
+  { label: "Sacred Makkah Ziyarat Places", href: "/ziyarat/makkah" },
+  { label: "Sacred Madinah Ziyarat Places", href: "/ziyarat/madinah" },
+  { label: "Custom Umrah Itinerary Builder", href: "/#journey-builder" },
+] as const
+
+const AGENCY_AND_TRUST_LINKS = [
+  { label: "About Al Ramlah Travels", href: "/about" },
+  { label: "Contact Lahore Cantt Office", href: "/contact" },
+  { label: "Umrah, Visa & Hajj FAQs", href: "/faq" },
+  { label: "Track Application Status", href: "/#track-status" },
+  { label: "Privacy Policy", href: "/privacy" },
+  { label: "Terms of Service", href: "/terms" },
+  { label: "Refund & Cancellation Policy", href: "/refund-policy" },
+] as const
+
 export function PublicFooter({
   agencyPhone = DEFAULT_COMPANY_INFO.primaryWhatsapp,
   secondaryPhone = DEFAULT_COMPANY_INFO.secondaryPhone,
@@ -71,16 +110,20 @@ export function PublicFooter({
   moraLicense = null,
   iataCode = null,
   ntnNumber = null,
-  facebookUrl = null,
-  instagramUrl = null,
-  youtubeUrl = null,
-  tiktokUrl = null,
+  facebookUrl = DEFAULT_COMPANY_INFO.facebookUrl,
+  instagramUrl = DEFAULT_COMPANY_INFO.instagramUrl,
+  youtubeUrl = DEFAULT_COMPANY_INFO.youtubeUrl,
+  tiktokUrl = DEFAULT_COMPANY_INFO.tiktokUrl,
 }: PublicFooterProps = {}) {
   const currentYear = new Date().getFullYear()
   const resolvedLegalName = cleanOptionalText(legalEntityName) ?? agencyName
 
-  const telHref = `tel:${agencyPhone.replace(/\s+/g, "")}`
-  const secTelHref = `tel:${secondaryPhone.replace(/\s+/g, "")}`
+  const telHref = toTelHref(agencyPhone)
+  const secTelHref = toTelHref(secondaryPhone)
+  const primaryDisplay = formatPkPhoneDisplay(agencyPhone)
+  const secondaryDisplay = secondaryPhone
+    ? formatPkPhoneDisplay(secondaryPhone)
+    : ""
   const waHref = toWaMeUrl(
     whatsappNumber,
     "Assalam o Alaikum, I would like to inquire about Al Ramlah Travels pilgrimage packages."
@@ -112,16 +155,17 @@ export function PublicFooter({
       <div className="bg-haramain-dark-pattern pointer-events-none absolute inset-0 opacity-40" />
 
       <div className="relative mx-auto max-w-7xl px-4 pt-16 pb-12 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-10 border-b border-primary-foreground/15 pb-12 md:grid-cols-2 lg:grid-cols-5 lg:gap-8">
-          {/* Column 1: Brand & Sacred Mission (2 cols on lg) */}
-          <div className="flex flex-col gap-4 lg:col-span-2">
-            <Link href="/" className="flex items-center gap-3">
-              <div className="size-12 overflow-hidden rounded-xl border border-gold/40 bg-card p-1 shadow-md">
+        <div className="grid grid-cols-1 gap-10 border-b border-primary-foreground/15 pb-12 md:grid-cols-2 lg:grid-cols-4 lg:gap-8">
+          {/* Column 1: Entity & Verified Askari 10 NAP */}
+          <div className="flex flex-col gap-4">
+            <Link href="/" className="inline-flex min-h-6 items-center gap-3">
+              <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-gold/40 bg-card p-1 shadow-md">
                 <Image
                   src="/logo.jpg"
                   alt={`${agencyName} Emblem`}
                   width={44}
                   height={44}
+                  loading="eager"
                   className="size-full object-contain"
                 />
               </div>
@@ -130,29 +174,66 @@ export function PublicFooter({
                   {agencyName}
                 </span>
                 <ArabicText className="text-xs font-medium text-gold">
-                  سفريات الرملة · خادم ضيوف الرحمن
+                  {BRAND_ARABIC_NAME}
                 </ArabicText>
               </div>
             </Link>
 
-            <p className="max-w-sm text-sm leading-relaxed text-primary-foreground/80">
-              Pakistan&apos;s luxury Haramain pilgrimage concierge. Dedicated to
-              crafting serene, spiritually elevating Umrah, Hajj, and Ziyarat
-              journeys with transparent pricing, handpicked Haramain hotels, and
-              24/7 on-ground executive assistance.
+            <p className="text-sm leading-relaxed text-primary-foreground/80">
+              Pakistan&apos;s luxury Haramain pilgrimage concierge at Askari 10,
+              Lahore Cantt. Transparent PKR Umrah packages, Saudi e-visas,
+              handpicked Haramain hotels, and guided Ziyarat tours.
             </p>
 
-            <div className="pt-2">
-              <ArabicText className="mb-1 block text-sm text-gold">
-                لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ، لَبَّيْكَ لا شَرِيكَ لَكَ لَبَّيْكَ
-              </ArabicText>
-              <span className="text-xs text-primary-foreground/60 italic">
-                &ldquo;At Your Service, O Lord, At Your Service&rdquo;
-              </span>
+            <div className="flex flex-col gap-1.5 text-sm text-primary-foreground/85">
+              <a
+                href={telHref}
+                className="inline-flex min-h-6 items-center gap-2 py-0.5 transition-colors hover:text-gold"
+              >
+                <Phone className="size-4 shrink-0 text-gold" />
+                <span className="font-mono tabular-nums">{primaryDisplay}</span>
+              </a>
+              {secondaryDisplay && (
+                <a
+                  href={secTelHref}
+                  className="inline-flex min-h-6 items-center gap-2 py-0.5 pl-6 text-xs text-primary-foreground/80 transition-colors hover:text-gold"
+                >
+                  <span className="font-mono tabular-nums">
+                    {secondaryDisplay}
+                  </span>
+                </a>
+              )}
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-6 items-center gap-2 py-0.5 transition-colors hover:text-gold"
+              >
+                <MessageCircle className="size-4 shrink-0 text-emerald-400" />
+                <span>WhatsApp 24/7 Desk</span>
+              </a>
+              <a
+                href={`mailto:${supportEmail}`}
+                className="inline-flex min-h-6 items-center gap-2 py-0.5 transition-colors hover:text-gold"
+              >
+                <Mail className="size-4 shrink-0 text-gold" />
+                <span>{supportEmail}</span>
+              </a>
+              <Link
+                href="/"
+                className="inline-flex min-h-6 items-center gap-2 py-0.5 font-mono text-xs transition-colors hover:text-gold"
+              >
+                <Compass className="size-4 shrink-0 text-gold" />
+                <span>{BRAND_WEBSITE_DOMAIN}</span>
+              </Link>
+              <div className="flex items-start gap-2 pt-1 text-xs text-primary-foreground/75">
+                <MapPin className="mt-0.5 size-4 shrink-0 text-gold" />
+                <span>{officeAddress}</span>
+              </div>
             </div>
 
             {socialLinks.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 pt-2">
+              <div className="flex flex-wrap items-center gap-2 pt-1">
                 {socialLinks.map((social) => (
                   <a
                     key={social.label}
@@ -169,169 +250,72 @@ export function PublicFooter({
             )}
           </div>
 
-          {/* Column 2: Curated Journeys */}
+          {/* Column 2: Umrah & Hajj Hubs */}
           <div className="flex flex-col gap-3">
             <h3 className="font-display text-sm font-semibold tracking-wide text-gold uppercase">
-              Curated Journeys
+              Umrah &amp; Hajj Hubs
             </h3>
             <ul className="flex flex-col gap-2 text-sm text-primary-foreground/80">
-              <li>
-                <Link
-                  href="/#journey-builder"
-                  className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
-                >
-                  <span>Custom Umrah Builder</span>
-                  <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/#group-packages"
-                  className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
-                >
-                  <span>VIP Executive Packages</span>
-                  <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/#group-packages"
-                  className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
-                >
-                  <span>Family Comfort Umrah</span>
-                  <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/#hajj-inquiry"
-                  className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
-                >
-                  <span>Hajj 2027 Pre-Registration</span>
-                  <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/#ziyarat"
-                  className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
-                >
-                  <span>Historical Ziyarat Tours</span>
-                  <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 3: Pilgrim Services */}
-          <div className="flex flex-col gap-3">
-            <h3 className="font-display text-sm font-semibold tracking-wide text-gold uppercase">
-              Pilgrim Services
-            </h3>
-            <ul className="flex flex-col gap-2 text-sm text-primary-foreground/80">
-              <li>
-                <Link
-                  href="/#track-status"
-                  className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold"
-                >
-                  Live Application Tracker
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/#journey-builder"
-                  className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold"
-                >
-                  Instant Visa Quoting
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/#journey-builder"
-                  className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold"
-                >
-                  Makkah Clock Tower Hotels
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/#journey-builder"
-                  className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold"
-                >
-                  Madinah Markaziah Stays
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/#contact"
-                  className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold"
-                >
-                  Askari 10 Executive Desk
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/admin"
-                  className="inline-flex min-h-6 items-center py-0.5 text-xs text-primary-foreground/75 transition-colors hover:text-gold"
-                >
-                  Staff Operations Portal
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 4: Concierge & Headquarters */}
-          <div className="flex flex-col gap-3">
-            <h3 className="font-display text-sm font-semibold tracking-wide text-gold uppercase">
-              Pilgrim Concierge
-            </h3>
-            <div className="flex flex-col gap-2 text-sm text-primary-foreground/80">
-              <div className="flex flex-col gap-1.5">
-                <a
-                  href={telHref}
-                  className="inline-flex min-h-6 items-center gap-2 py-0.5 transition-colors hover:text-gold"
-                >
-                  <Phone className="size-4 shrink-0 text-gold" />
-                  <span className="font-mono tabular-nums">{agencyPhone}</span>
-                </a>
-                {secondaryPhone && (
-                  <a
-                    href={secTelHref}
-                    className="inline-flex min-h-6 items-center gap-2 py-0.5 pl-6 text-xs text-primary-foreground/80 transition-colors hover:text-gold"
+              {UMRAH_AND_HAJJ_LINKS.map((item) => (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
                   >
-                    <span className="font-mono tabular-nums">{secondaryPhone}</span>
-                  </a>
-                )}
-              </div>
-              <a
-                href={waHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex min-h-6 items-center gap-2 py-0.5 transition-colors hover:text-gold"
-              >
-                <MessageCircle className="size-4 shrink-0 text-emerald-400" />
-                <span>WhatsApp: {whatsappNumber} (24/7 Desk)</span>
-              </a>
-              <a
-                href={`mailto:${supportEmail}`}
-                className="inline-flex min-h-6 items-center gap-2 py-0.5 transition-colors hover:text-gold"
-              >
-                <Mail className="size-4 shrink-0 text-gold" />
-                <span>{supportEmail}</span>
-              </a>
-              <a
-                href="https://www.alramlahtravels.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex min-h-6 items-center gap-2 py-0.5 text-xs transition-colors hover:text-gold"
-              >
-                <Compass className="size-4 shrink-0 text-gold" />
-                <span>www.alramlahtravels.com</span>
-              </a>
-              <div className="flex items-start gap-2 pt-1 text-xs text-primary-foreground/75">
-                <MapPin className="mt-0.5 size-4 shrink-0 text-gold" />
-                <span>{officeAddress}</span>
-              </div>
+                    <span>{item.label}</span>
+                    <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Column 3: Haramain Stays & Ziyarat */}
+          <div className="flex flex-col gap-3">
+            <h3 className="font-display text-sm font-semibold tracking-wide text-gold uppercase">
+              Hotels &amp; Ziyarat Guides
+            </h3>
+            <ul className="flex flex-col gap-2 text-sm text-primary-foreground/80">
+              {HOTELS_AND_ZIYARAT_LINKS.map((item) => (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
+                  >
+                    <span>{item.label}</span>
+                    <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Column 4: Agency Trust & Policies */}
+          <div className="flex flex-col gap-3">
+            <h3 className="font-display text-sm font-semibold tracking-wide text-gold uppercase">
+              Agency &amp; Pilgrim Trust
+            </h3>
+            <ul className="flex flex-col gap-2 text-sm text-primary-foreground/80">
+              {AGENCY_AND_TRUST_LINKS.map((item) => (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
+                  >
+                    <span>{item.label}</span>
+                    <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+
+            <div className="pt-3">
+              <ArabicText className="mb-1 block text-sm text-gold">
+                لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ، لَبَّيْكَ لا شَرِيكَ لَكَ لَبَّيْكَ
+              </ArabicText>
+              <span className="text-xs text-primary-foreground/60 italic">
+                &ldquo;At Your Service, O Lord, At Your Service&rdquo;
+              </span>
             </div>
           </div>
         </div>

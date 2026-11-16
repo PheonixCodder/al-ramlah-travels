@@ -8,13 +8,14 @@ import { db, withTransaction } from "@/db"
 import { contactMessages, faqs, heroSlides, testimonials } from "@/db/schema"
 import { recordAuditLog } from "@/lib/audit-log"
 import { requireAdmin, requireSuperAdmin } from "@/lib/auth-guard"
-import { enforceRateLimit, extractClientIp } from "@/lib/rate-limit"
+import { extractClientIp } from "@/lib/rate-limit"
+import { revalidatePublicSeoPaths } from "@/lib/seo/revalidate-public"
 import {
-  contactMessageSchema,
   faqSchema,
   heroSlideSchema,
   testimonialSchema,
 } from "@/lib/validations/cms"
+import { submitPublicContactInquiryAction } from "./applications"
 
 const uuidIdSchema = z.string().uuid("Invalid record ID format.")
 
@@ -80,6 +81,7 @@ function safeRevalidateCmsPaths(extraPaths: string[] = []): void {
       }
     }
   }
+  revalidatePublicSeoPaths()
 }
 
 async function resolveRequestClientIp(): Promise<string> {
@@ -680,73 +682,9 @@ export async function deleteContactMessage(id: string) {
 }
 
 // ==========================================
-// PUBLIC CONTACT SUBMISSION (`T-076`, `T-091`)
+// PUBLIC CONTACT SUBMISSION (`T-076`, `T-091`, `SEO-024`)
 // ==========================================
 
-const hardenedContactMessageSchema = contactMessageSchema.safeExtend({
-  name: z.string().trim().min(2, "Name is required.").max(120),
-  email: z
-    .string()
-    .trim()
-    .email("Invalid email address.")
-    .max(255)
-    .optional()
-    .or(z.literal("")),
-  phone: z.string().trim().min(7, "Valid phone number required.").max(32),
-  whatsapp: z.string().trim().max(32).optional(),
-  subject: z.string().trim().min(3, "Subject is required.").max(200),
-  message: z
-    .string()
-    .trim()
-    .min(10, "Message must be at least 10 characters.")
-    .max(4000),
-})
-
 export async function submitContactMessage(rawInput: unknown) {
-  const clientIp = await resolveRequestClientIp()
-  const rateLimit = await enforceRateLimit(
-    "public:contact-message",
-    clientIp,
-    {
-      max: 5,
-      windowSec: 900,
-    }
-  )
-
-  if (!rateLimit.allowed) {
-    return {
-      success: false as const,
-      code: "RATE_LIMITED" as const,
-      retryAfterSec: rateLimit.retryAfterSec,
-      error: `Too many messages sent recently. Please wait ${rateLimit.retryAfterSec} seconds or reach us directly on WhatsApp.`,
-    }
-  }
-
-  const parsed = hardenedContactMessageSchema.safeParse(rawInput)
-  if (!parsed.success) {
-    const formatted = formatZodIssues(parsed.error)
-    return {
-      success: false as const,
-      code: "VALIDATION_ERROR" as const,
-      ...formatted,
-    }
-  }
-  const validated = parsed.data
-
-  const [inserted] = await db
-    .insert(contactMessages)
-    .values({
-      name: validated.name,
-      email: validated.email || null,
-      phone: validated.phone,
-      whatsapp: validated.whatsapp || null,
-      subject: validated.subject,
-      message: validated.message,
-      status: "unread",
-    })
-    .returning({ id: contactMessages.id })
-
-  safeRevalidateCmsPaths(["/admin/messages"])
-
-  return { success: true as const, id: inserted.id }
+  return submitPublicContactInquiryAction(rawInput)
 }

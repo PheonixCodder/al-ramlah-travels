@@ -22,6 +22,12 @@ import {
   normalizePublicPhone,
   toWaMeUrl,
 } from "@/components/public/public-utils"
+import {
+  formatWhatsAppAttributionSuffix,
+  sanitizeAttributionInput,
+  strictAttributionSchema,
+  type AttributionPayload,
+} from "@/lib/seo/utm"
 
 // ==========================================
 // PUBLIC TYPES & RESULT CONTRACTS
@@ -396,6 +402,41 @@ function coerceAirportCode(val: string | null | undefined): "JED" | "MED" | null
   return null
 }
 
+async function resolvePersistedAttribution(
+  clientAttribution: AttributionPayload | undefined
+): Promise<AttributionPayload> {
+  const base = sanitizeAttributionInput(clientAttribution)
+  if (base.landingPage || base.httpReferrer) {
+    return base
+  }
+
+  try {
+    const reqHeaders = await headers()
+    const referer = reqHeaders.get("referer")
+    if (!referer) return base
+    const parsedUrl = new URL(referer)
+    const host = parsedUrl.hostname.toLowerCase()
+    const isSelfOrigin =
+      host === "alramlahtravels.com" ||
+      host === "www.alramlahtravels.com" ||
+      host === "localhost" ||
+      host === "127.0.0.1"
+
+    if (isSelfOrigin) {
+      return sanitizeAttributionInput({
+        ...base,
+        landingPage: `${parsedUrl.pathname}${parsedUrl.search}`,
+      })
+    }
+    return sanitizeAttributionInput({
+      ...base,
+      httpReferrer: referer,
+    })
+  } catch {
+    return base
+  }
+}
+
 // ==========================================
 // STRICT PUBLIC ZOD SCHEMAS (`F-PUB`)
 // ==========================================
@@ -571,6 +612,7 @@ const strictCustomUmrahSchema = z
     ziyaratVehicleId: z.string().uuid().optional().or(z.literal("")),
     selectedZiyaratPlaceIds: z.array(z.string().uuid()).max(40).optional(),
     contact: strictContactSchema,
+    attribution: strictAttributionSchema.optional(),
   })
   .superRefine((val, ctx) => {
     if (
@@ -691,6 +733,7 @@ const strictGroupBookingSchema = z
       .max(1500, "Special requests must be 1,500 characters or fewer")
       .optional()
       .or(z.literal("")),
+    attribution: strictAttributionSchema.optional(),
   })
   .refine((v) => Boolean(v.roomOccupancyTier || v.selectedRoomType), {
     message: "Please select a room occupancy tier.",
@@ -716,6 +759,7 @@ const strictHajjInquirySchema = z.object({
     .max(1000, "Special inquiries must be 1,000 characters or fewer")
     .optional()
     .or(z.literal("")),
+  attribution: strictAttributionSchema.optional(),
 })
 
 const strictStatusLookupSchema = z.object({
@@ -1024,6 +1068,7 @@ export async function submitCustomApplication(
   const allSectors = data.includeTransport
     ? await execDb.select().from(schema.transportSectors)
     : []
+  const resolvedAttribution = await resolvePersistedAttribution(data.attribution)
 
   try {
     const txResult = await runAtomic(async (tx) => {
@@ -1043,6 +1088,13 @@ export async function submitCustomApplication(
           customerWhatsapp: (normalizedWhatsapp ?? normalizedPhone).e164,
           customerEmail: data.contact.customerEmail || null,
           customerCity: data.contact.customerCity,
+          utmSource: resolvedAttribution.utmSource,
+          utmMedium: resolvedAttribution.utmMedium,
+          utmCampaign: resolvedAttribution.utmCampaign,
+          utmContent: resolvedAttribution.utmContent,
+          utmTerm: resolvedAttribution.utmTerm,
+          landingPage: resolvedAttribution.landingPage,
+          httpReferrer: resolvedAttribution.httpReferrer,
           adults,
           children,
           infants,
@@ -1201,9 +1253,12 @@ export async function submitCustomApplication(
       return insertedApp
     })
 
-    const waMessage = isVisaOnly
-      ? `Assalam-o-Alaikum Al Ramlah Travels! I have submitted my Umrah Visa-Only booking.\nReference: *${txResult.referenceNumber}*\nPilgrim: ${data.contact.customerName}\nPassports: ${totalPassportCount}\nTotal Locked Amount: PKR ${(calculatedVisaTotalPkr ?? 0).toLocaleString()}`
-      : `Assalam-o-Alaikum Al Ramlah Travels! I have configured a Custom Umrah Itinerary.\nReference: *${txResult.referenceNumber}*\nPilgrim: ${data.contact.customerName}\nTravellers: ${adults} Adults, ${children} Children, ${infants} Infants\nPlease prepare my confirmed live rate quotation.`
+    const waSuffix = formatWhatsAppAttributionSuffix(resolvedAttribution)
+    const waMessage = `${
+      isVisaOnly
+        ? `Assalam-o-Alaikum Al Ramlah Travels! I have submitted my Umrah Visa-Only booking.\nReference: *${txResult.referenceNumber}*\nPilgrim: ${data.contact.customerName}\nPassports: ${totalPassportCount}\nTotal Locked Amount: PKR ${(calculatedVisaTotalPkr ?? 0).toLocaleString()}`
+        : `Assalam-o-Alaikum Al Ramlah Travels! I have configured a Custom Umrah Itinerary.\nReference: *${txResult.referenceNumber}*\nPilgrim: ${data.contact.customerName}\nTravellers: ${adults} Adults, ${children} Children, ${infants} Infants\nPlease prepare my confirmed live rate quotation.`
+    }${waSuffix}`
 
     return {
       success: true,
@@ -1334,6 +1389,7 @@ export async function submitGroupBookingApplication(
   const totalPassportCount = adults + children + infants
   const bedAndSeatCount = adults + children // Infants (<2 yrs) consume 0 beds and 0 seats
   const todayPktIso = getTodayPktIso()
+  const resolvedAttribution = await resolvePersistedAttribution(data.attribution)
 
   try {
     const txOut = await withTransaction(async (tx) => {
@@ -1439,28 +1495,21 @@ export async function submitGroupBookingApplication(
         selectedHotelOptionLabel = `${matchedOpt.label} (${matchedOpt.makkahHotelName} / ${matchedOpt.madinahHotelName})`
 
         if (roomOccupancyTier === "sharing") {
-          ratePerPersonPkr =
-            matchedOpt.sharingPricePkr ?? matchedOpt.quadPricePkr ?? pkg.quadPricePkr
+          ratePerPersonPkr = matchedOpt.sharingPricePkr
         } else if (roomOccupancyTier === "quad") {
-          ratePerPersonPkr =
-            matchedOpt.quadPricePkr ?? matchedOpt.sharingPricePkr ?? pkg.quadPricePkr
+          ratePerPersonPkr = matchedOpt.quadPricePkr
         } else if (roomOccupancyTier === "triple") {
-          ratePerPersonPkr =
-            matchedOpt.triplePricePkr ??
-            matchedOpt.quadPricePkr ??
-            pkg.triplePricePkr
+          ratePerPersonPkr = matchedOpt.triplePricePkr
         } else {
-          ratePerPersonPkr =
-            matchedOpt.doublePricePkr ??
-            matchedOpt.triplePricePkr ??
-            pkg.doublePricePkr
+          ratePerPersonPkr = matchedOpt.doublePricePkr
         }
       } else {
         if (roomOccupancyTier === "sharing") {
           ratePerPersonPkr =
-            selectedDeparture?.sharingPriceOverridePkr ??
-            pkg.sharingPricePkr ??
-            pkg.quadPricePkr
+            selectedDeparture?.sharingPriceOverridePkr !== null &&
+            selectedDeparture?.sharingPriceOverridePkr !== undefined
+              ? selectedDeparture.sharingPriceOverridePkr
+              : pkg.sharingPricePkr
         } else if (roomOccupancyTier === "quad") {
           ratePerPersonPkr =
             selectedDeparture?.quadPriceOverridePkr ?? pkg.quadPricePkr
@@ -1471,6 +1520,12 @@ export async function submitGroupBookingApplication(
           ratePerPersonPkr =
             selectedDeparture?.doublePriceOverridePkr ?? pkg.doublePricePkr
         }
+      }
+
+      if (ratePerPersonPkr <= 0) {
+        throw new Error(
+          "Selected room occupancy tier is available On Request only. Please choose a published room tier or contact our concierge."
+        )
       }
 
       const infantTotalPkr = infants * (pkg.infantPricePkr ?? 0)
@@ -1513,6 +1568,13 @@ export async function submitGroupBookingApplication(
           customerWhatsapp: (normalizedWhatsapp ?? normalizedPhone).e164,
           customerEmail: data.contact.customerEmail || null,
           customerCity: data.contact.customerCity,
+          utmSource: resolvedAttribution.utmSource,
+          utmMedium: resolvedAttribution.utmMedium,
+          utmCampaign: resolvedAttribution.utmCampaign,
+          utmContent: resolvedAttribution.utmContent,
+          utmTerm: resolvedAttribution.utmTerm,
+          landingPage: resolvedAttribution.landingPage,
+          httpReferrer: resolvedAttribution.httpReferrer,
           adults,
           children,
           infants,
@@ -1563,7 +1625,8 @@ export async function submitGroupBookingApplication(
       return { insertedApp, pkg, selectedDeparture, estimatedTotalPkr }
     })
 
-    const waMessage = `Assalam-o-Alaikum Al Ramlah Travels! I have submitted a Group Umrah Reservation.\nReference: *${txOut.insertedApp.referenceNumber}*\nPackage: ${txOut.pkg.title}\nRoom Tier: ${roomOccupancyTier.toUpperCase()}\nPilgrim: ${data.contact.customerName}\nTravellers: ${adults} Adults, ${children} Children, ${infants} Infants\nEstimated Total: PKR ${txOut.estimatedTotalPkr.toLocaleString()}`
+    const waSuffix = formatWhatsAppAttributionSuffix(resolvedAttribution)
+    const waMessage = `Assalam-o-Alaikum Al Ramlah Travels! I have submitted a Group Umrah Reservation.\nReference: *${txOut.insertedApp.referenceNumber}*\nPackage: ${txOut.pkg.title}\nRoom Tier: ${roomOccupancyTier.toUpperCase()}\nPilgrim: ${data.contact.customerName}\nTravellers: ${adults} Adults, ${children} Children, ${infants} Infants\nEstimated Total: PKR ${txOut.estimatedTotalPkr.toLocaleString()}${waSuffix}`
 
     return {
       success: true,
@@ -1728,6 +1791,7 @@ export async function submitHajjInquiryApplication(
   )
     .trim()
     .slice(0, 1000)
+  const resolvedAttribution = await resolvePersistedAttribution(data.attribution)
 
   try {
     const insertedApp = await withTransaction(async (tx) => {
@@ -1745,6 +1809,13 @@ export async function submitHajjInquiryApplication(
           customerWhatsapp: (normalizedWhatsapp ?? normalizedPhone).e164,
           customerEmail: data.contact.customerEmail || null,
           customerCity: customerCityDisplay,
+          utmSource: resolvedAttribution.utmSource,
+          utmMedium: resolvedAttribution.utmMedium,
+          utmCampaign: resolvedAttribution.utmCampaign,
+          utmContent: resolvedAttribution.utmContent,
+          utmTerm: resolvedAttribution.utmTerm,
+          landingPage: resolvedAttribution.landingPage,
+          httpReferrer: resolvedAttribution.httpReferrer,
           adults,
           children,
           infants,
@@ -1768,7 +1839,8 @@ export async function submitHajjInquiryApplication(
       return row
     })
 
-    const waMessage = `Assalam-o-Alaikum Al Ramlah Travels! I have submitted an Indicative Hajj 2027 Pre-Registration Inquiry.\nReference: *${insertedApp.referenceNumber}*\nSelection: ${data.hajjConsultationType}\nLocation: ${customerCityDisplay}\nPilgrim: ${data.contact.customerName}\nTravellers: ${adults} Adults, ${children} Children, ${infants} Infants`
+    const waSuffix = formatWhatsAppAttributionSuffix(resolvedAttribution)
+    const waMessage = `Assalam-o-Alaikum Al Ramlah Travels! I have submitted an Indicative Hajj 2027 Pre-Registration Inquiry.\nReference: *${insertedApp.referenceNumber}*\nSelection: ${data.hajjConsultationType}\nLocation: ${customerCityDisplay}\nPilgrim: ${data.contact.customerName}\nTravellers: ${adults} Adults, ${children} Children, ${infants} Infants${waSuffix}`
 
     return {
       success: true,
@@ -2259,6 +2331,7 @@ export async function respondToApplicationQuoteAction(
 export interface PublicContactInquiryResult {
   success: boolean
   id?: string
+  code?: "VALIDATION_ERROR" | "RATE_LIMITED"
   error?: string
   fieldErrors?: Record<string, string>
 }
@@ -2296,6 +2369,7 @@ const strictPublicContactMessageSchema = z.object({
     .trim()
     .min(10, "Please share at least 10 characters so our concierge can assist")
     .max(2000, "Message must be 2,000 characters or fewer"),
+  attribution: strictAttributionSchema.optional(),
 })
 
 export async function submitPublicContactInquiryAction(
@@ -2304,7 +2378,22 @@ export async function submitPublicContactInquiryAction(
   if (hasTriggeredHoneypot(rawInput)) {
     return {
       success: false,
+      code: "VALIDATION_ERROR",
       error: "Unable to process message. Please refresh and try again.",
+    }
+  }
+
+  const clientIp = await resolveClientIp(rawInput)
+  const rl = await enforceRateLimit("submit-contact", clientIp, {
+    max: 5,
+    windowSec: 900,
+  })
+  if (!rl.allowed) {
+    return {
+      success: false,
+      code: "RATE_LIMITED",
+      error:
+        "Too many messages sent recently from your network. Please wait a few minutes or contact us via WhatsApp.",
     }
   }
 
@@ -2312,21 +2401,9 @@ export async function submitPublicContactInquiryAction(
   if (!parsed.success) {
     return {
       success: false,
+      code: "VALIDATION_ERROR",
       error: parsed.error.issues[0]?.message ?? "Please check your message details.",
       fieldErrors: collectZodFieldErrors(parsed.error),
-    }
-  }
-
-  const clientIp = await resolveClientIp(rawInput)
-  const rl = await enforceRateLimit("submit-contact", clientIp, {
-    max: 5,
-    windowSec: 600,
-  })
-  if (!rl.allowed) {
-    return {
-      success: false,
-      error:
-        "Too many messages sent recently from your network. Please wait a few minutes or contact us via WhatsApp.",
     }
   }
 
@@ -2334,6 +2411,7 @@ export async function submitPublicContactInquiryAction(
   if (!normPhone) {
     return {
       success: false,
+      code: "VALIDATION_ERROR",
       error: "Please enter a valid phone number.",
       fieldErrors: { phone: "Please enter a valid phone number." },
     }
@@ -2341,6 +2419,10 @@ export async function submitPublicContactInquiryAction(
   const normWa = parsed.data.whatsapp
     ? normalizePublicPhone(parsed.data.whatsapp)
     : normPhone
+
+  const resolvedAttribution = await resolvePersistedAttribution(
+    parsed.data.attribution
+  )
 
   try {
     const [inserted] = await db
@@ -2353,6 +2435,13 @@ export async function submitPublicContactInquiryAction(
         subject: parsed.data.subject,
         message: parsed.data.message,
         status: "unread",
+        utmSource: resolvedAttribution.utmSource,
+        utmMedium: resolvedAttribution.utmMedium,
+        utmCampaign: resolvedAttribution.utmCampaign,
+        utmContent: resolvedAttribution.utmContent,
+        utmTerm: resolvedAttribution.utmTerm,
+        landingPage: resolvedAttribution.landingPage,
+        httpReferrer: resolvedAttribution.httpReferrer,
       })
       .returning({ id: schema.contactMessages.id })
 

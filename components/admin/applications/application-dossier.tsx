@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/layout/status-badge"
 import { formatCitySequence } from "@/lib/domain"
 import { formatWhatsAppPhone } from "@/lib/phone"
+import { inferAcquisitionChannel } from "@/lib/seo/utm"
 
 interface HotelStayItem {
   id: string
@@ -121,6 +122,13 @@ export interface ApplicationDossierProps {
     flightRouteType?: string | null
     cabinClass?: string | null
     sourcePostCode?: string | null
+    utmSource?: string | null
+    utmMedium?: string | null
+    utmCampaign?: string | null
+    utmContent?: string | null
+    utmTerm?: string | null
+    landingPage?: string | null
+    httpReferrer?: string | null
     createdAt: Date
     supplier?: { id: string; name: string; codePrefix: string } | null
     departureCity?: { cityName: string; airportCode: string } | null
@@ -171,13 +179,24 @@ export function ApplicationDossier({
   ziyaratPlaces = [],
 }: ApplicationDossierProps) {
   const cleanWa = formatWhatsAppPhone(application.customerWhatsapp || application.customerPhone)
+  const acquisitionChannel = inferAcquisitionChannel(application)
+  const hasAttribution = Boolean(
+    acquisitionChannel ||
+      application.utmSource ||
+      application.utmMedium ||
+      application.utmCampaign ||
+      application.utmContent ||
+      application.utmTerm ||
+      application.landingPage ||
+      application.httpReferrer
+  )
 
   return (
     <div className="flex flex-col gap-6">
       {/* Dossier Header */}
       <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-5 shadow-xs sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xl font-bold text-primary sm:text-2xl">
               {application.referenceNumber}
             </span>
@@ -193,6 +212,14 @@ export function ApplicationDossier({
                 className="border-primary/40 bg-primary/10 font-mono text-xs font-bold text-primary"
               >
                 Post Ref: {application.sourcePostCode}
+              </Badge>
+            )}
+            {acquisitionChannel && (
+              <Badge
+                variant="outline"
+                className="border-emerald-600/30 bg-emerald-50 text-xs font-semibold text-emerald-900"
+              >
+                {acquisitionChannel}
               </Badge>
             )}
             {application.supplier && (
@@ -213,6 +240,43 @@ export function ApplicationDossier({
             })}{" "}
             PKT
           </span>
+          {hasAttribution && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+              {application.utmCampaign && (
+                <Badge
+                  variant="outline"
+                  className="border-gold/40 bg-gold/10 font-mono text-[11px] font-medium text-gold-text"
+                >
+                  Campaign: {application.utmCampaign}
+                </Badge>
+              )}
+              {application.landingPage && (
+                <Badge
+                  variant="outline"
+                  className="border-border bg-muted/40 font-mono text-[11px] font-normal text-foreground"
+                >
+                  Entry: {application.landingPage}
+                </Badge>
+              )}
+              {application.utmTerm && (
+                <Badge
+                  variant="outline"
+                  className="border-border bg-muted/40 font-mono text-[11px] font-normal text-muted-foreground"
+                >
+                  Term: {application.utmTerm}
+                </Badge>
+              )}
+              {application.httpReferrer && (
+                <Badge
+                  variant="outline"
+                  className="max-w-xs truncate border-border bg-muted/40 font-mono text-[11px] font-normal text-muted-foreground"
+                  title={application.httpReferrer}
+                >
+                  Referrer: {application.httpReferrer}
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
 
         <StatusBadge

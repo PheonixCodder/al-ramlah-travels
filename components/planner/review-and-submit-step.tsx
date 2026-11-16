@@ -11,6 +11,7 @@ import {
   submitCustomApplication,
   type CustomApplicationResult,
 } from "@/app/actions/applications"
+import { readStoredAttribution } from "@/lib/seo/utm"
 import { formatCitySequence } from "@/lib/domain"
 import {
   Calendar,
@@ -154,6 +155,7 @@ export function ReviewAndSubmitStep() {
       const fullPayload: PlannerSubmissionPayload = {
         clientSubmissionId,
         honeypot,
+        attribution: readStoredAttribution(),
         presetMode,
         includeVisa: pillars.visa,
         includeFlights: pillars.flights,
@@ -260,9 +262,24 @@ export function ReviewAndSubmitStep() {
   }
 
   const handleTrackStatus = () => {
+    const refCode = result?.referenceNumber ?? ""
     const element = document.getElementById("track-status")
     if (element) {
+      if (refCode && typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("alramlah:prefill-tracker", {
+            detail: { referenceNumber: refCode },
+          })
+        )
+      }
       element.scrollIntoView({ behavior: "smooth" })
+      return
+    }
+    const targetUrl = refCode
+      ? `/?trackRef=${encodeURIComponent(refCode)}#track-status`
+      : "/#track-status"
+    if (typeof window !== "undefined") {
+      window.location.assign(targetUrl)
     }
   }
 

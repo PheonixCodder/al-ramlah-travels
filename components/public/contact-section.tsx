@@ -2,8 +2,10 @@
 
 import * as React from "react"
 import { useState } from "react"
+import Link from "next/link"
 import { submitPublicContactInquiryAction } from "@/app/actions/applications"
 import { toWaMeUrl } from "@/components/public/public-utils"
+import { readStoredAttribution } from "@/lib/seo/utm"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,8 +23,14 @@ import {
   ShieldCheck,
   ExternalLink,
   AlertCircle,
+  Award,
+  ArrowRight,
 } from "lucide-react"
-import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
+import {
+  DEFAULT_COMPANY_INFO,
+  formatPkPhoneDisplay,
+  toTelHref,
+} from "@/lib/company-info"
 
 export interface AgencyContactInfo {
   agencyName: string
@@ -33,10 +41,20 @@ export interface AgencyContactInfo {
   officeAddress: string
   workingHours: string
   mapsEmbedUrl?: string | null
+  dtsLicense?: string | null
+  moraLicense?: string | null
+  iataCode?: string | null
+  ntnNumber?: string | null
 }
 
 interface ContactSectionProps {
   settings?: AgencyContactInfo | null
+}
+
+function cleanLicenseValue(val?: string | null): string | null {
+  if (!val) return null
+  const trimmed = val.trim()
+  return trimmed.length > 0 ? trimmed : null
 }
 
 export function ContactSection({ settings }: ContactSectionProps) {
@@ -72,7 +90,6 @@ export function ContactSection({ settings }: ContactSectionProps) {
     e.preventDefault()
     if (loading) return
 
-    // T-095: Always clear prior success/error banners before evaluating a new submission
     setLoading(true)
     setSuccess(false)
     setError(null)
@@ -87,13 +104,13 @@ export function ContactSection({ settings }: ContactSectionProps) {
         subject,
         message,
         honeypot,
+        attribution: readStoredAttribution(),
       })
 
       if (!res.success) {
         setSuccess(false)
         setError(
-          res.error ||
-            "Please review the highlighted fields and try again."
+          res.error || "Please review the highlighted fields and try again."
         )
         setFieldErrors(res.fieldErrors ?? {})
         return
@@ -123,11 +140,30 @@ export function ContactSection({ settings }: ContactSectionProps) {
     info.primaryWhatsapp,
     "Assalam-o-Alaikum Al Ramlah Travels! I would like to connect with your Lahore concierge desk regarding pilgrimage services."
   )
+  const primaryTelHref = toTelHref(info.primaryWhatsapp)
+  const primaryDisplay = formatPkPhoneDisplay(info.primaryWhatsapp)
+  const secondaryTelHref = info.secondaryPhone
+    ? toTelHref(info.secondaryPhone)
+    : null
+  const secondaryDisplay = info.secondaryPhone
+    ? formatPkPhoneDisplay(info.secondaryPhone)
+    : null
 
   const safeMapsUrl =
     info.mapsEmbedUrl && info.mapsEmbedUrl.startsWith("https://")
       ? info.mapsEmbedUrl
       : DEFAULT_COMPANY_INFO.mapsEmbedUrl
+
+  // OD-10: Only render verified regulatory licenses when explicitly set in agencySettings
+  const verifiedLicenses: Array<{ label: string; value: string }> = []
+  const dts = cleanLicenseValue(info.dtsLicense)
+  const mora = cleanLicenseValue(info.moraLicense)
+  const iata = cleanLicenseValue(info.iataCode)
+  const ntn = cleanLicenseValue(info.ntnNumber)
+  if (dts) verifiedLicenses.push({ label: "DTS License", value: dts })
+  if (mora) verifiedLicenses.push({ label: "MoRA / HGO", value: mora })
+  if (iata) verifiedLicenses.push({ label: "IATA", value: iata })
+  if (ntn) verifiedLicenses.push({ label: "NTN", value: ntn })
 
   return (
     <section
@@ -146,6 +182,15 @@ export function ContactSection({ settings }: ContactSectionProps) {
           <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
             Whether you are planning an executive family Umrah, organizing an extended group, or visiting our Lahore Cantt headquarters in person, our team is at your service.
           </p>
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+            <Link
+              href="/contact"
+              className="inline-flex min-h-7 items-center gap-1 text-xs font-semibold text-primary hover:underline"
+            >
+              <span>Visit Full Lahore Cantt Office &amp; Directions Guide</span>
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
@@ -174,7 +219,7 @@ export function ContactSection({ settings }: ContactSectionProps) {
                         href={safeMapsUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 hover:underline pt-0.5"
+                        className="inline-flex min-h-6 items-center gap-1 text-[11px] font-semibold text-emerald-800 hover:underline pt-0.5"
                       >
                         <span>Open Askari 10 Lahore HQ on Google Maps</span>
                         <ExternalLink className="size-3" />
@@ -183,28 +228,37 @@ export function ContactSection({ settings }: ContactSectionProps) {
                   </div>
                 </div>
 
-                {/* WhatsApp */}
+                {/* WhatsApp + E.164 Call */}
                 <div className="flex items-start gap-3">
                   <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800">
                     <MessageCircle className="size-4" />
                   </div>
-                  <div>
+                  <div className="flex flex-col gap-0.5">
                     <span className="font-semibold text-foreground block">
-                      Primary WhatsApp Desk
+                      Primary WhatsApp &amp; Hotline
                     </span>
-                    <a
-                      href={primaryWaHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-mono tabular-nums font-medium text-emerald-700 hover:underline"
-                    >
-                      {info.primaryWhatsapp}
-                    </a>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a
+                        href={primaryWaHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex min-h-6 items-center text-xs font-mono tabular-nums font-medium text-emerald-700 hover:underline"
+                      >
+                        WhatsApp {primaryDisplay}
+                      </a>
+                      <span className="text-muted-foreground">·</span>
+                      <a
+                        href={primaryTelHref}
+                        className="inline-flex min-h-6 items-center text-xs font-mono tabular-nums text-muted-foreground hover:text-foreground"
+                      >
+                        Call {primaryDisplay}
+                      </a>
+                    </div>
                   </div>
                 </div>
 
-                {/* Telephone */}
-                {info.secondaryPhone && (
+                {/* Secondary Telephone */}
+                {secondaryTelHref && secondaryDisplay && (
                   <div className="flex items-start gap-3">
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-900">
                       <Phone className="size-4" />
@@ -214,10 +268,10 @@ export function ContactSection({ settings }: ContactSectionProps) {
                         Office Telephone
                       </span>
                       <a
-                        href={`tel:${info.secondaryPhone}`}
-                        className="text-xs font-mono tabular-nums text-muted-foreground hover:text-foreground"
+                        href={secondaryTelHref}
+                        className="inline-flex min-h-6 items-center text-xs font-mono tabular-nums text-muted-foreground hover:text-foreground"
                       >
-                        {info.secondaryPhone}
+                        {secondaryDisplay}
                       </a>
                     </div>
                   </div>
@@ -234,7 +288,7 @@ export function ContactSection({ settings }: ContactSectionProps) {
                     </span>
                     <a
                       href={`mailto:${info.supportEmail}`}
-                      className="text-xs text-muted-foreground hover:text-foreground"
+                      className="inline-flex min-h-6 items-center text-xs text-muted-foreground hover:text-foreground"
                     >
                       {info.supportEmail}
                     </a>
@@ -256,6 +310,23 @@ export function ContactSection({ settings }: ContactSectionProps) {
                   </div>
                 </div>
               </div>
+
+              {verifiedLicenses.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+                  {verifiedLicenses.map((lic) => (
+                    <span
+                      key={lic.label}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-2.5 py-1 font-mono text-[11px] tabular-nums text-foreground"
+                    >
+                      <Award className="size-3 text-gold-text" />
+                      <strong className="font-sans font-semibold text-gold-text">
+                        {lic.label}:
+                      </strong>
+                      <span>{lic.value}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Trust Badge */}
@@ -422,8 +493,8 @@ export function ContactSection({ settings }: ContactSectionProps) {
                     <option value="Group Departure Booking">
                       Group Departure Booking
                     </option>
-                    <option value="Hajj 2027 Pre-Registration (Maktab A / B / C)">
-                      Hajj 2027 Pre-Registration (Maktab A / B / C)
+                    <option value="Hajj 2027 Pre-Registration (Maktab A+ / A / B / C)">
+                      Hajj 2027 Pre-Registration (Maktab A+ / A / B / C)
                     </option>
                     <option value="Corporate / Institution Pilgrimage">
                       Corporate / Institution Pilgrimage

@@ -1,61 +1,64 @@
 import type { Metadata } from "next"
-import Link from "next/link"
-import { ArrowLeft, RotateCcw, Scale, ShieldAlert } from "lucide-react"
-import { db } from "@/db"
-import * as schema from "@/db/schema"
-import { getCompanyInfo } from "@/lib/company-info"
+import { RotateCcw, Scale, ShieldAlert } from "lucide-react"
+import { PublicBreadcrumbs } from "@/components/layout/breadcrumbs"
 import { toWaMeUrl } from "@/components/public/public-utils"
+import { TrustLegalCrosslinks } from "@/components/seo/trust-legal-crosslinks"
+import { toTelHref } from "@/lib/company-info"
+import { JsonLd, ORGANIZATION_JSONLD_ID } from "@/lib/seo/json-ld"
+import { buildPublicMetadata, CANONICAL_ORIGIN } from "@/lib/seo/metadata"
+import { getCachedCompanyInfo } from "@/lib/seo/public-queries"
 
 export const revalidate = 300
 
-export const metadata: Metadata = {
-  title: "Cancellation & Refund Policy | Al Ramlah Travels",
+// Spec 0025 §3 #19 (`56`c title, `152`c description, self-canonical `/refund-policy`)
+export const metadata: Metadata = buildPublicMetadata({
+  path: "/refund-policy",
+  title: "Booking Cancellation & Refund Policy | Al Ramlah Travels",
   description:
-    "Official cancellation schedule, non-refundable KSA visa and airline fare rules, Ramadan/Hajj blackout terms, and PKR refund settlement procedures.",
-}
+    "Review our official cancellation schedule, non-refundable Saudi visa and airline fare rules, Ramadan/Hajj blackout terms, and PKR refund procedures now.",
+})
 
 export default async function RefundPolicyPage() {
-  const [settings] = await db.select().from(schema.agencySettings).limit(1)
-  const company = getCompanyInfo(settings)
-  const legalEntityName =
-    settings?.legalEntityName?.trim() || company.agencyName
+  const company = await getCachedCompanyInfo()
+  const legalEntityName = company.legalEntityName || company.agencyName
   const waSupportHref = toWaMeUrl(
     company.primaryWhatsapp,
     "Assalam-o-Alaikum Al Ramlah Travels, I need assistance regarding a booking modification or cancellation."
   )
+  const primaryTelHref = toTelHref(company.primaryWhatsapp)
+
+  const refundWebPageJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "@id": `${CANONICAL_ORIGIN}/refund-policy#webpage`,
+    url: `${CANONICAL_ORIGIN}/refund-policy`,
+    name: "Cancellation, Amendment & PKR Refund Policy",
+    inLanguage: "en-PK",
+    publisher: {
+      "@id": ORGANIZATION_JSONLD_ID,
+    },
+  }
 
   return (
     <div className="bg-[#FAF7F0] min-h-screen py-14 sm:py-20">
+      <JsonLd data={refundWebPageJsonLd} />
+
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-[#0A3622] hover:text-[#7A5C1E] transition-colors"
-          >
-            <ArrowLeft className="size-4" />
-            <span>Back to Home</span>
-          </Link>
-          <div className="flex items-center gap-3 text-xs font-semibold text-[#0A3622]">
-            <Link href="/terms" className="hover:underline">
-              Terms of Service
-            </Link>
-            <span className="text-[#C5A059]">&bull;</span>
-            <Link href="/privacy" className="hover:underline">
-              Privacy Policy
-            </Link>
-          </div>
-        </div>
+        <PublicBreadcrumbs
+          items={[{ label: "Refund Policy", href: "/refund-policy" }]}
+          className="mb-8"
+        />
 
         <article className="rounded-3xl border border-[#E6DEC8] bg-white p-8 sm:p-12 shadow-sm space-y-10">
           <header className="space-y-3 border-b border-[#E6DEC8] pb-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#C5A059]/40 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
-              <RotateCcw className="size-3.5 text-[#C5A059]" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#7A5C1E]/40 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
+              <RotateCcw className="size-3.5 text-[#7A5C1E]" />
               <span>Pilgrim Booking Cancellation &amp; Refund Schedule</span>
             </div>
             <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#0A3622]">
-              Cancellation &amp; Refund Policy
+              Cancellation, Amendment &amp; PKR Refund Policy
             </h1>
-            <p className="text-xs sm:text-sm text-[#686E65]">
+            <p className="text-xs sm:text-sm text-[#4A5048]">
               Issued by <strong>{legalEntityName}</strong> &middot; Applicable to
               Umrah Visas, Custom Itineraries, Group Departures &amp; Hajj
               Pre-Registrations
@@ -66,7 +69,7 @@ export default async function RefundPolicyPage() {
             {/* 1. KSA Visa Non-Refundability */}
             <section className="space-y-2.5">
               <div className="flex items-center gap-2">
-                <ShieldAlert className="size-5 text-[#C5A059]" />
+                <ShieldAlert className="size-5 text-[#7A5C1E]" />
                 <h2 className="font-display text-xl font-bold text-[#0A3622]">
                   1. Saudi Umrah &amp; Hajj Visa Fees (Strictly Non-Refundable)
                 </h2>
@@ -124,13 +127,13 @@ export default async function RefundPolicyPage() {
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-[#FAF7F0] text-[#0A3622] border-b border-[#E6DEC8]">
                     <tr>
-                      <th className="px-4 py-3 font-bold">
+                      <th scope="col" className="px-4 py-3 font-bold">
                         Notice Prior to KSA Arrival / Check-In
                       </th>
-                      <th className="px-4 py-3 font-bold">
+                      <th scope="col" className="px-4 py-3 font-bold">
                         Standard Season Land Refund
                       </th>
-                      <th className="px-4 py-3 font-bold">
+                      <th scope="col" className="px-4 py-3 font-bold">
                         Peak Season (Ramadan, Zil-Hajj, Hajj, Dec/Jan)
                       </th>
                     </tr>
@@ -222,9 +225,9 @@ export default async function RefundPolicyPage() {
             </section>
 
             {/* 6. Governing Law & Lahore Jurisdiction */}
-            <section className="space-y-3 rounded-2xl border border-[#C5A059]/40 bg-[#FAF7F0] p-6">
+            <section className="space-y-3 rounded-2xl border border-[#7A5C1E]/35 bg-[#FAF7F0] p-6">
               <div className="flex items-center gap-2">
-                <Scale className="size-5 text-[#C5A059]" />
+                <Scale className="size-5 text-[#7A5C1E]" />
                 <h2 className="font-display text-xl font-bold text-[#0A3622]">
                   6. Governing Law &amp; Exclusive Jurisdiction
                 </h2>
@@ -236,7 +239,7 @@ export default async function RefundPolicyPage() {
                 arising out of a booking or refund settlement shall be subject to
                 the <strong>exclusive jurisdiction of the competent courts at Lahore, Punjab</strong>.
               </p>
-              <div className="pt-1 text-xs sm:text-sm text-[#1A1D1A] space-y-1">
+              <div className="pt-1 text-xs sm:text-sm text-[#1A1D1A] space-y-1.5">
                 <p>
                   <strong>Refunds &amp; Settlements Desk:</strong> {legalEntityName},{" "}
                   {company.officeAddress}
@@ -245,24 +248,33 @@ export default async function RefundPolicyPage() {
                   <strong>Email:</strong>{" "}
                   <a
                     href={`mailto:${company.supportEmail}`}
-                    className="font-semibold text-[#0A3622] underline"
+                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
                   >
                     {company.supportEmail}
+                  </a>{" "}
+                  &middot; <strong>Phone:</strong>{" "}
+                  <a
+                    href={primaryTelHref}
+                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline tabular-nums"
+                  >
+                    {company.hotlineDisplay}
                   </a>{" "}
                   &middot; <strong>WhatsApp:</strong>{" "}
                   <a
                     href={waSupportHref}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-semibold text-[#0A3622] underline tabular-nums"
+                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
                   >
-                    {company.hotlineDisplay}
+                    Message Refunds Desk
                   </a>
                 </p>
               </div>
             </section>
           </div>
         </article>
+
+        <TrustLegalCrosslinks currentPath="/refund-policy" />
       </div>
     </div>
   )

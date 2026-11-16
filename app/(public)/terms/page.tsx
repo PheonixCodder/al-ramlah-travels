@@ -1,56 +1,60 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { ArrowLeft, FileText, Scale } from "lucide-react"
-import { db } from "@/db"
-import * as schema from "@/db/schema"
-import { getCompanyInfo } from "@/lib/company-info"
+import { FileText, Scale } from "lucide-react"
+import { PublicBreadcrumbs } from "@/components/layout/breadcrumbs"
+import { TrustLegalCrosslinks } from "@/components/seo/trust-legal-crosslinks"
+import { toTelHref } from "@/lib/company-info"
+import { JsonLd, ORGANIZATION_JSONLD_ID } from "@/lib/seo/json-ld"
+import { buildPublicMetadata, CANONICAL_ORIGIN } from "@/lib/seo/metadata"
+import { getCachedCompanyInfo } from "@/lib/seo/public-queries"
 
 export const revalidate = 300
 
-export const metadata: Metadata = {
+// Spec 0025 §3 #18 (`57`c title, `151`c description, self-canonical `/terms`)
+export const metadata: Metadata = buildPublicMetadata({
+  path: "/terms",
   title: "Terms of Service & Booking Conditions | Al Ramlah Travels",
   description:
-    "Official terms and conditions governing Umrah visa processing, custom pilgrimage quotations, group departures, and Hajj 2027 pre-registrations.",
-}
+    "Review official Al Ramlah Travels booking terms governing Saudi Umrah visa processing, custom pilgrimage quotes, group seats & Hajj 2027 registrations.",
+})
 
 export default async function TermsPage() {
-  const [settings] = await db.select().from(schema.agencySettings).limit(1)
-  const company = getCompanyInfo(settings)
-  const legalEntityName =
-    settings?.legalEntityName?.trim() || company.agencyName
+  const company = await getCachedCompanyInfo()
+  const legalEntityName = company.legalEntityName || company.agencyName
+  const primaryTelHref = toTelHref(company.primaryWhatsapp)
+
+  const termsWebPageJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "@id": `${CANONICAL_ORIGIN}/terms#webpage`,
+    url: `${CANONICAL_ORIGIN}/terms`,
+    name: "Terms of Service & Pilgrimage Booking Conditions",
+    inLanguage: "en-PK",
+    publisher: {
+      "@id": ORGANIZATION_JSONLD_ID,
+    },
+  }
 
   return (
     <div className="bg-[#FAF7F0] min-h-screen py-14 sm:py-20">
+      <JsonLd data={termsWebPageJsonLd} />
+
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-[#0A3622] hover:text-[#7A5C1E] transition-colors"
-          >
-            <ArrowLeft className="size-4" />
-            <span>Back to Home</span>
-          </Link>
-          <div className="flex items-center gap-3 text-xs font-semibold text-[#0A3622]">
-            <Link href="/refund-policy" className="hover:underline">
-              Refund Policy
-            </Link>
-            <span className="text-[#C5A059]">&bull;</span>
-            <Link href="/privacy" className="hover:underline">
-              Privacy Policy
-            </Link>
-          </div>
-        </div>
+        <PublicBreadcrumbs
+          items={[{ label: "Terms of Service", href: "/terms" }]}
+          className="mb-8"
+        />
 
         <article className="rounded-3xl border border-[#E6DEC8] bg-white p-8 sm:p-12 shadow-sm space-y-10">
           <header className="space-y-3 border-b border-[#E6DEC8] pb-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#C5A059]/40 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
-              <FileText className="size-3.5 text-[#C5A059]" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#7A5C1E]/40 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
+              <FileText className="size-3.5 text-[#7A5C1E]" />
               <span>Pilgrimage Booking Agreement &amp; Conditions</span>
             </div>
             <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#0A3622]">
-              Terms of Service
+              Terms of Service &amp; Pilgrimage Booking Conditions
             </h1>
-            <p className="text-xs sm:text-sm text-[#686E65]">
+            <p className="text-xs sm:text-sm text-[#4A5048]">
               Issued by <strong>{legalEntityName}</strong> &middot; Verified
               Pilgrimage Operations (2026–2027)
             </p>
@@ -152,7 +156,7 @@ export default async function TermsPage() {
                 during Ramadan, Last Ashra, and Hajj—are governed by our{" "}
                 <Link
                   href="/refund-policy"
-                  className="font-bold text-[#0A3622] underline hover:text-[#7A5C1E]"
+                  className="inline-flex min-h-6 items-center font-bold text-[#0A3622] underline hover:text-[#7A5C1E]"
                 >
                   Cancellation &amp; Refund Policy
                 </Link>
@@ -165,7 +169,7 @@ export default async function TermsPage() {
                 6. Indicative Hajj 2027 Pre-Registration Notice
               </h2>
               <p className="text-[#4A5048]">
-                Published Hajj 2027 package tiers (Maktab A, B, and C) represent
+                Published Hajj 2027 package tiers (Maktab A+, A, B, and C) represent
                 non-binding indicative pre-registration estimates based on prior
                 season benchmarks. Final Maktab allotments, flight schedules, SAR
                 exchange adjustments, Qurbani/train tariffs, and binding package
@@ -174,9 +178,9 @@ export default async function TermsPage() {
               </p>
             </section>
 
-            <section className="space-y-3 rounded-2xl border border-[#C5A059]/40 bg-[#FAF7F0] p-6">
+            <section className="space-y-3 rounded-2xl border border-[#7A5C1E]/35 bg-[#FAF7F0] p-6">
               <div className="flex items-center gap-2">
-                <Scale className="size-5 text-[#C5A059]" />
+                <Scale className="size-5 text-[#7A5C1E]" />
                 <h2 className="font-display text-xl font-bold text-[#0A3622]">
                   7. Governing Law, Lahore Jurisdiction &amp; Official Contact
                 </h2>
@@ -188,16 +192,23 @@ export default async function TermsPage() {
                 exclusive jurisdiction over any dispute arising out of or relating
                 to bookings with {legalEntityName}.
               </p>
-              <div className="pt-1 text-xs sm:text-sm text-[#1A1D1A] space-y-1">
+              <div className="pt-1 text-xs sm:text-sm text-[#1A1D1A] space-y-1.5">
                 <p>
                   <strong>Headquarters:</strong> {legalEntityName},{" "}
                   {company.officeAddress}
                 </p>
                 <p className="tabular-nums">
-                  <strong>Direct Desk:</strong> {company.hotlineDisplay} &middot;{" "}
+                  <strong>Direct Desk:</strong>{" "}
+                  <a
+                    href={primaryTelHref}
+                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                  >
+                    {company.hotlineDisplay}
+                  </a>{" "}
+                  &middot;{" "}
                   <a
                     href={`mailto:${company.supportEmail}`}
-                    className="font-semibold text-[#0A3622] underline"
+                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
                   >
                     {company.supportEmail}
                   </a>
@@ -206,6 +217,8 @@ export default async function TermsPage() {
             </section>
           </div>
         </article>
+
+        <TrustLegalCrosslinks currentPath="/terms" />
       </div>
     </div>
   )

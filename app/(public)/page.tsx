@@ -1,4 +1,5 @@
 import * as React from "react"
+import type { Metadata } from "next"
 import dynamic from "next/dynamic"
 import { asc, eq } from "drizzle-orm"
 import { db } from "@/db"
@@ -13,145 +14,188 @@ import {
   type PublicGroupPackageItem,
 } from "@/components/public/group-packages-section"
 import type { PublicHajjPackageItem } from "@/components/public/hajj-inquiry-section"
-import type {
-  ZiyaratPreviewItem,
-  TestimonialPreviewItem,
-  FaqPreviewItem,
+import {
+  MarketingSections,
+  resolveHomeFaqs,
+  type ZiyaratPreviewItem,
+  type TestimonialPreviewItem,
+  type FaqPreviewItem,
 } from "@/components/public/marketing-sections"
 import type { AgencyContactInfo } from "@/components/public/contact-section"
-import { getTodayPktIso } from "@/components/public/public-utils"
-import { getCompanyInfo } from "@/lib/company-info"
+import { sanitizeHomePlannerCatalog } from "@/components/seo/trust-home-overview"
+import {
+  buildFaqPageJsonLd,
+  buildTravelAgencyJsonLd,
+  buildWebSiteJsonLd,
+  JsonLd,
+} from "@/lib/seo/json-ld"
+import { buildPublicMetadata } from "@/lib/seo/metadata"
+import {
+  getCachedCompanyInfo,
+  getPublicFaqs,
+  getPublicGroupPackages,
+  getPublicHajjPackages,
+  getPublicHeroSlides,
+  getPublicHotelsCatalog,
+  getPublicTestimonials,
+  getPublicVehiclesCatalog,
+  getPublicZiyaratCatalog,
+} from "@/lib/seo/public-queries"
 
 // T-057: Enable ISR caching (5 minutes) instead of per-request force-dynamic SSR
 export const revalidate = 300
 
-// T-057: Code-split below-the-fold interactive sections to reduce initial public JS payload
-const HajjInquirySection = dynamic(() =>
-  import("@/components/public/hajj-inquiry-section").then((mod) => ({
-    default: mod.HajjInquirySection,
-  }))
+// Spec 0025 §3 #1: Explicit root metadata (`55`c title, `151`c description, self-canonical `/`)
+export const metadata: Metadata = buildPublicMetadata({
+  path: "/",
+  title: "Umrah Packages Pakistan & Hajj 2027 | Al Ramlah Travels",
+  description:
+    "Plan custom Umrah packages from Lahore, Karachi & Islamabad, Saudi Umrah visas, 5-star Haramain hotels, and Hajj 2027 tours with Al Ramlah Travels now.",
+})
+
+// T-057 & S03-005: Code-split below-the-fold client sections with reserved min-height skeletons to prevent CLS
+const HajjInquirySection = dynamic(
+  () =>
+    import("@/components/public/hajj-inquiry-section").then((mod) => ({
+      default: mod.HajjInquirySection,
+    })),
+  {
+    loading: () => (
+      <div
+        id="hajj-inquiry"
+        aria-hidden="true"
+        className="min-h-[680px] w-full bg-[#FAF7F0]/50 scroll-mt-20"
+      />
+    ),
+  }
 )
 
-const StatusTracker = dynamic(() =>
-  import("@/components/public/status-tracker").then((mod) => ({
-    default: mod.StatusTracker,
-  }))
+const StatusTracker = dynamic(
+  () =>
+    import("@/components/public/status-tracker").then((mod) => ({
+      default: mod.StatusTracker,
+    })),
+  {
+    loading: () => (
+      <div
+        id="track-status"
+        aria-hidden="true"
+        className="min-h-[420px] w-full bg-background scroll-mt-20"
+      />
+    ),
+  }
 )
 
-const MarketingSections = dynamic(() =>
-  import("@/components/public/marketing-sections").then((mod) => ({
-    default: mod.MarketingSections,
-  }))
-)
-
-const ContactSection = dynamic(() =>
-  import("@/components/public/contact-section").then((mod) => ({
-    default: mod.ContactSection,
-  }))
+const ContactSection = dynamic(
+  () =>
+    import("@/components/public/contact-section").then((mod) => ({
+      default: mod.ContactSection,
+    })),
+  {
+    loading: () => (
+      <div
+        id="contact"
+        aria-hidden="true"
+        className="min-h-[560px] w-full bg-muted/20 scroll-mt-16"
+      />
+    ),
+  }
 )
 
 export default async function HomePage() {
-  const todayPktIso = getTodayPktIso()
-
   const [
-    rawHeroSlides,
+    publicHeroSlides,
     rawVisaRates,
-    rawHotels,
-    rawVehicles,
+    publicHotels,
+    publicVehicles,
     rawTransportSectors,
-    rawZiyaratPlaces,
+    publicZiyaratPlaces,
     rawAirlines,
     rawDepartureCities,
-    rawGroupPackages,
-    rawHajjPackages,
-    rawAgencySettings,
-    rawTestimonials,
-    rawFaqs,
+    publicGroupPackages,
+    publicHajjPackages,
+    companyInfo,
+    publicTestimonials,
+    publicFaqs,
   ] = await Promise.all([
+    getPublicHeroSlides(),
     db
-      .select()
-      .from(schema.heroSlides)
-      .where(eq(schema.heroSlides.isActive, true))
-      .orderBy(asc(schema.heroSlides.sortOrder))
-      .catch(() => []),
-    db
-      .select()
+      .select({
+        id: schema.visaRates.id,
+        tier: schema.visaRates.tier,
+        label: schema.visaRates.label,
+        maxDays: schema.visaRates.maxDays,
+        pricePkr: schema.visaRates.pricePkr,
+        priceSar: schema.visaRates.priceSar,
+        withoutMasarPriceSar: schema.visaRates.withoutMasarPriceSar,
+        withMasar10DaysSar: schema.visaRates.withMasar10DaysSar,
+        withMasar15DaysSar: schema.visaRates.withMasar15DaysSar,
+        withMasar21DaysSar: schema.visaRates.withMasar21DaysSar,
+        withMasar28DaysSar: schema.visaRates.withMasar28DaysSar,
+        notes: schema.visaRates.notes,
+        updatedAt: schema.visaRates.updatedAt,
+      })
       .from(schema.visaRates)
       .catch(() => []),
+    getPublicHotelsCatalog(),
+    getPublicVehiclesCatalog(),
     db
-      .select()
-      .from(schema.hotels)
-      .where(eq(schema.hotels.isActive, true))
-      .orderBy(asc(schema.hotels.sortOrder))
-      .catch(() => []),
-    db
-      .select()
-      .from(schema.vehicles)
-      .where(eq(schema.vehicles.isActive, true))
-      .orderBy(asc(schema.vehicles.sortOrder))
-      .catch(() => []),
-    db
-      .select()
+      .select({
+        id: schema.transportSectors.id,
+        code: schema.transportSectors.code,
+        label: schema.transportSectors.label,
+        originCity: schema.transportSectors.originCity,
+        destinationCity: schema.transportSectors.destinationCity,
+        originType: schema.transportSectors.originType,
+        destinationType: schema.transportSectors.destinationType,
+        supportsTrain: schema.transportSectors.supportsTrain,
+        isSharedBusEligible: schema.transportSectors.isSharedBusEligible,
+        approxDistanceKm: schema.transportSectors.approxDistanceKm,
+        approxDurationMinutes: schema.transportSectors.approxDurationMinutes,
+        isActive: schema.transportSectors.isActive,
+        sortOrder: schema.transportSectors.sortOrder,
+      })
       .from(schema.transportSectors)
       .where(eq(schema.transportSectors.isActive, true))
       .orderBy(asc(schema.transportSectors.sortOrder))
       .catch(() => []),
+    getPublicZiyaratCatalog(),
     db
-      .select()
-      .from(schema.ziyaratPlaces)
-      .where(eq(schema.ziyaratPlaces.isActive, true))
-      .orderBy(asc(schema.ziyaratPlaces.sortOrder))
-      .catch(() => []),
-    db
-      .select()
+      .select({
+        id: schema.airlines.id,
+        name: schema.airlines.name,
+        iataCode: schema.airlines.iataCode,
+        logoUrl: schema.airlines.logoUrl,
+        isDirectAvailable: schema.airlines.isDirectAvailable,
+        isConnectingAvailable: schema.airlines.isConnectingAvailable,
+        isActive: schema.airlines.isActive,
+        sortOrder: schema.airlines.sortOrder,
+      })
       .from(schema.airlines)
       .where(eq(schema.airlines.isActive, true))
       .orderBy(asc(schema.airlines.sortOrder))
       .catch(() => []),
     db
-      .select()
+      .select({
+        id: schema.departureCities.id,
+        cityName: schema.departureCities.cityName,
+        airportCode: schema.departureCities.airportCode,
+        airportName: schema.departureCities.airportName,
+        isActive: schema.departureCities.isActive,
+        sortOrder: schema.departureCities.sortOrder,
+      })
       .from(schema.departureCities)
       .where(eq(schema.departureCities.isActive, true))
       .orderBy(asc(schema.departureCities.sortOrder))
       .catch(() => []),
-    db.query.groupPackages
-      .findMany({
-        where: eq(schema.groupPackages.isActive, true),
-        with: {
-          airline: true,
-          makkahHotel: true,
-          madinahHotel: true,
-          departures: {
-            with: {
-              departureCity: true,
-            },
-          },
-        },
-        orderBy: [asc(schema.groupPackages.sortOrder)],
-      })
-      .catch(() => []),
-    db
-      .select()
-      .from(schema.hajjPackages)
-      .where(eq(schema.hajjPackages.isActive, true))
-      .orderBy(asc(schema.hajjPackages.sortOrder))
-      .catch(() => []),
-    db.query.agencySettings.findFirst().catch(() => null),
-    db
-      .select()
-      .from(schema.testimonials)
-      .where(eq(schema.testimonials.isActive, true))
-      .orderBy(asc(schema.testimonials.sortOrder))
-      .catch(() => []),
-    db
-      .select()
-      .from(schema.faqs)
-      .where(eq(schema.faqs.isActive, true))
-      .orderBy(asc(schema.faqs.sortOrder))
-      .catch(() => []),
+    getPublicGroupPackages(),
+    getPublicHajjPackages(),
+    getCachedCompanyInfo(),
+    getPublicTestimonials(),
+    getPublicFaqs(),
   ])
 
-  const slidesData: PublicHeroSlide[] = rawHeroSlides.map((s) => ({
+  const slidesData: PublicHeroSlide[] = publicHeroSlides.map((s) => ({
     id: s.id,
     badge: s.badge,
     title: s.title,
@@ -163,30 +207,31 @@ export default async function HomePage() {
     secondaryCtaUrl: s.secondaryCtaUrl,
   }))
 
-  // T-084: Exclude expired hotel validity contracts and prioritize featured properties
-  const validHotels = rawHotels
-    .filter((h) => !h.validUntil || h.validUntil >= todayPktIso)
-    .sort(
-      (a, b) =>
-        Number(b.isFeatured) - Number(a.isFeatured) || a.sortOrder - b.sortOrder
-    )
-
-  // T-054 & T-084: Filter to active packages with >= 1 open, upcoming PKT departure with seats remaining
-  const sortedGroupPackages = [...rawGroupPackages].sort(
+  // T-084: Prioritize featured properties by sortOrder (expired contracts already excluded in getPublicHotelsCatalog)
+  const orderedPublicHotels = [...publicHotels].sort(
     (a, b) =>
       Number(b.isFeatured) - Number(a.isFeatured) || a.sortOrder - b.sortOrder
   )
 
-  const packagesData: PublicGroupPackageItem[] = sortedGroupPackages
+  const sanitizedPlannerProps = sanitizeHomePlannerCatalog({
+    visaRates: rawVisaRates,
+    hotels: orderedPublicHotels,
+    vehicles: publicVehicles,
+    transportSectors: rawTransportSectors,
+    ziyaratPlaces: publicZiyaratPlaces,
+    airlines: rawAirlines,
+    departureCities: rawDepartureCities,
+  })
+
+  // T-054 & T-084: Filter to active packages with >= 1 open, upcoming PKT departure with seats remaining
+  const packagesData: PublicGroupPackageItem[] = publicGroupPackages
     .map((pkg) => {
-      const openUpcomingDepartures = (pkg.departures ?? [])
+      const openUpcomingDepartures = pkg.departures
         .filter(
           (d) =>
             (d.status === "open" || d.status === "filling_fast") &&
-            d.departureDate >= todayPktIso &&
-            d.totalSeats - d.bookedSeats > 0
+            d.seatsRemaining > 0
         )
-        .sort((a, b) => a.departureDate.localeCompare(b.departureDate))
         .map((d) => ({
           id: d.id,
           batchCode: d.batchCode,
@@ -257,29 +302,31 @@ export default async function HomePage() {
     })
     .filter((pkg) => pkg.departures.length > 0)
 
-  const hajjPackagesData: PublicHajjPackageItem[] = rawHajjPackages.map((hp) => ({
-    id: hp.id,
-    slug: hp.slug,
-    title: hp.title,
-    seasonYear: hp.seasonYear,
-    maktabTier: hp.maktabTier,
-    durationDays: hp.durationDays,
-    makkahHotelName: hp.makkahHotelName,
-    makkahDistanceLabel: hp.makkahDistanceLabel,
-    madinahHotelName: hp.madinahHotelName,
-    madinahDistanceLabel: hp.madinahDistanceLabel,
-    aziziyahStayNotes: hp.aziziyahStayNotes,
-    indicativeSharingPkr: hp.indicativeSharingPkr,
-    indicativeQuadPkr: hp.indicativeQuadPkr,
-    indicativeTriplePkr: hp.indicativeTriplePkr,
-    indicativeDoublePkr: hp.indicativeDoublePkr,
-    isIndicative: hp.isIndicative,
-    regulatoryDisclaimer: hp.regulatoryDisclaimer,
-    highlights: hp.highlights ?? [],
-    isFeatured: hp.isFeatured,
-  }))
+  const hajjPackagesData: PublicHajjPackageItem[] = publicHajjPackages.map(
+    (hp) => ({
+      id: hp.id,
+      slug: hp.slug,
+      title: hp.title,
+      seasonYear: hp.seasonYear,
+      maktabTier: hp.maktabTier,
+      durationDays: hp.durationDays,
+      makkahHotelName: hp.makkahHotelName,
+      makkahDistanceLabel: hp.makkahDistanceLabel,
+      madinahHotelName: hp.madinahHotelName,
+      madinahDistanceLabel: hp.madinahDistanceLabel,
+      aziziyahStayNotes: hp.aziziyahStayNotes,
+      indicativeSharingPkr: hp.indicativeSharingPkr,
+      indicativeQuadPkr: hp.indicativeQuadPkr,
+      indicativeTriplePkr: hp.indicativeTriplePkr,
+      indicativeDoublePkr: hp.indicativeDoublePkr,
+      isIndicative: hp.isIndicative,
+      regulatoryDisclaimer: hp.regulatoryDisclaimer,
+      highlights: hp.highlights ?? [],
+      isFeatured: hp.isFeatured,
+    })
+  )
 
-  const ziyaratData: ZiyaratPreviewItem[] = rawZiyaratPlaces.map((z) => ({
+  const ziyaratData: ZiyaratPreviewItem[] = publicZiyaratPlaces.map((z) => ({
     id: z.id,
     city: z.city,
     name: z.name,
@@ -288,12 +335,8 @@ export default async function HomePage() {
     imageUrl: z.imageUrl,
   }))
 
-  const testimonialsData: TestimonialPreviewItem[] = [...rawTestimonials]
-    .sort(
-      (a, b) =>
-        Number(b.isFeatured) - Number(a.isFeatured) || a.sortOrder - b.sortOrder
-    )
-    .map((t) => ({
+  const testimonialsData: TestimonialPreviewItem[] = publicTestimonials.map(
+    (t) => ({
       id: t.id,
       pilgrimName: t.pilgrimName,
       city: t.city,
@@ -301,16 +344,20 @@ export default async function HomePage() {
       packageOrJourneyType: t.packageOrJourneyType,
       rating: t.rating,
       avatarUrl: t.avatarUrl,
-    }))
+    })
+  )
 
-  const faqsData: FaqPreviewItem[] = rawFaqs.map((f) => ({
+  const rawFaqsData: FaqPreviewItem[] = publicFaqs.map((f) => ({
     id: f.id,
     category: f.category,
     question: f.question,
     answer: f.answer,
   }))
 
-  const companyInfo = getCompanyInfo(rawAgencySettings)
+  // 1:1 synchronized FAQ list shared between visible MarketingSections DOM and FAQPage JSON-LD
+  const homeFaqs = resolveHomeFaqs(rawFaqsData)
+  const homeFaqJsonLd = buildFaqPageJsonLd(homeFaqs)
+
   const contactInfo: AgencyContactInfo = {
     agencyName: companyInfo.agencyName,
     tagline: companyInfo.tagline,
@@ -327,21 +374,29 @@ export default async function HomePage() {
     airportCode: c.airportCode,
   }))
 
+  const homeJsonLdGraph = [
+    buildTravelAgencyJsonLd(companyInfo),
+    buildWebSiteJsonLd(),
+    ...(homeFaqJsonLd ? [homeFaqJsonLd] : []),
+  ]
+
   return (
     <div className="flex flex-col">
-      {/* 1. Hero Visual Carousel Slider */}
+      <JsonLd data={homeJsonLdGraph} />
+
+      {/* 1. Hero Visual Carousel Slider (Stable SSR H1 + Next.js 16 preload Slide 0) */}
       <HeroSlider slides={slidesData} />
 
       {/* 2. Interactive Custom Journey Builder */}
       <div id="journey-builder" className="scroll-mt-20">
         <CustomJourneyBuilder
-          visaRates={rawVisaRates}
-          hotels={validHotels}
-          vehicles={rawVehicles}
-          transportSectors={rawTransportSectors}
-          ziyaratPlaces={rawZiyaratPlaces}
-          airlines={rawAirlines}
-          departureCities={rawDepartureCities}
+          visaRates={sanitizedPlannerProps.visaRates}
+          hotels={sanitizedPlannerProps.hotels}
+          vehicles={sanitizedPlannerProps.vehicles}
+          transportSectors={sanitizedPlannerProps.transportSectors}
+          ziyaratPlaces={sanitizedPlannerProps.ziyaratPlaces}
+          airlines={sanitizedPlannerProps.airlines}
+          departureCities={sanitizedPlannerProps.departureCities}
           sarToPkrRate={companyInfo.sarToPkrRate}
         />
       </div>
@@ -363,11 +418,11 @@ export default async function HomePage() {
       {/* 5. Application & Quotation Tracker */}
       <StatusTracker agencyWhatsapp={companyInfo.primaryWhatsapp} />
 
-      {/* 6. Sacred Ziyarat, Why Pilgrims Choose Al Ramlah, Verified Testimonials & FAQs */}
+      {/* 6. Zero-JS Server Component: GEO Service Matrix, Why Choose Us, Ziyarat, Verified Testimonials & FAQs */}
       <MarketingSections
         ziyaratSites={ziyaratData}
         testimonials={testimonialsData}
-        faqs={faqsData}
+        faqs={homeFaqs}
       />
 
       {/* 7. Dedicated Concierge & Askari 10 Lahore Headquarters Contact */}

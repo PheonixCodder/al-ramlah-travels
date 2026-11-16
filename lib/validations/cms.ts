@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { parsePhoneE164 } from "../phone"
+import { strictAttributionSchema } from "../seo/utm"
 import {
   safeOptionalAssetUrlSchema,
   safeOptionalCtaUrlSchema,
@@ -92,6 +93,7 @@ export const contactMessageSchema = z.object({
     .min(10, "Message must be at least 10 characters")
     .max(5000, "Message cannot exceed 5000 characters"),
   honeypot: z.string().max(0, "Automated submission rejected").optional(),
+  attribution: strictAttributionSchema.optional(),
 })
 
 export type HeroSlideInput = z.infer<typeof heroSlideSchema>

@@ -6,6 +6,7 @@ import {
   isValidIsoCalendarDate,
   parseIsoCalendarDateUtc,
 } from "../domain/date-chaining"
+import { strictAttributionSchema } from "../seo/utm"
 
 const MS_PER_DAY = 86_400_000
 
@@ -197,11 +198,12 @@ export const customJourneyApplicationSchema = z
     ziyaratVehicleId: z.string().uuid().optional().nullable().or(z.literal("")),
     selectedZiyaratPlaceIds: z.array(z.string().uuid()).max(30).optional(),
 
-    // Optional anti-abuse, idempotency & Makkah ground-transfer acknowledgement fields (`OD-09c`, `T-055`, `T-084`)
+    // Optional anti-abuse, idempotency, attribution & Makkah ground-transfer acknowledgement fields (`OD-09c`, `T-055`, `T-084`, `SEO-004`)
     acknowledgeMakkahSelfTransfer: z.boolean().optional(),
     clientSubmissionId: z.string().trim().min(8).max(64).optional(),
     sourcePostCode: z.string().trim().max(64).optional().nullable(),
     honeypot: z.string().max(0, "Automated submission rejected").optional(),
+    attribution: strictAttributionSchema.optional(),
   })
   .superRefine((data, ctx) => {
     // 1. Require at least 1 enabled service pillar (`T-012`)
@@ -493,6 +495,7 @@ export const groupBookingSchema = z.object({
   contact: customerContactSchema,
   clientSubmissionId: z.string().trim().min(8).max(64).optional(),
   honeypot: z.string().max(0, "Automated submission rejected").optional(),
+  attribution: strictAttributionSchema.optional(),
 })
 
 /**
@@ -516,6 +519,7 @@ export const hajjInquirySchema = z.object({
   country: z.string().trim().max(80).optional(),
   clientSubmissionId: z.string().trim().min(8).max(64).optional(),
   honeypot: z.string().max(0, "Automated submission rejected").optional(),
+  attribution: strictAttributionSchema.optional(),
 })
 
 /**

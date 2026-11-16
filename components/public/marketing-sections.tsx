@@ -1,5 +1,3 @@
-"use client"
-
 import * as React from "react"
 import NextImage, { type ImageProps } from "next/image"
 
@@ -15,12 +13,8 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ArabicText } from "@/components/public/arabic-text"
-import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "@/components/ui/accordion"
+import { FaqAccordionClient } from "@/components/public/faq-accordion-client"
+import { TrustHomeOverview } from "@/components/seo/trust-home-overview"
 import {
   ShieldCheck,
   Building2,
@@ -105,11 +99,11 @@ const DEFAULT_ZIYARAT: ZiyaratPreviewItem[] = [
     description:
       "'A mountain that loves us and we love it.' The site of the historic Battle of Uhud and the resting place of Sayyiduna Hamza (RA).",
     imageUrl:
-      "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&q=80&w=800",
+      "https://images.unsplash.com/photo-1575101261474-5cb5653bb416?auto=format&fit=crop&q=80&w=800",
   },
 ]
 
-const DEFAULT_FAQS: FaqPreviewItem[] = [
+export const DEFAULT_HOME_FAQS: FaqPreviewItem[] = [
   {
     id: "f-1",
     category: "visa",
@@ -145,10 +139,33 @@ const DEFAULT_FAQS: FaqPreviewItem[] = [
     question:
       "How does pre-registration work under the Hajj 2027 Indicative Package Guide?",
     answer:
-      "Our Hajj 2027 Guide presents non-binding indicative Maktab A, Maktab B, and Maktab C structures across 10, 14, and 20/22 day durations for both resident and overseas Pakistani families. Submit your pre-registration inquiry and our Hajj directors will contact you as soon as official Ministry of Religious Affairs (MoRA) and Saudi Nusuk quotas are announced.",
+      "Our Hajj 2027 Guide presents non-binding indicative Maktab A+, Maktab A, Maktab B, and Maktab C structures across 10, 14, and 20/22 day durations for both resident and overseas Pakistani families. Submit your pre-registration inquiry and our Hajj directors will contact you as soon as official Ministry of Religious Affairs (MoRA) and Saudi Nusuk quotas are announced.",
   },
 ]
 
+/**
+ * Resolves the exact visible FAQ array rendered on `/` so `MarketingSections` DOM
+ * and `buildFaqPageJsonLd(homeFaqs)` in `app/(public)/page.tsx` maintain strict 1:1 parity (`SEO-023`).
+ */
+export function resolveHomeFaqs(
+  faqs?: ReadonlyArray<FaqPreviewItem>
+): FaqPreviewItem[] {
+  const valid = (faqs ?? [])
+    .map((item, idx) => ({
+      id: item.id || `home-faq-${idx}`,
+      category: item.category || "general",
+      question: (item.question || "").trim(),
+      answer: (item.answer || "").trim(),
+    }))
+    .filter((item) => item.question.length > 0 && item.answer.length > 0)
+
+  return valid.length > 0 ? valid.slice(0, 10) : DEFAULT_HOME_FAQS
+}
+
+/**
+ * Zero-JS Server Component marketing & GEO overview section (`SEO-023`, `S03-001`).
+ * Isolates interactive FAQ collapse state into `<FaqAccordionClient />`.
+ */
 export function MarketingSections({
   ziyaratSites = [],
   testimonials = [],
@@ -158,10 +175,15 @@ export function MarketingSections({
     ziyaratSites.length > 0 ? ziyaratSites : DEFAULT_ZIYARAT
   // T-056: Render testimonials strictly from verified DB rows; never fabricate fallback reviews
   const verifiedTestimonials = testimonials
-  const activeFaqs = faqs.length > 0 ? faqs : DEFAULT_FAQS
+  const activeFaqs = resolveHomeFaqs(faqs)
 
   return (
     <div className="flex flex-col gap-24 py-16 bg-background">
+      {/* ======================================================== */}
+      {/* 0. AT-A-GLANCE HARAMAIN SERVICE & GATEWAY TABLE (GEO)     */}
+      {/* ======================================================== */}
+      <TrustHomeOverview />
+
       {/* ======================================================== */}
       {/* 1. WHY PILGRIMS CHOOSE AL RAMLAH (LUXURY BENTO GRID)     */}
       {/* ======================================================== */}
@@ -171,10 +193,10 @@ export function MarketingSections({
             Sacred Luxury Standard
           </Badge>
           <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
-            Why Pilgrims Choose Al Ramlah
+            Why Pakistani &amp; Diaspora Families Choose Al Ramlah Travels
           </h2>
           <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-            Every element of your pilgrimage is engineered for serenity, physical dignity, and spiritual focus.
+            From our Askari 10, Lahore Cantt concierge desk to Makkah and Madinah courtyards, every itinerary is engineered for elderly comfort, transparent PKR accounting, and spiritual peace of mind.
           </p>
         </div>
 
@@ -184,17 +206,31 @@ export function MarketingSections({
               <Building2 className="size-6" />
             </div>
             <h3 className="font-display text-2xl font-bold text-foreground">
-              50-Meter Courtyard Luxury Properties
+              Walking-Distance Makkah &amp; Madinah Courtyard Hotels
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Never wait for crowded shuttle buses or navigate steep hills with elderly parents. We prioritize iconic properties such as Makkah Clock Royal Tower (Fairmont) and Dar Al Taqwa in Madinah, located footsteps from the sanctuary courtyards.
+              Avoid steep hillside walks and shuttle queues with elderly parents. Compare 0–50m Clock Tower suites in{" "}
+              <Link
+                href="/hotels/makkah"
+                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
+              >
+                Makkah
+              </Link>{" "}
+              and flat Markaziyah hotels near Ladies Gate 25 in{" "}
+              <Link
+                href="/hotels/madinah"
+                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
+              >
+                Madinah
+              </Link>
+              .
             </p>
             <div className="flex flex-wrap gap-2 pt-2 text-xs font-semibold text-emerald-800">
               <span className="rounded-md bg-emerald-100/80 px-2.5 py-1">
                 Zero Shuttle Wait
               </span>
               <span className="rounded-md bg-emerald-100/80 px-2.5 py-1">
-                Direct Kaaba Views
+                Direct Kaaba &amp; Haram Access
               </span>
               <span className="rounded-md bg-emerald-100/80 px-2.5 py-1">
                 Wheelchair Accessible
@@ -207,10 +243,10 @@ export function MarketingSections({
               <Clock className="size-6" />
             </div>
             <h3 className="font-display text-xl font-bold text-foreground">
-              24-Hour Quote SLA
+              24-Hour PKR Quote SLA
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Submit your bespoke custom itinerary and receive an itemized, transparent PKR worksheet confirmed by our senior ticketing director in Lahore within 24 hours.
+              Submit your custom itinerary and receive an itemized, line-by-line PKR quotation confirmed by our Lahore Cantt ticketing desk within 24 hours.
             </p>
           </div>
 
@@ -219,10 +255,17 @@ export function MarketingSections({
               <ShieldCheck className="size-6" />
             </div>
             <h3 className="font-display text-xl font-bold text-foreground">
-              Purpose &amp; Excellence
+              Official Saudi Umrah Visas
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Where Purpose Meets Excellence. Authorized Umrah visa processing with Nusuk / Masar electronic clearance and dedicated on-ground pilgrim assistance.
+              Electronic KSA visa issuance with mandatory Saudi medical insurance, Nusuk Masar hotel linking, and{" "}
+              <Link
+                href="/umrah-visa"
+                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
+              >
+                instant Visa-Only PKR rates
+              </Link>
+              .
             </p>
           </div>
 
@@ -231,10 +274,10 @@ export function MarketingSections({
               <Car className="size-6" />
             </div>
             <h3 className="font-display text-xl font-bold text-foreground">
-              Private GMC Fleet
+              Private GMC &amp; HiAce Fleet
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Executive SUVs and Toyota HiAce vans with dedicated English and Urdu speaking drivers waiting for your family upon arrival.
+              Executive sedans, GMC Yukon SUVs, and Toyota HiAce vans with Urdu and English speaking drivers awaiting your arrival at Jeddah or Madinah airport.
             </p>
           </div>
 
@@ -243,17 +286,24 @@ export function MarketingSections({
               <FileCheck className="size-6" />
             </div>
             <h3 className="font-display text-2xl font-bold text-foreground">
-              Transparent Pricing &amp; Zero Hidden Surcharges
+              Transparent PKR Pricing &amp; Zero Hidden Surcharges
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              In Visa Only mode, you see an immediate guaranteed PKR total calculated per passport. In custom journeys, every hotel night, vehicle leg, and visa fee is itemized line by line in your worksheet.
+              Compare published{" "}
+              <Link
+                href="/umrah-packages"
+                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
+              >
+                Group Umrah PKR tiers
+              </Link>{" "}
+              or custom worksheets itemizing every visa, airline sector, hotel stay, and intercity transfer before deposit confirmation.
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-muted-foreground">
               <span className="flex items-center gap-1 font-semibold text-foreground">
-                <CheckCircle2 className="size-4 text-emerald-600" /> No Currency Exchange Surprises
+                <CheckCircle2 className="size-4 text-emerald-700" /> Clear SAR-to-PKR Lock
               </span>
               <span className="flex items-center gap-1 font-semibold text-foreground">
-                <CheckCircle2 className="size-4 text-emerald-600" /> Locked Flight Fares
+                <CheckCircle2 className="size-4 text-emerald-700" /> Verified Askari 10 HQ
               </span>
             </div>
           </div>
@@ -263,10 +313,17 @@ export function MarketingSections({
               <Compass className="size-6" />
             </div>
             <h3 className="font-display text-xl font-bold text-foreground">
-              Sacred Heritage Tours
+              Guided Ziyarat Tours
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Comprehensive visits to the Cave of Hira, Thawr, Masjid Quba, and Mount Uhud guided by knowledgeable Islamic scholars.
+              Curated heritage visits to Jabal Al-Nour, Ghar-e-Thawr, Masjid Quba, Uhud, Badr, and Taif—explore our{" "}
+              <Link
+                href="/ziyarat"
+                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
+              >
+                Haramain Ziyarat Guide
+              </Link>
+              .
             </p>
           </div>
         </div>
@@ -282,10 +339,10 @@ export function MarketingSections({
               The Al Ramlah Journey Process
             </Badge>
             <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-              How Our Live Quoting Process Works
+              How Our 24-Hour Umrah &amp; Visa Quoting Process Works
             </h2>
             <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-              From your initial design to your sacred departure, four transparent steps ensure your pilgrimage is organized without compromise.
+              Four transparent steps take your family from initial route selection in Pakistan or abroad to cryptographically verified Haramain travel vouchers.
             </p>
           </div>
 
@@ -298,7 +355,7 @@ export function MarketingSections({
                 Craft Your Itinerary
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Choose your travel dates, city sequence, room sharing preferences, preferred airline, and private vehicles in our interactive planner.
+                Select your KSA arrival and departure dates, city sequence, hotel room sharing, departure airport (LHE, KHI, ISB), and private transport fleet.
               </p>
             </div>
 
@@ -310,7 +367,7 @@ export function MarketingSections({
                 Automated Calculation
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                The server calculates your exact Saudi visa duration tier and locks your provisional party demographics, generating your unique ART tracking reference.
+                The server computes your exact Saudi visa duration tier and passenger bed/seat counts, issuing your unique ART tracking reference immediately.
               </p>
             </div>
 
@@ -322,7 +379,7 @@ export function MarketingSections({
                 24h Director Review
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Our ticketing director confirms live seat allotments and courtyard hotel rooms, locking in the lowest available seasonal rate on your quote worksheet.
+                Our Lahore Cantt ticketing director confirms live airline seats and Haram hotel allotments, locking the best seasonal PKR tariff on your worksheet.
               </p>
             </div>
 
@@ -334,7 +391,7 @@ export function MarketingSections({
                 Online Approval &amp; Voucher
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Accept your official quotation online on our self-service portal. Upon deposit verification, your QR-signed confirmation voucher unlocks immediately.
+                Review and approve your numbered quotation online. Once deposit verification completes, your QR-signed confirmation voucher unlocks right away.
               </p>
             </div>
           </div>
@@ -354,21 +411,45 @@ export function MarketingSections({
               Historical Sanctuaries
             </Badge>
             <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-              Sacred Ziyarat Sites
+              Sacred Makkah &amp; Madinah Ziyarat Tours
             </h2>
             <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-              Immerse yourself in the footsteps of the Prophet ﷺ and the Sahabah (RA) across Makkah Al-Mukarramah and Madinah Al-Munawwarah.
+              Walk in the footsteps of the Prophet ﷺ and the Sahabah (RA) across{" "}
+              <Link
+                href="/ziyarat/makkah"
+                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
+              >
+                Makkah Ziyarat landmarks
+              </Link>{" "}
+              and{" "}
+              <Link
+                href="/ziyarat/madinah"
+                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
+              >
+                Madinah Ziyarat sanctuaries
+              </Link>{" "}
+              with private air-conditioned family vehicles.
             </p>
           </div>
-          <Button
-            variant="outline"
-            nativeButton={false}
-            render={<Link href="/#journey-builder" />}
-            className="gap-2 shrink-0 border-border"
-          >
-            <span>Include Ziyarat in Planner</span>
-            <ArrowRight className="size-4" />
-          </Button>
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/ziyarat" />}
+              className="min-h-10 gap-2 border-border"
+            >
+              <span>Full Ziyarat Guide</span>
+            </Button>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/#journey-builder" />}
+              className="min-h-10 gap-2 border-border"
+            >
+              <span>Include Ziyarat in Planner</span>
+              <ArrowRight className="size-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -481,37 +562,44 @@ export function MarketingSections({
       )}
 
       {/* ======================================================== */}
-      {/* 5. FREQUENTLY ASKED QUESTIONS (ACCORDION)                */}
+      {/* 5. FREQUENTLY ASKED QUESTIONS (SERVER SHELL + ISLAND)    */}
       {/* ======================================================== */}
-      <section className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 flex flex-col gap-10 w-full">
+      <section
+        id="faq"
+        className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 flex flex-col gap-10 w-full scroll-mt-20"
+      >
         <div className="text-center flex flex-col gap-3">
           <Badge className="self-center bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
             Common Inquiries
           </Badge>
           <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-            Frequently Asked Questions
+            Frequently Asked Questions on Umrah, Visas &amp; Hajj 2027
           </h2>
           <p className="text-muted-foreground text-sm sm:text-base">
-            Everything you need to know about visa validity, infant allotments, hotel bookings, and quoting SLA.
+            Essential answers on Saudi visa duration rules, infant bed allotments, Jeddah-to-Makkah transfers, and 24-hour PKR quoting.
           </p>
         </div>
 
-        <Accordion className="rounded-2xl border border-border bg-card p-2 sm:p-4 shadow-xs">
-          {activeFaqs.map((faq, idx) => (
-            <AccordionItem
-              key={faq.id || idx}
-              value={`item-${idx}`}
-              className="px-2"
-            >
-              <AccordionTrigger className="text-left font-semibold text-sm sm:text-base text-foreground hover:text-primary py-4">
-                {faq.question}
-              </AccordionTrigger>
-              <AccordionContent className="text-xs sm:text-sm text-muted-foreground leading-relaxed pb-4">
-                {faq.answer}
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
+        <FaqAccordionClient faqs={activeFaqs} />
+
+        <div className="flex flex-wrap items-center justify-center gap-4 text-xs sm:text-sm font-semibold">
+          <Link
+            href="/faq"
+            className="inline-flex min-h-6 items-center gap-1.5 text-[#0A3622] underline decoration-[#7A5C1E]/60 underline-offset-4 hover:text-[#7A5C1E]"
+          >
+            <span>Explore All Categorized Umrah &amp; Hajj FAQs</span>
+            <ArrowRight className="size-3.5" />
+          </Link>
+          <span className="text-[#7A5C1E]" aria-hidden="true">
+            &bull;
+          </span>
+          <Link
+            href="/contact"
+            className="inline-flex min-h-6 items-center text-[#0A3622] underline decoration-[#7A5C1E]/60 underline-offset-4 hover:text-[#7A5C1E]"
+          >
+            Ask Our Askari 10 Lahore Desk
+          </Link>
+        </div>
       </section>
     </div>
   )

@@ -2,13 +2,12 @@
 
 import React, { useMemo } from "react"
 import { calculatePrivateRoomSplits } from "@/lib/domain/room-splitter"
-import type * as schema from "@/db/schema"
-import { usePlanner } from "./planner-context"
+import { usePlanner, type PlannerHotelItem } from "./planner-context"
 import { BedDouble, Sparkles, Users2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface RoomAllocatorProps {
-  hotel?: typeof schema.hotels.$inferSelect
+  hotel?: PlannerHotelItem
   roomCategory: "shared" | "private"
   sharedRoomType?: "sharing" | "double" | "triple" | "quad"
   privateRoomAllocation: { double: number; triple: number; quad: number }

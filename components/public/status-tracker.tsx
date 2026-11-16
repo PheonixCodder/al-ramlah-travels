@@ -1,7 +1,8 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { Suspense, useCallback, useEffect, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import {
   lookupApplicationStatus,
   respondToApplicationQuoteAction,
@@ -34,11 +35,56 @@ export interface StatusTrackerProps {
   agencyWhatsapp?: string
 }
 
+export function sanitizeTrackRefParam(raw: string | null | undefined): string {
+  if (!raw) return ""
+  const cleaned = raw.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "")
+  if (!cleaned.startsWith("ART-")) return ""
+  return cleaned.slice(0, 32)
+}
+
+function StatusTrackerUrlHydrator({
+  onPrefillRef,
+}: {
+  onPrefillRef: (refCode: string) => void
+}): null {
+  const searchParams = useSearchParams()
+  const trackRefRaw = searchParams.get("trackRef")
+
+  useEffect(() => {
+    const cleanRef = sanitizeTrackRefParam(trackRefRaw)
+    if (!cleanRef) return
+    onPrefillRef(cleanRef)
+    if (typeof document !== "undefined") {
+      document
+        .getElementById("track-status")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }, [onPrefillRef, trackRefRaw])
+
+  return null
+}
+
 export function StatusTracker({
   agencyWhatsapp: propWhatsapp,
 }: StatusTrackerProps = {}) {
   const [referenceNumber, setReferenceNumber] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
+
+  const handlePrefillRef = useCallback((refCode: string) => {
+    setReferenceNumber((prev) => (prev.trim().length > 0 ? prev : refCode))
+  }, [])
+
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const custom = ev as CustomEvent<{ referenceNumber?: string }>
+      const clean = sanitizeTrackRefParam(custom.detail?.referenceNumber)
+      if (clean) {
+        setReferenceNumber(clean)
+      }
+    }
+    window.addEventListener("alramlah:prefill-tracker", handler)
+    return () => window.removeEventListener("alramlah:prefill-tracker", handler)
+  }, [])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lookupData, setLookupData] = useState<StatusLookupResult | null>(null)
@@ -172,6 +218,9 @@ export function StatusTracker({
 
   return (
     <section id="track-status" className="w-full py-12 sm:py-16 bg-[#FAF7F0]/60 scroll-mt-16">
+      <Suspense fallback={null}>
+        <StatusTrackerUrlHydrator onPrefillRef={handlePrefillRef} />
+      </Suspense>
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center mb-8">

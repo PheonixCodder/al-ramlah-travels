@@ -16,6 +16,7 @@ import { recordAuditLog } from "@/lib/audit-log"
 import { requireAdmin, requireSuperAdmin } from "@/lib/auth-guard"
 import { getCompanyInfo } from "@/lib/company-info"
 import { formatWhatsAppPhone, toWaMeUrl } from "@/lib/phone"
+import { getCanonicalSiteUrl } from "@/lib/seo/metadata"
 import {
   renderAndUploadLuxuryQuotationPdf,
   resolveSignedQuotationPdfUrl,
@@ -2114,10 +2115,8 @@ export async function sendApplicationQuotationEmailAction(rawInput: unknown) {
     }
   }
 
-  const baseAppUrl = (
-    process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://alramlahtravels.com"
-  ).replace(/\/+$/, "")
-  const portalUrl = `${baseAppUrl}/#track-status`
+  const baseAppUrl = getCanonicalSiteUrl().origin
+  const portalUrl = `${baseAppUrl}/?trackRef=${encodeURIComponent(built.app.referenceNumber)}#track-status`
 
   const mailRes = await sendQuotationEmail({
     to: targetEmail,
@@ -2310,6 +2309,13 @@ export async function exportApplicationsCsvAction(rawInput?: unknown) {
     "Amount Paid (PKR)",
     "Payment Status",
     "Submission Date (PKT)",
+    "UTM Source",
+    "UTM Medium",
+    "UTM Campaign",
+    "UTM Content",
+    "UTM Term",
+    "Landing Page",
+    "HTTP Referrer",
   ]
 
   const csvLines: string[] = [
@@ -2341,6 +2347,13 @@ export async function exportApplicationsCsvAction(rawInput?: unknown) {
         amountPaid,
         paymentStatus,
         formatPktTimestamp(app.createdAt),
+        app.utmSource ?? "",
+        app.utmMedium ?? "",
+        app.utmCampaign ?? "",
+        app.utmContent ?? "",
+        app.utmTerm ?? "",
+        app.landingPage ?? "",
+        app.httpReferrer ?? "",
       ]
         .map((cell) => sanitizeCsvCellInternal(cell))
         .join(",")

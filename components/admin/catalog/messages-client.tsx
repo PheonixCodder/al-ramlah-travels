@@ -8,6 +8,7 @@ import {
   updateContactMessageStatus,
 } from "@/app/actions/cms"
 import { buildWhatsappUrl, normalizeWhatsappNumber } from "@/lib/company-info"
+import { inferAcquisitionChannel } from "@/lib/seo/utm"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,6 +35,13 @@ export interface ContactMessageData {
   message: string
   status: "unread" | "read" | "replied" | "archived"
   adminNotes?: string | null
+  utmSource?: string | null
+  utmMedium?: string | null
+  utmCampaign?: string | null
+  utmContent?: string | null
+  utmTerm?: string | null
+  landingPage?: string | null
+  httpReferrer?: string | null
   createdAt: Date | string
 }
 
@@ -344,13 +352,21 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
               {/* Message Header */}
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between border-b border-border pb-4">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-lg font-bold text-foreground">
                       {selectedMessage.subject}
                     </h3>
                     <Badge variant="outline" className="text-[10px] uppercase">
                       {selectedMessage.status}
                     </Badge>
+                    {inferAcquisitionChannel(selectedMessage) && (
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-600/30 bg-emerald-50 text-[10px] font-semibold text-emerald-900"
+                      >
+                        {inferAcquisitionChannel(selectedMessage)}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                     <span className="font-semibold text-foreground">
@@ -362,6 +378,37 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                       {new Date(selectedMessage.createdAt).toLocaleString()}
                     </span>
                   </div>
+                  {(selectedMessage.utmCampaign ||
+                    selectedMessage.landingPage ||
+                    selectedMessage.httpReferrer) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                      {selectedMessage.utmCampaign && (
+                        <Badge
+                          variant="outline"
+                          className="border-gold/40 bg-gold/10 font-mono text-[10px] font-medium text-gold-text"
+                        >
+                          Campaign: {selectedMessage.utmCampaign}
+                        </Badge>
+                      )}
+                      {selectedMessage.landingPage && (
+                        <Badge
+                          variant="outline"
+                          className="border-border bg-muted/40 font-mono text-[10px] font-normal text-foreground"
+                        >
+                          Entry: {selectedMessage.landingPage}
+                        </Badge>
+                      )}
+                      {selectedMessage.httpReferrer && (
+                        <Badge
+                          variant="outline"
+                          className="max-w-xs truncate border-border bg-muted/40 font-mono text-[10px] font-normal text-muted-foreground"
+                          title={selectedMessage.httpReferrer}
+                        >
+                          Referrer: {selectedMessage.httpReferrer}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Status Switcher Buttons */}

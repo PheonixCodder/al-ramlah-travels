@@ -14,9 +14,21 @@ import { sendPasswordResetEmail } from "./security/mailer"
 function buildTrustedOrigins(): string[] {
   const isProduction =
     process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()
+  const vercelOrigin = process.env.VERCEL_URL?.trim()
+    ? `https://${process.env.VERCEL_URL.trim()}`
+    : undefined
+  const vercelProdOrigin = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim()
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.trim()}`
+    : undefined
+
   const configured = [
     process.env.NEXT_PUBLIC_APP_URL?.trim(),
     process.env.BETTER_AUTH_URL?.trim(),
+    "https://alramlahtravels.com",
+    "https://www.alramlahtravels.com",
+    "https://al-ramlah-travels.vercel.app",
+    vercelOrigin,
+    vercelProdOrigin,
   ].filter((origin): origin is string => Boolean(origin))
 
   if (isProduction) {
@@ -32,7 +44,27 @@ function buildTrustedOrigins(): string[] {
   )
 }
 
+const resolvedAuthBaseUrl =
+  process.env.BETTER_AUTH_URL?.trim() ||
+  process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim()
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.trim()}`
+    : process.env.VERCEL_URL?.trim()
+      ? `https://${process.env.VERCEL_URL.trim()}`
+      : process.env.NODE_ENV === "production"
+        ? "https://alramlahtravels.com"
+        : "http://localhost:3000")
+
+const resolvedAuthSecret =
+  process.env.BETTER_AUTH_SECRET?.trim() ||
+  (process.env.NODE_ENV === "production" &&
+  process.env.NEXT_PHASE !== "phase-production-build"
+    ? undefined
+    : "phase_production_build_only_ephemeral_key_9f8e7d6c5b4a3210")
+
 export const auth = betterAuth({
+  baseURL: resolvedAuthBaseUrl,
+  secret: resolvedAuthSecret,
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: {

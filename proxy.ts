@@ -1,6 +1,20 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { isAuditLocalE2eMode } from "@/lib/env"
+
+function isAuditLocalE2eRuntime(): boolean {
+  if (process.env.AUDIT_E2E_LOCAL !== "1") {
+    return false
+  }
+  const dbUrl = process.env.DATABASE_URL?.trim() ?? ""
+  const pooledUrl = process.env.DATABASE_URL_POOLED?.trim() || dbUrl
+  if (!dbUrl || !pooledUrl) {
+    return false
+  }
+  return (
+    (dbUrl.includes("127.0.0.1") || dbUrl.includes("localhost")) &&
+    (pooledUrl.includes("127.0.0.1") || pooledUrl.includes("localhost"))
+  )
+}
 
 function buildContentSecurityPolicy(isDev: boolean): string {
   const scriptSrc = isDev
@@ -64,7 +78,7 @@ function applySecurityHeaders(
   requestId: string
 ): NextResponse {
   const isDev =
-    process.env.NODE_ENV === "development" || isAuditLocalE2eMode()
+    process.env.NODE_ENV === "development" || isAuditLocalE2eRuntime()
 
   response.headers.set("Content-Security-Policy", buildContentSecurityPolicy(isDev))
   response.headers.set(

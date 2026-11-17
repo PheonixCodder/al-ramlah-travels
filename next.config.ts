@@ -54,7 +54,16 @@ export function buildNextConfig(
   const authUrlHost = getHost(env.BETTER_AUTH_URL)
   const r2PublicHostname = getHostname(env.R2_PUBLIC_URL)
 
-  const prodOrigins = [appUrlHost, authUrlHost].filter(
+  const prodOrigins = [
+    appUrlHost,
+    authUrlHost,
+    "alramlahtravels.com",
+    "www.alramlahtravels.com",
+    "al-ramlah-travels.vercel.app",
+    "*.vercel.app",
+    env.VERCEL_URL?.trim(),
+    env.VERCEL_PROJECT_PRODUCTION_URL?.trim(),
+  ].filter(
     (origin): origin is string =>
       Boolean(
         origin &&

@@ -309,9 +309,12 @@ export function parseEnv(
       prodErrors.push("TRIGGER_SECRET_KEY is required in production")
     }
 
-    if (!data.GOTENBERG_API_URL || !data.GOTENBERG_API_KEY) {
+    if (
+      (data.GOTENBERG_API_URL && !data.GOTENBERG_API_KEY) ||
+      (!data.GOTENBERG_API_URL && data.GOTENBERG_API_KEY)
+    ) {
       prodErrors.push(
-        "GOTENBERG_API_URL and GOTENBERG_API_KEY are required in production"
+        "GOTENBERG_API_URL and GOTENBERG_API_KEY must both be set together when Gotenberg is configured"
       )
     }
 
@@ -346,4 +349,24 @@ export function parseEnv(
   }
 }
 
-export const env: ParsedEnv = parseEnv(process.env)
+let cachedEnv: ParsedEnv | null = null
+
+function getLazyEnv(): ParsedEnv {
+  if (!cachedEnv) {
+    cachedEnv = parseEnv(process.env)
+  }
+  return cachedEnv
+}
+
+export const env: ParsedEnv = new Proxy({} as ParsedEnv, {
+  get(_target, prop: string | symbol) {
+    const resolved = getLazyEnv()
+    return Reflect.get(resolved, prop)
+  },
+  ownKeys() {
+    return Reflect.ownKeys(getLazyEnv())
+  },
+  getOwnPropertyDescriptor(_target, prop: string | symbol) {
+    return Object.getOwnPropertyDescriptor(getLazyEnv(), prop)
+  },
+})

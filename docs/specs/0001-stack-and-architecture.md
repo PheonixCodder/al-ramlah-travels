@@ -1,7 +1,7 @@
 # Spec 0001: Stack and architecture
 
 **Date**: 2026-10-17
-**Status**: Proposed
+**Status**: Accepted (Implemented)
 
 ## Summary
 

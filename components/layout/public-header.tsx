@@ -45,6 +45,7 @@ import {
   toTelHref,
 } from "@/lib/company-info"
 import { ArabicText } from "@/components/public/arabic-text"
+import { MotionPillIndicator } from "@/components/motion"
 import {
   computeHaramainPrayerTimes,
   toWaMeUrl,
@@ -118,17 +119,22 @@ export function PublicHeader({
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 sm:gap-x-4">
             <a
               href={telHref}
-              className="inline-flex min-h-6 items-center gap-1.5 transition-colors hover:text-gold"
+              className="inline-flex min-h-6 items-center gap-1.5 rounded-sm transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
-              <Phone className="size-3.5 shrink-0 text-gold" />
+              <Phone
+                className="size-3.5 shrink-0 text-gold"
+                aria-hidden="true"
+              />
               <span className="font-mono tabular-nums">{primaryDisplay}</span>
             </a>
             {secondaryDisplay && (
               <>
-                <span className="text-primary-foreground/30">·</span>
+                <span className="text-primary-foreground/35" aria-hidden="true">
+                  ·
+                </span>
                 <a
                   href={secTelHref}
-                  className="inline-flex min-h-6 items-center gap-1.5 transition-colors hover:text-gold"
+                  className="inline-flex min-h-6 items-center gap-1.5 rounded-sm transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
                 >
                   <span className="font-mono tabular-nums">
                     {secondaryDisplay}
@@ -136,23 +142,35 @@ export function PublicHeader({
                 </a>
               </>
             )}
-            <span className="hidden text-primary-foreground/30 sm:inline">
+            <span
+              className="hidden text-primary-foreground/35 sm:inline"
+              aria-hidden="true"
+            >
               |
             </span>
             <a
               href={waHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-6 items-center gap-1.5 transition-colors hover:text-gold"
+              className="inline-flex min-h-6 items-center gap-1.5 rounded-sm transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
-              <MessageCircle className="size-3.5 shrink-0 text-emerald-400" />
+              <MessageCircle
+                className="size-3.5 shrink-0 text-gold"
+                aria-hidden="true"
+              />
               <span>24/7 Pilgrim Support</span>
             </a>
-            <span className="hidden text-primary-foreground/30 2xl:inline">
+            <span
+              className="hidden text-primary-foreground/35 2xl:inline"
+              aria-hidden="true"
+            >
               |
             </span>
-            <span className="hidden items-center gap-1 text-primary-foreground/80 2xl:inline-flex">
-              <MapPin className="size-3.5 shrink-0 text-gold" />
+            <span className="hidden items-center gap-1 text-primary-foreground/85 2xl:inline-flex">
+              <MapPin
+                className="size-3.5 shrink-0 text-gold"
+                aria-hidden="true"
+              />
               <span>{officeAddress}</span>
             </span>
           </div>
@@ -160,25 +178,38 @@ export function PublicHeader({
           {/* Right: Zero-CLS Fixed-Width Haramain Prayer Time Pill (`OD-08`, `SEO-030`) & Quick Jump */}
           <div className="flex items-center gap-3">
             <div
-              className="hidden min-h-6 w-[296px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-gold/25 bg-primary-foreground/10 px-2.5 py-0.5 text-[11px] font-medium whitespace-nowrap text-primary-foreground/95 md:inline-flex"
+              className="hidden min-h-6 w-[296px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-gold/30 bg-primary-foreground/10 px-2.5 py-0.5 text-[11px] font-medium whitespace-nowrap text-primary-foreground md:inline-flex"
               title="Umm al-Qura astronomical Makkah & Madinah Haramain prayer schedule in Arabia Standard Time (AST / UTC+3)"
             >
-              <Clock className="size-3 shrink-0 text-gold" />
+              <Clock className="size-3 shrink-0 text-gold" aria-hidden="true" />
               <span>Next:</span>
-              <span className="font-semibold text-gold" suppressHydrationWarning>
+              <span
+                className="font-semibold text-gold"
+                suppressHydrationWarning
+              >
                 {prayerSchedule.nextPrayerName}
               </span>
               <ArabicText
-                className="text-[11px] text-gold/90"
+                className="text-[11px] text-gold"
                 suppressHydrationWarning
               >
                 {prayerSchedule.nextPrayerArabic}
               </ArabicText>
-              <span
-                className="font-mono tabular-nums text-primary-foreground/90"
-                suppressHydrationWarning
-              >
-                {prayerSchedule.makkahTime24} · {prayerSchedule.madinahTime24} AST
+              <span className="text-primary-foreground/95 tabular-nums">
+                <span
+                  className="font-mono tabular-nums"
+                  suppressHydrationWarning
+                >
+                  {prayerSchedule.makkahTime24}
+                </span>
+                {" · "}
+                <span
+                  className="font-mono tabular-nums"
+                  suppressHydrationWarning
+                >
+                  {prayerSchedule.madinahTime24}
+                </span>{" "}
+                AST
               </span>
               <span className="sr-only" suppressHydrationWarning>
                 Makkah {prayerSchedule.makkahTime24}, Madinah{" "}
@@ -187,9 +218,9 @@ export function PublicHeader({
             </div>
             <Link
               href="/#track-status"
-              className="inline-flex min-h-6 items-center gap-1 text-[11px] font-medium whitespace-nowrap underline underline-offset-4 transition-colors hover:text-gold"
+              className="inline-flex min-h-6 items-center gap-1 rounded-sm text-[11px] font-medium whitespace-nowrap underline underline-offset-4 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
-              <Search className="size-3 shrink-0" />
+              <Search className="size-3 shrink-0" aria-hidden="true" />
               <span>Track Application</span>
             </Link>
           </div>
@@ -197,14 +228,14 @@ export function PublicHeader({
       </div>
 
       {/* Main Sticky Header */}
-      <header className="sticky top-0 z-40 w-full border-b border-border/80 bg-background/90 backdrop-blur-md transition-all">
+      <header className="sticky top-0 z-40 w-full border-b border-border bg-background">
         <div className="mx-auto flex h-18 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 lg:px-8">
           {/* Brand Logo & Bilingual Title */}
           <Link
             href="/"
-            className="group flex min-h-6 min-w-0 items-center gap-2.5 sm:gap-3"
+            className="group flex min-h-6 min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 sm:gap-3"
           >
-            <div className="relative size-11 shrink-0 overflow-hidden rounded-xl border border-gold/30 bg-card p-0.5 shadow-xs transition-transform group-hover:scale-105">
+            <div className="relative size-11 shrink-0 overflow-hidden rounded-xl border border-gold-border bg-card p-0.5 shadow-xs transition-colors group-hover:border-gold motion-reduce:transition-none">
               <Image
                 src="/logo.jpg"
                 alt="Al Ramlah Travels Emblem"
@@ -215,7 +246,7 @@ export function PublicHeader({
               />
             </div>
             <div className="flex flex-col">
-              <span className="font-display text-lg font-bold tracking-tight text-foreground transition-colors group-hover:text-primary sm:text-xl">
+              <span className="font-display text-lg font-bold tracking-tight text-foreground transition-colors group-hover:text-primary motion-reduce:transition-none sm:text-xl">
                 Al Ramlah Travels
               </span>
               <ArabicText className="text-xs font-semibold tracking-wide text-gold-text">
@@ -237,21 +268,24 @@ export function PublicHeader({
                   href={link.href}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "group relative inline-flex min-h-6 items-center px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors",
+                    "group relative inline-flex min-h-9 items-center rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                     isActive
                       ? "font-semibold text-primary"
-                      : "text-foreground/80 hover:text-primary"
+                      : "text-foreground/80 hover:bg-secondary/60 hover:text-primary"
                   )}
                 >
-                  {link.title}
-                  <span
-                    className={cn(
-                      "absolute inset-x-3 -bottom-0.5 h-0.5 origin-left rounded-full bg-gold transition-transform",
-                      isActive
-                        ? "scale-x-100"
-                        : "scale-x-0 group-hover:scale-x-100"
-                    )}
-                  />
+                  <span>{link.title}</span>
+                  {isActive ? (
+                    <MotionPillIndicator
+                      layoutId="public-header-active-nav"
+                      className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-gold"
+                    />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-x-3 bottom-1 h-0.5 origin-left scale-x-0 rounded-full bg-gold/60 transition-transform group-hover:scale-x-100 motion-reduce:scale-x-0 motion-reduce:transition-none"
+                    />
+                  )}
                 </Link>
               )
             })}
@@ -262,9 +296,12 @@ export function PublicHeader({
             <Button
               render={<Link href="/#journey-builder" />}
               nativeButton={false}
-              className="hidden min-h-9 gap-1.5 border border-gold/30 bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 sm:inline-flex"
+              className="hidden min-h-9 gap-1.5 border border-gold-border/60 bg-primary whitespace-nowrap text-primary-foreground shadow-xs hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:pointer-events-none disabled:opacity-50 sm:inline-flex"
             >
-              <Sparkles className="size-4 shrink-0 text-gold" />
+              <Sparkles
+                className="size-4 shrink-0 text-gold"
+                aria-hidden="true"
+              />
               <span>Plan Your Journey</span>
             </Button>
 
@@ -277,10 +314,11 @@ export function PublicHeader({
                       variant="outline"
                       size="icon"
                       aria-label="Toggle navigation menu"
+                      className="border-border bg-card text-foreground hover:border-gold-border hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
                     />
                   }
                 >
-                  <Menu className="size-5" />
+                  <Menu className="size-5" aria-hidden="true" />
                 </SheetTrigger>
                 <SheetContent
                   side="right"
@@ -289,7 +327,7 @@ export function PublicHeader({
                   <div>
                     <SheetHeader className="border-b border-border p-0 pb-6 text-left">
                       <div className="flex items-center gap-3">
-                        <div className="size-10 overflow-hidden rounded-lg border border-gold/40 bg-background p-1">
+                        <div className="size-10 overflow-hidden rounded-lg border border-gold-border bg-background p-1">
                           <Image
                             src="/logo.jpg"
                             alt="Al Ramlah Travels Emblem"
@@ -313,10 +351,13 @@ export function PublicHeader({
                     </SheetHeader>
 
                     {/* Mobile Haramain Prayer Pill */}
-                    <div className="mt-4 rounded-lg border border-gold/25 bg-secondary/60 px-3 py-2 text-xs text-foreground">
+                    <div className="mt-4 rounded-lg border border-gold-border/60 bg-secondary/60 px-3 py-2 text-xs text-foreground">
                       <div className="flex items-center justify-between font-medium">
                         <span className="inline-flex items-center gap-1.5 text-primary">
-                          <Clock className="size-3.5 text-gold" />
+                          <Clock
+                            className="size-3.5 text-gold-text"
+                            aria-hidden="true"
+                          />
                           <span suppressHydrationWarning>
                             Next Salah: {prayerSchedule.nextPrayerName}
                           </span>
@@ -328,12 +369,22 @@ export function PublicHeader({
                           {prayerSchedule.nextPrayerArabic}
                         </ArabicText>
                       </div>
-                      <p
-                        className="mt-1 font-mono text-[11px] tabular-nums text-muted-foreground"
-                        suppressHydrationWarning
-                      >
-                        Makkah {prayerSchedule.makkahTime24} · Madinah{" "}
-                        {prayerSchedule.madinahTime24} AST
+                      <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">
+                        Makkah{" "}
+                        <span
+                          className="font-mono tabular-nums"
+                          suppressHydrationWarning
+                        >
+                          {prayerSchedule.makkahTime24}
+                        </span>
+                        {" · "}Madinah{" "}
+                        <span
+                          className="font-mono tabular-nums"
+                          suppressHydrationWarning
+                        >
+                          {prayerSchedule.madinahTime24}
+                        </span>{" "}
+                        AST
                       </p>
                     </div>
 
@@ -351,30 +402,42 @@ export function PublicHeader({
                             aria-current={isActive ? "page" : undefined}
                             onClick={() => setMobileOpen(false)}
                             className={cn(
-                              "flex min-h-10 items-center justify-between rounded-lg px-3.5 py-2.5 text-sm font-medium transition-colors",
+                              "flex min-h-10 items-center justify-between rounded-lg px-3.5 py-2.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                               isActive
-                                ? "border border-gold/40 bg-secondary font-semibold text-primary"
+                                ? "border border-gold-border bg-secondary font-semibold text-primary"
                                 : "text-foreground hover:bg-secondary hover:text-primary"
                             )}
                           >
                             <span className="flex items-center gap-3">
-                              <link.icon className="size-4 text-gold" />
+                              <link.icon
+                                className="size-4 text-gold-text"
+                                aria-hidden="true"
+                              />
                               {link.title}
                             </span>
-                            <ArrowRight className="size-4 text-muted-foreground" />
+                            <ArrowRight
+                              className="size-4 text-muted-foreground"
+                              aria-hidden="true"
+                            />
                           </Link>
                         )
                       })}
                       <Link
                         href="/#track-status"
                         onClick={() => setMobileOpen(false)}
-                        className="flex min-h-10 items-center justify-between rounded-lg px-3.5 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary hover:text-primary"
+                        className="flex min-h-10 items-center justify-between rounded-lg px-3.5 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
                       >
                         <span className="flex items-center gap-3">
-                          <Search className="size-4 text-gold" />
+                          <Search
+                            className="size-4 text-gold-text"
+                            aria-hidden="true"
+                          />
                           Track Application Status
                         </span>
-                        <ArrowRight className="size-4 text-muted-foreground" />
+                        <ArrowRight
+                          className="size-4 text-muted-foreground"
+                          aria-hidden="true"
+                        />
                       </Link>
                     </div>
                   </div>
@@ -385,24 +448,35 @@ export function PublicHeader({
                       render={<Link href="/#journey-builder" />}
                       nativeButton={false}
                       onClick={() => setMobileOpen(false)}
-                      className="min-h-10 w-full justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                      className="min-h-10 w-full justify-center gap-2 bg-primary whitespace-nowrap text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
                     >
-                      <Sparkles className="size-4 text-gold" />
-                      Plan Your Journey
+                      <Sparkles
+                        className="size-4 text-gold"
+                        aria-hidden="true"
+                      />
+                      <span>Plan Your Journey</span>
                     </Button>
 
                     <a
                       href={waHref}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                      className="flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium whitespace-nowrap text-foreground transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
                     >
-                      <MessageCircle className="size-4 text-emerald-600" />
-                      WhatsApp Concierge
+                      <MessageCircle
+                        className="size-4 text-primary"
+                        aria-hidden="true"
+                      />
+                      <span>WhatsApp Concierge</span>
                     </a>
 
-                    <div className="pt-1 text-center text-[11px] text-muted-foreground">
-                      Where Purpose Meets Excellence · Hajj • Umrah • Flights • Hotels • Tours
+                    <div className="flex flex-col gap-0.5 pt-1 text-center text-[11px] text-muted-foreground">
+                      <span className="font-medium text-foreground/85">
+                        Where Purpose Meets Excellence
+                      </span>
+                      <span>
+                        Hajj, Umrah, Flights, Hotels, and Ziyarat Tours
+                      </span>
                     </div>
                   </div>
                 </SheetContent>

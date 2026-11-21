@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -79,9 +79,53 @@ export interface BookingModalPackage {
   }[]
 }
 
+export type GroupRoomOccupancyTier = "sharing" | "quad" | "triple" | "double"
+
+export interface GroupRoomTierPrices {
+  sharing: number
+  quad: number
+  triple: number
+  double: number
+}
+
+const GROUP_ROOM_FALLBACK_ORDER: readonly GroupRoomOccupancyTier[] = [
+  "quad",
+  "triple",
+  "double",
+  "sharing",
+]
+
+/**
+ * Selects the preferred group occupancy tier if its PKR tariff is positive (`> 0`);
+ * otherwise falls back to the first available tier in `["quad", "triple", "double", "sharing"]`
+ * (or `"quad"` if all tiers are `"On Request"`).
+ */
+export function resolveAvailableGroupRoomType(
+  prices: GroupRoomTierPrices,
+  preferred?: GroupRoomOccupancyTier
+): GroupRoomOccupancyTier {
+  if (
+    preferred &&
+    typeof prices[preferred] === "number" &&
+    Number.isFinite(prices[preferred]) &&
+    prices[preferred] > 0
+  ) {
+    return preferred
+  }
+
+  const firstPositive = GROUP_ROOM_FALLBACK_ORDER.find(
+    (tier) =>
+      typeof prices[tier] === "number" &&
+      Number.isFinite(prices[tier]) &&
+      prices[tier] > 0
+  )
+  return firstPositive ?? "quad"
+}
+
 export interface GroupBookingModalProps {
   pkg: BookingModalPackage
   selectedBatchId?: string
+  defaultRoomType?: GroupRoomOccupancyTier
   trigger?: React.ReactNode
   agencyWhatsapp?: string
   open?: boolean
@@ -90,7 +134,10 @@ export interface GroupBookingModalProps {
 }
 
 function createSubmissionKey(prefix: string): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return `${prefix}_${crypto.randomUUID().replace(/-/g, "")}`
   }
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
@@ -113,6 +160,7 @@ function getLowestPositiveOptionPrice(opt: BookingModalHotelOption): number {
 export function GroupBookingModal({
   pkg,
   selectedBatchId,
+  defaultRoomType,
   trigger,
   agencyWhatsapp = DEFAULT_COMPANY_INFO.primaryWhatsapp,
   open: controlledOpen,
@@ -158,31 +206,11 @@ export function GroupBookingModal({
     [pkg.departures, todayPkt]
   )
 
-  const [batchId, setBatchId] = useState<string>(
-    selectedBatchId && availableBatches.some((b) => b.id === selectedBatchId)
-      ? selectedBatchId
-      : (availableBatches[0]?.id ?? "")
-  )
-
-  useEffect(() => {
-    if (
-      selectedBatchId &&
-      availableBatches.some((b) => b.id === selectedBatchId)
-    ) {
-      setBatchId(selectedBatchId)
-    } else if (
-      availableBatches.length > 0 &&
-      !availableBatches.some((b) => b.id === batchId)
-    ) {
-      setBatchId(availableBatches[0]!.id)
-    }
-  }, [availableBatches, batchId, selectedBatchId])
-
+  const [userBatchId, setUserBatchId] = useState<string | null>(null)
   const [selectedHotelOptionCode, setSelectedHotelOptionCode] =
     useState<string>("")
-  const [roomType, setRoomType] = useState<
-    "sharing" | "double" | "triple" | "quad"
-  >("quad")
+  const [userRoomType, setUserRoomType] =
+    useState<GroupRoomOccupancyTier | null>(null)
 
   // Passengers
   const [adults, setAdults] = useState<number>(2)
@@ -197,8 +225,16 @@ export function GroupBookingModal({
   const [customerEmail, setCustomerEmail] = useState("")
   const [specialRequests, setSpecialRequests] = useState("")
 
+  const activeBatchId =
+    userBatchId && availableBatches.some((b) => b.id === userBatchId)
+      ? userBatchId
+      : selectedBatchId &&
+          availableBatches.some((b) => b.id === selectedBatchId)
+        ? selectedBatchId
+        : (availableBatches[0]?.id ?? "")
+
   const activeBatch =
-    availableBatches.find((d) => d.id === batchId) ?? availableBatches[0]
+    availableBatches.find((d) => d.id === activeBatchId) ?? availableBatches[0]
   const remainingSeats = activeBatch
     ? activeBatch.totalSeats - activeBatch.bookedSeats
     : 0
@@ -238,25 +274,15 @@ export function GroupBookingModal({
     ? matchedHotelOption.doublePricePkr
     : (activeBatch?.doublePriceOverridePkr ?? pkg.doublePricePkr)
 
-  useEffect(() => {
-    const ratesByTier: Record<
-      "quad" | "sharing" | "triple" | "double",
-      number
-    > = {
-      quad: quadTierRate,
+  const roomType = resolveAvailableGroupRoomType(
+    {
       sharing: sharingTierRate,
+      quad: quadTierRate,
       triple: tripleTierRate,
       double: doubleTierRate,
-    }
-    if (ratesByTier[roomType] <= 0) {
-      const firstPositive = (
-        ["quad", "sharing", "triple", "double"] as const
-      ).find((key) => ratesByTier[key] > 0)
-      if (firstPositive) {
-        setRoomType(firstPositive)
-      }
-    }
-  }, [doubleTierRate, quadTierRate, roomType, sharingTierRate, tripleTierRate])
+    },
+    userRoomType ?? defaultRoomType
+  )
 
   let pricePerPerson = quadTierRate
   if (roomType === "sharing") pricePerPerson = sharingTierRate
@@ -333,6 +359,9 @@ export function GroupBookingModal({
     setSuccessResult(null)
     setError(null)
     setFieldErrors({})
+    setUserBatchId(null)
+    setUserRoomType(null)
+    setSelectedHotelOptionCode("")
     setSubmissionKey(createSubmissionKey("grp"))
     setOpen(false)
   }
@@ -362,9 +391,16 @@ export function GroupBookingModal({
     }
   }
 
+  const standardSharingRate =
+    activeBatch?.sharingPriceOverridePkr !== null &&
+    activeBatch?.sharingPriceOverridePkr !== undefined
+      ? activeBatch.sharingPriceOverridePkr
+      : pkg.sharingPricePkr !== undefined
+        ? pkg.sharingPricePkr
+        : pkg.quadPricePkr
   const standardQuadRate = activeBatch?.quadPriceOverridePkr ?? pkg.quadPricePkr
   const standardFallbackPositive = [
-    sharingTierRate,
+    standardSharingRate,
     standardQuadRate,
     activeBatch?.triplePriceOverridePkr ?? pkg.triplePricePkr,
     activeBatch?.doublePriceOverridePkr ?? pkg.doublePricePkr,
@@ -378,6 +414,9 @@ export function GroupBookingModal({
         if (!nextOpen) {
           setError(null)
           setFieldErrors({})
+          setUserBatchId(null)
+          setUserRoomType(null)
+          setSelectedHotelOptionCode("")
         }
       }}
     >
@@ -387,18 +426,18 @@ export function GroupBookingModal({
             trigger ? (
               (trigger as React.ReactElement)
             ) : (
-              <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs sm:text-sm">
+              <Button className="w-full bg-primary text-xs font-semibold whitespace-nowrap text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:pointer-events-none disabled:opacity-50 sm:text-sm">
                 Book Package Seats
               </Button>
             )
           }
         />
       )}
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="max-h-[92vh] overflow-y-auto border border-border bg-card sm:max-w-xl">
         {successResult ? (
           <div className="flex flex-col gap-6 py-6 text-center">
-            <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-              <CheckCircle2 className="size-8" />
+            <div className="mx-auto flex size-14 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-primary">
+              <CheckCircle2 className="size-8" aria-hidden="true" />
             </div>
 
             <div className="flex flex-col gap-2">
@@ -412,27 +451,27 @@ export function GroupBookingModal({
               </p>
             </div>
 
-            <div className="mx-auto max-w-sm w-full rounded-xl border border-gold/40 bg-gold/5 p-4 flex flex-col gap-2">
-              <span className="text-xs uppercase font-semibold text-gold-text tracking-wider">
+            <div className="mx-auto flex w-full max-w-sm flex-col gap-2 rounded-xl border border-gold-border bg-accent/45 p-4">
+              <span className="text-xs font-semibold text-gold-text">
                 Booking Reference Code
               </span>
-              <div className="font-mono tabular-nums text-2xl font-extrabold text-foreground tracking-tight">
+              <div className="font-mono text-2xl font-extrabold tracking-tight text-foreground tabular-nums">
                 {successResult.referenceNumber}
               </div>
-              <div className="text-xs text-muted-foreground pt-1 border-t border-border/80 flex justify-between">
+              <div className="flex justify-between border-t border-border/80 pt-1 text-xs text-muted-foreground">
                 <span>Total Estimated Cost:</span>
-                <span className="font-bold font-mono tabular-nums text-emerald-800">
+                <span className="font-mono font-bold text-primary tabular-nums">
                   {formatPkr(successResult.grandTotalPkr)}
                 </span>
               </div>
             </div>
 
-            <p className="text-xs text-muted-foreground max-w-md mx-auto">
+            <p className="mx-auto max-w-md text-xs text-muted-foreground">
               Our dedicated Lahore ticketing concierge will contact you within
               24 hours to verify passport copies and confirm seat deposit.
             </p>
 
-            <div className="flex flex-col gap-2.5 pt-2 max-w-sm mx-auto w-full">
+            <div className="mx-auto flex w-full max-w-sm flex-col gap-2.5 pt-2">
               <a
                 href={
                   successResult.whatsappUrl ||
@@ -443,25 +482,28 @@ export function GroupBookingModal({
                 }
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-800"
+                className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-xs font-semibold whitespace-nowrap text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px motion-reduce:transition-none sm:text-sm"
               >
-                <MessageCircle className="size-4" />
+                <MessageCircle className="size-4" aria-hidden="true" />
                 <span>Instant WhatsApp Concierge</span>
               </a>
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleTrackStatus}
-                className="w-full gap-1.5 text-xs sm:text-sm"
+                className="min-h-10 w-full gap-1.5 border-border bg-background text-xs font-semibold whitespace-nowrap text-foreground hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:pointer-events-none disabled:opacity-50 sm:text-sm"
               >
-                <Search className="size-3.5 text-gold-text" />
+                <Search
+                  className="size-3.5 text-gold-text"
+                  aria-hidden="true"
+                />
                 <span>Track Application Status Live</span>
               </Button>
               <Button
                 type="button"
                 variant="ghost"
                 onClick={handleReset}
-                className="w-full text-xs text-muted-foreground"
+                className="min-h-9 w-full text-xs whitespace-nowrap text-muted-foreground hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px"
               >
                 Close Window
               </Button>
@@ -479,9 +521,12 @@ export function GroupBookingModal({
             {error && (
               <div
                 role="alert"
-                className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-xs text-red-800 border border-red-200"
+                className="flex items-start gap-2 rounded-lg border border-destructive/35 bg-destructive/10 p-3 text-xs text-destructive"
               >
-                <AlertCircle className="size-4 text-red-600 shrink-0 mt-0.5" />
+                <AlertCircle
+                  className="mt-0.5 size-4 shrink-0 text-destructive"
+                  aria-hidden="true"
+                />
                 <span>{error}</span>
               </div>
             )}
@@ -512,33 +557,37 @@ export function GroupBookingModal({
                   id="gb-batch"
                   value={activeBatch?.id ?? ""}
                   onChange={(e) => {
-                    setBatchId(e.target.value)
+                    setUserBatchId(e.target.value)
                     setSubmissionKey(createSubmissionKey("grp"))
                   }}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
+                  className="min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
                   required
                 >
                   {availableBatches.map((d) => {
                     const seatsLeft = d.totalSeats - d.bookedSeats
                     return (
                       <option key={d.id} value={d.id}>
-                        {d.batchCode} — {d.departureCity?.cityName || "Pakistan"} (
-                        {d.departureDate} → {d.returnDate}) · {seatsLeft} seats left
+                        {d.batchCode}: {d.departureCity?.cityName || "Pakistan"}{" "}
+                        ({d.departureDate} to {d.returnDate}), {seatsLeft} seats
+                        left
                       </option>
                     )
                   })}
                 </select>
                 {activeBatch && (
-                  <div className="flex items-center justify-between text-xs text-muted-foreground pt-0.5">
+                  <div className="flex items-center justify-between pt-0.5 text-xs text-muted-foreground">
                     <span>
-                      Gateway: {activeBatch.departureCity?.cityName || "Pakistan"}
+                      Gateway:{" "}
+                      {activeBatch.departureCity?.cityName || "Pakistan"}
                       {activeBatch.departureCity?.airportCode
                         ? ` (${activeBatch.departureCity.airportCode})`
                         : ""}
                     </span>
                     <span
                       className={`font-semibold tabular-nums ${
-                        remainingSeats <= 5 ? "text-red-700" : "text-emerald-700"
+                        remainingSeats <= 5
+                          ? "text-destructive"
+                          : "text-primary"
                       }`}
                     >
                       {remainingSeats} seats available on this flight
@@ -550,16 +599,19 @@ export function GroupBookingModal({
               {/* Selectable Multi-Hotel Tier Options (`T-054` & `OD-09b`) */}
               {pkg.multiHotelOptions && pkg.multiHotelOptions.length > 0 && (
                 <fieldset className="flex flex-col gap-2">
-                  <legend className="text-xs font-semibold text-foreground flex items-center gap-1.5 mb-1">
-                    <Building2 className="size-3.5 text-emerald-800" />
+                  <legend className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                    <Building2
+                      className="size-3.5 text-primary"
+                      aria-hidden="true"
+                    />
                     <span>Choose Hotel Package Option</span>
                   </legend>
                   <div className="flex flex-col gap-2">
                     <label
-                      className={`flex cursor-pointer items-center justify-between rounded-xl border p-2.5 text-xs transition-all ${
+                      className={`flex cursor-pointer items-center justify-between gap-2 rounded-xl border p-2.5 text-xs transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary motion-reduce:transition-none ${
                         selectedHotelOptionCode === ""
                           ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                          : "border-border bg-card hover:bg-muted/30"
+                          : "border-border bg-card hover:bg-secondary/50"
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -572,13 +624,13 @@ export function GroupBookingModal({
                             setSelectedHotelOptionCode("")
                             setSubmissionKey(createSubmissionKey("grp"))
                           }}
-                          className="accent-emerald-800"
+                          className="accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         />
                         <span className="font-semibold text-foreground">
                           Standard Featured Package Hotels
                         </span>
                       </div>
-                      <span className="font-mono tabular-nums font-bold text-emerald-800">
+                      <span className="font-mono font-bold text-primary tabular-nums">
                         {standardQuadRate > 0
                           ? `Quad ${formatPkr(standardQuadRate)}`
                           : standardFallbackPositive.length > 0
@@ -595,12 +647,12 @@ export function GroupBookingModal({
                       return (
                         <label
                           key={codeKey}
-                          className={`flex items-center justify-between rounded-xl border p-2.5 text-xs transition-all gap-2 ${
+                          className={`flex items-center justify-between gap-2 rounded-xl border p-2.5 text-xs transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary motion-reduce:transition-none ${
                             isAllZero
-                              ? "cursor-not-allowed border-border/60 bg-muted/30 opacity-65"
+                              ? "cursor-not-allowed border-border/60 bg-muted/40 opacity-65"
                               : isChosen
                                 ? "cursor-pointer border-primary bg-primary/5 ring-1 ring-primary/30"
-                                : "cursor-pointer border-border bg-card hover:bg-muted/30"
+                                : "cursor-pointer border-border bg-card hover:bg-secondary/50"
                           }`}
                         >
                           <div className="flex items-start gap-2">
@@ -615,19 +667,19 @@ export function GroupBookingModal({
                                 setSelectedHotelOptionCode(codeKey)
                                 setSubmissionKey(createSubmissionKey("grp"))
                               }}
-                              className="mt-0.5 accent-emerald-800"
+                              className="mt-0.5 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed"
                             />
                             <div>
-                              <span className="font-bold text-foreground block">
+                              <span className="block font-bold text-foreground">
                                 {opt.label}
                               </span>
-                              <span className="text-[11px] text-muted-foreground block">
+                              <span className="block text-[11px] text-muted-foreground">
                                 {opt.makkahHotelName} ({opt.makkahDistance}) ·{" "}
                                 {opt.madinahHotelName} ({opt.madinahDistance})
                               </span>
                             </div>
                           </div>
-                          <span className="font-mono tabular-nums font-bold text-emerald-800 shrink-0">
+                          <span className="shrink-0 font-mono font-bold text-primary tabular-nums">
                             {opt.quadPricePkr > 0
                               ? `Quad ${formatPkr(opt.quadPricePkr)}`
                               : lowestOptPrice > 0
@@ -646,7 +698,7 @@ export function GroupBookingModal({
                 <Label className="text-xs font-semibold">
                   Select Room Sharing Tier
                 </Label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {(
                     [
                       {
@@ -679,20 +731,20 @@ export function GroupBookingModal({
                         type="button"
                         disabled={isZeroTier}
                         onClick={() => {
-                          if (!isZeroTier) setRoomType(item.key)
+                          if (!isZeroTier) setUserRoomType(item.key)
                         }}
-                        className={`rounded-xl border p-2.5 text-center transition-all ${
+                        className={`rounded-xl border p-2.5 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:cursor-not-allowed disabled:opacity-65 motion-reduce:transition-none ${
                           isZeroTier
-                            ? "cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground opacity-65"
+                            ? "border-border/60 bg-muted/40 text-muted-foreground"
                             : isSelected
                               ? "border-primary bg-primary/5 text-foreground ring-2 ring-primary/30"
-                              : "border-border bg-card hover:bg-muted/30 text-muted-foreground"
+                              : "border-border bg-card text-muted-foreground hover:bg-secondary/50"
                         }`}
                       >
                         <span className="block text-xs font-bold text-foreground">
                           {item.label}
                         </span>
-                        <span className="font-mono tabular-nums text-xs font-semibold text-emerald-800">
+                        <span className="font-mono text-xs font-semibold text-primary tabular-nums">
                           {formatTierOrOnRequest(item.rate)}
                         </span>
                       </button>
@@ -702,14 +754,14 @@ export function GroupBookingModal({
               </div>
 
               {/* Passenger Demographics */}
-              <div className="rounded-xl border border-border/80 bg-muted/20 p-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider tabular-nums">
+              <div className="flex flex-col gap-2 rounded-xl border border-border/80 bg-secondary/45 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-muted-foreground tabular-nums">
                   <span>Passenger Demographics</span>
                   <span>
                     Seats: {partySeatCount} · Passports: {totalPassports}
                   </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div className="flex flex-col gap-1">
                     <Label htmlFor="gb-adults" className="text-xs">
                       Adults (12+ yrs)
@@ -735,7 +787,7 @@ export function GroupBookingModal({
                   </div>
                   <div className="flex flex-col gap-1">
                     <Label htmlFor="gb-children" className="text-xs">
-                      Children (2–11 yrs)
+                      Children (2 to 11 yrs)
                     </Label>
                     <Input
                       id="gb-children"
@@ -775,12 +827,16 @@ export function GroupBookingModal({
                 {isOverCapacity && (
                   <div
                     role="alert"
-                    className="flex items-center gap-1.5 rounded-md bg-red-100 p-2 text-xs font-medium text-red-800"
+                    className="flex items-center gap-1.5 rounded-md border border-destructive/35 bg-destructive/10 p-2 text-xs font-medium text-destructive"
                   >
-                    <AlertCircle className="size-4 shrink-0" />
+                    <AlertCircle
+                      className="size-4 shrink-0"
+                      aria-hidden="true"
+                    />
                     <span>
                       Requested {partySeatCount} seat(s) exceeds the{" "}
-                      {remainingSeats} available on this batch (infants require 0 seats).
+                      {remainingSeats} available on this batch (infants require
+                      0 seats).
                     </span>
                   </div>
                 )}
@@ -799,7 +855,7 @@ export function GroupBookingModal({
                     required
                   />
                   {fieldErrors["contact.customerName"] && (
-                    <p className="text-[11px] font-medium text-red-700">
+                    <p className="text-[11px] font-medium text-destructive">
                       {fieldErrors["contact.customerName"]}
                     </p>
                   )}
@@ -815,7 +871,7 @@ export function GroupBookingModal({
                     required
                   />
                   {fieldErrors["contact.customerCity"] && (
-                    <p className="text-[11px] font-medium text-red-700">
+                    <p className="text-[11px] font-medium text-destructive">
                       {fieldErrors["contact.customerCity"]}
                     </p>
                   )}
@@ -835,7 +891,7 @@ export function GroupBookingModal({
                     required
                   />
                   {fieldErrors["contact.customerPhone"] && (
-                    <p className="text-[11px] font-medium text-red-700">
+                    <p className="text-[11px] font-medium text-destructive">
                       {fieldErrors["contact.customerPhone"]}
                     </p>
                   )}
@@ -848,11 +904,13 @@ export function GroupBookingModal({
                     value={customerWhatsapp}
                     onChange={(e) => setCustomerWhatsapp(e.target.value)}
                     placeholder="0327 4029701"
-                    aria-invalid={Boolean(fieldErrors["contact.customerWhatsapp"])}
+                    aria-invalid={Boolean(
+                      fieldErrors["contact.customerWhatsapp"]
+                    )}
                     required
                   />
                   {fieldErrors["contact.customerWhatsapp"] && (
-                    <p className="text-[11px] font-medium text-red-700">
+                    <p className="text-[11px] font-medium text-destructive">
                       {fieldErrors["contact.customerWhatsapp"]}
                     </p>
                   )}
@@ -885,9 +943,9 @@ export function GroupBookingModal({
               </div>
 
               {/* Price Estimation Bar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-gold/30 bg-gold/5 p-3 text-xs gap-1">
+              <div className="flex flex-col justify-between gap-2 rounded-xl border border-gold-border bg-accent/45 p-3 text-xs sm:flex-row sm:items-center">
                 <div>
-                  <span className="text-muted-foreground block tabular-nums">
+                  <span className="block text-muted-foreground tabular-nums">
                     {pricePerPerson > 0 ? (
                       <>
                         Estimated Total ({partySeatCount} seat
@@ -902,20 +960,30 @@ export function GroupBookingModal({
                       "Selected room tier requires bespoke confirmation:"
                     )}
                   </span>
-                  <span className="font-mono tabular-nums text-base font-extrabold text-foreground">
-                    {pricePerPerson > 0 ? formatPkr(estimatedTotal) : "On Request"}
+                  <span className="font-mono text-base font-extrabold text-foreground tabular-nums">
+                    {pricePerPerson > 0
+                      ? formatPkr(estimatedTotal)
+                      : "On Request"}
                   </span>
                 </div>
                 <Badge
                   variant="outline"
-                  className="text-[10px] text-muted-foreground self-start sm:self-auto"
+                  className="self-start border-gold-border bg-card text-xs text-foreground sm:self-auto"
                 >
                   Soft Seat Hold
                 </Badge>
               </div>
 
               <DialogFooter className="pt-2">
-                <DialogClose render={<Button variant="outline" type="button" />}>
+                <DialogClose
+                  render={
+                    <Button
+                      variant="outline"
+                      type="button"
+                      className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px"
+                    />
+                  }
+                >
                   Cancel
                 </DialogClose>
                 <Button
@@ -926,9 +994,14 @@ export function GroupBookingModal({
                     !activeBatch ||
                     pricePerPerson <= 0
                   }
-                  className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                  className="gap-2 bg-primary whitespace-nowrap text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {loading && <Loader2 className="size-4 animate-spin" />}
+                  {loading && (
+                    <Loader2
+                      className="size-4 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                  )}
                   <span>Confirm Group Reservation</span>
                 </Button>
               </DialogFooter>

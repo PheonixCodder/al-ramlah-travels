@@ -1,0 +1,141 @@
+# Al Ramlah Travels — Evergreen Capability Atlas & Traceability Index
+
+**Governance Anchors**: [`CONSTITUTION.md`](CONSTITUTION.md) · [`scope.md`](scope/scope.md) · [`_TEMPLATE.md`](specs/_TEMPLATE.md) · [`test-preferences.json`](../test-preferences.json)  
+**Certification Baseline**: [`PRODUCTION_READINESS.md`](audit/PRODUCTION_READINESS.md) (Gate A) · [`SEO_READINESS.md`](audit/SEO_READINESS.md) (Gate B, `90.2/100` Grade `A`) · [`FINAL_REPORT.md`](audit/FINAL_REPORT.md) · [`OWNER_DECISIONS.md`](audit/OWNER_DECISIONS.md) (`OD-01`–`OD-11`)
+
+> [!NOTE]
+> Every relative path in this atlas resolves from `web/docs/` and maps each of Al Ramlah Travels' **9 Core Capabilities** to its authoritative runtime code, nested `AGENTS.md` rulebook, governing specs, Owner Decisions (`OD-*`), operational runbooks (`RB-*`), and verification suites.
+
+---
+
+## Capability Atlas (`1`–`9`)
+
+### 1. Custom Journey Builder & Pricing
+
+- **Scope**: 5-pillar interactive Umrah wizard (`Visa`, `Flights`, `Hotels`, `Transport`, `Ziyarat`), server-side visa tier & Nusuk Masar SAR conversion, room allocation, vehicle & luggage sizing, live summary card, lead capture, and public `/#track-status` tracker.
+- **Authoritative Code Paths**:
+  - Builder UI & state: [`components/planner/`](../components/planner/) · [`components/public/status-tracker.tsx`](../components/public/status-tracker.tsx)
+  - Domain math & invariants: [`lib/domain/visa-calc.ts`](../lib/domain/visa-calc.ts) · [`lib/domain/date-chaining.ts`](../lib/domain/date-chaining.ts) · [`lib/domain/room-splitter.ts`](../lib/domain/room-splitter.ts) · [`lib/domain/vehicle-capacity.ts`](../lib/domain/vehicle-capacity.ts) · [`lib/domain/quote-hints.ts`](../lib/domain/quote-hints.ts)
+  - Validation & persistence: [`lib/validations/application.ts`](../lib/validations/application.ts) · [`app/actions/applications.ts`](../app/actions/applications.ts)
+- **Nested Context (`AGENTS.md`)**: [`components/AGENTS.md`](../components/AGENTS.md) · [`app/(public)/AGENTS.md`](../app/(public)/AGENTS.md)
+- **Governing Specs & Owner Decisions**: [`0005`](specs/0005-custom-journey-builder-modules.md) · [`0006`](specs/0006-admin-quoting-worksheet-and-status-tracker.md) · [`0024`](specs/0024-production-readiness-audit-and-hardening.md) · [`0025`](specs/0025-public-site-seo-readiness.md) · `CONST-DOM-01`–`06`, `CONST-SEC-08` · [`OD-04`, `OD-05`, `OD-09` (`09a`, `09c`, `09d`)](audit/OWNER_DECISIONS.md)
+- **Runbooks**: [`RB-01`](audit/runbooks/RB-01-incident-response.md) · [`RB-09`](audit/runbooks/RB-09-peak-ramadan-and-hajj-scaling.md)
+- **Verification Suites**: [`tests/domain-and-validation.test.ts`](../tests/domain-and-validation.test.ts) · [`tests/ziyarat-scope-sync.test.ts`](../tests/ziyarat-scope-sync.test.ts) · [`tests/w3/f-dom/`](../tests/w3/f-dom/) · [`tests/w3/f-pub/`](../tests/w3/f-pub/) · [`tests/e2e/j01-j05-public-pilgrim.spec.ts`](../tests/e2e/j01-j05-public-pilgrim.spec.ts)
+
+---
+
+### 2. Group Packages, Hajj 2027 & Vouchers
+
+- **Scope**: Seasonal pre-built group departures across Pakistani gateways (`Sharing`/`Quad`/`Triple`/`Double`), `SELECT ... FOR UPDATE` atomic seat locks on `approved`, indicative Hajj 2027 Maktab pre-registration, online pilgrim quote acceptance, and capability-signed QR `/voucher/[token]` (`403` when locked).
+- **Authoritative Code Paths**:
+  - Schema & actions: [`db/schema/packages.ts`](../db/schema/packages.ts) · [`app/actions/groups.ts`](../app/actions/groups.ts) · [`app/actions/quotes.ts`](../app/actions/quotes.ts)
+  - Public showcase & vouchers: [`components/public/group-packages-section.tsx`](../components/public/group-packages-section.tsx) · [`components/public/group-booking-modal.tsx`](../components/public/group-booking-modal.tsx) · [`components/public/hajj-inquiry-section.tsx`](../components/public/hajj-inquiry-section.tsx) · [`components/public/voucher-loader.ts`](../components/public/voucher-loader.ts) · [`app/(public)/voucher/[token]/page.tsx`](../app/(public)/voucher/[token]/page.tsx) · [`app/(public)/voucher/[token]/forbidden.tsx`](../app/(public)/voucher/[token]/forbidden.tsx)
+  - Admin catalog & voucher gate: [`components/admin/applications/voucher-gate.ts`](../components/admin/applications/voucher-gate.ts) · [`app/admin/(dashboard)/applications/[id]/voucher/page.tsx`](../app/admin/(dashboard)/applications/[id]/voucher/page.tsx) · [`components/admin/catalog/groups-client.tsx`](../components/admin/catalog/groups-client.tsx) · [`components/admin/catalog/hajj-client.tsx`](../components/admin/catalog/hajj-client.tsx)
+- **Nested Context (`AGENTS.md`)**: [`app/(public)/AGENTS.md`](../app/(public)/AGENTS.md) · [`db/AGENTS.md`](../db/AGENTS.md) · [`components/AGENTS.md`](../components/AGENTS.md)
+- **Governing Specs & Owner Decisions**: [`0007`](specs/0007-group-packages-and-hajj-inquiries.md) · [`0024`](specs/0024-production-readiness-audit-and-hardening.md) · [`0025`](specs/0025-public-site-seo-readiness.md) · `CONST-DOM-07`–`09` · [`OD-04`, `OD-09` (`09d`, `09e`), `OD-10`](audit/OWNER_DECISIONS.md)
+- **Runbooks**: [`RB-09`](audit/runbooks/RB-09-peak-ramadan-and-hajj-scaling.md)
+- **Verification Suites**: [`tests/integration/concurrency-and-fk.test.ts`](../tests/integration/concurrency-and-fk.test.ts) · [`tests/w3/f-pub/group-booking-integrity.test.ts`](../tests/w3/f-pub/group-booking-integrity.test.ts) · [`tests/w3/f-pub/quote-acceptance-and-voucher.test.ts`](../tests/w3/f-pub/quote-acceptance-and-voucher.test.ts) · [`tests/w3/f-desk/voucher-gating.test.ts`](../tests/w3/f-desk/voucher-gating.test.ts) · [`tests/e2e/j01-j05-public-pilgrim.spec.ts`](../tests/e2e/j01-j05-public-pilgrim.spec.ts) · [`tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts`](../tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts)
+
+---
+
+### 3. Admin Kanban Desk, Copilot & Payment Ledger
+
+- **Scope**: Executive `/admin` KPIs, `@dnd-kit` Applications Kanban (`/admin/desk`), itemized quote worksheet, append-only `application_payments` ledger with private R2 receipt proofs, 3-page Gotenberg Quotation PDFs, deterministic ZDR AI Quoting Copilot, `Cmd+K` Post Reverse-Lookup (`staff` cost redaction), and formula-safe CSV exports.
+- **Authoritative Code Paths**:
+  - Routes & hubs: [`app/admin/(dashboard)/page.tsx`](../app/admin/(dashboard)/page.tsx) · [`app/admin/(dashboard)/desk/page.tsx`](../app/admin/(dashboard)/desk/page.tsx) · [`app/admin/(dashboard)/applications/[id]/page.tsx`](../app/admin/(dashboard)/applications/[id]/page.tsx) · [`components/admin/hubs/desk-hub-client.tsx`](../components/admin/hubs/desk-hub-client.tsx) · [`components/admin/hubs/applications-kanban-board.tsx`](../components/admin/hubs/applications-kanban-board.tsx)
+  - Dossier, dashboard & palette: [`components/admin/applications/`](../components/admin/applications/) · [`components/admin/dashboard/`](../components/admin/dashboard/) · [`components/layout/command-palette.tsx`](../components/layout/command-palette.tsx)
+  - Actions, AI & PDFs: [`app/actions/quotes.ts`](../app/actions/quotes.ts) · [`app/actions/quoting-copilot.ts`](../app/actions/quoting-copilot.ts) · [`app/actions/command-lookup.ts`](../app/actions/command-lookup.ts) · [`lib/ai/quoting-copilot.ts`](../lib/ai/quoting-copilot.ts) · [`lib/posters/render-quotation-pdf.ts`](../lib/posters/render-quotation-pdf.ts) · [`trigger/quoting-copilot.task.ts`](../trigger/quoting-copilot.task.ts)
+- **Nested Context (`AGENTS.md`)**: [`app/admin/AGENTS.md`](../app/admin/AGENTS.md) · [`components/AGENTS.md`](../components/AGENTS.md) · [`trigger/AGENTS.md`](../trigger/AGENTS.md)
+- **Governing Specs & Owner Decisions**: [`0004`](specs/0004-core-quote-loop-and-admin-sign-in.md) · [`0006`](specs/0006-admin-quoting-worksheet-and-status-tracker.md) · [`0011`](specs/0011-four-hub-admin-ia-and-kanban-desk.md) · [`0015`](specs/0015-durable-ai-quoting-copilot-and-whatsapp-concierge.md) · [`0018`](specs/0018-trigger-v4-async-webhook-and-realtime-copilot.md) · [`0023`](specs/0023-production-declutter-and-dynamic-overhaul.md) · [`0024`](specs/0024-production-readiness-audit-and-hardening.md) · `CONST-DOM-08`, `CONST-SEC-04`, `CONST-SEC-07` · [`OD-02`, `OD-03`, `OD-04`, `OD-06`, `OD-07`](audit/OWNER_DECISIONS.md)
+- **Runbooks**: [`RB-01`](audit/runbooks/RB-01-incident-response.md) · [`RB-06`](audit/runbooks/RB-06-oracle-gotenberg-vm-recovery.md) · [`RB-07`](audit/runbooks/RB-07-trigger-dev-worker-and-cron-ops.md)
+- **Verification Suites**: [`tests/ai-quoting-copilot.test.ts`](../tests/ai-quoting-copilot.test.ts) · [`tests/w3/f-desk/`](../tests/w3/f-desk/) · [`tests/w3/f-studio/quoting-copilot-safety.test.ts`](../tests/w3/f-studio/quoting-copilot-safety.test.ts) · [`tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts`](../tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts)
+
+---
+
+### 4. Multimodal Flyer AI & 4K Gotenberg Poster Studio
+
+- **Scope**: B2B supplier flyer ingestion (`/admin/studio`), Mode A (`included_in_flyer`) vs Mode B (`net_plus_markup`, `0`-tier `"On Request"`) commission wrapping, paginated multi-package sheets & 4K Spotlight posters (`3240×4560` PNG + PDF) rendered via Oracle Cloud PAYG Always Free ARM64 Gotenberg v8.17.0, `sharp` `1080×1520` social normalization, and direct catalog publishing.
+- **Authoritative Code Paths**:
+  - Studio UI: [`app/admin/(dashboard)/studio/page.tsx`](../app/admin/(dashboard)/studio/page.tsx) · [`components/admin/hubs/studio-hub-client.tsx`](../components/admin/hubs/studio-hub-client.tsx) · [`components/admin/marketing/supplier-flyers-client.tsx`](../components/admin/marketing/supplier-flyers-client.tsx) · [`components/admin/studio/studio-realtime-run-banner.tsx`](../components/admin/studio/studio-realtime-run-banner.tsx)
+  - Schema, AI, math & Gotenberg: [`db/schema/suppliers-and-marketing.ts`](../db/schema/suppliers-and-marketing.ts) · [`lib/ai/extract-packages.ts`](../lib/ai/extract-packages.ts) · [`lib/ai/models.ts`](../lib/ai/models.ts) · [`lib/domain/marketing-ops.ts`](../lib/domain/marketing-ops.ts) · [`lib/posters/`](../lib/posters/) · [`app/actions/marketing-ops.ts`](../app/actions/marketing-ops.ts)
+  - Workers & VM setup: [`trigger/extract-packages.task.ts`](../trigger/extract-packages.task.ts) · [`trigger/render-gotenberg-asset.task.ts`](../trigger/render-gotenberg-asset.task.ts) · [`scripts/oracle-gotenberg/`](../../scripts/oracle-gotenberg/)
+- **Nested Context (`AGENTS.md`)**: [`app/admin/AGENTS.md`](../app/admin/AGENTS.md) · [`trigger/AGENTS.md`](../trigger/AGENTS.md) · [`components/AGENTS.md`](../components/AGENTS.md)
+- **Governing Specs & Owner Decisions**: [`0008`](specs/0008-multimodal-studio-r2-and-gotenberg.md) · [`0011`](specs/0011-four-hub-admin-ia-and-kanban-desk.md) · [`0023`](specs/0023-production-declutter-and-dynamic-overhaul.md) · [`0024`](specs/0024-production-readiness-audit-and-hardening.md) · `CONST-DOM-03`, `CONST-SEC-07` · [`OD-06`, `OD-09b`](audit/OWNER_DECISIONS.md)
+- **Runbooks**: [`RB-06`](audit/runbooks/RB-06-oracle-gotenberg-vm-recovery.md) · [`RB-07`](audit/runbooks/RB-07-trigger-dev-worker-and-cron-ops.md)
+- **Verification Suites**: [`tests/marketing-and-suppliers.test.ts`](../tests/marketing-and-suppliers.test.ts) · [`tests/multimodal-and-gotenberg.test.ts`](../tests/multimodal-and-gotenberg.test.ts) · [`tests/w3/f-studio/`](../tests/w3/f-studio/) · [`tests/w3/f-infra/`](../tests/w3/f-infra/) · [`tests/fakes/gotenberg.fake.ts`](../tests/fakes/gotenberg.fake.ts) · [`tests/fakes/ai-openrouter.fake.ts`](../tests/fakes/ai-openrouter.fake.ts) · [`tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts`](../tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts)
+
+---
+
+### 5. Native WhatsApp Cloud CRM & Assisted Queue
+
+- **Scope**: Official Meta WhatsApp Cloud API v21.0 engine (`<150ms` HMAC webhook, atomic outbox, private R2 media mirroring, 3-Priority Inbound Auto-Responder, Guided 3-Step Umrah Intake `ART-WA-...`, global `"STOP"`/`"RUKO"` `do_not_contact`, `>24h` template gate, RFC-4180 CSV broadcasts, 14-day outreach cooldown) plus Ban-Safe Manual Assisted WA Group/Status Copy-Pack Queue (`OD-01`).
+- **Authoritative Code Paths**:
+  - Schema & core engine: [`db/schema/whatsapp-crm.ts`](../db/schema/whatsapp-crm.ts) · [`lib/whatsapp/`](../lib/whatsapp/) · [`app/api/webhooks/whatsapp/route.ts`](../app/api/webhooks/whatsapp/route.ts) · [`app/actions/whatsapp-crm.ts`](../app/actions/whatsapp-crm.ts) · [`app/actions/whatsapp-linked-device.ts`](../app/actions/whatsapp-linked-device.ts)
+  - Desk & campaign UI: [`components/admin/desk/whatsapp-auto-reply-studio.tsx`](../components/admin/desk/whatsapp-auto-reply-studio.tsx) · [`components/admin/desk/meta-template-builder-modal.tsx`](../components/admin/desk/meta-template-builder-modal.tsx) · [`components/admin/campaigns/whatsapp-broadcast-drawer.tsx`](../components/admin/campaigns/whatsapp-broadcast-drawer.tsx) · [`components/admin/marketing/outreach-client.tsx`](../components/admin/marketing/outreach-client.tsx)
+  - Durable workers: [`trigger/process-inbound-whatsapp.task.ts`](../trigger/process-inbound-whatsapp.task.ts) · [`trigger/mirror-whatsapp-media.task.ts`](../trigger/mirror-whatsapp-media.task.ts) · [`trigger/send-whatsapp-broadcast.task.ts`](../trigger/send-whatsapp-broadcast.task.ts) · [`trigger/send-whatsapp-group-campaign.task.ts`](../trigger/send-whatsapp-group-campaign.task.ts)
+- **Nested Context (`AGENTS.md`)**: [`lib/whatsapp/AGENTS.md`](../lib/whatsapp/AGENTS.md) · [`trigger/AGENTS.md`](../trigger/AGENTS.md) · [`app/admin/AGENTS.md`](../app/admin/AGENTS.md)
+- **Governing Specs & Owner Decisions**: [`0009`](specs/0009-native-wacrm-whatsapp-cloud-crm.md) · [`0013`](specs/0013-wacrm-phase2-media-bot-interactive-and-templates.md) · [`0017`](specs/0017-wacrm-auto-reply-rules-greeting-and-quick-reply-manager.md) · [`0018`](specs/0018-trigger-v4-async-webhook-and-realtime-copilot.md) · [`0019`](specs/0019-wacrm-phase3-realtime-inbox-templates-broadcasts-and-flows.md) · [`0021`](specs/0021-native-whatsapp-linked-device-groups-status-and-chat-sync.md) · [`0022`](specs/0022-multi-number-whatsapp-system-ui-and-routing.md) · [`0023`](specs/0023-production-declutter-and-dynamic-overhaul.md) · [`0024`](specs/0024-production-readiness-audit-and-hardening.md) · `CONST-OMNI-01`–`02` · [`OD-01`, `OD-06`, `OD-07`, `OD-10`](audit/OWNER_DECISIONS.md)
+- **Runbooks**: [`RB-04`](audit/runbooks/RB-04-whatsapp-waba-and-webhook-recovery.md) · [`RB-07`](audit/runbooks/RB-07-trigger-dev-worker-and-cron-ops.md) · [`RB-08`](audit/runbooks/RB-08-dsar-and-pii-retention-purge.md) · [`RB-09`](audit/runbooks/RB-09-peak-ramadan-and-hajj-scaling.md)
+- **Verification Suites**: [`tests/whatsapp-security-and-detector.test.ts`](../tests/whatsapp-security-and-detector.test.ts) · [`tests/whatsapp-phase2-bot-and-media.test.ts`](../tests/whatsapp-phase2-bot-and-media.test.ts) · [`tests/whatsapp-phase3-flows-and-broadcasts.test.ts`](../tests/whatsapp-phase3-flows-and-broadcasts.test.ts) · [`tests/whatsapp-auto-reply-rules.test.ts`](../tests/whatsapp-auto-reply-rules.test.ts) · [`tests/whatsapp-intent-coexistence.test.ts`](../tests/whatsapp-intent-coexistence.test.ts) · [`tests/whatsapp-linked-device-and-groups.test.ts`](../tests/whatsapp-linked-device-and-groups.test.ts) · [`tests/whatsapp-multi-number-system.test.ts`](../tests/whatsapp-multi-number-system.test.ts) · [`tests/w3/f-wa/`](../tests/w3/f-wa/) · [`tests/w3/f-jobs/wa-group-campaign-task.test.ts`](../tests/w3/f-jobs/wa-group-campaign-task.test.ts) · [`tests/fakes/meta-whatsapp.fake.ts`](../tests/fakes/meta-whatsapp.fake.ts) · [`tests/e2e/j13-j22-whatsapp-social-catalog-chaos.spec.ts`](../tests/e2e/j13-j22-whatsapp-social-catalog-chaos.spec.ts)
+
+---
+
+### 6. Core 5 Social Scheduler & Campaigns
+
+- **Scope**: Native OAuth + PKCE + `PENDING_SELECTION` account selector across `Instagram`, `Facebook Pages`, `YouTube`, `Google Business Profile v1` (`GBP_API_APPROVED`), and `TikTok Direct Post v2` (`TIKTOK_DIRECT_POST_APPROVED`), PKT peak time-slot queue, 5-platform device previewer, AI Caption Copilot, First-Comment `ART-...` auto-plugs, and live-only analytics.
+- **Authoritative Code Paths**:
+  - Schema, OAuth & providers: [`db/schema/social-scheduler.ts`](../db/schema/social-scheduler.ts) · [`lib/social/`](../lib/social/) · [`app/api/oauth/social/[provider]/route.ts`](../app/api/oauth/social/[provider]/route.ts) · [`app/api/oauth/social/[provider]/callback/route.ts`](../app/api/oauth/social/[provider]/callback/route.ts) · [`app/actions/social-scheduler.ts`](../app/actions/social-scheduler.ts)
+  - Campaigns Hub UI & worker: [`app/admin/(dashboard)/campaigns/page.tsx`](../app/admin/(dashboard)/campaigns/page.tsx) · [`components/admin/hubs/campaigns-hub-client.tsx`](../components/admin/hubs/campaigns-hub-client.tsx) · [`components/admin/campaigns/`](../components/admin/campaigns/) · [`trigger/publish-social-post.task.ts`](../trigger/publish-social-post.task.ts)
+- **Nested Context (`AGENTS.md`)**: [`lib/social/AGENTS.md`](../lib/social/AGENTS.md) · [`app/admin/AGENTS.md`](../app/admin/AGENTS.md) · [`trigger/AGENTS.md`](../trigger/AGENTS.md)
+- **Governing Specs & Owner Decisions**: [`0010`](specs/0010-native-postiz-social-and-trigger-cloud.md) · [`0011`](specs/0011-four-hub-admin-ia-and-kanban-desk.md) · [`0014`](specs/0014-postiz-phase2-oauth-selector-reels-comments-analytics.md) · [`0016`](specs/0016-postiz-core5-interactive-previewer-and-analytics-dashboard.md) · [`0020`](specs/0020-postiz-phase3-calendar-slots-ai-composer-and-providers.md) · [`0024`](specs/0024-production-readiness-audit-and-hardening.md) · `CONST-OMNI-03` · [`OD-07`, `OD-11`](audit/OWNER_DECISIONS.md)
+- **Runbooks**: [`RB-05`](audit/runbooks/RB-05-social-oauth-and-quota-ops.md) · [`RB-07`](audit/runbooks/RB-07-trigger-dev-worker-and-cron-ops.md)
+- **Verification Suites**: [`tests/social-providers-validation.test.ts`](../tests/social-providers-validation.test.ts) · [`tests/social-phase2-reels-and-comments.test.ts`](../tests/social-phase2-reels-and-comments.test.ts) · [`tests/social-phase3-calendar-copilot-and-providers.test.ts`](../tests/social-phase3-calendar-copilot-and-providers.test.ts) · [`tests/social-preview-and-analytics.test.ts`](../tests/social-preview-and-analytics.test.ts) · [`tests/composio-and-social-oauth.test.ts`](../tests/composio-and-social-oauth.test.ts) · [`tests/w3/f-social/`](../tests/w3/f-social/) · [`tests/fakes/social-core5.fake.ts`](../tests/fakes/social-core5.fake.ts) · [`tests/e2e/j13-j22-whatsapp-social-catalog-chaos.spec.ts`](../tests/e2e/j13-j22-whatsapp-social-catalog-chaos.spec.ts)
+
+---
+
+### 7. Public Hub-and-Spoke SEO, GEO & UTM Attribution
+
+- **Scope**: 19 indexable public routes (`/`, `/umrah-packages/**`, `/hajj-2027`, `/umrah-visa`, `/hotels/{makkah,madinah}`, `/ziyarat/**`, `/about`, `/contact`, `/faq`, legal pages), `robots.ts` & dynamic `sitemap.ts`, `llms.txt`, `1200×630` `next/og` cards, XSS-safe penalty-free JSON-LD, wholesale-SAR-stripped public DTOs, `<Suspense>` builder URL prefill, and 7-column first-touch UTM attribution.
+- **Authoritative Code Paths**:
+  - Discovery & public routes: [`app/robots.ts`](../app/robots.ts) · [`app/sitemap.ts`](../app/sitemap.ts) · [`public/llms.txt`](../public/llms.txt) · [`app/opengraph-image.tsx`](../app/opengraph-image.tsx) · [`app/not-found.tsx`](../app/not-found.tsx) · [`app/(public)/`](../app/(public)/)
+  - SEO library, spokes & attribution: [`lib/seo/`](../lib/seo/) · [`components/seo/`](../components/seo/) · [`components/layout/breadcrumbs.tsx`](../components/layout/breadcrumbs.tsx) · [`lib/company-info.ts`](../lib/company-info.ts) · [`lib/constants/brand.ts`](../lib/constants/brand.ts) · [`drizzle/0003_seo_lead_attribution.sql`](../drizzle/0003_seo_lead_attribution.sql)
+- **Nested Context (`AGENTS.md`)**: [`app/(public)/AGENTS.md`](../app/(public)/AGENTS.md) · [`components/AGENTS.md`](../components/AGENTS.md) · [`db/AGENTS.md`](../db/AGENTS.md)
+- **Governing Specs & Owner Decisions**: [`0025`](specs/0025-public-site-seo-readiness.md) · [`0023`](specs/0023-production-declutter-and-dynamic-overhaul.md) · `CONST-SEO-01`–`05`, `CONST-OMNI-04` · [`OD-08`, `OD-09e`, `OD-10`](audit/OWNER_DECISIONS.md)
+- **Runbooks**: [`RB-10`](audit/runbooks/RB-10-deployment-rollback-and-ci-triage.md)
+- **Verification Suites**: [`tests/seo/gate-b-seo-invariants.test.ts`](../tests/seo/gate-b-seo-invariants.test.ts) · [`tests/w6/`](../tests/w6/) · [`tests/integration/seo-utm-attribution.integration.test.ts`](../tests/integration/seo-utm-attribution.integration.test.ts) · [`tests/e2e/j23-seo-crawl-and-attribution.spec.ts`](../tests/e2e/j23-seo-crawl-and-attribution.spec.ts)
+
+---
+
+### 8. Auth, Vault, Storage & Durable Trigger.dev Jobs
+
+- **Scope**: Better Auth (`disableSignUp`, live DB `isActive` revocation, `super_admin` vs `staff`), `v2:` HKDF-AES-256-GCM token vault, dual-driver PostgreSQL/Neon transactions (`48` tables, `17` `CHECK`s, immutable `audit_logs`), public/private Cloudflare R2 + signed `/api/media/*`, fail-closed `lib/env.ts`, PII-redacted `logger.ts`, `/api/health?deep=1`, `/admin/catalog`, `/admin/settings`, and Trigger.dev v4 (`8` `schemaTask`s, `9` queues, `5` PKT crons).
+- **Authoritative Code Paths**:
+  - Auth, security & storage: [`lib/auth.ts`](../lib/auth.ts) · [`lib/auth-client.ts`](../lib/auth-client.ts) · [`lib/auth-guard.ts`](../lib/auth-guard.ts) · [`proxy.ts`](../proxy.ts) · [`lib/env.ts`](../lib/env.ts) · [`lib/logger.ts`](../lib/logger.ts) · [`lib/rate-limit.ts`](../lib/rate-limit.ts) · [`lib/audit-log.ts`](../lib/audit-log.ts) · [`lib/security/`](../lib/security/) · [`lib/storage/`](../lib/storage/)
+  - APIs, DB, Trigger & admin: [`app/api/auth/[...all]/route.ts`](../app/api/auth/[...all]/route.ts) · [`app/api/health/route.ts`](../app/api/health/route.ts) · [`app/api/media/[...key]/route.ts`](../app/api/media/[...key]/route.ts) · [`app/api/uploads/presign/route.ts`](../app/api/uploads/presign/route.ts) · [`app/actions/catalog.ts`](../app/actions/catalog.ts) · [`app/actions/trigger-realtime.ts`](../app/actions/trigger-realtime.ts) · [`db/`](../db/) · [`drizzle/`](../drizzle/) · [`trigger.config.ts`](../trigger.config.ts) · [`trigger/`](../trigger/) · [`components/admin/settings/config-health-panel.tsx`](../components/admin/settings/config-health-panel.tsx) · [`components/admin/hubs/connections-settings-client.tsx`](../components/admin/hubs/connections-settings-client.tsx) · [`scripts/db-backup.ts`](../scripts/db-backup.ts)
+- **Nested Context (`AGENTS.md`)**: [`db/AGENTS.md`](../db/AGENTS.md) · [`trigger/AGENTS.md`](../trigger/AGENTS.md) · [`app/admin/AGENTS.md`](../app/admin/AGENTS.md)
+- **Governing Specs & Owner Decisions**: [`0001`](specs/0001-stack-and-architecture.md) · [`0002`](specs/0002-data-model.md) · [`0010`](specs/0010-native-postiz-social-and-trigger-cloud.md) · [`0012`](specs/0012-trigger-v4-hardening-queues-and-realtime-hooks.md) · [`0018`](specs/0018-trigger-v4-async-webhook-and-realtime-copilot.md) · [`0024`](specs/0024-production-readiness-audit-and-hardening.md) · `CONST-SEC-01`–`08` · [`OD-02`, `OD-06`, `OD-07`, `OD-10`](audit/OWNER_DECISIONS.md)
+- **Runbooks**: [`RB-01`](audit/runbooks/RB-01-incident-response.md) · [`RB-02`](audit/runbooks/RB-02-db-pitr-and-restore.md) · [`RB-03`](audit/runbooks/RB-03-key-and-token-rotation.md) · [`RB-07`](audit/runbooks/RB-07-trigger-dev-worker-and-cron-ops.md) · [`RB-08`](audit/runbooks/RB-08-dsar-and-pii-retention-purge.md) · [`RB-10`](audit/runbooks/RB-10-deployment-rollback-and-ci-triage.md)
+- **Verification Suites**: [`tests/integration/server-actions-authz.test.ts`](../tests/integration/server-actions-authz.test.ts) · [`tests/integration/db-migrations-and-seed.test.ts`](../tests/integration/db-migrations-and-seed.test.ts) · [`tests/w3/f-plat/`](../tests/w3/f-plat/) · [`tests/w3/f-admin/`](../tests/w3/f-admin/) · [`tests/w3/f-jobs/`](../tests/w3/f-jobs/) · [`tests/unit/`](../tests/unit/) · [`tests/fakes/r2-s3.fake.ts`](../tests/fakes/r2-s3.fake.ts)
+
+---
+
+### 9. Design System & Accessibility
+
+- **Scope**: Locked light Haramain luxury palette (`#0A3622` emerald, `#FAF7F0` ivory, `#C5A059` gold / `--gold-text` `#7A5C1E`), Base UI (`@base-ui/react`) `render`-prop primitives, 4-Hub Admin shell & sticky Public header/footer with offline Haramain prayer-time pill, `<ArabicText lang="ar" dir="rtl">`, `tabular-nums`, and zero `@axe-core/playwright` WCAG 2.2 AA violations.
+- **Authoritative Code Paths**:
+  - Design truth & tokens: [`DESIGN.md`](../DESIGN.md) · [`PRODUCT.md`](../PRODUCT.md) · [`app/globals.css`](../app/globals.css) · [`app/layout.tsx`](../app/layout.tsx)
+  - Shells & primitives: [`app/(public)/layout.tsx`](../app/(public)/layout.tsx) · [`app/admin/(dashboard)/layout.tsx`](../app/admin/(dashboard)/layout.tsx) · [`components/ui/`](../components/ui/) · [`components/layout/`](../components/layout/) · [`components/motion/`](../components/motion/) · [`components/public/arabic-text.tsx`](../components/public/arabic-text.tsx) · [`components/public/public-page-hero.tsx`](../components/public/public-page-hero.tsx) · [`components/admin/shell/`](../components/admin/shell/) · [`components/theme-provider.tsx`](../components/theme-provider.tsx)
+- **Nested Context (`AGENTS.md`)**: [`components/AGENTS.md`](../components/AGENTS.md) · [`app/(public)/AGENTS.md`](../app/(public)/AGENTS.md) · [`app/admin/AGENTS.md`](../app/admin/AGENTS.md)
+- **Governing Specs & Owner Decisions**: [`0003`](specs/0003-design-system-and-ui-foundation.md) · [`0011`](specs/0011-four-hub-admin-ia-and-kanban-desk.md) · [`0024`](specs/0024-production-readiness-audit-and-hardening.md) · [`0025`](specs/0025-public-site-seo-readiness.md) · [`0026`](specs/0026-home-page-redesign-and-motion-architecture/index.md) · [`0027`](specs/0027-public-storefront-editorial-alignment/index.md) · `CONST-UI-01`–`05` · [`OD-08`, `OD-10`](audit/OWNER_DECISIONS.md)
+- **Runbooks**: [`RB-10`](audit/runbooks/RB-10-deployment-rollback-and-ci-triage.md)
+- **Verification Suites**: [`tests/unit/home-motion-and-proportion.test.ts`](../tests/unit/home-motion-and-proportion.test.ts) · [`tests/unit/home-public-sections.test.ts`](../tests/unit/home-public-sections.test.ts) · [`tests/unit/public-storefront-alignment.test.ts`](../tests/unit/public-storefront-alignment.test.ts) · [`tests/w3/f-ux/`](../tests/w3/f-ux/) · [`tests/w3/f-pub/a11y-arabic-and-motion.test.ts`](../tests/w3/f-pub/a11y-arabic-and-motion.test.ts) · [`tests/w3/f-desk/dashboard-pkt-and-kanban-a11y.test.ts`](../tests/w3/f-desk/dashboard-pkt-and-kanban-a11y.test.ts) · [`tests/e2e/j01-j05-public-pilgrim.spec.ts`](../tests/e2e/j01-j05-public-pilgrim.spec.ts) · [`tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts`](../tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts) · [`tests/e2e/j13-j22-whatsapp-social-catalog-chaos.spec.ts`](../tests/e2e/j13-j22-whatsapp-social-catalog-chaos.spec.ts) · [`tests/e2e/j23-seo-crawl-and-attribution.spec.ts`](../tests/e2e/j23-seo-crawl-and-attribution.spec.ts)
+
+---
+
+## Complete Governance & Runbook Directory
+
+- **Specs (`0001`–`0027`)**: [`docs/specs/`](specs/) (Template for `0026+`: [`_TEMPLATE.md`](specs/_TEMPLATE.md))
+- **Runbooks (`RB-01`–`RB-10`)**:
+  - [`RB-01`](audit/runbooks/RB-01-incident-response.md) · [`RB-02`](audit/runbooks/RB-02-db-pitr-and-restore.md) · [`RB-03`](audit/runbooks/RB-03-key-and-token-rotation.md) · [`RB-04`](audit/runbooks/RB-04-whatsapp-waba-and-webhook-recovery.md) · [`RB-05`](audit/runbooks/RB-05-social-oauth-and-quota-ops.md)
+  - [`RB-06`](audit/runbooks/RB-06-oracle-gotenberg-vm-recovery.md) · [`RB-07`](audit/runbooks/RB-07-trigger-dev-worker-and-cron-ops.md) · [`RB-08`](audit/runbooks/RB-08-dsar-and-pii-retention-purge.md) · [`RB-09`](audit/runbooks/RB-09-peak-ramadan-and-hajj-scaling.md) · [`RB-10`](audit/runbooks/RB-10-deployment-rollback-and-ci-triage.md)
+- **Verification Harness**: [`tests/setup/run-all-tests.mjs`](../tests/setup/run-all-tests.mjs) · [`vitest.config.ts`](../vitest.config.ts) · [`playwright.config.ts`](../playwright.config.ts) · [`scripts/verify-cdd.mjs`](../scripts/verify-cdd.mjs)

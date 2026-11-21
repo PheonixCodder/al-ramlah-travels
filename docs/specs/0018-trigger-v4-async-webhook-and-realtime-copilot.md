@@ -1,7 +1,7 @@
 # 0018. Trigger.dev v4 Async Webhook Pipeline, Realtime Copilot Telemetry, Global Idempotency, and Native Bridge Cleanup
 
 **Date**: 2026-11-09
-**Status**: Approved
+**Status**: Accepted (Implemented)
 
 ## Summary
 

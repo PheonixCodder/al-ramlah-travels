@@ -9,6 +9,9 @@
         "--project-ref",
         "proj_wceqpgjdgrgramynogwe"
       ]
+    },
+    "motion": {
+      "url": "https://mcp.motion.dev"
     }
   }
 }

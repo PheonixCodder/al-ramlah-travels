@@ -1,7 +1,7 @@
 # 0007. Pre-Built Group Packages and Hajj Inquiries
 
 **Date**: 2026-10-17
-**Status**: Proposed
+**Status**: Accepted (Implemented)
 
 ## Summary
 

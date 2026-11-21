@@ -1,31 +1,21 @@
 import * as React from "react"
-import NextImage, { type ImageProps } from "next/image"
-
-const Image = (
-  typeof NextImage === "object" &&
-  NextImage !== null &&
-  "default" in NextImage &&
-  (NextImage as { default?: React.ComponentType<ImageProps> }).default
-    ? (NextImage as { default: React.ComponentType<ImageProps> }).default
-    : NextImage
-) as React.ComponentType<ImageProps>
 import Link from "next/link"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { ArabicText } from "@/components/public/arabic-text"
 import { FaqAccordionClient } from "@/components/public/faq-accordion-client"
+import {
+  QuotingTimelineClient,
+  ZiyaratShowcaseClient,
+} from "@/components/public/marketing-client-islands"
 import { TrustHomeOverview } from "@/components/seo/trust-home-overview"
 import {
-  ShieldCheck,
+  ArrowRight,
   Building2,
-  Clock,
   Car,
+  CheckCircle2,
+  Clock,
   Compass,
   FileCheck,
+  ShieldCheck,
   Star,
-  ArrowRight,
-  CheckCircle2,
-  MapPin,
 } from "lucide-react"
 
 export interface ZiyaratPreviewItem {
@@ -79,10 +69,20 @@ const DEFAULT_ZIYARAT: ZiyaratPreviewItem[] = [
     description:
       "The miraculous sanctuary where the Prophet ﷺ and Abu Bakr As-Siddiq (RA) took refuge during the historic Hijrah migration.",
     imageUrl:
-      "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800",
+      "https://images.unsplash.com/photo-1580418827493-f2b22c0a76cb?auto=format&fit=crop&q=80&w=800",
   },
   {
     id: "z-3",
+    city: "makkah",
+    name: "Mashair Plains: Mina, Muzdalifah & Arafat",
+    arabicName: "المشاعر المقدسة: منى ومزدلفة وعرفات",
+    description:
+      "Scholar-guided circuit across the historic Hajj valleys, viewing Masjid Namirah and Jabal al-Rahmah on the Plain of Arafat.",
+    imageUrl:
+      "https://images.unsplash.com/photo-1580418827493-f2b22c0a76cb?auto=format&fit=crop&q=80&w=800",
+  },
+  {
+    id: "z-4",
     city: "madinah",
     name: "Masjid Quba",
     arabicName: "مسجد قباء",
@@ -92,14 +92,24 @@ const DEFAULT_ZIYARAT: ZiyaratPreviewItem[] = [
       "https://images.unsplash.com/photo-1564769625905-50e93615e769?auto=format&fit=crop&q=80&w=800",
   },
   {
-    id: "z-4",
+    id: "z-5",
     city: "madinah",
     name: "Mount Uhud & Martyrs' Cemetery",
     arabicName: "جبل أحد ومقبرة الشهداء",
     description:
-      "'A mountain that loves us and we love it.' The site of the historic Battle of Uhud and the resting place of Sayyiduna Hamza (RA).",
+      "The mountain ridge north of Madinah holding Archers' Hill and the resting place of Sayyiduna Hamza (RA) and the martyrs of Uhud.",
     imageUrl:
       "https://images.unsplash.com/photo-1575101261474-5cb5653bb416?auto=format&fit=crop&q=80&w=800",
+  },
+  {
+    id: "z-6",
+    city: "madinah",
+    name: "Masjid al-Qiblatayn",
+    arabicName: "مسجد القبلتين",
+    description:
+      "The Mosque of the Two Qiblahs in northwestern Madinah where divine revelation directed prayer toward the Holy Kaaba in Makkah.",
+    imageUrl:
+      "https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?auto=format&fit=crop&q=80&w=800",
   },
 ]
 
@@ -163,8 +173,9 @@ export function resolveHomeFaqs(
 }
 
 /**
- * Zero-JS Server Component marketing & GEO overview section (`SEO-023`, `S03-001`).
- * Isolates interactive FAQ collapse state into `<FaqAccordionClient />`.
+ * Server Component marketing & GEO overview section (`SEO-023`, `S03-001`, `Spec 0026`).
+ * Delegates interactive timeline scrubbing, tabbed Ziyarat filtering, and FAQ collapse state
+ * to clean client islands while preserving 100% SSR HTML visibility and `GB-04`/`GB-06` parity.
  */
 export function MarketingSections({
   ziyaratSites = [],
@@ -178,356 +189,249 @@ export function MarketingSections({
   const activeFaqs = resolveHomeFaqs(faqs)
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-24 bg-background py-16">
+    <div className="flex w-full min-w-0 flex-col bg-background">
       {/* ======================================================== */}
-      {/* 0. AT-A-GLANCE HARAMAIN SERVICE & GATEWAY TABLE (GEO)     */}
+      {/* 0. AT-A-GLANCE HARAMAIN SERVICE & BOOKING RULES SPLIT    */}
       {/* ======================================================== */}
       <TrustHomeOverview />
 
       {/* ======================================================== */}
-      {/* 1. WHY PILGRIMS CHOOSE AL RAMLAH (LUXURY BENTO GRID)     */}
-      {/* ======================================================== */}
-      <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-12">
-        <div className="text-center max-w-3xl mx-auto flex flex-col gap-3">
-          <Badge className="self-center bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
-            Sacred Luxury Standard
-          </Badge>
-          <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
-            Why Pakistani &amp; Diaspora Families Choose Al Ramlah Travels
-          </h2>
-          <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-            From our Askari 10, Lahore Cantt concierge desk to Makkah and Madinah courtyards, every itinerary is engineered for elderly comfort, transparent PKR accounting, and spiritual peace of mind.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3 lg:grid-cols-4">
-          <div className="md:col-span-2 rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200">
-              <Building2 className="size-6" />
-            </div>
-            <h3 className="font-display text-2xl font-bold text-foreground">
-              Walking-Distance Makkah &amp; Madinah Courtyard Hotels
-            </h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Avoid steep hillside walks and shuttle queues with elderly parents. Compare 0–50m Clock Tower suites in{" "}
-              <Link
-                href="/hotels/makkah"
-                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
-              >
-                Makkah
-              </Link>{" "}
-              and flat Markaziyah hotels near Ladies Gate 25 in{" "}
-              <Link
-                href="/hotels/madinah"
-                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
-              >
-                Madinah
-              </Link>
-              .
-            </p>
-            <div className="flex flex-wrap gap-2 pt-2 text-xs font-semibold text-emerald-800">
-              <span className="rounded-md bg-emerald-100/80 px-2.5 py-1">
-                Zero Shuttle Wait
-              </span>
-              <span className="rounded-md bg-emerald-100/80 px-2.5 py-1">
-                Direct Kaaba &amp; Haram Access
-              </span>
-              <span className="rounded-md bg-emerald-100/80 px-2.5 py-1">
-                Wheelchair Accessible
-              </span>
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-800 border border-amber-200">
-              <Clock className="size-6" />
-            </div>
-            <h3 className="font-display text-xl font-bold text-foreground">
-              24-Hour PKR Quote SLA
-            </h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Submit your custom itinerary and receive an itemized, line-by-line PKR quotation confirmed by our Lahore Cantt ticketing desk within 24 hours.
-            </p>
-          </div>
-
-          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200">
-              <ShieldCheck className="size-6" />
-            </div>
-            <h3 className="font-display text-xl font-bold text-foreground">
-              Official Saudi Umrah Visas
-            </h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Electronic KSA visa issuance with mandatory Saudi medical insurance, Nusuk Masar hotel linking, and{" "}
-              <Link
-                href="/umrah-visa"
-                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
-              >
-                instant Visa-Only PKR rates
-              </Link>
-              .
-            </p>
-          </div>
-
-          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20">
-              <Car className="size-6" />
-            </div>
-            <h3 className="font-display text-xl font-bold text-foreground">
-              Private GMC &amp; HiAce Fleet
-            </h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Executive sedans, GMC Yukon SUVs, and Toyota HiAce vans with Urdu and English speaking drivers awaiting your arrival at Jeddah or Madinah airport.
-            </p>
-          </div>
-
-          <div className="md:col-span-2 rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-gold/15 text-gold-text border border-gold/30">
-              <FileCheck className="size-6" />
-            </div>
-            <h3 className="font-display text-2xl font-bold text-foreground">
-              Transparent PKR Pricing &amp; Zero Hidden Surcharges
-            </h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Compare published{" "}
-              <Link
-                href="/umrah-packages"
-                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
-              >
-                Group Umrah PKR tiers
-              </Link>{" "}
-              or custom worksheets itemizing every visa, airline sector, hotel stay, and intercity transfer before deposit confirmation.
-            </p>
-            <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1 font-semibold text-foreground">
-                <CheckCircle2 className="size-4 text-emerald-700" /> Clear SAR-to-PKR Lock
-              </span>
-              <span className="flex items-center gap-1 font-semibold text-foreground">
-                <CheckCircle2 className="size-4 text-emerald-700" /> Verified Askari 10 HQ
-              </span>
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-border bg-gradient-to-br from-card to-muted/30 p-8 shadow-xs flex flex-col gap-4">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-800 border border-amber-200">
-              <Compass className="size-6" />
-            </div>
-            <h3 className="font-display text-xl font-bold text-foreground">
-              Guided Ziyarat Tours
-            </h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Curated heritage visits to Jabal Al-Nour, Ghar-e-Thawr, Masjid Quba, Uhud, Badr, and Taif—explore our{" "}
-              <Link
-                href="/ziyarat"
-                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
-              >
-                Haramain Ziyarat Guide
-              </Link>
-              .
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ======================================================== */}
-      {/* 2. HOW OUR LIVE QUOTING WORKS (4-STEP TIMELINE)          */}
-      {/* ======================================================== */}
-      <section className="bg-muted/30 py-20 border-y border-border">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-12">
-          <div className="text-center max-w-3xl mx-auto flex flex-col gap-3">
-            <Badge className="self-center bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
-              The Al Ramlah Journey Process
-            </Badge>
-            <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-              How Our 24-Hour Umrah &amp; Visa Quoting Process Works
-            </h2>
-            <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-              Four transparent steps take your family from initial route selection in Pakistan or abroad to cryptographically verified Haramain travel vouchers.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs flex flex-col gap-3">
-              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold-text block">
-                01
-              </span>
-              <h3 className="font-display text-lg font-bold text-foreground">
-                Craft Your Itinerary
-              </h3>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Select your KSA arrival and departure dates, city sequence, hotel room sharing, departure airport (LHE, KHI, ISB), and private transport fleet.
-              </p>
-            </div>
-
-            <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs flex flex-col gap-3">
-              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold-text block">
-                02
-              </span>
-              <h3 className="font-display text-lg font-bold text-foreground">
-                Automated Calculation
-              </h3>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                The server computes your exact Saudi visa duration tier and passenger bed/seat counts, issuing your unique ART tracking reference immediately.
-              </p>
-            </div>
-
-            <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs flex flex-col gap-3">
-              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold-text block">
-                03
-              </span>
-              <h3 className="font-display text-lg font-bold text-foreground">
-                24h Director Review
-              </h3>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Our Lahore Cantt ticketing director confirms live airline seats and Haram hotel allotments, locking the best seasonal PKR tariff on your worksheet.
-              </p>
-            </div>
-
-            <div className="relative rounded-2xl border border-border bg-card p-6 shadow-xs flex flex-col gap-3">
-              <span className="font-mono tabular-nums text-3xl font-extrabold text-gold-text block">
-                04
-              </span>
-              <h3 className="font-display text-lg font-bold text-foreground">
-                Online Approval &amp; Voucher
-              </h3>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Review and approve your numbered quotation online. Once deposit verification completes, your QR-signed confirmation voucher unlocks right away.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ======================================================== */}
-      {/* 3. SACRED ZIYARAT SITES PREVIEW                          */}
+      {/* 1. ASYMMETRIC WHY FAMILIES CHOOSE AL RAMLAH              */}
       {/* ======================================================== */}
       <section
-        id="ziyarat"
-        className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-12 scroll-mt-20"
+        aria-labelledby="why-alramlah-heading"
+        className="border-t border-border bg-secondary/45 py-12 sm:py-16"
       >
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <div className="flex flex-col gap-3 max-w-2xl">
-            <Badge className="self-start bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
-              Historical Sanctuaries
-            </Badge>
-            <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-              Sacred Makkah &amp; Madinah Ziyarat Tours
+        <div className="mx-auto grid w-full min-w-0 max-w-7xl grid-cols-1 gap-8 px-4 sm:px-6 lg:grid-cols-12 lg:gap-10 lg:px-8">
+          <div className="flex flex-col gap-4 self-start lg:sticky lg:top-24 lg:col-span-4">
+            <h2
+              id="why-alramlah-heading"
+              className="font-display text-2xl font-bold tracking-tight text-primary text-balance sm:text-3xl lg:text-4xl"
+            >
+              Why Pakistani &amp; Diaspora Families Choose Al Ramlah Travels
             </h2>
-            <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-              Walk in the footsteps of the Prophet ﷺ and the Sahabah (RA) across{" "}
-              <Link
-                href="/ziyarat/makkah"
-                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
-              >
-                Makkah Ziyarat landmarks
-              </Link>{" "}
-              and{" "}
-              <Link
-                href="/ziyarat/madinah"
-                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
-              >
-                Madinah Ziyarat sanctuaries
-              </Link>{" "}
-              with private air-conditioned family vehicles.
+            <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
+              From our Askari 10, Lahore Cantt concierge desk to Makkah and
+              Madinah courtyards, every itinerary is structured for elderly
+              comfort, clear PKR accounting, and unhurried worship.
             </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
-            <Button
-              variant="outline"
-              nativeButton={false}
-              render={<Link href="/ziyarat" />}
-              className="min-h-10 gap-2 border-border"
-            >
-              <span>Full Ziyarat Guide</span>
-            </Button>
-            <Button
-              variant="outline"
-              nativeButton={false}
-              render={<Link href="/#journey-builder" />}
-              className="min-h-10 gap-2 border-border"
-            >
-              <span>Include Ziyarat in Planner</span>
-              <ArrowRight className="size-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {activeZiyarat.map((site) => (
-            <div
-              key={site.id}
-              className="flex flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card shadow-xs transition-all hover:shadow-md hover:border-gold/60"
-            >
-              <div>
-                <div className="relative h-44 w-full bg-muted">
-                  {site.imageUrl ? (
-                    <Image
-                      src={site.imageUrl}
-                      alt={site.name}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
-                    />
-                  ) : (
-                    <div className="flex size-full items-center justify-center bg-muted">
-                      <Compass className="size-10 text-muted-foreground/40" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                  <div className="absolute top-2.5 left-2.5">
-                    <Badge
-                      className={`text-[10px] font-semibold capitalize ${
-                        site.city === "makkah"
-                          ? "bg-emerald-950/90 text-emerald-100 border-emerald-500/40"
-                          : "bg-amber-950/90 text-amber-100 border-amber-500/40"
-                      }`}
-                    >
-                      <MapPin className="size-3 mr-1" />
-                      {site.city}
-                    </Badge>
-                  </div>
-                </div>
-
-                <div className="p-4 flex flex-col gap-2">
-                  <h3 className="font-bold text-base text-foreground leading-snug">
-                    {site.name}
-                  </h3>
-                  <ArabicText className="text-sm text-gold-text font-medium block">
-                    {site.arabicName}
-                  </ArabicText>
-                  <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
-                    {site.description}
-                  </p>
-                </div>
-              </div>
+            <div className="flex flex-col gap-2 border-t border-border pt-3 text-xs font-semibold sm:text-sm">
+              <Link
+                href="/#journey-builder"
+                className="inline-flex min-h-7 items-center gap-1.5 text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
+              >
+                <span>Design a Custom Umrah Itinerary</span>
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Link>
+              <Link
+                href="/umrah-packages"
+                className="inline-flex min-h-7 items-center gap-1.5 text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
+              >
+                <span>Compare Fixed Group Umrah Packages</span>
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Link>
             </div>
-          ))}
+          </div>
+
+          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-8">
+            <article className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-5 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <Building2
+                  className="size-5 shrink-0 text-primary"
+                  aria-hidden="true"
+                />
+                <h3 className="font-display text-lg font-semibold text-foreground">
+                  Walking-Distance Courtyard Hotels
+                </h3>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                Avoid steep uphill walks and shuttle queues with elderly
+                parents. Compare 0 to 50m Clock Tower suites in{" "}
+                <Link
+                  href="/hotels/makkah"
+                  className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
+                >
+                  Makkah
+                </Link>{" "}
+                and flat Markaziyah hotels near Ladies Gate 25 in{" "}
+                <Link
+                  href="/hotels/madinah"
+                  className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
+                >
+                  Madinah
+                </Link>
+                .
+              </p>
+              <p className="mt-auto text-xs font-medium text-gold-text">
+                Wheelchair-friendly routes with zero shuttle waiting
+              </p>
+            </article>
+
+            <article className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-5 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <Clock
+                  className="size-5 shrink-0 text-primary"
+                  aria-hidden="true"
+                />
+                <h3 className="font-display text-lg font-semibold text-foreground">
+                  24-Hour PKR Quote SLA
+                </h3>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                Submit your custom itinerary and receive an itemized,
+                line-by-line PKR quotation verified by our Lahore Cantt
+                ticketing directors within 24 hours.
+              </p>
+              <p className="mt-auto text-xs font-medium text-gold-text">
+                Issued with an ART tracking code for live verification
+              </p>
+            </article>
+
+            <article className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-5 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck
+                  className="size-5 shrink-0 text-primary"
+                  aria-hidden="true"
+                />
+                <h3 className="font-display text-lg font-semibold text-foreground">
+                  Official Saudi Umrah E-Visas
+                </h3>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                Electronic KSA visa issuance with mandatory Saudi medical
+                insurance, Nusuk Masar hotel linking, and{" "}
+                <Link
+                  href="/umrah-visa"
+                  className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
+                >
+                  fixed Visa-Only PKR rates
+                </Link>
+                .
+              </p>
+              <p className="mt-auto text-xs font-medium text-gold-text">
+                Automatic 30-day vs 90-day duration calculation
+              </p>
+            </article>
+
+            <article className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-5 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <Car
+                  className="size-5 shrink-0 text-primary"
+                  aria-hidden="true"
+                />
+                <h3 className="font-display text-lg font-semibold text-foreground">
+                  Private GMC &amp; HiAce Fleet
+                </h3>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                Executive sedans, GMC Yukon SUVs, and Toyota HiAce vans with
+                Urdu and English speaking drivers greeting your family at
+                Jeddah (JED) or Madinah (MED) airport.
+              </p>
+              <p className="mt-auto text-xs font-medium text-gold-text">
+                Haramain High-Speed Rail options on eligible sectors
+              </p>
+            </article>
+
+            <article className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-5 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <FileCheck
+                  className="size-5 shrink-0 text-primary"
+                  aria-hidden="true"
+                />
+                <h3 className="font-display text-lg font-semibold text-foreground">
+                  Transparent PKR Accounting
+                </h3>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                Compare published{" "}
+                <Link
+                  href="/umrah-packages"
+                  className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
+                >
+                  Group Umrah PKR tiers
+                </Link>{" "}
+                or custom worksheets itemizing every visa, flight, hotel stay,
+                and transfer before deposit.
+              </p>
+              <div className="mt-auto flex flex-wrap items-center gap-3 text-xs font-semibold text-primary">
+                <span className="inline-flex items-center gap-1">
+                  <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                  <span>Clear SAR-to-PKR Lock</span>
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                  <span>Verified Askari 10 HQ</span>
+                </span>
+              </div>
+            </article>
+
+            <article className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-5 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <Compass
+                  className="size-5 shrink-0 text-primary"
+                  aria-hidden="true"
+                />
+                <h3 className="font-display text-lg font-semibold text-foreground">
+                  Scholar-Guided Ziyarat Tours
+                </h3>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                Curated heritage visits to Jabal Al-Nour, Ghar-e-Thawr, Masjid
+                Quba, Mount Uhud, Badr, and Taif through our{" "}
+                <Link
+                  href="/ziyarat"
+                  className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
+                >
+                  Haramain Ziyarat Guide
+                </Link>
+                .
+              </p>
+              <p className="mt-auto text-xs font-medium text-gold-text">
+                Morning and afternoon private family schedules
+              </p>
+            </article>
+          </div>
         </div>
       </section>
+
+      {/* ======================================================== */}
+      {/* 2. AUTHORED GSAP SCROLLTRIGGER 4-STEP QUOTING TIMELINE   */}
+      {/* ======================================================== */}
+      <QuotingTimelineClient />
+
+      {/* ======================================================== */}
+      {/* 3. TABBED MAKKAH & MADINAH ZIYARAT SHOWCASE (`#ziyarat`) */}
+      {/* ======================================================== */}
+      <ZiyaratShowcaseClient sites={activeZiyarat} />
 
       {/* ======================================================== */}
       {/* 4. VERIFIED PILGRIM TESTIMONIALS (`T-056` — DB-ONLY)     */}
       {/* ======================================================== */}
       {verifiedTestimonials.length > 0 && (
-        <section className="bg-muted/30 py-20 border-y border-border">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-12">
-            <div className="text-center max-w-3xl mx-auto flex flex-col gap-3">
-              <Badge className="self-center bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
-                Verified Pilgrim Reviews
-              </Badge>
-              <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+        <section
+          aria-labelledby="verified-testimonials-heading"
+          className="border-t border-border bg-background py-12 sm:py-16"
+        >
+          <div className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-8 px-4 sm:px-6 lg:px-8">
+            <div className="flex max-w-3xl flex-col gap-2">
+              <h2
+                id="verified-testimonials-heading"
+                className="font-display text-2xl font-bold tracking-tight text-primary text-balance sm:text-3xl lg:text-4xl"
+              >
                 Cherished Words from Our Pilgrims
               </h2>
-              <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-                Read verified experiences from families who entrusted Al Ramlah Travels with their sacred journeys.
+              <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
+                Read verified experiences from families who entrusted Al Ramlah
+                Travels with their sacred journeys.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
               {verifiedTestimonials.map((t) => (
-                <div
+                <article
                   key={t.id}
-                  className="flex flex-col justify-between rounded-2xl border border-border bg-card p-6 shadow-xs gap-4"
+                  className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-6 shadow-xs"
                 >
                   <div className="flex flex-col gap-3">
                     <div
@@ -537,24 +441,28 @@ export function MarketingSections({
                       {Array.from({
                         length: Math.max(1, Math.min(5, t.rating)),
                       }).map((_, i) => (
-                        <Star key={i} className="size-4 fill-gold text-gold" />
+                        <Star
+                          key={i}
+                          className="size-4 fill-gold text-gold"
+                          aria-hidden="true"
+                        />
                       ))}
                     </div>
 
-                    <p className="text-xs sm:text-sm text-foreground italic leading-relaxed">
+                    <p className="text-sm leading-relaxed text-foreground">
                       &ldquo;{t.quote}&rdquo;
                     </p>
                   </div>
 
-                  <div className="pt-4 border-t border-border/80">
-                    <h4 className="font-bold text-sm text-foreground">
+                  <div className="border-t border-border pt-3">
+                    <h3 className="text-sm font-bold text-foreground">
                       {t.pilgrimName}
-                    </h4>
+                    </h3>
                     <p className="text-xs text-muted-foreground">
-                      {t.city} · {t.packageOrJourneyType}
+                      {t.city}, {t.packageOrJourneyType}
                     </p>
                   </div>
-                </div>
+                </article>
               ))}
             </div>
           </div>
@@ -562,43 +470,47 @@ export function MarketingSections({
       )}
 
       {/* ======================================================== */}
-      {/* 5. FREQUENTLY ASKED QUESTIONS (SERVER SHELL + ISLAND)    */}
+      {/* 5. 2-COLUMN EDITORIAL FAQ (`keepMounted` 1:1 PARITY)     */}
       {/* ======================================================== */}
       <section
         id="faq"
-        className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 flex flex-col gap-10 w-full scroll-mt-20"
+        aria-labelledby="home-faq-heading"
+        className={`w-full scroll-mt-20 border-t border-border py-12 sm:py-16 ${
+          verifiedTestimonials.length > 0 ? "bg-secondary/45" : "bg-background"
+        }`}
       >
-        <div className="text-center flex flex-col gap-3">
-          <Badge className="self-center bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
-            Common Inquiries
-          </Badge>
-          <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-            Frequently Asked Questions on Umrah, Visas &amp; Hajj 2027
-          </h2>
-          <p className="text-muted-foreground text-sm sm:text-base">
-            Essential answers on Saudi visa duration rules, infant bed allotments, Jeddah-to-Makkah transfers, and 24-hour PKR quoting.
-          </p>
-        </div>
+        <div className="mx-auto grid w-full min-w-0 max-w-7xl grid-cols-1 gap-8 px-4 sm:px-6 lg:grid-cols-12 lg:items-start lg:px-8">
+          <div className="flex flex-col gap-4 lg:col-span-4">
+            <h2
+              id="home-faq-heading"
+              className="font-display text-2xl font-bold tracking-tight text-primary text-balance sm:text-3xl lg:text-4xl"
+            >
+              Frequently Asked Questions on Umrah, Visas &amp; Hajj 2027
+            </h2>
+            <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
+              Essential answers on Saudi visa duration rules, infant bed
+              allotments, Jeddah to Makkah transfers, and 24-hour PKR quoting.
+            </p>
+            <div className="flex flex-col gap-2 border-t border-border pt-3 text-xs font-semibold sm:text-sm">
+              <Link
+                href="/faq"
+                className="inline-flex min-h-7 items-center gap-1.5 text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
+              >
+                <span>Explore All Categorized Umrah &amp; Hajj FAQs</span>
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Link>
+              <Link
+                href="/contact"
+                className="inline-flex min-h-7 items-center text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
+              >
+                Ask Our Askari 10 Lahore Desk
+              </Link>
+            </div>
+          </div>
 
-        <FaqAccordionClient faqs={activeFaqs} />
-
-        <div className="flex flex-wrap items-center justify-center gap-4 text-xs sm:text-sm font-semibold">
-          <Link
-            href="/faq"
-            className="inline-flex min-h-6 items-center gap-1.5 text-[#0A3622] underline decoration-[#7A5C1E]/60 underline-offset-4 hover:text-[#7A5C1E]"
-          >
-            <span>Explore All Categorized Umrah &amp; Hajj FAQs</span>
-            <ArrowRight className="size-3.5" />
-          </Link>
-          <span className="text-[#7A5C1E]" aria-hidden="true">
-            &bull;
-          </span>
-          <Link
-            href="/contact"
-            className="inline-flex min-h-6 items-center text-[#0A3622] underline decoration-[#7A5C1E]/60 underline-offset-4 hover:text-[#7A5C1E]"
-          >
-            Ask Our Askari 10 Lahore Desk
-          </Link>
+          <div className="min-w-0 lg:col-span-8">
+            <FaqAccordionClient faqs={activeFaqs} />
+          </div>
         </div>
       </section>
     </div>

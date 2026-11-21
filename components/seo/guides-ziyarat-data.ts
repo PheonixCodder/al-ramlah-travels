@@ -21,6 +21,12 @@ export const ZIYARAT_HUB_METADATA_SPEC = {
   h1: "Complete Haramain Ziyarat Guide — Makkah, Madinah, Badr & Taif",
 } as const
 
+export const ZIYARAT_FLEET_HEADING =
+  "Private Ziyarat Fleet Capacity Bands (1–3 Sedan to 13+ Coach Bus)" as const
+
+export const ZIYARAT_HUB_FAQ_HEADING =
+  "Frequently Asked Questions — Haramain Ziyarat & Private Fleet" as const
+
 const STATIC_REFERENCE_DATE = new Date("2026-11-15T00:00:00.000Z")
 
 export const FALLBACK_PUBLIC_ZIYARAT_PLACES: PublicZiyaratDto[] = [
@@ -194,7 +200,8 @@ export const ZIYARAT_FLEET_CAPACITY_BANDS: readonly FleetBandRow[] = [
   {
     passengerBand: "13+ Seats (Adults + Children)",
     vehicleClass: "Toyota Coaster & Luxury Coach Bus",
-    representativeModels: "Toyota Coaster (22-Seat) / Executive Coach (45-Seat)",
+    representativeModels:
+      "Toyota Coaster (22-Seat) / Executive Coach (45-Seat)",
     bookingModeNote: "Private Group or Guided Batch Allocation",
     luggageAndAccess:
       "Underfloor luggage bays, PA microphone for Urdu/English scholar commentary, and Naqaba permits.",
@@ -421,8 +428,7 @@ export const ZIYARAT_CITY_SPOKE_CONFIGS: Record<
         "However, if your family takes a full-day Ziyarat excursion east to Taif, you cross beyond the outer Miqat line. On the return highway down to Makkah, anyone intending Umrah must enter Ihram at Miqat Qarn al-Manazil (As-Sail al-Kabir) or Al-Hada (Wadi Muharram) rather than passing the Miqat without Ihram.",
       ],
     },
-    faqHeading:
-      "Frequently Asked Questions — Makkah, Mashair & Taif Ziyarat",
+    faqHeading: "Frequently Asked Questions — Makkah, Mashair & Taif Ziyarat",
     faqs: [
       {
         question:
@@ -437,14 +443,12 @@ export const ZIYARAT_CITY_SPOKE_CONFIGS: Record<
           "Yes. Throughout the Umrah months outside the annual Dhul Hijjah Hajj security lockdown, private sedans, GMC Yukons, and family vans drive through the Mina tent valley and Muzdalifah and stop at the Plain of Arafat near Jabal al-Rahmah and Masjid Namirah.",
       },
       {
-        question:
-          "Do we need Ihram to go on a morning Makkah Ziyarat tour?",
+        question: "Do we need Ihram to go on a morning Makkah Ziyarat tour?",
         answer:
           "No. Visiting Jabal al-Nour, Jabal Thawr, Jannat al-Mu'alla, Mina, and Arafat is performed in modest everyday clothing after completing your initial Umrah. You only put on Ihram if stopping at Masjid Aisha (At-Tan'eem), Ji'ranah, or returning from Taif via Miqat Qarn al-Manazil with the intention of performing another Umrah.",
       },
       {
-        question:
-          "How long does a private Makkah to Taif day trip take?",
+        question: "How long does a private Makkah to Taif day trip take?",
         answer:
           "A private Makkah–Taif–Makkah excursion (sector MAK_TAIF_MAK, approx. 180 km round-trip) typically spans 6 to 8 hours including the scenic Al-Hada mountain highway, Masjid Abdullah ibn Abbas (RA), fruit/rosewater stops, lunch, and stopping at Miqat on the return descent.",
       },
@@ -477,7 +481,8 @@ export const ZIYARAT_CITY_SPOKE_CONFIGS: Record<
       {
         landmarkName: "Masjid Quba",
         arabicTitle: "مسجد قباء",
-        zoneAndDistance: "~3.5 km south of Masjid an-Nabawi (Quba Pedestrian Trail)",
+        zoneAndDistance:
+          "~3.5 km south of Masjid an-Nabawi (Quba Pedestrian Trail)",
         seerahSignificance:
           "First mosque built in Islamic history upon the Prophet's (PBUH) arrival in Madinah (Surah At-Tawbah 9:108).",
         pilgrimEtiquetteAndAccess:

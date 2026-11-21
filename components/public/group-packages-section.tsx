@@ -1,36 +1,42 @@
 "use client"
 
 import * as React from "react"
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import dynamic from "next/dynamic"
 import Image from "next/image"
 import Link from "next/link"
+import useEmblaCarousel, { type UseEmblaCarouselType } from "embla-carousel-react"
+import {
+  ArrowRight,
+  Building2,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Compass,
+  Footprints,
+  MapPin,
+  MessageCircle,
+  Plane,
+  Sparkles,
+} from "lucide-react"
 import type { BookingModalPackage } from "./group-booking-modal"
+import { MotionPillIndicator } from "@/components/motion"
+import { ArabicText } from "@/components/public/arabic-text"
 import {
   formatPkr,
   getTodayPktIso,
   toWaMeUrl,
 } from "@/components/public/public-utils"
-import { ArabicText } from "@/components/public/arabic-text"
+import { shouldBypassNextImageOptimization } from "@/components/seo/umrah-pricing-helpers"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  ArrowRight,
-  Calendar,
-  Plane,
-  Building2,
-  Clock,
-  Footprints,
-  Check,
-  Sparkles,
-  MessageCircle,
-  Compass,
-  MapPin,
-} from "lucide-react"
 
 const LazyGroupBookingModal = dynamic(() =>
   import("./group-booking-modal").then((mod) => mod.GroupBookingModal)
 )
+
+type CarouselApi = UseEmblaCarouselType[1]
 
 export interface PublicGroupPackageItem extends BookingModalPackage {
   slug: string
@@ -69,8 +75,61 @@ const CITY_GATEWAY_SPOKES = [
   { label: "From Islamabad (ISB)", href: "/umrah-packages/from-islamabad" },
 ] as const
 
-function formatTierPriceOrOnRequest(val: number | null | undefined): string {
-  return typeof val === "number" && val > 0 ? formatPkr(val) : "On Request"
+const TIER_LABEL_MAP: Record<string, string> = {
+  vip_5star: "VIP 5-Star",
+  gold: "Gold",
+  silver: "Silver",
+  bronze: "Bronze",
+  economy: "Economy",
+}
+
+function formatTierLabel(tier: string): string {
+  return TIER_LABEL_MAP[tier] ?? tier.replace(/_/g, " ")
+}
+
+function subscribeReducedMotion(onStoreChange: () => void): () => void {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return () => {}
+  }
+  const mq = window.matchMedia("(prefers-reduced-motion: reduce)")
+  mq.addEventListener("change", onStoreChange)
+  return () => mq.removeEventListener("change", onStoreChange)
+}
+
+function getReducedMotionSnapshot(): boolean {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return false
+  }
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+}
+
+function getLowestPositiveHotelOptionPrice(
+  options: PublicGroupPackageItem["multiHotelOptions"]
+): number {
+  if (!options || options.length === 0) return 0
+  let lowest = 0
+  for (const opt of options) {
+    const candidates = [
+      opt.sharingPricePkr,
+      opt.quadPricePkr,
+      opt.triplePricePkr,
+      opt.doublePricePkr,
+    ]
+    for (const val of candidates) {
+      if (typeof val === "number" && val > 0) {
+        if (lowest === 0 || val < lowest) {
+          lowest = val
+        }
+      }
+    }
+  }
+  return lowest
 }
 
 export function GroupPackagesSection({
@@ -78,6 +137,11 @@ export function GroupPackagesSection({
   agencyWhatsapp,
 }: GroupPackagesSectionProps) {
   const todayPkt = useMemo(() => getTodayPktIso(), [])
+  const prefersReducedMotion = useSyncExternalStore(
+    subscribeReducedMotion,
+    getReducedMotionSnapshot,
+    () => false
+  )
 
   // T-054: Strictly retain only open/filling_fast upcoming departures with remaining seats
   const activePackages = useMemo(() => {
@@ -102,22 +166,79 @@ export function GroupPackagesSection({
   } | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
 
-  const citiesMap = new Map<string, string>()
-  activePackages.forEach((p) => {
-    p.departures.forEach((d) => {
-      if (d.departureCity) {
-        citiesMap.set(d.departureCity.airportCode, d.departureCity.cityName)
-      }
+  const citiesMap = useMemo(() => {
+    const map = new Map<string, string>()
+    activePackages.forEach((p) => {
+      p.departures.forEach((d) => {
+        if (d.departureCity) {
+          map.set(d.departureCity.airportCode, d.departureCity.cityName)
+        }
+      })
     })
+    return map
+  }, [activePackages])
+
+  const filteredPackages = useMemo(() => {
+    return activePackages.filter((p) => {
+      const matchesTier = selectedTier === "all" || p.tier === selectedTier
+      const matchesCity =
+        selectedCity === "all" ||
+        p.departures.some((d) => d.departureCity?.airportCode === selectedCity)
+      return matchesTier && matchesCity
+    })
+  }, [activePackages, selectedTier, selectedCity])
+
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    align: "start",
+    containScroll: "trimSnaps",
+    duration: prefersReducedMotion ? 0 : 25,
   })
 
-  const filteredPackages = activePackages.filter((p) => {
-    const matchesTier = selectedTier === "all" || p.tier === selectedTier
-    const matchesCity =
-      selectedCity === "all" ||
-      p.departures.some((d) => d.departureCity?.airportCode === selectedCity)
-    return matchesTier && matchesCity
-  })
+  const [canScrollPrev, setCanScrollPrev] = useState(false)
+  const [canScrollNext, setCanScrollNext] = useState(false)
+  const [selectedSnap, setSelectedSnap] = useState(0)
+  const [snapCount, setSnapCount] = useState(1)
+
+  const syncCarouselState = useCallback((api: CarouselApi) => {
+    if (!api) return
+    setCanScrollPrev(api.canScrollPrev())
+    setCanScrollNext(api.canScrollNext())
+    setSelectedSnap(api.selectedScrollSnap())
+    setSnapCount(Math.max(1, api.scrollSnapList().length))
+  }, [])
+
+  useEffect(() => {
+    if (!emblaApi) return
+    const frameId = window.requestAnimationFrame(() => {
+      syncCarouselState(emblaApi)
+    })
+    emblaApi.on("select", syncCarouselState)
+    emblaApi.on("reInit", syncCarouselState)
+    return () => {
+      window.cancelAnimationFrame(frameId)
+      emblaApi.off("select", syncCarouselState)
+      emblaApi.off("reInit", syncCarouselState)
+    }
+  }, [emblaApi, syncCarouselState])
+
+  useEffect(() => {
+    if (!emblaApi) return
+    emblaApi.reInit()
+    emblaApi.scrollTo(0, true)
+  }, [emblaApi, selectedTier, selectedCity, filteredPackages.length])
+
+  const handleCarouselKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault()
+        emblaApi?.scrollPrev()
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault()
+        emblaApi?.scrollNext()
+      }
+    },
+    [emblaApi]
+  )
 
   if (activePackages.length === 0) {
     const waUrl = toWaMeUrl(
@@ -126,31 +247,35 @@ export function GroupPackagesSection({
     )
 
     return (
-      <section id="group-packages" className="py-20 bg-background scroll-mt-16">
+      <section
+        id="group-packages"
+        className="scroll-mt-16 bg-background py-12 sm:py-16"
+      >
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-          <div className="relative overflow-hidden rounded-3xl border border-gold/40 bg-gradient-to-b from-[#0A3622]/90 via-[#0A3622] to-[#062014] p-8 sm:p-12 text-center text-white shadow-xl">
-            <div className="absolute -top-24 left-1/2 -translate-x-1/2 size-72 rounded-full bg-gold/15 blur-3xl pointer-events-none" />
-
-            <div className="relative z-10 flex flex-col gap-5 max-w-2xl mx-auto">
-              <div className="inline-flex self-center items-center gap-2 rounded-full border border-gold/50 bg-gold/15 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-gold">
-                <Sparkles className="size-3.5 text-gold" />
-                <span>Pre-Built Fixed Departures</span>
-              </div>
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-primary via-primary to-sidebar p-8 text-center text-white shadow-lg sm:p-10">
+            <div className="relative z-10 mx-auto flex max-w-2xl flex-col items-center gap-4">
+              <ArabicText className="text-xl font-semibold text-gold">
+                لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ
+              </ArabicText>
 
               <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl">
                 New Seasonal Group Departures Announcing Shortly
               </h2>
 
-              <p className="text-xs sm:text-sm text-white/85 leading-relaxed">
-                Our team is currently finalizing upcoming seasonal flight blocks and luxury 5-star hotel allotments in Makkah and Madinah with our airline and hospitality partners. Explore our Umrah Packages Hub, city gateways, or message our Pilgrim Concierge on WhatsApp for bespoke dates.
+              <p className="text-xs leading-relaxed text-white/90 sm:text-sm">
+                Our team is currently finalizing upcoming seasonal flight blocks
+                and luxury 5-star hotel allotments in Makkah and Madinah with our
+                airline and hospitality partners. Explore our Umrah Packages
+                Hub, city gateways, or message our Pilgrim Concierge on WhatsApp
+                for bespoke dates.
               </p>
 
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                 <Link
                   href="/umrah-packages"
-                  className="inline-flex min-h-9 items-center gap-2 rounded-xl bg-gold hover:bg-gold/90 text-primary px-5 py-2.5 text-xs font-bold transition-all shadow-md"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-xs font-bold text-primary shadow-md transition-colors hover:bg-gold/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:translate-y-px sm:text-sm"
                 >
-                  <Compass className="size-4" />
+                  <Compass className="size-4" aria-hidden="true" />
                   <span>Explore All Umrah Packages</span>
                 </Link>
 
@@ -158,9 +283,12 @@ export function GroupPackagesSection({
                   href={waUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 text-xs font-semibold backdrop-blur-xs transition-all"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/30 bg-transparent px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:border-gold hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:translate-y-px sm:text-sm"
                 >
-                  <MessageCircle className="size-4 text-emerald-400" />
+                  <MessageCircle
+                    className="size-4 text-gold"
+                    aria-hidden="true"
+                  />
                   <span>Message Pilgrim Concierge</span>
                 </a>
               </div>
@@ -170,9 +298,9 @@ export function GroupPackagesSection({
                   <Link
                     key={spoke.href}
                     href={spoke.href}
-                    className="inline-flex min-h-6 items-center gap-1 rounded-full border border-gold/30 bg-white/5 px-3 py-1 text-xs text-white/85 transition-colors hover:border-gold hover:text-gold"
+                    className="inline-flex min-h-8 items-center gap-1 rounded-full border border-gold/35 bg-sidebar/50 px-3 py-1 text-xs text-white/90 transition-colors hover:border-gold hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
                   >
-                    <MapPin className="size-3 text-gold" />
+                    <MapPin className="size-3 text-gold" aria-hidden="true" />
                     <span>{spoke.label}</span>
                   </Link>
                 ))}
@@ -185,489 +313,532 @@ export function GroupPackagesSection({
   }
 
   return (
-    <section id="group-packages" className="py-20 bg-background scroll-mt-16">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-10">
-        {/* Section Header + Crawlable Hub & City Gateway Links */}
-        <div className="text-center max-w-3xl mx-auto flex flex-col gap-3">
-          <Badge className="self-center bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
-            Pre-Built Fixed Departures
-          </Badge>
-          <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
-            Curated Group Umrah Packages
-          </h2>
-          <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-            Experience the companionship of fellow pilgrims, guided religious scholars, guaranteed group flight allotments, and luxury Haram courtyard hotels at fixed PKR rates.
-          </p>
+    <section
+      id="group-packages"
+      className="scroll-mt-16 bg-background py-10 sm:py-12"
+    >
+      <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 sm:px-6 lg:px-8">
+        {/* Editorial Section Header + Crawlable Hub & City Gateway Links */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <h2 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+              Curated Group Umrah Packages
+            </h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+              Guided scholarship, guaranteed group flight allotments, and
+              courtyard hotels in Makkah and Madinah at fixed PKR rates.
+            </p>
+          </div>
 
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
             <Link
               href="/umrah-packages"
-              className="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-primary/35 bg-primary/5 px-3.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
             >
               <span>Compare All Umrah Packages</span>
-              <ArrowRight className="size-3.5" />
+              <ArrowRight className="size-3.5" aria-hidden="true" />
             </Link>
             {CITY_GATEWAY_SPOKES.map((spoke) => (
               <Link
                 key={spoke.href}
                 href={spoke.href}
-                className="inline-flex min-h-7 items-center gap-1 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-foreground transition-colors hover:border-gold hover:text-primary"
+                className="inline-flex min-h-9 items-center gap-1 rounded-full border border-border bg-secondary/70 px-3 py-1 text-xs font-medium text-foreground transition-colors hover:border-gold-border hover:text-primary"
               >
-                <MapPin className="size-3 text-gold-text" />
+                <MapPin
+                  className="size-3 text-gold-text"
+                  aria-hidden="true"
+                />
                 <span>{spoke.label}</span>
               </Link>
             ))}
           </div>
         </div>
 
-        {/* Filter Controls (`SEO-005`: includes bronze & economy support) */}
-        <div className="flex flex-col lg:flex-row items-center justify-between gap-4 rounded-2xl border border-border bg-card p-4 shadow-xs">
-          <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-muted p-1 text-xs">
+        {/* Tier Pills (`MotionPillIndicator`), Gateway Filter (`#gp-gateway-filter`), and Carousel Controls */}
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-secondary/60 p-2.5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border/80 bg-background p-1 text-xs">
             {(
               [
                 { key: "all", label: `All Tiers (${activePackages.length})` },
                 { key: "vip_5star", label: "VIP 5-Star" },
-                { key: "gold", label: "Gold Luxury" },
-                { key: "silver", label: "Silver Premium" },
-                { key: "bronze", label: "Bronze Value" },
+                { key: "gold", label: "Gold" },
+                { key: "silver", label: "Silver" },
+                { key: "bronze", label: "Bronze" },
                 { key: "economy", label: "Economy" },
               ] as const
-            ).map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setSelectedTier(tab.key)}
-                className={`min-h-7 rounded-lg px-3 py-1.5 font-medium transition-colors ${
-                  selectedTier === tab.key
-                    ? "bg-card text-foreground shadow-xs font-semibold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            ).map((tab) => {
+              const isSelected = selectedTier === tab.key
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => setSelectedTier(tab.key)}
+                  className="relative inline-flex min-h-8 items-center justify-center rounded-lg px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:pointer-events-none disabled:opacity-40"
+                >
+                  {isSelected && (
+                    <MotionPillIndicator
+                      layoutId="home-group-tier-pill"
+                      className="absolute inset-0 rounded-lg bg-primary"
+                    />
+                  )}
+                  <span
+                    className={`relative z-10 ${
+                      isSelected
+                        ? "font-semibold text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {tab.label}
+                  </span>
+                </button>
+              )
+            })}
           </div>
 
-          <div className="flex items-center gap-2 text-xs">
-            <label
-              htmlFor="gp-gateway-filter"
-              className="text-muted-foreground font-medium"
-            >
-              Departure Gateway:
-            </label>
-            <select
-              id="gp-gateway-filter"
-              value={selectedCity}
-              onChange={(e) => setSelectedCity(e.target.value)}
-              className="rounded-lg border border-input bg-background px-3 py-1.5 text-xs font-semibold shadow-xs focus-visible:outline-ring"
-            >
-              <option value="all">All Pakistani Cities</option>
-              {Array.from(citiesMap.entries()).map(([code, name]) => (
-                <option key={code} value={code}>
-                  {name} ({code})
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
+            <div className="flex items-center gap-2 text-xs">
+              <label
+                htmlFor="gp-gateway-filter"
+                className="font-medium text-muted-foreground"
+              >
+                Departure Gateway:
+              </label>
+              <select
+                id="gp-gateway-filter"
+                value={selectedCity}
+                onChange={(e) => setSelectedCity(e.target.value)}
+                className="min-h-9 rounded-lg border border-input bg-background px-2.5 py-1 text-xs font-semibold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <option value="all">All Pakistani Cities</option>
+                {Array.from(citiesMap.entries()).map(([code, name]) => (
+                  <option key={code} value={code}>
+                    {name} ({code})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {filteredPackages.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span
+                  aria-live="polite"
+                  className="font-mono text-xs font-semibold tabular-nums text-muted-foreground"
+                >
+                  {String(selectedSnap + 1).padStart(2, "0")} /{" "}
+                  {String(snapCount).padStart(2, "0")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => emblaApi?.scrollPrev()}
+                  disabled={!canScrollPrev}
+                  aria-label="Previous group packages"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border bg-background text-foreground transition-colors hover:border-gold-border hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:pointer-events-none disabled:opacity-40"
+                >
+                  <ChevronLeft className="size-4" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => emblaApi?.scrollNext()}
+                  disabled={!canScrollNext}
+                  aria-label="Next group packages"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border bg-background text-foreground transition-colors hover:border-gold-border hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:pointer-events-none disabled:opacity-40"
+                >
+                  <ChevronRight className="size-4" aria-hidden="true" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Packages Grid */}
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-          {filteredPackages.map((pkg) => {
-            const primaryBatch =
-              pkg.departures.find(
-                (d) =>
-                  selectedCity === "all" ||
-                  d.departureCity?.airportCode === selectedCity
-              ) || pkg.departures[0]
+        {/* Editorial Horizontal Embla Carousel (100% of filtered open packages stay mounted in DOM) */}
+        {filteredPackages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-secondary/40 px-6 py-12 text-center">
+            <p className="text-sm font-medium text-foreground">
+              No active group batches match the selected tier and departure
+              gateway filter.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setSelectedTier("all")
+                setSelectedCity("all")
+              }}
+              className="min-h-11 border-border bg-background text-xs font-semibold hover:bg-secondary"
+            >
+              Show All Open Departures
+            </Button>
+          </div>
+        ) : (
+          <div
+            role="region"
+            aria-roledescription="carousel"
+            aria-label="Open Group Umrah Package Departures"
+            onKeyDownCapture={handleCarouselKeyDown}
+            className="min-w-0"
+          >
+            <div ref={emblaRef} className="overflow-hidden">
+              <div className="-ml-4 flex items-stretch">
+                {filteredPackages.map((pkg, idx) => {
+                  const primaryBatch =
+                    pkg.departures.find(
+                      (d) =>
+                        selectedCity === "all" ||
+                        d.departureCity?.airportCode === selectedCity
+                    ) || pkg.departures[0]
 
-            const remainingSeats = primaryBatch
-              ? primaryBatch.totalSeats - primaryBatch.bookedSeats
-              : 0
-            const occupancyPct =
-              primaryBatch && primaryBatch.totalSeats > 0
-                ? Math.min(
-                    100,
-                    Math.round(
-                      (primaryBatch.bookedSeats / primaryBatch.totalSeats) * 100
-                    )
+                  const remainingSeats = primaryBatch
+                    ? primaryBatch.totalSeats - primaryBatch.bookedSeats
+                    : 0
+
+                  const effectiveSharingPrice =
+                    primaryBatch?.sharingPriceOverridePkr !== null &&
+                    primaryBatch?.sharingPriceOverridePkr !== undefined
+                      ? primaryBatch.sharingPriceOverridePkr
+                      : pkg.sharingPricePkr !== undefined
+                        ? pkg.sharingPricePkr
+                        : pkg.quadPricePkr
+                  const effectiveQuadPrice =
+                    primaryBatch?.quadPriceOverridePkr ?? pkg.quadPricePkr
+                  const effectiveTriplePrice =
+                    primaryBatch?.triplePriceOverridePkr ?? pkg.triplePricePkr
+                  const effectiveDoublePrice =
+                    primaryBatch?.doublePriceOverridePkr ?? pkg.doublePricePkr
+
+                  const lowestOptionPrice = getLowestPositiveHotelOptionPrice(
+                    pkg.multiHotelOptions
                   )
-                : 0
 
-            const effectiveSharingPrice =
-              primaryBatch?.sharingPriceOverridePkr !== null &&
-              primaryBatch?.sharingPriceOverridePkr !== undefined
-                ? primaryBatch.sharingPriceOverridePkr
-                : pkg.sharingPricePkr !== undefined
-                  ? pkg.sharingPricePkr
-                  : pkg.quadPricePkr
-            const effectiveQuadPrice =
-              primaryBatch?.quadPriceOverridePkr ?? pkg.quadPricePkr
-            const effectiveTriplePrice =
-              primaryBatch?.triplePriceOverridePkr ?? pkg.triplePricePkr
-            const effectiveDoublePrice =
-              primaryBatch?.doublePriceOverridePkr ?? pkg.doublePricePkr
+                  const packageHref = `/umrah-packages/${pkg.slug}`
 
-            const packageHref = `/umrah-packages/${pkg.slug}`
+                  const rateCells = [
+                    { label: "Sharing", val: effectiveSharingPrice },
+                    { label: "Quad", val: effectiveQuadPrice },
+                    { label: "Triple", val: effectiveTriplePrice },
+                    { label: "Double", val: effectiveDoublePrice },
+                  ] as const
 
-            return (
-              <div
-                key={pkg.id}
-                className="flex flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all hover:shadow-md hover:border-gold/60"
-              >
-                <div>
-                  {/* Package Banner Header with Branded Haramain Geometric Fallback (`SEO-030`) */}
-                  <div className="relative h-64 sm:h-72 w-full bg-[#0A3622] overflow-hidden">
-                    {pkg.bannerUrl ? (
-                      <Image
-                        src={pkg.bannerUrl}
-                        alt={pkg.title}
-                        fill
-                        className="object-cover object-top"
-                        sizes="(max-width: 1024px) 100vw, 50vw"
-                      />
-                    ) : (
-                      <div
-                        aria-hidden="true"
-                        className="absolute inset-0 bg-gradient-to-br from-[#0A3622] via-[#0F5132] to-[#062014]"
-                      >
-                        <div className="bg-haramain-dark-pattern absolute inset-0 opacity-45" />
-                        <div className="absolute inset-0 flex items-center justify-center opacity-20">
-                          <ArabicText className="text-4xl font-bold text-gold">
-                            لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ
-                          </ArabicText>
-                        </div>
-                      </div>
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/20" />
+                  return (
+                    <div
+                      key={pkg.id}
+                      onFocusCapture={() => emblaApi?.scrollTo(idx)}
+                      className="min-w-0 shrink-0 grow-0 flex-[0_0_90%] pl-4 sm:flex-[0_0_48%] xl:flex-[0_0_32%]"
+                    >
+                      <div className="flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card shadow-xs transition-colors hover:border-gold-border">
+                        <div className="flex flex-1 flex-col">
+                          {/* Flyer-Safe Media Frame (zero title text over supplier banner images) */}
+                          <div className="relative h-44 w-full shrink-0 overflow-hidden bg-primary">
+                            {pkg.bannerUrl ? (
+                              <Image
+                                src={pkg.bannerUrl}
+                                alt={pkg.title}
+                                fill
+                                unoptimized={shouldBypassNextImageOptimization(
+                                  pkg.bannerUrl
+                                )}
+                                className="object-cover object-top"
+                                sizes="(max-width: 640px) 90vw, (max-width: 1280px) 48vw, 32vw"
+                              />
+                            ) : (
+                              <div
+                                aria-hidden="true"
+                                className="absolute inset-0 bg-gradient-to-br from-primary via-primary to-sidebar"
+                              >
+                                <div className="bg-haramain-dark-pattern absolute inset-0 opacity-45" />
+                                <div className="absolute inset-0 flex items-center justify-center opacity-25">
+                                  <ArabicText className="text-3xl font-bold text-gold">
+                                    لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ
+                                  </ArabicText>
+                                </div>
+                              </div>
+                            )}
 
-                    <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2">
-                      <Badge
-                        className={`text-xs font-semibold capitalize ${
-                          pkg.tier === "vip_5star"
-                            ? "bg-amber-100 text-amber-950 border-amber-300"
-                            : "bg-emerald-100 text-emerald-950 border-emerald-300"
-                        }`}
-                      >
-                        <Sparkles className="size-3 mr-1" />
-                        {pkg.tier.replace(/_/g, " ")}
-                      </Badge>
-                      <Badge className="bg-black/60 text-white backdrop-blur-xs text-xs font-medium border-white/20 tabular-nums">
-                        <Clock className="size-3 mr-1 text-gold" />
-                        {pkg.durationDays} Days / {pkg.makkahNights}N Makkah ·{" "}
-                        {pkg.madinahNights}N Madinah
-                      </Badge>
-                    </div>
-
-                    {pkg.airline && (
-                      <div className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white backdrop-blur-xs border border-white/20">
-                        <Plane className="size-3 text-gold" />
-                        <span>{pkg.airline.name}</span>
-                      </div>
-                    )}
-
-                    <div className="absolute bottom-3 left-4 right-4 text-white">
-                      <h3 className="font-display text-xl sm:text-2xl font-bold leading-snug">
-                        <Link
-                          href={packageHref}
-                          className="inline-flex min-h-6 items-center hover:text-gold transition-colors"
-                        >
-                          {pkg.title}
-                        </Link>
-                      </h3>
-                      {primaryBatch?.departureCity && (
-                        <div className="flex items-center gap-2 text-xs text-white/80 mt-1">
-                          <Calendar className="size-3.5 text-gold shrink-0" />
-                          <span>
-                            Batch {primaryBatch.batchCode} ({primaryBatch.departureDate}) from{" "}
-                            <strong>
-                              {primaryBatch.departureCity.cityName} (
-                              {primaryBatch.departureCity.airportCode})
-                            </strong>
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Body Details */}
-                  <div className="p-6 flex flex-col gap-5">
-                    {(pkg.makkahHotel || pkg.madinahHotel) && (
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 rounded-xl bg-muted/20 p-3.5 border border-border/70 text-xs">
-                        {pkg.makkahHotel && (
-                          <div className="flex flex-col gap-1">
-                            <Link
-                              href="/hotels/makkah"
-                              className="inline-flex min-h-6 items-center gap-1 font-semibold text-emerald-800 hover:underline"
-                            >
-                              <Building2 className="size-3.5" />
-                              <span>Makkah Al-Mukarramah</span>
-                            </Link>
-                            <p className="font-medium text-foreground line-clamp-1">
-                              {pkg.makkahHotel.name}
-                            </p>
-                            <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-                              <Footprints className="size-3 text-emerald-600" />
-                              {pkg.makkahHotel.distanceLabel}
-                            </span>
-                          </div>
-                        )}
-
-                        {pkg.madinahHotel && (
-                          <div className="flex flex-col gap-1">
-                            <Link
-                              href="/hotels/madinah"
-                              className="inline-flex min-h-6 items-center gap-1 font-semibold text-amber-800 hover:underline"
-                            >
-                              <Building2 className="size-3.5" />
-                              <span>Madinah Al-Munawwarah</span>
-                            </Link>
-                            <p className="font-medium text-foreground line-clamp-1">
-                              {pkg.madinahHotel.name}
-                            </p>
-                            <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-                              <Footprints className="size-3 text-amber-600" />
-                              {pkg.madinahHotel.distanceLabel}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {(pkg.highlights?.length ?? 0) > 0 && (
-                      <div className="flex flex-col gap-1.5">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          Included Privileges:
-                        </span>
-                        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 text-xs">
-                          {(pkg.highlights ?? []).slice(0, 4).map((h, i) => (
-                            <div
-                              key={i}
-                              className="flex items-center gap-2 text-foreground/90"
-                            >
-                              <Check className="size-3.5 text-emerald-600 shrink-0" />
-                              <span className="line-clamp-1">{h}</span>
+                            {/* Corner Metadata Badges Only */}
+                            <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5">
+                              <Badge
+                                className={
+                                  pkg.tier === "vip_5star" ||
+                                  pkg.tier === "gold"
+                                    ? "border-gold-border bg-accent text-xs font-semibold text-primary"
+                                    : "border-border bg-background text-xs font-semibold text-foreground"
+                                }
+                              >
+                                <Sparkles
+                                  className="size-3 text-gold-text"
+                                  aria-hidden="true"
+                                />
+                                {formatTierLabel(pkg.tier)}
+                              </Badge>
+                              <Badge className="border-white/20 bg-sidebar/90 text-xs font-medium tabular-nums text-white">
+                                <Clock
+                                  className="size-3 text-gold"
+                                  aria-hidden="true"
+                                />
+                                {pkg.durationDays}D ({pkg.makkahNights}N Makkah,{" "}
+                                {pkg.madinahNights}N Madinah)
+                              </Badge>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
 
-                    {primaryBatch &&
-                      (primaryBatch.outboundFlightNumber ||
-                        primaryBatch.flightScheduleSummary ||
-                        primaryBatch.baggageAllowance) && (
-                        <div className="rounded-xl border border-border/80 bg-muted/15 p-3 text-xs flex flex-col gap-1">
-                          <div className="flex items-center justify-between font-semibold text-foreground">
-                            <span className="flex items-center gap-1.5">
-                              <Plane className="size-3.5 text-gold" />
-                              Flight Spec:{" "}
-                              {primaryBatch.outboundFlightNumber
-                                ? `${primaryBatch.outboundFlightNumber}${
-                                    primaryBatch.returnFlightNumber
-                                      ? ` / ${primaryBatch.returnFlightNumber}`
-                                      : ""
-                                  }`
-                                : "Guaranteed Group Flight Block"}
-                            </span>
-                            {primaryBatch.baggageAllowance && (
-                              <span className="text-[10px] text-muted-foreground font-medium">
-                                Baggage: {primaryBatch.baggageAllowance}
-                              </span>
+                            {pkg.airline && (
+                              <div className="absolute right-3 bottom-3 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-sidebar/90 px-2.5 py-1 text-xs font-semibold text-white">
+                                <Plane
+                                  className="size-3 text-gold"
+                                  aria-hidden="true"
+                                />
+                                <span>
+                                  {pkg.airline.iataCode || pkg.airline.name}
+                                </span>
+                              </div>
                             )}
                           </div>
-                          {primaryBatch.flightScheduleSummary && (
-                            <p className="text-[11px] text-muted-foreground">
-                              {primaryBatch.flightScheduleSummary}
-                            </p>
-                          )}
-                          {primaryBatch.routingNote && (
-                            <p className="text-[10px] text-muted-foreground/80 italic">
-                              {primaryBatch.routingNote}
-                            </p>
-                          )}
-                        </div>
-                      )}
 
-                    {pkg.giftedInclusions && pkg.giftedInclusions.length > 0 && (
-                      <div className="rounded-xl border border-amber-300/40 bg-amber-50/40 p-3 text-xs flex flex-col gap-1.5">
-                        <span className="flex items-center gap-1.5 font-bold text-amber-900 text-[11px] uppercase tracking-wider">
-                          <Sparkles className="size-3 text-gold" />
-                          Al Ramlah Gifted Privileges &amp; Umrah Kit:
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {pkg.giftedInclusions.map((gift, idx) => (
-                            <span
-                              key={idx}
-                              className="rounded-md bg-white border border-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-950"
-                            >
-                              ★ {gift}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Multi-Hotel Options (`OD-09b`: 0-tier renders "On Request", never "PKR 0") */}
-                    {pkg.multiHotelOptions &&
-                      pkg.multiHotelOptions.length > 0 && (
-                        <div className="flex flex-col gap-1.5">
-                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            Selectable Hotel Tier Options (Choose in Booking Modal):
-                          </span>
-                          <div className="flex flex-col gap-1.5">
-                            {pkg.multiHotelOptions.map((opt, i) => {
-                              const positivePrices = [
-                                opt.sharingPricePkr,
-                                opt.quadPricePkr,
-                                opt.triplePricePkr,
-                                opt.doublePricePkr,
-                              ].filter(
-                                (n): n is number =>
-                                  typeof n === "number" && n > 0
-                              )
-                              const lowestPositive =
-                                positivePrices.length > 0
-                                  ? Math.min(...positivePrices)
-                                  : 0
-                              return (
-                                <div
-                                  key={opt.pkgCode || i}
-                                  className="flex items-center justify-between rounded-lg border border-border/60 bg-card p-2 text-xs gap-2"
+                          {/* Clean Card Body on Pure Alabaster */}
+                          <div className="flex flex-1 flex-col gap-3 p-4">
+                            <div className="flex flex-col gap-1.5">
+                              <h3 className="min-h-[3.125rem] line-clamp-2 font-display text-lg font-bold leading-snug text-foreground">
+                                <Link
+                                  href={packageHref}
+                                  className="inline-block min-h-6 rounded-sm transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                 >
-                                  <div>
-                                    <span className="font-bold text-foreground">
-                                      {opt.label}
+                                  {pkg.title}
+                                </Link>
+                              </h3>
+
+                              {primaryBatch && (
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                  <div className="flex flex-wrap items-center gap-1.5 text-muted-foreground">
+                                    <Calendar
+                                      className="size-3.5 shrink-0 text-gold-text"
+                                      aria-hidden="true"
+                                    />
+                                    <span>
+                                      Batch{" "}
+                                      <span className="font-mono font-semibold tabular-nums text-foreground">
+                                        {primaryBatch.batchCode}
+                                      </span>
+                                      {primaryBatch.departureCity
+                                        ? ` from ${primaryBatch.departureCity.airportCode}`
+                                        : ""}
                                     </span>
-                                    <span className="block text-[10px] text-muted-foreground">
-                                      {opt.makkahHotelName} ({opt.makkahDistance}) ·{" "}
-                                      {opt.madinahHotelName} ({opt.madinahDistance})
+                                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                                      ({primaryBatch.departureDate})
                                     </span>
                                   </div>
-                                  <span className="font-mono tabular-nums text-xs font-bold text-emerald-800 shrink-0">
-                                    {opt.quadPricePkr > 0
-                                      ? `From ${formatPkr(opt.quadPricePkr)}`
-                                      : lowestPositive > 0
-                                        ? `From ${formatPkr(lowestPositive)}`
-                                        : "On Request"}
+
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
+                                      remainingSeats <= 5
+                                        ? "bg-destructive/10 text-destructive"
+                                        : remainingSeats <= 10
+                                          ? "bg-accent text-gold-text"
+                                          : "bg-secondary text-primary"
+                                    }`}
+                                  >
+                                    {remainingSeats} seats left
                                   </span>
                                 </div>
-                              )
-                            })}
+                              )}
+                            </div>
+
+                            {/* Compact 2-Row Makkah & Madinah Hotel Proximity + Flight Line */}
+                            {(pkg.makkahHotel ||
+                              pkg.madinahHotel ||
+                              primaryBatch?.outboundFlightNumber ||
+                              pkg.airline) && (
+                              <div className="flex flex-col gap-1.5 rounded-xl border border-border/80 bg-background px-3 py-2 text-xs">
+                                {pkg.makkahHotel && (
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex min-w-0 items-center gap-1.5">
+                                      <Link
+                                        href="/hotels/makkah"
+                                        className="inline-flex min-h-6 shrink-0 items-center gap-1 rounded-sm font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                                      >
+                                        <Building2
+                                          className="size-3"
+                                          aria-hidden="true"
+                                        />
+                                        <span>Makkah</span>
+                                      </Link>
+                                      <span className="truncate font-medium text-foreground">
+                                        {pkg.makkahHotel.name}
+                                      </span>
+                                    </div>
+                                    <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[11px] font-medium tabular-nums text-muted-foreground">
+                                      <Footprints
+                                        className="size-3 text-primary"
+                                        aria-hidden="true"
+                                      />
+                                      {pkg.makkahHotel.distanceMeters > 0
+                                        ? `${pkg.makkahHotel.distanceMeters}m`
+                                        : pkg.makkahHotel.distanceLabel}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {pkg.madinahHotel && (
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex min-w-0 items-center gap-1.5">
+                                      <Link
+                                        href="/hotels/madinah"
+                                        className="inline-flex min-h-6 shrink-0 items-center gap-1 rounded-sm font-semibold text-gold-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                                      >
+                                        <Building2
+                                          className="size-3"
+                                          aria-hidden="true"
+                                        />
+                                        <span>Madinah</span>
+                                      </Link>
+                                      <span className="truncate font-medium text-foreground">
+                                        {pkg.madinahHotel.name}
+                                      </span>
+                                    </div>
+                                    <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[11px] font-medium tabular-nums text-muted-foreground">
+                                      <Footprints
+                                        className="size-3 text-gold-text"
+                                        aria-hidden="true"
+                                      />
+                                      {pkg.madinahHotel.distanceMeters > 0
+                                        ? `${pkg.madinahHotel.distanceMeters}m`
+                                        : pkg.madinahHotel.distanceLabel}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {(primaryBatch?.outboundFlightNumber ||
+                                  pkg.airline) && (
+                                  <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-1 text-[11px] text-muted-foreground">
+                                    <span className="inline-flex min-w-0 items-center gap-1.5 truncate">
+                                      <Plane
+                                        className="size-3 shrink-0 text-gold-text"
+                                        aria-hidden="true"
+                                      />
+                                      <span className="truncate font-medium text-foreground">
+                                        {primaryBatch?.outboundFlightNumber
+                                          ? `${primaryBatch.outboundFlightNumber}${
+                                              primaryBatch.returnFlightNumber
+                                                ? ` / ${primaryBatch.returnFlightNumber}`
+                                                : ""
+                                            }`
+                                          : pkg.airline?.name ??
+                                            "Confirmed Group Flight"}
+                                      </span>
+                                    </span>
+                                    {primaryBatch?.baggageAllowance && (
+                                      <span className="shrink-0 font-mono tabular-nums">
+                                        {primaryBatch.baggageAllowance}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Compact Multi-Hotel Tiers Summary Pill (replaces 4 stacked sub-cards) */}
+                            {pkg.multiHotelOptions &&
+                              pkg.multiHotelOptions.length > 0 && (
+                                <div className="flex items-center justify-between gap-2 rounded-lg border border-gold-border/65 bg-accent/60 px-2.5 py-1.5 text-xs">
+                                  <span className="font-semibold text-primary">
+                                    {pkg.multiHotelOptions.length} Selectable
+                                    Hotel{" "}
+                                    {pkg.multiHotelOptions.length === 1
+                                      ? "Tier"
+                                      : "Tiers"}
+                                  </span>
+                                  {lowestOptionPrice > 0 ? (
+                                    <span className="shrink-0 font-semibold text-primary">
+                                      From{" "}
+                                      <span className="font-mono font-bold tabular-nums">
+                                        {formatPkr(lowestOptionPrice)}
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span className="shrink-0 font-semibold text-muted-foreground">
+                                      On Request
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                            {/* 4-Column Tabular PKR Rate Strip (`CONST-DOM-03`: 0 renders "On Request") */}
+                            <div className="mt-auto flex flex-col gap-1">
+                              <div className="grid grid-cols-2 gap-1.5 text-center sm:grid-cols-4">
+                                {rateCells.map((cell) => {
+                                  const hasPrice =
+                                    typeof cell.val === "number" && cell.val > 0
+                                  return (
+                                    <div
+                                      key={cell.label}
+                                      className="rounded-lg border border-border/75 bg-secondary/65 px-1.5 py-1.5"
+                                    >
+                                      <span className="block text-[11px] font-medium text-muted-foreground">
+                                        {cell.label}
+                                      </span>
+                                      {hasPrice ? (
+                                        <span className="font-mono text-xs font-bold tabular-nums text-foreground">
+                                          {formatPkr(cell.val!)}
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs font-semibold text-muted-foreground">
+                                          On Request
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+
+                              {pkg.infantPricePkr !== undefined &&
+                                pkg.infantPricePkr > 0 && (
+                                  <p className="text-right text-[11px] text-muted-foreground">
+                                    Infants (&lt;2 yrs):{" "}
+                                    <span className="font-mono font-semibold tabular-nums text-foreground">
+                                      {formatPkr(pkg.infantPricePkr)}
+                                    </span>{" "}
+                                    (Visa &amp; Ticket, 0 Beds)
+                                  </p>
+                                )}
+                            </div>
                           </div>
                         </div>
-                      )}
 
-                    {primaryBatch && (
-                      <div className="rounded-xl border border-border bg-card p-3 flex flex-col gap-2">
-                        <div className="flex items-center justify-between text-xs font-medium">
-                          <span className="text-muted-foreground">
-                            Batch {primaryBatch.batchCode} Availability:
-                          </span>
-                          <span
-                            className={`font-semibold tabular-nums ${
-                              remainingSeats <= 5
-                                ? "text-red-700 font-bold"
-                                : remainingSeats <= 10
-                                  ? "text-amber-700"
-                                  : "text-emerald-700"
-                            }`}
+                        {/* Aligned 2-Button Card Footer (Base UI `render` prop, zero `asChild`) */}
+                        <div className="flex items-center gap-2 border-t border-border bg-secondary/40 px-4 py-3">
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setModalTarget({
+                                pkg,
+                                selectedBatchId: primaryBatch?.id,
+                              })
+                              setModalOpen(true)
+                            }}
+                            className="min-h-11 flex-1 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 sm:text-sm"
                           >
-                            {remainingSeats} seats remaining
-                          </span>
-                        </div>
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                          <div
-                            className={`h-full transition-all duration-300 ${
-                              occupancyPct >= 100
-                                ? "bg-red-600"
-                                : occupancyPct >= 80
-                                  ? "bg-amber-500"
-                                  : "bg-emerald-600"
-                            }`}
-                            style={{ width: `${occupancyPct}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Per-Person Pricing Matrix (4 Tiers — `OD-09b` 0 = "On Request") */}
-                    <div className="flex flex-col gap-1.5">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                        <div className="rounded-xl border border-border/80 bg-muted/15 p-2">
-                          <span className="block text-[10px] font-medium text-muted-foreground uppercase">
-                            Sharing Bed
-                          </span>
-                          <span className="font-mono text-xs sm:text-sm font-extrabold text-foreground tabular-nums">
-                            {formatTierPriceOrOnRequest(effectiveSharingPrice)}
-                          </span>
-                        </div>
-                        <div className="rounded-xl border border-border/80 bg-muted/15 p-2">
-                          <span className="block text-[10px] font-medium text-muted-foreground uppercase">
-                            Quad (4-Bed)
-                          </span>
-                          <span className="font-mono text-xs sm:text-sm font-extrabold text-foreground tabular-nums">
-                            {formatTierPriceOrOnRequest(effectiveQuadPrice)}
-                          </span>
-                        </div>
-                        <div className="rounded-xl border border-border/80 bg-muted/15 p-2">
-                          <span className="block text-[10px] font-medium text-muted-foreground uppercase">
-                            Triple (3-Bed)
-                          </span>
-                          <span className="font-mono text-xs sm:text-sm font-extrabold text-foreground tabular-nums">
-                            {formatTierPriceOrOnRequest(effectiveTriplePrice)}
-                          </span>
-                        </div>
-                        <div className="rounded-xl border border-border/80 bg-muted/15 p-2">
-                          <span className="block text-[10px] font-medium text-muted-foreground uppercase">
-                            Double (2-Bed)
-                          </span>
-                          <span className="font-mono text-xs sm:text-sm font-extrabold text-foreground tabular-nums">
-                            {formatTierPriceOrOnRequest(effectiveDoublePrice)}
-                          </span>
+                            Book Package Seats
+                          </Button>
+                          <Button
+                            variant="outline"
+                            nativeButton={false}
+                            render={<Link href={packageHref} />}
+                            className="min-h-11 border-border bg-background px-3 text-xs font-semibold text-foreground hover:border-gold-border hover:bg-secondary"
+                          >
+                            <span>Itinerary &amp; Dates</span>
+                            <ArrowRight
+                              data-icon="inline-end"
+                              className="text-gold-text"
+                              aria-hidden="true"
+                            />
+                          </Button>
                         </div>
                       </div>
-                      {pkg.infantPricePkr !== undefined &&
-                        pkg.infantPricePkr > 0 && (
-                          <div className="text-right text-[10px] text-muted-foreground tabular-nums">
-                            Infants (&lt;2 yrs):{" "}
-                            <strong className="text-foreground">
-                              {formatPkr(pkg.infantPricePkr)}
-                            </strong>{" "}
-                            (Includes Umrah Visa &amp; Air Ticket; 0 Beds/Seats)
-                          </div>
-                        )}
                     </div>
-                  </div>
-                </div>
-
-                {/* Card Footer CTA */}
-                <div className="border-t border-border p-4 bg-muted/10 flex flex-col gap-2.5 sm:flex-row sm:items-center">
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      setModalTarget({
-                        pkg,
-                        selectedBatchId: primaryBatch?.id,
-                      })
-                      setModalOpen(true)
-                    }}
-                    className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs sm:text-sm"
-                  >
-                    Book Package Seats
-                  </Button>
-                  <Link
-                    href={packageHref}
-                    className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-gold hover:text-primary"
-                  >
-                    <span>View Full Itinerary &amp; Dates</span>
-                    <ArrowRight className="size-3.5 text-gold-text" />
-                  </Link>
-                </div>
+                  )
+                })}
               </div>
-            )
-          })}
-        </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {modalTarget && (

@@ -1,7 +1,7 @@
 # 0003. Design system & UI foundation
 
 **Date**: 2026-10-17
-**Status**: Proposed
+**Status**: Accepted (Implemented)
 
 ## Summary
 
@@ -208,7 +208,7 @@ No new external environment variables or third-party API keys are required for t
 
 ## Build plan
 
-1. Define the complete Haramain Luxury design token palette, CSS variables, and typography rules in `c:\dev\al-ramlah-travels\design.md`, satisfies **AC-1**, **AC-3**, **AC-4**.
+1. Define the complete Haramain Luxury design token palette, CSS variables, and typography rules in `web/DESIGN.md` (and root mirror `DESIGN.md`; originally drafted as `design.md`), satisfies **AC-1**, **AC-3**, **AC-4**.
 2. Replace `app/globals.css` theme variables with the single luxury palette (Deep Haramain Emerald, Metallic Gold, Warm Ivory, Alabaster White, Sand hairline borders, semantic status colors) and remove dark mode selectors, satisfies **AC-1**, **AC-2**, **AC-4**.
 3. Configure `next/font/google` in `app/layout.tsx` for `Plus Jakarta Sans`, `Playfair Display`, `JetBrains Mono`, and `Amiri`, and remove legacy `ThemeProvider`, satisfies **AC-2**, **AC-3**.
 4. Build the Public Shell architecture in `app/(public)/layout.tsx` with top utility strip, sticky glassmorphic header, rich footer with trust badges, and floating WhatsApp concierge action, satisfies **AC-5**, **AC-8**.

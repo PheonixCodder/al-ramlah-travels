@@ -18,16 +18,18 @@ export interface BreadcrumbEntry {
 
 export interface PublicBreadcrumbsProps {
   items: ReadonlyArray<BreadcrumbEntry>
+  tone?: "light" | "dark"
   className?: string
 }
 
 /**
- * Shared accessible breadcrumb trail + Schema.org `BreadcrumbList` JSON-LD (`SEO-001`, `S09-005`).
- * Built strictly on `@base-ui/react` (`render` prop via `components/ui/breadcrumb.tsx` — zero `asChild`)
- * with Haramain luxury light-theme WCAG 2.2 AA contrast tokens (`#0A3622` / `#7A5C1E` / `#4A5248`).
+ * Shared accessible breadcrumb trail and Schema.org `BreadcrumbList` JSON-LD (`SEO-001`, `Spec 0027`).
+ * Built strictly on `@base-ui/react` (`render` prop via `components/ui/breadcrumb.tsx`)
+ * with semantic Haramain tokens and WCAG 2.2 AA contrast on both light ivory and dark emerald surfaces.
  */
 export function PublicBreadcrumbs({
   items,
+  tone = "light",
   className,
 }: PublicBreadcrumbsProps): React.ReactElement | null {
   const cleaned = items.filter(
@@ -42,31 +44,50 @@ export function PublicBreadcrumbs({
       ? [...cleaned]
       : [{ label: "Home", href: "/" }, ...cleaned]
 
+  const isDark = tone === "dark"
+
   return (
     <div className={cn("w-full", className)}>
       <JsonLd data={buildBreadcrumbJsonLd(normalizedTrail)} />
       <Breadcrumb>
-        <BreadcrumbList className="text-xs sm:text-sm text-[#4A5248]">
+        <BreadcrumbList
+          className={cn(
+            "text-xs sm:text-sm",
+            isDark ? "text-sidebar-foreground/80" : "text-muted-foreground"
+          )}
+        >
           {normalizedTrail.map((entry, idx) => {
             const isLast = idx === normalizedTrail.length - 1
             return (
               <React.Fragment key={`${entry.href}-${entry.label}`}>
                 <BreadcrumbItem>
                   {isLast ? (
-                    <BreadcrumbPage className="font-medium text-[#0A3622]">
+                    <BreadcrumbPage
+                      className={cn(
+                        "font-medium",
+                        isDark ? "text-gold" : "text-primary"
+                      )}
+                    >
                       {entry.label}
                     </BreadcrumbPage>
                   ) : (
                     <BreadcrumbLink
                       render={<Link href={entry.href} />}
-                      className="text-[#4A5248] transition-colors hover:text-[#0A3622] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7A5C1E]"
+                      className={cn(
+                        "inline-flex min-h-6 items-center rounded-sm transition-colors motion-reduce:transition-none hover:underline focus-visible:outline-2 focus-visible:outline-offset-2",
+                        isDark
+                          ? "text-sidebar-foreground/80 hover:text-white focus-visible:outline-gold"
+                          : "text-muted-foreground hover:text-primary focus-visible:outline-primary"
+                      )}
                     >
                       {entry.label}
                     </BreadcrumbLink>
                   )}
                 </BreadcrumbItem>
                 {!isLast ? (
-                  <BreadcrumbSeparator className="text-[#7A5C1E]" />
+                  <BreadcrumbSeparator
+                    className={isDark ? "text-gold/75" : "text-gold-text"}
+                  />
                 ) : null}
               </React.Fragment>
             )

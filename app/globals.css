@@ -1,3 +1,4 @@
+/* Hallmark · Al Ramlah Travels — Sacred Haramain Luxury */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -130,11 +131,27 @@
   --chart-5: oklch(0.42 0.025 150);
 
   --radius: 0.625rem;
+
+  /* Haramain Pattern & Metallic Gold Gradient Stops */
+  --haramain-pattern-gold: oklch(0.72 0.12 85 / 0.12);
+  --haramain-pattern-emerald: oklch(0.26 0.08 155 / 0.08);
+  --haramain-pattern-dark-gold: oklch(0.72 0.12 85 / 0.14);
+  --gold-gradient-bright: #d4af37;
+  --gold-gradient-sheen: #f5e6c8;
+  --gold-gradient-deep: #aa771c;
+  --gold-gradient-base: #c5a059;
+  --gold-gradient-warm: #ecd9b0;
+  --gold-gradient-bronze: #8f6e2a;
+  --gold-gradient-ivory: #f5efe6;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
   body {
     @apply bg-background text-foreground antialiased;
@@ -148,30 +165,30 @@
 
 /* Islamic Geometric Watermark Utilities */
 .bg-haramain-pattern {
-  background-image: radial-gradient(circle at center, oklch(0.72 0.12 85 / 0.12) 1.5px, transparent 1.5px),
-                    radial-gradient(circle at center, oklch(0.26 0.08 155 / 0.08) 1.5px, transparent 1.5px);
+  background-image: radial-gradient(circle at center, var(--haramain-pattern-gold) 1.5px, transparent 1.5px),
+                    radial-gradient(circle at center, var(--haramain-pattern-emerald) 1.5px, transparent 1.5px);
   background-size: 24px 24px;
   background-position: 0 0, 12px 12px;
 }
 
 .bg-haramain-dark-pattern {
-  background-image: radial-gradient(circle at center, oklch(0.72 0.12 85 / 0.14) 1.5px, transparent 1.5px);
+  background-image: radial-gradient(circle at center, var(--haramain-pattern-dark-gold) 1.5px, transparent 1.5px);
   background-size: 28px 28px;
 }
 
 /* Metallic Gold Gradients */
 .text-gold-gradient {
-  background: linear-gradient(135deg, #d4af37 0%, #f5e6c8 45%, #aa771c 100%);
+  background: linear-gradient(135deg, var(--gold-gradient-bright) 0%, var(--gold-gradient-sheen) 45%, var(--gold-gradient-deep) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .bg-gold-gradient {
-  background: linear-gradient(135deg, #c5a059 0%, #ecd9b0 50%, #8f6e2a 100%);
+  background: linear-gradient(135deg, var(--gold-gradient-base) 0%, var(--gold-gradient-warm) 50%, var(--gold-gradient-bronze) 100%);
 }
 
 .border-gold-gradient {
-  border-image: linear-gradient(to right, #c5a059, #f5efe6, #c5a059) 1;
+  border-image: linear-gradient(to right, var(--gold-gradient-base), var(--gold-gradient-ivory), var(--gold-gradient-base)) 1;
 }
 
 /* Monospace & Tabular Number Alignments (mandatory for PKR/SAR prices, refs, dates & SLA timers) */
@@ -190,4 +207,23 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Horizontal Clip Guard & Lenis Smooth Scroll Containment (`Spec 0026`) */
+html,
+body {
+  overflow-x: clip;
+}
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: clip;
 }

@@ -1,9 +1,10 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { FileText, Scale } from "lucide-react"
-import { PublicBreadcrumbs } from "@/components/layout/breadcrumbs"
+import { Scale } from "lucide-react"
+import { PublicPageHero } from "@/components/public/public-page-hero"
 import { TrustLegalCrosslinks } from "@/components/seo/trust-legal-crosslinks"
 import { toTelHref } from "@/lib/company-info"
+import { LIVE_RATE_CONFIRMATION_LABEL } from "@/lib/constants/brand"
 import { JsonLd, ORGANIZATION_JSONLD_ID } from "@/lib/seo/json-ld"
 import { buildPublicMetadata, CANONICAL_ORIGIN } from "@/lib/seo/metadata"
 import { getCachedCompanyInfo } from "@/lib/seo/public-queries"
@@ -36,93 +37,100 @@ export default async function TermsPage() {
   }
 
   return (
-    <div className="bg-[#FAF7F0] min-h-screen py-14 sm:py-20">
+    <div className="min-h-screen bg-background">
       <JsonLd data={termsWebPageJsonLd} />
 
-      <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-        <PublicBreadcrumbs
-          items={[{ label: "Terms of Service", href: "/terms" }]}
-          className="mb-8"
-        />
+      <PublicPageHero
+        variant="read"
+        breadcrumbs={[{ label: "Terms of Service", href: "/terms" }]}
+        title="Terms of Service & Pilgrimage Booking Conditions"
+        description={
+          <>
+            Issued by{" "}
+            <strong className="text-foreground">{legalEntityName}</strong>{" "}
+            &middot; Verified Pilgrimage Operations (2026 to 2027)
+          </>
+        }
+      />
 
-        <article className="rounded-3xl border border-[#E6DEC8] bg-white p-8 sm:p-12 shadow-sm space-y-10">
-          <header className="space-y-3 border-b border-[#E6DEC8] pb-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#7A5C1E]/40 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
-              <FileText className="size-3.5 text-[#7A5C1E]" />
-              <span>Pilgrimage Booking Agreement &amp; Conditions</span>
-            </div>
-            <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#0A3622]">
-              Terms of Service &amp; Pilgrimage Booking Conditions
-            </h1>
-            <p className="text-xs sm:text-sm text-[#4A5048]">
-              Issued by <strong>{legalEntityName}</strong> &middot; Verified
-              Pilgrimage Operations (2026–2027)
-            </p>
-          </header>
-
-          <div className="space-y-8 text-sm leading-relaxed text-[#1A1D1A]">
-            <section className="space-y-2.5">
-              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+      <div className="mx-auto flex max-w-4xl flex-col gap-10 px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+        <article className="flex flex-col gap-8 rounded-3xl border border-border bg-card p-8 shadow-xs sm:p-12">
+          <div className="flex flex-col gap-8 text-sm leading-relaxed text-foreground">
+            <section className="flex flex-col gap-2.5">
+              <h2 className="font-display text-xl font-bold text-primary">
                 1. Scope of Agency Services
               </h2>
-              <p className="text-[#4A5048]">
-                {legalEntityName} coordinates Umrah visa processing, international
-                return airfare, Makkah and Madinah hotel accommodations, Kingdom
-                ground transport, guided historical Ziyarat excursions, and
-                Indicative Hajj 2027 pre-registration advisory services subject to
-                the regulations of the Government of Pakistan and the Kingdom of
-                Saudi Arabia Ministry of Hajj &amp; Umrah.
+              <p className="text-muted-foreground">
+                {legalEntityName} coordinates Umrah visa processing,
+                international return airfare, Makkah and Madinah hotel
+                accommodations, Kingdom ground transport, guided historical
+                Ziyarat excursions, and Indicative Hajj 2027 pre-registration
+                advisory services subject to the regulations of the Government
+                of Pakistan and the Kingdom of Saudi Arabia Ministry of Hajj
+                &amp; Umrah.
               </p>
             </section>
 
-            <section className="space-y-2.5">
-              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+            <section className="flex flex-col gap-2.5">
+              <h2 className="font-display text-xl font-bold text-primary">
                 2. Visa Tier Calculation, Live Quotations &amp; Payment Locking
               </h2>
-              <ul className="list-disc pl-5 space-y-1.5 text-[#4A5048]">
+              <ul className="flex list-disc flex-col gap-1.5 pl-5 text-muted-foreground">
                 <li>
-                  <strong>Server-Calculated Visa Tiers:</strong> Umrah visa duration
-                  tiers (<code className="font-mono">Short-Term &le;30 days</code>{" "}
-                  vs. <code className="font-mono">Long-Term &gt;30 days</code>) are
+                  <strong className="text-foreground">
+                    Server-Calculated Visa Tiers:
+                  </strong>{" "}
+                  Umrah visa duration tiers (
+                  <code className="font-mono">Short-Term &le;30 days</code> vs.{" "}
+                  <code className="font-mono">Long-Term &gt;30 days</code>) are
                   automatically calculated from your KSA arrival and departure
                   dates.
                 </li>
                 <li>
-                  <strong>Live Rate Confirmation:</strong> Only standalone{" "}
-                  <strong>Visa-Only</strong> bookings display an immediate fixed PKR
-                  rate. Whenever volatile services (Flights, Haramain Hotels, Ground
-                  Transport, or Ziyarat) are included, rates remain{" "}
-                  <em>&ldquo;Live Rate &mdash; Confirmed upon submission&rdquo;</em>{" "}
-                  until an official numbered quotation is issued by our quoting desk
-                  and accepted with verified deposit payment within its stated{" "}
+                  <strong className="text-foreground">
+                    Live Rate Confirmation:
+                  </strong>{" "}
+                  Only standalone <strong>Visa-Only</strong> bookings display an
+                  immediate fixed PKR rate. Whenever volatile services (Flights,
+                  Haramain Hotels, Ground Transport, or Ziyarat) are included,
+                  rates remain{" "}
+                  <em>&ldquo;{LIVE_RATE_CONFIRMATION_LABEL}&rdquo;</em> until an
+                  official numbered quotation is issued by our quoting desk and
+                  accepted with verified deposit payment within its stated{" "}
                   <code className="font-mono">validUntil</code> window.
                 </li>
                 <li>
-                  <strong>Seat &amp; Voucher Release:</strong> Submitting a web
-                  inquiry soft-registers your request without deducting confirmed
-                  aircraft inventory; official confirmation vouchers unlock strictly
-                  after quotation approval and verified deposit or full payment
-                  receipt.
+                  <strong className="text-foreground">
+                    Seat &amp; Voucher Release:
+                  </strong>{" "}
+                  Submitting a web inquiry soft-registers your request without
+                  deducting confirmed aircraft inventory; official confirmation
+                  vouchers are issued strictly after quotation approval and
+                  verified deposit or full payment receipt.
                 </li>
               </ul>
             </section>
 
-            <section className="space-y-2.5">
-              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+            <section className="flex flex-col gap-2.5">
+              <h2 className="font-display text-xl font-bold text-primary">
                 3. Airport Routing, Bed &amp; Vehicle Capacity Rules
               </h2>
-              <ul className="list-disc pl-5 space-y-1.5 text-[#4A5048]">
+              <ul className="flex list-disc flex-col gap-1.5 pl-5 text-muted-foreground">
                 <li>
-                  <strong>Makkah Entry Routing:</strong> Makkah has no civilian
-                  airport; all itineraries commencing in Makkah route inbound
-                  flights into King Abdulaziz International Airport, Jeddah (
-                  <code className="font-mono">JED</code>) with onward ground transit
-                  to Makkah.
+                  <strong className="text-foreground">
+                    Makkah Entry Routing:
+                  </strong>{" "}
+                  Makkah has no civilian airport; all itineraries commencing in
+                  Makkah route inbound flights into King Abdulaziz International
+                  Airport, Jeddah (<code className="font-mono">JED</code>) with
+                  onward ground transit to Makkah.
                 </li>
                 <li>
-                  <strong>Passenger &amp; Infant Capacities:</strong> Hotel bed
-                  allocations and vehicle seat capacities count{" "}
-                  <strong>Adults + Children (2–11 yrs)</strong>.{" "}
+                  <strong className="text-foreground">
+                    Passenger &amp; Infant Capacities:
+                  </strong>{" "}
+                  Hotel bed allocations and vehicle seat capacities count{" "}
+                  <strong>Adults + Children (2 to 11 yrs)</strong>.{" "}
                   <strong>Infants (&lt;2 yrs)</strong> require a valid passport,
                   Umrah visa, and airline lap-infant ticket, and occupy{" "}
                   <strong className="tabular-nums">0</strong> hotel beds and{" "}
@@ -131,32 +139,33 @@ export default async function TermsPage() {
               </ul>
             </section>
 
-            <section className="space-y-2.5">
-              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+            <section className="flex flex-col gap-2.5">
+              <h2 className="font-display text-xl font-bold text-primary">
                 4. Passport Validity &amp; Saudi Immigration Compliance
               </h2>
-              <p className="text-[#4A5048]">
-                Pilgrims must hold a machine-readable passport valid for at least{" "}
-                <strong>6 months</strong> beyond KSA entry (or through December 2027
-                for Hajj 2027 pre-registration), valid NADRA CNIC / B-Form, and
-                required vaccination certificates. Visa issuance, border entry, and
-                Rawdah / Nusuk permit slots remain at the sovereign discretion of
-                Saudi authorities.
+              <p className="text-muted-foreground">
+                Pilgrims must hold a machine-readable passport valid for at
+                least <strong>6 months</strong> beyond KSA entry (or through
+                December 2027 for Hajj 2027 pre-registration), valid NADRA CNIC
+                / B-Form, and required vaccination certificates. Visa issuance,
+                border entry, and Rawdah / Nusuk permit slots remain at the
+                sovereign discretion of Saudi authorities.
               </p>
             </section>
 
-            <section className="space-y-2.5">
-              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+            <section className="flex flex-col gap-2.5">
+              <h2 className="font-display text-xl font-bold text-primary">
                 5. Non-Refundable Visas, Airlines &amp; Cancellation Schedule
               </h2>
-              <p className="text-[#4A5048]">
-                Transmitted Saudi MOFA/Nusuk/Masar visa fees and group block airline
-                seats are <strong>100% non-refundable</strong>. Hotel and ground
-                service cancellations—including strict non-refundable blackout rules
-                during Ramadan, Last Ashra, and Hajj—are governed by our{" "}
+              <p className="text-muted-foreground">
+                Transmitted Saudi MOFA/Nusuk/Masar visa fees and group block
+                airline seats are <strong>100% non-refundable</strong>. Hotel
+                and ground service cancellations, including strict
+                non-refundable blackout rules during Ramadan, Last Ashra, and
+                Hajj, are governed by our{" "}
                 <Link
                   href="/refund-policy"
-                  className="inline-flex min-h-6 items-center font-bold text-[#0A3622] underline hover:text-[#7A5C1E]"
+                  className="inline-flex min-h-6 items-center font-bold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
                 >
                   Cancellation &amp; Refund Policy
                 </Link>
@@ -164,98 +173,124 @@ export default async function TermsPage() {
               </p>
             </section>
 
-            <section className="space-y-2.5">
-              <h2 className="font-display text-xl font-bold text-[#0A3622]">
+            <section className="flex flex-col gap-2.5">
+              <h2 className="font-display text-xl font-bold text-primary">
                 6. Indicative Hajj 2027 Pre-Registration Notice
               </h2>
-              <p className="text-[#4A5048]">
-                Published Hajj 2027 package tiers (Maktab A+, A, B, and C) represent
-                non-binding indicative pre-registration estimates based on prior
-                season benchmarks. Final Maktab allotments, flight schedules, SAR
-                exchange adjustments, Qurbani/train tariffs, and binding package
-                contracts take effect only upon official announcement by Pakistan&apos;s
-                Ministry of Religious Affairs (MoRA) and Saudi Nusuk authorities.
+              <p className="text-muted-foreground">
+                Published Hajj 2027 package tiers (Maktab A+, A, B, and C)
+                represent non-binding indicative pre-registration estimates
+                based on prior season benchmarks. Final Maktab allotments,
+                flight schedules, SAR exchange adjustments, Qurbani/train
+                tariffs, and binding package contracts take effect only upon
+                official announcement by Pakistan&apos;s Ministry of Religious
+                Affairs (MoRA) and Saudi Nusuk authorities.
               </p>
             </section>
 
-            <section className="space-y-3 rounded-2xl border border-[#7A5C1E]/35 bg-[#FAF7F0] p-6">
+            <section className="flex flex-col gap-4 border-t border-border pt-6">
               <div className="flex items-center gap-2">
-                <Scale className="size-5 text-[#7A5C1E]" />
-                <h2 className="font-display text-xl font-bold text-[#0A3622]">
+                <Scale className="size-5 text-gold-text" aria-hidden="true" />
+                <h2 className="font-display text-xl font-bold text-primary">
                   7. Governing Law, Lahore Jurisdiction &amp; Official Contact
                 </h2>
               </div>
-              <p className="text-[#4A5048]">
+              <p className="text-muted-foreground">
                 These Terms of Service are governed by the laws of the{" "}
-                <strong>Islamic Republic of Pakistan</strong>, alongside our{" "}
+                <strong className="text-foreground">
+                  Islamic Republic of Pakistan
+                </strong>
+                , alongside our{" "}
                 <Link
                   href="/privacy"
-                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                  className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
                 >
                   Privacy Policy &amp; Data Protection Notice
                 </Link>{" "}
                 and{" "}
                 <Link
                   href="/refund-policy"
-                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                  className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
                 >
                   Booking Cancellation &amp; Refund Policy
                 </Link>
                 , and operational answers in our{" "}
                 <Link
                   href="/faq"
-                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
+                  className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
                 >
                   Frequently Asked Questions
                 </Link>
-                . The <strong>competent courts at Lahore, Punjab</strong> shall
-                exercise exclusive jurisdiction over any dispute arising out of
-                or relating to bookings with {legalEntityName}.
+                . The{" "}
+                <strong className="text-foreground">
+                  competent courts at Lahore, Punjab
+                </strong>{" "}
+                shall exercise exclusive jurisdiction over any dispute arising
+                out of or relating to bookings with {legalEntityName}.
               </p>
-              <div tabIndex={0} className="overflow-x-auto rounded-xl border border-[#E6DEC8] bg-white">
-                <table className="w-full text-left text-xs border-collapse">
+              <div
+                tabIndex={0}
+                className="overflow-x-auto rounded-2xl border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <table className="w-full border-collapse text-left text-xs">
                   <caption className="sr-only">
                     Governing law, currency, and voucher release summary
                   </caption>
-                  <thead className="border-b border-[#E6DEC8] bg-[#FAF7F0] text-[#0A3622]">
+                  <thead className="border-b border-border bg-secondary text-primary">
                     <tr>
-                      <th scope="col" className="px-3 py-2 font-bold">Clause</th>
-                      <th scope="col" className="px-3 py-2 font-bold">Binding Condition</th>
+                      <th scope="col" className="px-3 py-2 font-bold">
+                        Clause
+                      </th>
+                      <th scope="col" className="px-3 py-2 font-bold">
+                        Binding Condition
+                      </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#E6DEC8] text-[#4A5048]">
+                  <tbody className="divide-y divide-border text-muted-foreground">
                     <tr>
-                      <td className="px-3 py-2 font-semibold text-[#1A1D1A]">Settlement Currency</td>
-                      <td className="px-3 py-2">100% Pakistani Rupees (PKR) via verified agency channels</td>
+                      <td className="px-3 py-2 font-semibold text-foreground">
+                        Settlement Currency
+                      </td>
+                      <td className="px-3 py-2">
+                        100% Pakistani Rupees (PKR) via verified agency channels
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-3 py-2 font-semibold text-[#1A1D1A]">Exclusive Jurisdiction</td>
-                      <td className="px-3 py-2">Competent courts at Lahore, Punjab, Pakistan</td>
+                      <td className="px-3 py-2 font-semibold text-foreground">
+                        Exclusive Jurisdiction
+                      </td>
+                      <td className="px-3 py-2">
+                        Competent courts at Lahore, Punjab, Pakistan
+                      </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
-              <div className="pt-1 text-xs sm:text-sm text-[#1A1D1A] space-y-1.5">
+              <div className="flex flex-col gap-1.5 pt-1 text-xs text-foreground sm:text-sm">
                 <p>
                   <strong>Headquarters:</strong> {legalEntityName},{" "}
                   {company.officeAddress}
                 </p>
-                <p className="tabular-nums">
-                  <strong>Direct Desk:</strong>{" "}
-                  <a
-                    href={primaryTelHref}
-                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
-                  >
-                    {company.hotlineDisplay}
-                  </a>{" "}
-                  &middot;{" "}
-                  <a
-                    href={`mailto:${company.supportEmail}`}
-                    className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline"
-                  >
-                    {company.supportEmail}
-                  </a>
-                </p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 tabular-nums">
+                  <span>
+                    <strong>Direct Desk:</strong>{" "}
+                    <a
+                      href={primaryTelHref}
+                      className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
+                    >
+                      {company.hotlineDisplay}
+                    </a>
+                  </span>
+                  <span>
+                    <strong>Email:</strong>{" "}
+                    <a
+                      href={`mailto:${company.supportEmail}`}
+                      className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
+                    >
+                      {company.supportEmail}
+                    </a>
+                  </span>
+                </div>
               </div>
             </section>
           </div>

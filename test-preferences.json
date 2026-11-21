@@ -1,0 +1,11 @@
+{
+  "tool": "vitest",
+  "gate": null,
+  "additionalTools": ["node:test"],
+  "e2eTool": "playwright",
+  "testDir": "tests",
+  "filePattern": "*.test.ts",
+  "packageManager": "npm",
+  "runCommand": "npm test",
+  "e2eCommand": "npm run test:e2e"
+}

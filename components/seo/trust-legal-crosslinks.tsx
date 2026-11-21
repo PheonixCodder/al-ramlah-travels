@@ -29,10 +29,10 @@ export function TrustLegalCrosslinks({
   return (
     <aside
       aria-label="Legal policies and pilgrimage planning links"
-      className="mt-10 rounded-3xl border border-[#E6DEC8] bg-white p-6 sm:p-8 shadow-xs space-y-5"
+      className="flex flex-col gap-5 rounded-3xl border border-border bg-card p-6 shadow-xs sm:p-8"
     >
-      <div className="space-y-2">
-        <h2 className="font-display text-lg font-bold text-[#0A3622]">
+      <div className="flex flex-col gap-2.5">
+        <h2 className="font-display text-lg font-bold text-primary">
           Official Legal &amp; Compliance Documents
         </h2>
         <div className="flex flex-wrap items-center gap-3">
@@ -45,8 +45,8 @@ export function TrustLegalCrosslinks({
                 aria-current={isActive ? "page" : undefined}
                 className={
                   isActive
-                    ? "inline-flex min-h-6 items-center rounded-full border border-[#0A3622] bg-[#0A3622] px-4 py-1.5 text-xs font-semibold text-white"
-                    : "inline-flex min-h-6 items-center rounded-full border border-[#E6DEC8] bg-[#FAF7F0] px-4 py-1.5 text-xs font-semibold text-[#0A3622] hover:border-[#7A5C1E] hover:text-[#7A5C1E] transition-colors"
+                    ? "inline-flex min-h-8 items-center rounded-full border border-primary bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
+                    : "inline-flex min-h-8 items-center rounded-full border border-border bg-secondary/55 px-4 py-1.5 text-xs font-semibold text-primary transition-colors hover:border-gold-border hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
                 }
               >
                 {item.label}
@@ -56,16 +56,16 @@ export function TrustLegalCrosslinks({
         </div>
       </div>
 
-      <div className="border-t border-[#E6DEC8] pt-4 space-y-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-[#7A5C1E] block">
+      <div className="flex flex-col gap-2 border-t border-border pt-4">
+        <p className="text-xs font-semibold text-gold-text">
           Explore Haramain Services &amp; Support
-        </span>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs sm:text-sm font-semibold">
+        </p>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-semibold sm:text-sm">
           {HUB_LINKS.map((hub) => (
             <Link
               key={hub.href}
               href={hub.href}
-              className="inline-flex min-h-6 items-center text-[#0A3622] underline decoration-[#7A5C1E]/60 underline-offset-4 hover:text-[#7A5C1E]"
+              className="inline-flex min-h-6 items-center text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
             >
               {hub.label}
             </Link>

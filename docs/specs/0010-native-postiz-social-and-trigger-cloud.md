@@ -1,7 +1,7 @@
 # 0010. Native Postiz Social Providers and Trigger dot dev Cloud Durable Workers
 
 **Date**: 2026-11-02
-**Status**: Approved (Implemented)
+**Status**: Accepted (Implemented)
 
 ## Summary
 

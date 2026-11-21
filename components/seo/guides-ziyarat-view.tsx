@@ -11,8 +11,8 @@ import {
   Sparkles,
   TrainFront,
 } from "lucide-react"
-import { PublicBreadcrumbs } from "@/components/layout/breadcrumbs"
 import { ArabicText } from "@/components/public/arabic-text"
+import { PublicPageHero } from "@/components/public/public-page-hero"
 import { toWaMeUrl } from "@/components/public/public-utils"
 import {
   buildZiyaratCollectionPageJsonLd,
@@ -21,6 +21,8 @@ import {
   INTERCITY_ZIYARAT_EXCURSIONS,
   ZIYARAT_CITY_SPOKE_CONFIGS,
   ZIYARAT_FLEET_CAPACITY_BANDS,
+  ZIYARAT_FLEET_HEADING,
+  ZIYARAT_HUB_FAQ_HEADING,
   ZIYARAT_HUB_FAQS,
   ZIYARAT_HUB_METADATA_SPEC,
   type ZiyaratSpokeCity,
@@ -31,7 +33,10 @@ import {
   toTelHref,
   type CompanyInfo,
 } from "@/lib/company-info"
-import { BRAND_ARABIC_NAME } from "@/lib/constants/brand"
+import {
+  BRAND_ARABIC_NAME,
+  LIVE_RATE_CONFIRMATION_LABEL,
+} from "@/lib/constants/brand"
 import {
   buildFaqPageJsonLd,
   buildTouristAttractionListJsonLd,
@@ -84,120 +89,96 @@ export function GuidesZiyaratHubView({
   const faqJsonLd = buildFaqPageJsonLd(ZIYARAT_HUB_FAQS)
 
   return (
-    <div className="bg-[#FAF7F0] text-[#1A241E]">
+    <div className="bg-background text-foreground">
       <JsonLd data={collectionJsonLd} />
       <JsonLd data={itemListJsonLd} />
       <JsonLd data={faqJsonLd} />
 
-      {/* Breadcrumbs */}
-      <div className="border-b border-[#E5DEC9] bg-[#F4EFE4]/80">
-        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
-          <PublicBreadcrumbs
-            items={[
-              { label: "Home", href: "/" },
-              { label: "Haramain Ziyarat Guide", href: "/ziyarat" },
-            ]}
-          />
-        </div>
-      </div>
-
-      {/* Hero & Answer-First Summary (<60 words) */}
-      <section className="relative overflow-hidden border-b border-[#C5A059]/30 bg-gradient-to-b from-[#062417] via-[#0A3622] to-[#082B1B] py-14 text-white sm:py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="max-w-4xl space-y-5">
-            <div className="inline-flex flex-wrap items-center gap-2.5 rounded-full border border-[#C5A059]/45 bg-black/30 px-4 py-1.5 text-xs font-semibold tracking-wide text-[#F5E6C8]">
-              <ArabicText className="text-base text-[#E6C77B]">
-                مَزَارَاتُ الْحَرَمَيْنِ الشَّرِيفَيْنِ
-              </ArabicText>
-              <span aria-hidden="true" className="text-white/40">
-                ·
-              </span>
-              <span className="uppercase">
-                Scholar-Guided Private &amp; Group Heritage Circuits
-              </span>
-            </div>
-
-            <h1 className="font-display text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl">
-              {ZIYARAT_HUB_METADATA_SPEC.h1}
-            </h1>
-
-            {/* Answer-first <60w summary (51 words) */}
-            <p className="max-w-3xl text-base leading-relaxed text-white/90 sm:text-lg">
-              Guided Haramain Ziyarat tours cover Makkah&apos;s revelation
-              mountains and Mashair plains, Madinah&apos;s Prophetic mosques and
-              Shuhada sites, plus intercity Badr and Taif heritage excursions.
-              Private air-conditioned Sedan, GMC Yukon, Staria, HiAce, and
-              Coaster vehicles are sized to your Adults + Children count with
-              Live Rates confirmed upon submission.
-            </p>
-
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <Link
-                href="/?ziyaratCity=both#journey-builder"
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#C5A059] px-5 py-2.5 text-sm font-bold text-[#062417] shadow-sm transition hover:bg-[#D4B36A]"
-              >
-                Plan Makkah &amp; Madinah Ziyarat
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </Link>
-              <Link
-                href="/ziyarat/makkah"
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20"
-              >
-                Makkah &amp; Taif Ziyarat
-              </Link>
-              <Link
-                href="/ziyarat/madinah"
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20"
-              >
-                Madinah &amp; Badr Ziyarat
-              </Link>
-              <a
-                href={whatsappHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#C5A059]/40 bg-black/25 px-4 py-2.5 text-sm font-semibold text-[#F5E6C8] transition hover:bg-black/40"
-              >
-                WhatsApp Ziyarat Desk
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
+      <PublicPageHero
+        variant="read"
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Haramain Ziyarat Guide", href: "/ziyarat" },
+        ]}
+        arabicInvocation="مَزَارَاتُ الْحَرَمَيْنِ الشَّرِيفَيْنِ"
+        title={ZIYARAT_HUB_METADATA_SPEC.h1}
+        description={
+          <>
+            Guided Haramain Ziyarat tours cover Makkah&apos;s revelation
+            mountains and Mashair plains, Madinah&apos;s Prophetic mosques and
+            Shuhada sites, plus intercity Badr and Taif heritage excursions.
+            Private air-conditioned Sedan, GMC Yukon, Staria, HiAce, and Coaster
+            vehicles are sized to your Adults + Children count with Live Rates
+            confirmed upon submission.
+          </>
+        }
+        actions={
+          <>
+            <Link
+              href="/?ziyaratCity=both#journey-builder"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
+            >
+              Plan Makkah &amp; Madinah Ziyarat
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+            <Link
+              href="/ziyarat/makkah"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
+            >
+              Makkah &amp; Taif Ziyarat
+            </Link>
+            <Link
+              href="/ziyarat/madinah"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
+            >
+              Madinah &amp; Badr Ziyarat
+            </Link>
+            <a
+              href={whatsappHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gold-border bg-secondary px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
+            >
+              WhatsApp Ziyarat Desk
+            </a>
+          </>
+        }
+      />
 
       {/* City Spoke Gateways & Live Sacred Landmarks Directory */}
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
           {/* Makkah Ziyarat Summary Card */}
-          <div className="flex flex-col justify-between rounded-3xl border border-[#DFD6C1] bg-white p-6 shadow-xs sm:p-8">
+          <div className="flex flex-col justify-between rounded-3xl border border-border bg-card p-6 shadow-xs sm:p-8">
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F4EFE4] px-3 py-1 text-xs font-bold text-gold-text">
-                  <MapPin className="size-3.5" aria-hidden="true" />
-                  <span className="font-mono tabular-nums">
-                    {makkahPlaces.length}
-                  </span>{" "}
-                  Core Landmarks + Taif
-                </span>
-                <ArabicText className="text-lg font-semibold text-[#0A3622]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="font-display text-2xl font-bold text-primary">
+                  Makkah al-Mukarramah &amp; Taif Ziyarat
+                </h2>
+                <ArabicText className="text-lg font-semibold text-primary">
                   مكة المكرمة
                 </ArabicText>
               </div>
-              <h2 className="font-display text-2xl font-bold text-[#0A3622]">
-                Makkah al-Mukarramah &amp; Taif Ziyarat
-              </h2>
-              <p className="text-sm leading-relaxed text-[#4A5248]">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-xs font-bold text-gold-text">
+                <MapPin className="size-3.5" aria-hidden="true" />
+                <span className="font-mono tabular-nums">
+                  {makkahPlaces.length}
+                </span>{" "}
+                Core Landmarks + Taif
+              </span>
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 Visit Jabal al-Nour, Ghar-e-Thawr, the Mashair plains of Mina,
                 Muzdalifah &amp; Arafat, Jannat al-Mu&apos;alla, Masjid Aisha
                 (At-Tan&apos;eem), and the mountain sanctuary of Taif via Qarn
                 al-Manazil Miqat.
               </p>
-              <ul className="divide-y divide-[#ECE5D5] rounded-2xl border border-[#ECE5D5] bg-[#FAF7F0]/70 px-4">
+              <ul className="divide-y divide-border rounded-2xl border border-border bg-background/70 px-4">
                 {makkahPlaces.map((place) => (
                   <li
                     key={place.id}
                     className="flex items-center justify-between gap-3 py-2.5 text-xs sm:text-sm"
                   >
-                    <span className="font-semibold text-[#0A3622]">
+                    <span className="font-semibold text-primary">
                       {place.name}
                     </span>
                     <ArabicText className="text-sm text-gold-text">
@@ -211,14 +192,14 @@ export function GuidesZiyaratHubView({
             <div className="mt-6 flex flex-wrap gap-2.5 pt-2">
               <Link
                 href="/ziyarat/makkah"
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-[#0A3622] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#0F5132]"
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
                 Open Makkah Ziyarat Guide
                 <ArrowRight className="size-3.5" aria-hidden="true" />
               </Link>
               <Link
                 href="/?ziyaratCity=makkah_only#journey-builder"
-                className="inline-flex min-h-10 items-center rounded-xl border border-[#C5A059]/60 bg-[#FAF7F0] px-4 py-2 text-xs font-semibold text-[#0A3622] transition hover:bg-[#F4EFE4]"
+                className="inline-flex min-h-10 items-center rounded-xl border border-gold-border bg-background px-4 py-2 text-xs font-semibold text-primary transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
                 Select Makkah Ziyarat in Planner
               </Link>
@@ -226,35 +207,35 @@ export function GuidesZiyaratHubView({
           </div>
 
           {/* Madinah Ziyarat Summary Card */}
-          <div className="flex flex-col justify-between rounded-3xl border border-[#DFD6C1] bg-white p-6 shadow-xs sm:p-8">
+          <div className="flex flex-col justify-between rounded-3xl border border-border bg-card p-6 shadow-xs sm:p-8">
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F4EFE4] px-3 py-1 text-xs font-bold text-gold-text">
-                  <MapPin className="size-3.5" aria-hidden="true" />
-                  <span className="font-mono tabular-nums">
-                    {madinahPlaces.length}
-                  </span>{" "}
-                  Core Landmarks + Badr
-                </span>
-                <ArabicText className="text-lg font-semibold text-[#0A3622]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="font-display text-2xl font-bold text-primary">
+                  Madinah al-Munawwarah &amp; Badr Ziyarat
+                </h2>
+                <ArabicText className="text-lg font-semibold text-primary">
                   المدينة المنورة
                 </ArabicText>
               </div>
-              <h2 className="font-display text-2xl font-bold text-[#0A3622]">
-                Madinah al-Munawwarah &amp; Badr Ziyarat
-              </h2>
-              <p className="text-sm leading-relaxed text-[#4A5248]">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-xs font-bold text-gold-text">
+                <MapPin className="size-3.5" aria-hidden="true" />
+                <span className="font-mono tabular-nums">
+                  {madinahPlaces.length}
+                </span>{" "}
+                Core Landmarks + Badr
+              </span>
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 Earn the Prophetic reward of two rak&apos;ahs at Masjid Quba,
                 greet the Shuhada at Mount Uhud, pray at Masjid al-Qiblatain and
                 Khandaq, visit Jannat al-Baqi, and add the Battlefield of Badr.
               </p>
-              <ul className="divide-y divide-[#ECE5D5] rounded-2xl border border-[#ECE5D5] bg-[#FAF7F0]/70 px-4">
+              <ul className="divide-y divide-border rounded-2xl border border-border bg-background/70 px-4">
                 {madinahPlaces.map((place) => (
                   <li
                     key={place.id}
                     className="flex items-center justify-between gap-3 py-2.5 text-xs sm:text-sm"
                   >
-                    <span className="font-semibold text-[#0A3622]">
+                    <span className="font-semibold text-primary">
                       {place.name}
                     </span>
                     <ArabicText className="text-sm text-gold-text">
@@ -268,14 +249,14 @@ export function GuidesZiyaratHubView({
             <div className="mt-6 flex flex-wrap gap-2.5 pt-2">
               <Link
                 href="/ziyarat/madinah"
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-[#0A3622] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#0F5132]"
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
                 Open Madinah Ziyarat Guide
                 <ArrowRight className="size-3.5" aria-hidden="true" />
               </Link>
               <Link
                 href="/?ziyaratCity=madinah_only#journey-builder"
-                className="inline-flex min-h-10 items-center rounded-xl border border-[#C5A059]/60 bg-[#FAF7F0] px-4 py-2 text-xs font-semibold text-[#0A3622] transition hover:bg-[#F4EFE4]"
+                className="inline-flex min-h-10 items-center rounded-xl border border-gold-border bg-background px-4 py-2 text-xs font-semibold text-primary transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
                 Select Madinah Ziyarat in Planner
               </Link>
@@ -285,33 +266,44 @@ export function GuidesZiyaratHubView({
       </section>
 
       {/* Fleet Capacity Bands & Haramain Train shared_only Rule */}
-      <section className="border-y border-[#E5DEC9] bg-[#F4EFE4]/60 py-12 lg:py-16">
+      <section className="border-y border-border bg-secondary/60 py-12 lg:py-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mb-8 max-w-3xl space-y-2">
-            <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gold-text">
-              <Car className="size-4" aria-hidden="true" />
-              KSA Ground Transport &amp; Rail Rules
+          <div className="mb-8 max-w-3xl space-y-2.5">
+            <div className="flex items-center gap-2 text-primary">
+              <Car
+                className="size-5 shrink-0 text-gold-text"
+                aria-hidden="true"
+              />
+              <h2 className="font-display text-2xl font-bold text-balance text-primary sm:text-3xl">
+                {ZIYARAT_FLEET_HEADING}
+              </h2>
             </div>
-            <h2 className="font-display text-2xl font-bold text-[#0A3622] sm:text-3xl">
-              Private Ziyarat Fleet Capacity Bands (1–3 Sedan to 13+ Coach Bus)
-            </h2>
-            <p className="text-sm leading-relaxed text-[#4A5248] sm:text-base">
+            <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
               Vehicle seating counts{" "}
-              <strong className="text-[#0A3622]">Adults + Children</strong>{" "}
+              <strong className="text-primary">Adults + Children</strong>{" "}
               (infants under 2 years occupy{" "}
-              <span className="font-mono font-semibold tabular-nums">0</span>{" "}
+              <span className="font-mono font-semibold text-primary tabular-nums">
+                0
+              </span>{" "}
               vehicle seats). All ground transport and Ziyarat tours follow our{" "}
               <strong className="text-gold-text">
-                Live Rate — Confirmed upon submission
+                {LIVE_RATE_CONFIRMATION_LABEL}
               </strong>{" "}
               policy.
             </p>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-[#DFD6C1] bg-white shadow-sm" tabIndex={0}>
+          <div
+            className="overflow-x-auto rounded-2xl border border-border bg-card shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            tabIndex={0}
+          >
             <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+              <caption className="sr-only">
+                Private Ziyarat vehicle seating capacity bands, representative
+                models, booking mode rules, and Haramain High-Speed Rail scope
+              </caption>
               <thead>
-                <tr className="border-b border-[#DFD6C1] bg-[#0A3622] text-xs font-bold uppercase tracking-wider text-white">
+                <tr className="border-b border-border bg-primary text-xs font-semibold text-primary-foreground">
                   <th scope="col" className="px-4 py-3.5">
                     Passenger Capacity Band
                   </th>
@@ -329,29 +321,29 @@ export function GuidesZiyaratHubView({
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#ECE5D5]">
+              <tbody className="divide-y divide-border">
                 {ZIYARAT_FLEET_CAPACITY_BANDS.map((band) => (
                   <tr key={band.passengerBand} className="align-top">
-                    <td className="px-4 py-4 font-mono text-xs font-bold tabular-nums text-[#0A3622]">
+                    <td className="px-4 py-4 text-xs font-bold text-primary tabular-nums">
                       {band.passengerBand}
                     </td>
-                    <td className="px-4 py-4 font-semibold text-[#0A3622]">
+                    <td className="px-4 py-4 font-semibold text-primary">
                       {band.vehicleClass}
                     </td>
-                    <td className="px-4 py-4 text-xs leading-relaxed text-[#2C3730]">
-                      <p className="font-medium text-[#0A3622]">
+                    <td className="px-4 py-4 text-xs leading-relaxed text-foreground">
+                      <p className="font-medium text-primary">
                         {band.representativeModels}
                       </p>
-                      <p className="mt-1 text-[#4A5248]">
+                      <p className="mt-1 text-muted-foreground">
                         {band.luggageAndAccess}
                       </p>
                     </td>
-                    <td className="px-4 py-4 text-xs leading-relaxed text-[#2C3730]">
+                    <td className="px-4 py-4 text-xs leading-relaxed text-foreground">
                       {band.bookingModeNote}
                     </td>
                     <td className="px-4 py-4">
-                      <span className="inline-flex items-center rounded-md border border-[#C5A059]/50 bg-[#FAF7F0] px-2.5 py-1 text-xs font-semibold text-gold-text">
-                        Live Rate — Confirmed upon submission
+                      <span className="inline-flex items-center rounded-md border border-gold-border bg-background px-2.5 py-1 text-xs font-semibold text-gold-text">
+                        {LIVE_RATE_CONFIRMATION_LABEL}
                       </span>
                     </td>
                   </tr>
@@ -362,14 +354,14 @@ export function GuidesZiyaratHubView({
 
           {/* Live Catalog Fleet Roster Strip (when DB vehicles exist) */}
           {sortedVehicles.length > 0 ? (
-            <div className="mt-6 rounded-2xl border border-[#DFD6C1] bg-white p-5">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-gold-text">
+            <div className="mt-6 rounded-2xl border border-border bg-card p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-bold text-primary">
                   Active KSA Fleet Models in Custom Journey Planner
                 </h3>
-                <span className="inline-flex items-center gap-1 text-xs text-[#4A5248]">
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                   <TrainFront
-                    className="size-3.5 text-[#0A3622]"
+                    className="size-3.5 text-primary"
                     aria-hidden="true"
                   />
                   Train = shared_only intercity rail
@@ -379,11 +371,15 @@ export function GuidesZiyaratHubView({
                 {sortedVehicles.map((v) => (
                   <span
                     key={v.id}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-[#ECE5D5] bg-[#FAF7F0] px-3 py-1.5 text-xs font-medium text-[#0A3622]"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-medium text-primary"
                   >
                     <span>{v.name}</span>
-                    <span className="font-mono text-[11px] tabular-nums text-gold-text">
-                      ({v.seatCapacity} seats · {v.bookingMode})
+                    <span className="text-xs text-gold-text">
+                      (
+                      <span className="font-mono tabular-nums">
+                        {v.seatCapacity}
+                      </span>{" "}
+                      seats, {v.bookingMode})
                     </span>
                   </span>
                 ))}
@@ -392,10 +388,17 @@ export function GuidesZiyaratHubView({
           ) : null}
 
           {/* Intercity Badr & Taif Excursions Table */}
-          <div className="mt-10 overflow-x-auto rounded-2xl border border-[#DFD6C1] bg-white shadow-sm" tabIndex={0}>
+          <div
+            className="mt-10 overflow-x-auto rounded-2xl border border-border bg-card shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            tabIndex={0}
+          >
             <table className="w-full min-w-[820px] border-collapse text-left text-sm">
+              <caption className="sr-only">
+                Intercity Taif and Battlefield of Badr Ziyarat excursions,
+                distances, Miqat rules, and heritage stops
+              </caption>
               <thead>
-                <tr className="border-b border-[#DFD6C1] bg-[#FAF7F0] text-xs font-bold uppercase tracking-wider text-[#0A3622]">
+                <tr className="border-b border-border bg-background text-xs font-semibold text-primary">
                   <th scope="col" className="px-4 py-3.5">
                     Excursion Sector
                   </th>
@@ -410,24 +413,24 @@ export function GuidesZiyaratHubView({
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#ECE5D5]">
+              <tbody className="divide-y divide-border">
                 {INTERCITY_ZIYARAT_EXCURSIONS.map((exc) => (
                   <tr key={exc.sectorCode} className="align-top">
                     <td className="px-4 py-4">
-                      <div className="font-semibold text-[#0A3622]">
+                      <div className="font-semibold text-primary">
                         {exc.routeTitle}
                       </div>
-                      <span className="mt-1 inline-block rounded bg-[#F4EFE4] px-2 py-0.5 font-mono text-[11px] font-bold tabular-nums text-gold-text">
+                      <code className="mt-1 inline-block rounded bg-secondary px-2 py-0.5 font-mono text-xs font-bold text-gold-text tabular-nums">
                         {exc.sectorCode}
-                      </span>
+                      </code>
                     </td>
-                    <td className="px-4 py-4 font-mono text-xs font-semibold tabular-nums text-[#2C3730]">
+                    <td className="px-4 py-4 text-xs font-semibold text-foreground tabular-nums">
                       {exc.distanceAndDuration}
                     </td>
-                    <td className="px-4 py-4 text-xs leading-relaxed text-[#2C3730]">
+                    <td className="px-4 py-4 text-xs leading-relaxed text-foreground">
                       {exc.miqatAndRitualRule}
                     </td>
-                    <td className="px-4 py-4 text-xs leading-relaxed text-[#4A5248]">
+                    <td className="px-4 py-4 text-xs leading-relaxed text-muted-foreground">
                       {exc.highlights}
                     </td>
                   </tr>
@@ -441,51 +444,52 @@ export function GuidesZiyaratHubView({
       {/* 1:1 DOM-Matched Ziyarat Hub FAQs */}
       <section className="mx-auto max-w-5xl px-4 py-14 sm:px-6 lg:px-8">
         <div className="mb-8 space-y-2 text-center">
-          <p className="text-xs font-bold uppercase tracking-widest text-gold-text">
-            Ziyarat Planning &amp; Transport Answers
-          </p>
-          <h2 className="font-display text-2xl font-bold text-[#0A3622] sm:text-3xl">
-            Frequently Asked Questions — Haramain Ziyarat &amp; Private Fleet
+          <h2 className="font-display text-2xl font-bold text-balance text-primary sm:text-3xl">
+            {ZIYARAT_HUB_FAQ_HEADING}
           </h2>
+          <p className="text-sm text-muted-foreground">
+            Vehicle seating capacities, Haramain High-Speed Rail exclusions, and
+            best morning tour timings.
+          </p>
         </div>
 
         <div className="space-y-4">
           {ZIYARAT_HUB_FAQS.map((faq) => (
             <article
               key={faq.question}
-              className="rounded-2xl border border-[#DFD6C1] bg-white p-5 shadow-xs sm:p-6"
+              className="rounded-2xl border border-border bg-card p-5 shadow-xs sm:p-6"
             >
-              <h3 className="font-display text-base font-bold text-[#0A3622] sm:text-lg">
+              <h3 className="font-display text-base font-bold text-primary sm:text-lg">
                 {faq.question}
               </h3>
-              <p className="mt-2 text-sm leading-relaxed text-[#2C3730]">
+              <p className="mt-2 text-sm leading-relaxed text-foreground">
                 {faq.answer}
               </p>
             </article>
           ))}
         </div>
 
-        <div className="mt-12 rounded-3xl border border-[#DFD6C1] bg-[#F4EFE4] p-6 sm:p-8">
+        <div className="mt-12 rounded-3xl border border-border bg-secondary p-6 sm:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-bold uppercase tracking-wider text-gold-text">
-                Al Ramlah Travels (<ArabicText>{BRAND_ARABIC_NAME}</ArabicText>)
-              </p>
-              <h3 className="font-display text-lg font-bold text-[#0A3622] sm:text-xl">
+            <div className="space-y-1.5">
+              <h3 className="font-display text-lg font-bold text-primary sm:text-xl">
                 Include Guided Ziyarat in Your Custom Umrah Package
               </h3>
-              <p className="text-xs text-[#4A5248] sm:text-sm">
+              <p className="text-xs font-semibold text-gold-text">
+                Al Ramlah Travels (<ArabicText>{BRAND_ARABIC_NAME}</ArabicText>)
+              </p>
+              <p className="text-xs text-muted-foreground sm:text-sm">
                 Call our Lahore Cantt desk on{" "}
                 <a
                   href={toTelHref(primaryWhatsapp)}
-                  className="inline-flex min-h-6 items-center font-mono font-semibold tabular-nums text-[#0A3622] underline decoration-[#C5A059] underline-offset-4"
+                  className="inline-flex min-h-6 items-center font-mono font-semibold text-primary tabular-nums underline decoration-gold-text/60 underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85"
                 >
                   {formatPkPhoneDisplay(primaryWhatsapp)}
                 </a>{" "}
                 or{" "}
                 <a
                   href={toTelHref(secondaryPhone)}
-                  className="inline-flex min-h-6 items-center font-mono font-semibold tabular-nums text-[#0A3622] underline decoration-[#C5A059] underline-offset-4"
+                  className="inline-flex min-h-6 items-center font-mono font-semibold text-primary tabular-nums underline decoration-gold-text/60 underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85"
                 >
                   {formatPkPhoneDisplay(secondaryPhone)}
                 </a>
@@ -495,27 +499,30 @@ export function GuidesZiyaratHubView({
             <div className="flex flex-wrap gap-2.5">
               <Link
                 href="/?ziyaratCity=both#journey-builder"
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-[#0A3622] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#0F5132]"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
                 Open Custom Journey Builder
                 <ArrowRight className="size-3.5" aria-hidden="true" />
               </Link>
               <Link
                 href="/umrah-packages"
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-[#C5A059]/60 bg-white px-4 py-2 text-xs font-semibold text-[#0A3622] transition hover:bg-[#FAF7F0]"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-gold-border bg-card px-4 py-2 text-xs font-semibold text-primary transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
-                <ShieldCheck className="size-3.5 text-gold-text" aria-hidden="true" />
+                <ShieldCheck
+                  className="size-3.5 text-gold-text"
+                  aria-hidden="true"
+                />
                 Group Umrah Packages
               </Link>
               <Link
                 href="/hotels/makkah"
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-[#C5A059]/60 bg-white px-4 py-2 text-xs font-semibold text-[#0A3622] transition hover:bg-[#FAF7F0]"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-gold-border bg-card px-4 py-2 text-xs font-semibold text-primary transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
                 Makkah Hotels
               </Link>
               <Link
                 href="/hotels/madinah"
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-[#C5A059]/60 bg-white px-4 py-2 text-xs font-semibold text-[#0A3622] transition hover:bg-[#FAF7F0]"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-gold-border bg-card px-4 py-2 text-xs font-semibold text-primary transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
                 Madinah Hotels
               </Link>
@@ -566,86 +573,56 @@ export function GuidesZiyaratCitySpokeView({
   const faqJsonLd = buildFaqPageJsonLd(config.faqs)
 
   return (
-    <div className="bg-[#FAF7F0] text-[#1A241E]">
+    <div className="bg-background text-foreground">
       <JsonLd data={itemListJsonLd} />
       <JsonLd data={faqJsonLd} />
 
-      {/* Breadcrumbs */}
-      <div className="border-b border-[#E5DEC9] bg-[#F4EFE4]/80">
-        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
-          <PublicBreadcrumbs
-            items={[
-              { label: "Home", href: "/" },
-              { label: "Haramain Ziyarat Guide", href: "/ziyarat" },
-              { label: config.breadcrumbLabel, href: config.path },
-            ]}
-          />
-        </div>
-      </div>
-
-      {/* Hero & City-Specific Answer-First Summary */}
-      <section className="relative overflow-hidden border-b border-[#C5A059]/30 bg-gradient-to-b from-[#062417] via-[#0A3622] to-[#082B1B] py-14 text-white sm:py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="max-w-4xl space-y-5">
-            <div className="inline-flex flex-wrap items-center gap-2.5 rounded-full border border-[#C5A059]/45 bg-black/30 px-4 py-1.5 text-xs font-semibold tracking-wide text-[#F5E6C8]">
-              <ArabicText className="text-base text-[#E6C77B]">
-                {config.arabicCity}
-              </ArabicText>
-              <span aria-hidden="true" className="text-white/40">
-                ·
-              </span>
-              <span className="uppercase">{config.eyebrowBadge}</span>
-            </div>
-
-            <h1 className="font-display text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl">
-              {config.h1}
-            </h1>
-
-            <p className="max-w-3xl text-base leading-relaxed text-white/90 sm:text-lg">
-              {config.answerFirstSummary}
-            </p>
-
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <Link
-                href={config.builderCtaHref}
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#C5A059] px-5 py-2.5 text-sm font-bold text-[#062417] shadow-sm transition hover:bg-[#D4B36A]"
-              >
-                {config.builderCtaLabel}
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </Link>
-              <Link
-                href={config.siblingHref}
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20"
-              >
-                <Compass className="size-4 text-[#E6C77B]" aria-hidden="true" />
-                {config.siblingLabel}
-              </Link>
-              <a
-                href={whatsappHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#C5A059]/40 bg-black/25 px-4 py-2.5 text-sm font-semibold text-[#F5E6C8] transition hover:bg-black/40"
-              >
-                Book Private {config.cityLabel} Vehicle
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
+      <PublicPageHero
+        variant="read"
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Haramain Ziyarat Guide", href: "/ziyarat" },
+          { label: config.breadcrumbLabel, href: config.path },
+        ]}
+        arabicInvocation={config.arabicCity}
+        title={config.h1}
+        description={config.answerFirstSummary}
+        actions={
+          <>
+            <Link
+              href={config.builderCtaHref}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
+            >
+              {config.builderCtaLabel}
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+            <Link
+              href={config.siblingHref}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
+            >
+              <Compass className="size-4 text-gold-text" aria-hidden="true" />
+              {config.siblingLabel}
+            </Link>
+            <a
+              href={whatsappHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gold-border bg-secondary px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
+            >
+              Book Private {config.cityLabel} Vehicle
+            </a>
+          </>
+        }
+      />
 
       {/* Live Catalog Landmarks Grid */}
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
         <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-gold-text">
-              Verified {config.cityLabel} Heritage Roster
-            </p>
-            <h2 className="font-display text-2xl font-bold text-[#0A3622] sm:text-3xl">
-              Included &amp; Optional {config.cityLabel} Ziyarat Stops
-            </h2>
-          </div>
-          <span className="inline-flex self-start rounded-full border border-[#C5A059]/50 bg-white px-3.5 py-1.5 text-xs font-semibold text-gold-text">
-            Live Rate — Confirmed upon submission
+          <h2 className="font-display text-2xl font-bold text-balance text-primary sm:text-3xl">
+            Included &amp; Optional {config.cityLabel} Ziyarat Stops
+          </h2>
+          <span className="inline-flex self-start rounded-full border border-gold-border bg-card px-3.5 py-1.5 text-xs font-semibold text-gold-text">
+            {LIVE_RATE_CONFIRMATION_LABEL}
           </span>
         </div>
 
@@ -653,28 +630,31 @@ export function GuidesZiyaratCitySpokeView({
           {displayPlaces.map((place, idx) => (
             <article
               key={place.id}
-              className="flex flex-col justify-between rounded-2xl border border-[#DFD6C1] bg-white p-5 shadow-xs"
+              className="flex flex-col justify-between rounded-2xl border border-border bg-card p-5 shadow-xs"
             >
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between gap-2 border-b border-[#ECE5D5] pb-2.5">
-                  <span className="font-mono text-xs font-bold tabular-nums text-gold-text">
-                    Stop {String(idx + 1).padStart(2, "0")}
+                <h3 className="font-display text-lg font-bold text-primary">
+                  {place.name}
+                </h3>
+                <div className="flex items-center justify-between gap-2 border-b border-border pb-2.5">
+                  <span className="text-xs font-bold text-gold-text">
+                    Stop{" "}
+                    <span className="font-mono tabular-nums">
+                      {String(idx + 1).padStart(2, "0")}
+                    </span>
                   </span>
-                  <ArabicText className="text-base font-semibold text-[#0A3622]">
+                  <ArabicText className="text-base font-semibold text-primary">
                     {place.arabicName}
                   </ArabicText>
                 </div>
-                <h3 className="font-display text-lg font-bold text-[#0A3622]">
-                  {place.name}
-                </h3>
-                <p className="text-xs leading-relaxed text-[#4A5248] sm:text-sm">
+                <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
                   {place.description}
                 </p>
               </div>
               <div className="mt-4 pt-2">
                 <Link
                   href={config.builderCtaHref}
-                  className="inline-flex min-h-8 items-center gap-1 text-xs font-bold text-[#0A3622] underline decoration-[#C5A059] underline-offset-4 hover:text-[#0F5132]"
+                  className="inline-flex min-h-8 items-center gap-1 text-xs font-bold text-primary underline decoration-gold-text/60 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
                 >
                   Include in {config.cityLabel} Itinerary
                   <ArrowRight className="size-3.5" aria-hidden="true" />
@@ -686,24 +666,28 @@ export function GuidesZiyaratCitySpokeView({
       </section>
 
       {/* City-Specific Editorial Matrix + Sunnah / Miqat Rule Banner */}
-      <section className="border-y border-[#E5DEC9] bg-[#F4EFE4]/60 py-12 lg:py-16">
+      <section className="border-y border-border bg-secondary/60 py-12 lg:py-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mb-8 max-w-3xl space-y-2">
-            <p className="text-xs font-bold uppercase tracking-widest text-gold-text">
-              Seerah Context &amp; Practical Etiquette
-            </p>
-            <h2 className="font-display text-2xl font-bold text-[#0A3622] sm:text-3xl">
+          <div className="mb-8 max-w-3xl space-y-2.5">
+            <h2 className="font-display text-2xl font-bold text-balance text-primary sm:text-3xl">
               {config.editorialHeading}
             </h2>
-            <p className="text-sm leading-relaxed text-[#4A5248] sm:text-base">
+            <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
               {config.editorialIntro}
             </p>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-[#DFD6C1] bg-white shadow-sm" tabIndex={0}>
+          <div
+            className="overflow-x-auto rounded-2xl border border-border bg-card shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            tabIndex={0}
+          >
             <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+              <caption className="sr-only">
+                {config.cityLabel} sacred Ziyarat landmarks, distances, Seerah
+                context, and visiting etiquette
+              </caption>
               <thead>
-                <tr className="border-b border-[#DFD6C1] bg-[#0A3622] text-xs font-bold uppercase tracking-wider text-white">
+                <tr className="border-b border-border bg-primary text-xs font-semibold text-primary-foreground">
                   <th scope="col" className="px-4 py-3.5">
                     Sacred Landmark
                   </th>
@@ -718,24 +702,24 @@ export function GuidesZiyaratCitySpokeView({
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#ECE5D5]">
+              <tbody className="divide-y divide-border">
                 {config.editorialRows.map((row) => (
                   <tr key={row.landmarkName} className="align-top">
                     <td className="px-4 py-4">
-                      <div className="font-semibold text-[#0A3622]">
+                      <div className="font-semibold text-primary">
                         {row.landmarkName}
                       </div>
                       <ArabicText className="mt-1 text-sm text-gold-text">
                         {row.arabicTitle}
                       </ArabicText>
                     </td>
-                    <td className="px-4 py-4 font-mono text-xs font-semibold tabular-nums text-[#2C3730]">
+                    <td className="px-4 py-4 text-xs font-semibold text-foreground tabular-nums">
                       {row.zoneAndDistance}
                     </td>
-                    <td className="px-4 py-4 text-xs leading-relaxed text-[#2C3730]">
+                    <td className="px-4 py-4 text-xs leading-relaxed text-foreground">
                       {row.seerahSignificance}
                     </td>
-                    <td className="px-4 py-4 text-xs leading-relaxed text-[#4A5248]">
+                    <td className="px-4 py-4 text-xs leading-relaxed text-muted-foreground">
                       {row.pilgrimEtiquetteAndAccess}
                     </td>
                   </tr>
@@ -745,15 +729,15 @@ export function GuidesZiyaratCitySpokeView({
           </div>
 
           {/* Special Sunnah / Miqat Banner */}
-          <div className="mt-8 rounded-3xl border border-[#C5A059]/60 bg-white p-6 shadow-xs sm:p-8">
-            <div className="inline-flex items-center gap-1.5 rounded-md bg-[#F4EFE4] px-3 py-1 text-xs font-bold uppercase tracking-wider text-gold-text">
+          <div className="mt-8 rounded-3xl border border-gold-border bg-card p-6 shadow-xs sm:p-8">
+            <h3 className="font-display text-xl font-bold text-primary sm:text-2xl">
+              {config.specialRuleBanner.heading}
+            </h3>
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary px-3 py-1 text-xs font-bold text-gold-text">
               <Sparkles className="size-3.5" aria-hidden="true" />
               {config.specialRuleBanner.badge}
             </div>
-            <h3 className="mt-3 font-display text-xl font-bold text-[#0A3622] sm:text-2xl">
-              {config.specialRuleBanner.heading}
-            </h3>
-            <div className="mt-3 space-y-2 text-xs leading-relaxed text-[#2C3730] sm:text-sm">
+            <div className="mt-3 space-y-2 text-xs leading-relaxed text-foreground sm:text-sm">
               {config.specialRuleBanner.paragraphs.map((p) => (
                 <p key={p}>{p}</p>
               ))}
@@ -765,24 +749,25 @@ export function GuidesZiyaratCitySpokeView({
       {/* 1:1 DOM-Matched City Ziyarat FAQs */}
       <section className="mx-auto max-w-5xl px-4 py-14 sm:px-6 lg:px-8">
         <div className="mb-8 space-y-2 text-center">
-          <p className="text-xs font-bold uppercase tracking-widest text-gold-text">
-            {config.cityLabel} Heritage Guidance
-          </p>
-          <h2 className="font-display text-2xl font-bold text-[#0A3622] sm:text-3xl">
+          <h2 className="font-display text-2xl font-bold text-balance text-primary sm:text-3xl">
             {config.faqHeading}
           </h2>
+          <p className="text-sm text-muted-foreground">
+            {config.cityLabel} heritage logistics, accessibility, and vehicle
+            planning answers.
+          </p>
         </div>
 
         <div className="space-y-4">
           {config.faqs.map((faq) => (
             <article
               key={faq.question}
-              className="rounded-2xl border border-[#DFD6C1] bg-white p-5 shadow-xs sm:p-6"
+              className="rounded-2xl border border-border bg-card p-5 shadow-xs sm:p-6"
             >
-              <h3 className="font-display text-base font-bold text-[#0A3622] sm:text-lg">
+              <h3 className="font-display text-base font-bold text-primary sm:text-lg">
                 {faq.question}
               </h3>
-              <p className="mt-2 text-sm leading-relaxed text-[#2C3730]">
+              <p className="mt-2 text-sm leading-relaxed text-foreground">
                 {faq.answer}
               </p>
             </article>
@@ -790,28 +775,28 @@ export function GuidesZiyaratCitySpokeView({
         </div>
 
         {/* Cross-Links Footer */}
-        <div className="mt-12 rounded-3xl border border-[#DFD6C1] bg-[#F4EFE4] p-6 sm:p-8">
+        <div className="mt-12 rounded-3xl border border-border bg-secondary p-6 sm:p-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-bold uppercase tracking-wider text-gold-text">
-                Al Ramlah Travels (<ArabicText>{BRAND_ARABIC_NAME}</ArabicText>)
-                · Askari 10, Lahore Cantt
-              </p>
-              <h3 className="font-display text-lg font-bold text-[#0A3622] sm:text-xl">
+            <div className="space-y-1.5">
+              <h3 className="font-display text-lg font-bold text-primary sm:text-xl">
                 Continue Planning Your {config.cityLabel} Pilgrimage
               </h3>
-              <p className="text-xs text-[#4A5248] sm:text-sm">
+              <p className="text-xs font-semibold text-gold-text">
+                Al Ramlah Travels (<ArabicText>{BRAND_ARABIC_NAME}</ArabicText>
+                ), Askari 10, Lahore Cantt
+              </p>
+              <p className="text-xs text-muted-foreground sm:text-sm">
                 Call{" "}
                 <a
                   href={toTelHref(primaryWhatsapp)}
-                  className="inline-flex min-h-6 items-center font-mono font-semibold tabular-nums text-[#0A3622] underline decoration-[#C5A059] underline-offset-4"
+                  className="inline-flex min-h-6 items-center font-mono font-semibold text-primary tabular-nums underline decoration-gold-text/60 underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85"
                 >
                   {formatPkPhoneDisplay(primaryWhatsapp)}
                 </a>{" "}
                 or{" "}
                 <a
                   href={toTelHref(secondaryPhone)}
-                  className="inline-flex min-h-6 items-center font-mono font-semibold tabular-nums text-[#0A3622] underline decoration-[#C5A059] underline-offset-4"
+                  className="inline-flex min-h-6 items-center font-mono font-semibold text-primary tabular-nums underline decoration-gold-text/60 underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85"
                 >
                   {formatPkPhoneDisplay(secondaryPhone)}
                 </a>{" "}
@@ -821,34 +806,40 @@ export function GuidesZiyaratCitySpokeView({
             <div className="flex flex-wrap gap-2.5">
               <Link
                 href={config.builderCtaHref}
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-[#0A3622] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#0F5132]"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
                 {config.builderCtaLabel}
                 <ArrowRight className="size-3.5" aria-hidden="true" />
               </Link>
               <Link
                 href="/ziyarat"
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-[#C5A059]/60 bg-white px-4 py-2 text-xs font-semibold text-[#0A3622] transition hover:bg-[#FAF7F0]"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-gold-border bg-card px-4 py-2 text-xs font-semibold text-primary transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
                 All Ziyarat &amp; Fleet Guide
               </Link>
               <Link
                 href={config.siblingHref}
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-[#C5A059]/60 bg-white px-4 py-2 text-xs font-semibold text-[#0A3622] transition hover:bg-[#FAF7F0]"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-gold-border bg-card px-4 py-2 text-xs font-semibold text-primary transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
-                <Compass className="size-3.5 text-gold-text" aria-hidden="true" />
+                <Compass
+                  className="size-3.5 text-gold-text"
+                  aria-hidden="true"
+                />
                 {config.siblingLabel}
               </Link>
               <Link
                 href={config.hotelSpokeHref}
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-[#C5A059]/60 bg-white px-4 py-2 text-xs font-semibold text-[#0A3622] transition hover:bg-[#FAF7F0]"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-gold-border bg-card px-4 py-2 text-xs font-semibold text-primary transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
-                <Building2 className="size-3.5 text-gold-text" aria-hidden="true" />
+                <Building2
+                  className="size-3.5 text-gold-text"
+                  aria-hidden="true"
+                />
                 {config.hotelSpokeLabel}
               </Link>
               <Link
                 href="/contact"
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-[#C5A059]/60 bg-white px-4 py-2 text-xs font-semibold text-[#0A3622] transition hover:bg-[#FAF7F0]"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-gold-border bg-card px-4 py-2 text-xs font-semibold text-primary transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
                 <Phone className="size-3.5 text-gold-text" aria-hidden="true" />
                 Contact Lahore Desk

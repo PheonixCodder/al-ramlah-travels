@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState, useTransition } from "react"
+import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { ZiyaratData, ZiyaratDialog } from "./ziyarat-dialog"
@@ -30,6 +30,12 @@ interface ZiyaratClientProps {
 export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
   const router = useRouter()
   const [places, setPlaces] = useState<ZiyaratData[]>(initialPlaces)
+  const [prevInitialPlaces, setPrevInitialPlaces] = useState(initialPlaces)
+  if (prevInitialPlaces !== initialPlaces) {
+    setPrevInitialPlaces(initialPlaces)
+    setPlaces(initialPlaces)
+  }
+
   const [activeCity, setActiveCity] = useState<"all" | "makkah" | "madinah">(
     "all"
   )
@@ -38,10 +44,6 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
     text: string
   } | null>(null)
   const [, startTransition] = useTransition()
-
-  useEffect(() => {
-    setPlaces(initialPlaces)
-  }, [initialPlaces])
 
   const filteredPlaces = places.filter(
     (p) => activeCity === "all" || p.city === activeCity
@@ -109,7 +111,7 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
           tone: "info",
           text:
             res.error ||
-            "Ziyarat landmark is referenced by pilgrim applications — deactivated instead.",
+            "Ziyarat landmark is referenced by pilgrim applications, so it was deactivated instead.",
         })
         router.refresh()
         return
@@ -147,8 +149,8 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
         <div
           className={`rounded-xl border p-3 text-xs font-medium ${
             notice.tone === "error"
-              ? "border-red-300 bg-red-50 text-red-800"
-              : "border-amber-300 bg-amber-50 text-amber-900"
+              ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+              : "border-status-warning-border bg-status-warning-bg text-status-warning"
           }`}
         >
           {notice.text}
@@ -156,13 +158,13 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
       )}
 
       {/* City Switcher */}
-      <div className="flex items-center gap-1 rounded-lg bg-muted p-1 text-xs w-fit">
+      <div className="flex w-fit items-center gap-1 rounded-lg bg-muted p-1 text-xs">
         <button
           type="button"
           onClick={() => setActiveCity("all")}
-          className={`rounded-md px-3.5 py-1.5 font-medium transition-colors cursor-pointer ${
+          className={`cursor-pointer rounded-md px-3.5 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
             activeCity === "all"
-              ? "bg-card text-foreground shadow-xs font-semibold"
+              ? "bg-primary font-semibold text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -171,25 +173,33 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
         <button
           type="button"
           onClick={() => setActiveCity("makkah")}
-          className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 font-medium transition-colors cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-1.5 rounded-md px-3.5 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
             activeCity === "makkah"
-              ? "bg-card text-emerald-800 shadow-xs font-semibold"
+              ? "bg-primary font-semibold text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          <span className="size-2 rounded-full bg-emerald-600" />
+          <span
+            className={`size-2 rounded-full ${
+              activeCity === "makkah" ? "bg-gold" : "bg-status-success"
+            }`}
+          />
           Makkah Sites ({places.filter((p) => p.city === "makkah").length})
         </button>
         <button
           type="button"
           onClick={() => setActiveCity("madinah")}
-          className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 font-medium transition-colors cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-1.5 rounded-md px-3.5 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
             activeCity === "madinah"
-              ? "bg-card text-amber-900 shadow-xs font-semibold"
+              ? "bg-primary font-semibold text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          <span className="size-2 rounded-full bg-amber-500" />
+          <span
+            className={`size-2 rounded-full ${
+              activeCity === "madinah" ? "bg-gold" : "bg-status-warning"
+            }`}
+          />
           Madinah Sites ({places.filter((p) => p.city === "madinah").length})
         </button>
       </div>
@@ -201,10 +211,10 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
           return (
             <div
               key={place.id}
-              className={`flex flex-col justify-between overflow-hidden rounded-xl border bg-card shadow-xs transition-all hover:shadow-md ${
+              className={`flex flex-col justify-between overflow-hidden rounded-xl border bg-card shadow-xs transition-shadow hover:shadow-md motion-reduce:transition-none ${
                 place.isActive
-                  ? "border-border hover:border-gold/60"
-                  : "border-border/60 opacity-60 bg-muted/20"
+                  ? "border-border hover:border-gold-border"
+                  : "border-border/60 bg-muted/20 opacity-60"
               }`}
             >
               <div>
@@ -219,37 +229,40 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
                     />
                   ) : (
                     <div className="flex size-full items-center justify-center bg-muted text-muted-foreground">
-                      <Compass className="size-12 opacity-30" />
+                      <Compass
+                        className="size-12 opacity-30"
+                        aria-hidden="true"
+                      />
                     </div>
                   )}
                   <div className="absolute top-2.5 left-2.5">
                     <Badge
-                      className={`font-semibold capitalize text-[10px] ${
+                      className={`text-[10px] font-semibold capitalize ${
                         place.city === "makkah"
-                          ? "bg-emerald-900/90 text-emerald-100 border border-emerald-500/40"
-                          : "bg-amber-900/90 text-amber-100 border border-amber-500/40"
+                          ? "border border-gold-border bg-primary text-primary-foreground"
+                          : "border border-status-warning-border bg-status-warning-bg text-status-warning"
                       }`}
                     >
-                      <MapPin className="size-3 mr-1" />
+                      <MapPin className="mr-1 size-3" aria-hidden="true" />
                       {place.city}
                     </Badge>
                   </div>
                 </div>
 
-                <div className="p-4 space-y-2">
+                <div className="space-y-2 p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-base text-foreground">
+                    <h3 className="text-base font-semibold text-foreground">
                       {place.name}
                     </h3>
                   </div>
                   <div
                     lang="ar"
                     dir="rtl"
-                    className="font-arabic text-sm text-gold-text font-medium"
+                    className="font-arabic text-sm font-medium text-gold-text"
                   >
                     {place.arabicName}
                   </div>
-                  <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
+                  <p className="line-clamp-3 text-xs leading-relaxed text-muted-foreground">
                     {place.description}
                   </p>
                 </div>
@@ -261,18 +274,24 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
                   onClick={() =>
                     place.id && handleToggle(place.id, place.isActive)
                   }
-                  className="flex items-center gap-1.5 font-medium hover:opacity-80 cursor-pointer"
+                  className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                 >
                   {place.isActive ? (
                     <>
-                      <CheckCircle2 className="size-4 text-emerald-600" />
-                      <span className="text-emerald-700 font-semibold">
+                      <CheckCircle2
+                        className="size-4 text-status-success"
+                        aria-hidden="true"
+                      />
+                      <span className="font-semibold text-status-success">
                         In Tour
                       </span>
                     </>
                   ) : (
                     <>
-                      <XCircle className="size-4 text-muted-foreground" />
+                      <XCircle
+                        className="size-4 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <span className="text-muted-foreground">Hidden</span>
                     </>
                   )}
@@ -286,20 +305,20 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
                         size="icon-xs"
                         disabled={globalIdx <= 0}
                         onClick={() => place.id && handleMove(place.id, -1)}
-                        className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         title="Move Up"
                       >
-                        <ArrowUp className="size-3.5" />
+                        <ArrowUp className="size-3.5" aria-hidden="true" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon-xs"
                         disabled={globalIdx >= places.length - 1}
                         onClick={() => place.id && handleMove(place.id, 1)}
-                        className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         title="Move Down"
                       >
-                        <ArrowDown className="size-3.5" />
+                        <ArrowDown className="size-3.5" aria-hidden="true" />
                       </Button>
                     </>
                   )}
@@ -309,10 +328,10 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         title="Edit Site"
                       >
-                        <Edit2 className="size-3.5" />
+                        <Edit2 className="size-3.5" aria-hidden="true" />
                       </Button>
                     }
                   />
@@ -322,10 +341,10 @@ export function ZiyaratClient({ initialPlaces }: ZiyaratClientProps) {
                     onClick={() =>
                       place.id && handleDelete(place.id, place.name)
                     }
-                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                    className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Delete Site"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
               </div>

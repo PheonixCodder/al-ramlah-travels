@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState, useTransition } from "react"
+import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import {
@@ -85,30 +85,41 @@ export function ContentClient({
   const [newGalleryUrl, setNewGalleryUrl] = useState<string>("")
   const [savingGallery, setSavingGallery] = useState(false)
 
-  useEffect(() => {
+  const [prevSubTab, setPrevSubTab] = useState(initialSubTab)
+  if (prevSubTab !== initialSubTab) {
+    setPrevSubTab(initialSubTab)
     setActiveTab(initialSubTab)
-  }, [initialSubTab])
+  }
 
-  useEffect(() => {
+  const [prevInitialSlides, setPrevInitialSlides] = useState(initialSlides)
+  if (prevInitialSlides !== initialSlides) {
+    setPrevInitialSlides(initialSlides)
     setSlides(initialSlides)
-  }, [initialSlides])
+  }
 
-  useEffect(() => {
+  const [prevInitialTestimonials, setPrevInitialTestimonials] =
+    useState(initialTestimonials)
+  if (prevInitialTestimonials !== initialTestimonials) {
+    setPrevInitialTestimonials(initialTestimonials)
     setTestimonials(initialTestimonials)
-  }, [initialTestimonials])
+  }
 
-  useEffect(() => {
+  const [prevInitialFaqs, setPrevInitialFaqs] = useState(initialFaqs)
+  if (prevInitialFaqs !== initialFaqs) {
+    setPrevInitialFaqs(initialFaqs)
     setFaqs(initialFaqs)
-  }, [initialFaqs])
+  }
 
-  useEffect(() => {
+  const [prevInitialHotels, setPrevInitialHotels] = useState(initialHotels)
+  if (prevInitialHotels !== initialHotels) {
+    setPrevInitialHotels(initialHotels)
     setHotels(initialHotels)
     if (!selectedHotelId && initialHotels[0]?.id) {
       setSelectedHotelId(initialHotels[0].id)
       setGalleryCoverUrl(initialHotels[0].imageUrl)
       setGalleryUrls(initialHotels[0].galleryUrls ?? [])
     }
-  }, [initialHotels, selectedHotelId])
+  }
 
   function handleSelectGalleryHotel(hotelId: string) {
     setSelectedHotelId(hotelId)
@@ -422,8 +433,8 @@ export function ContentClient({
         <div
           className={`rounded-xl border p-3 text-xs font-medium ${
             cmsFeedback.tone === "error"
-              ? "border-red-300 bg-red-50 text-red-800"
-              : "border-emerald-300 bg-emerald-50 text-emerald-900"
+              ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+              : "border-status-success-border bg-status-success-bg text-status-success"
           }`}
         >
           {cmsFeedback.text}
@@ -435,49 +446,49 @@ export function ContentClient({
         <button
           type="button"
           onClick={() => setActiveTab("slides")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
             activeTab === "slides"
               ? "bg-primary text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <Sliders className="size-4" />
+          <Sliders className="size-4" aria-hidden="true" />
           <span>Hero Slides ({slides.length})</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("reviews")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
             activeTab === "reviews"
               ? "bg-primary text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <MessageSquareQuote className="size-4" />
+          <MessageSquareQuote className="size-4" aria-hidden="true" />
           <span>Pilgrim Reviews ({testimonials.length})</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("faqs")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
             activeTab === "faqs"
               ? "bg-primary text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <HelpCircle className="size-4" />
+          <HelpCircle className="size-4" aria-hidden="true" />
           <span>FAQs ({faqs.length})</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("gallery")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
             activeTab === "gallery"
               ? "bg-primary text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <Images className="size-4" />
+          <Images className="size-4" aria-hidden="true" />
           <span>Property Gallery ({totalGalleryImages})</span>
         </button>
       </div>
@@ -488,10 +499,10 @@ export function ContentClient({
           {slides.map((s, idx) => (
             <div
               key={s.id}
-              className={`flex flex-col justify-between overflow-hidden rounded-xl border bg-card shadow-xs transition-all ${
+              className={`flex flex-col justify-between overflow-hidden rounded-xl border bg-card shadow-xs transition-shadow motion-reduce:transition-none ${
                 s.isActive
-                  ? "border-border hover:border-gold/60"
-                  : "border-border/60 opacity-60 bg-muted/20"
+                  ? "border-border hover:border-gold-border"
+                  : "border-border/60 bg-muted/20 opacity-60"
               }`}
             >
               <div>
@@ -503,35 +514,38 @@ export function ContentClient({
                     sizes="(max-width: 768px) 100vw, 33vw"
                     className="object-cover"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/30" />
-                  <div className="absolute bottom-3 left-3 right-3 text-white">
+                  <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/35 to-primary/20" />
+                  <div className="absolute right-3 bottom-3 left-3 text-primary-foreground">
                     {s.badge && (
                       <span
                         lang="ar"
                         dir="rtl"
-                        className="font-arabic text-xs text-gold-text font-medium block"
+                        className="block font-arabic text-xs font-medium text-gold"
                       >
                         {s.badge}
                       </span>
                     )}
-                    <h3 className="font-bold text-base line-clamp-1">
+                    <h3 className="line-clamp-1 text-base font-bold">
                       {s.title}
                     </h3>
                   </div>
                 </div>
 
-                <div className="p-4 space-y-2">
-                  <p className="text-xs text-muted-foreground line-clamp-2">
+                <div className="space-y-2 p-4">
+                  <p className="line-clamp-2 text-xs text-muted-foreground">
                     {s.subtitle}
                   </p>
-                  <div className="flex items-center gap-2 text-xs pt-1">
-                    <Badge variant="outline" className="font-medium text-[10px]">
+                  <div className="flex items-center gap-2 pt-1 text-xs">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-medium"
+                    >
                       CTA: {s.primaryCtaLabel}
                     </Badge>
                     {s.secondaryCtaLabel && (
                       <Badge
                         variant="outline"
-                        className="font-medium text-[10px]"
+                        className="text-[10px] font-medium"
                       >
                         2nd: {s.secondaryCtaLabel}
                       </Badge>
@@ -544,10 +558,10 @@ export function ContentClient({
                 <button
                   type="button"
                   onClick={() => s.id && handleSlideToggle(s.id, s.isActive)}
-                  className="flex items-center gap-1.5 font-medium hover:opacity-80 cursor-pointer"
+                  className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                 >
                   {s.isActive ? (
-                    <span className="text-emerald-700 font-semibold">
+                    <span className="font-semibold text-status-success">
                       Active in Hero
                     </span>
                   ) : (
@@ -560,20 +574,20 @@ export function ContentClient({
                     size="icon-xs"
                     disabled={idx === 0}
                     onClick={() => handleSlideMove(idx, -1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Slide Up"
                   >
-                    <ArrowUp className="size-3.5" />
+                    <ArrowUp className="size-3.5" aria-hidden="true" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     disabled={idx === slides.length - 1}
                     onClick={() => handleSlideMove(idx, 1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Slide Down"
                   >
-                    <ArrowDown className="size-3.5" />
+                    <ArrowDown className="size-3.5" aria-hidden="true" />
                   </Button>
                   <HeroSlideDialog
                     slide={s}
@@ -581,9 +595,9 @@ export function ContentClient({
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="size-7 cursor-pointer"
+                        className="size-7 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
-                        <Edit2 className="size-3.5" />
+                        <Edit2 className="size-3.5" aria-hidden="true" />
                       </Button>
                     }
                   />
@@ -591,9 +605,9 @@ export function ContentClient({
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => s.id && handleSlideDelete(s.id, s.title)}
-                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                    className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
@@ -608,32 +622,36 @@ export function ContentClient({
           {testimonials.map((t, idx) => (
             <div
               key={t.id}
-              className={`flex flex-col justify-between rounded-xl border bg-card p-4 shadow-2xs transition-all ${
+              className={`flex flex-col justify-between rounded-xl border bg-card p-4 shadow-2xs transition-shadow motion-reduce:transition-none ${
                 t.isActive
-                  ? "border-border hover:border-gold/60"
-                  : "border-border/60 opacity-60 bg-muted/20"
+                  ? "border-border hover:border-gold-border"
+                  : "border-border/60 bg-muted/20 opacity-60"
               }`}
             >
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1 text-gold-text">
                     {Array.from({ length: t.rating }).map((_, i) => (
-                      <Star key={i} className="size-3.5 fill-gold" />
+                      <Star
+                        key={i}
+                        className="size-3.5 fill-gold text-gold-text"
+                        aria-hidden="true"
+                      />
                     ))}
                   </div>
                   {t.isFeatured && (
-                    <Badge className="bg-gold/20 text-amber-900 border-amber-300 text-[10px]">
+                    <Badge className="border-gold-border bg-accent/50 text-[10px] text-gold-text">
                       Featured
                     </Badge>
                   )}
                 </div>
 
-                <p className="text-xs italic text-foreground leading-relaxed line-clamp-4">
+                <p className="line-clamp-4 text-xs leading-relaxed text-foreground italic">
                   &ldquo;{t.quote}&rdquo;
                 </p>
 
-                <div className="pt-2 border-t border-border/60">
-                  <h4 className="font-semibold text-sm text-foreground">
+                <div className="border-t border-border/60 pt-2">
+                  <h4 className="text-sm font-semibold text-foreground">
                     {t.pilgrimName}
                   </h4>
                   <p className="text-[11px] text-muted-foreground">
@@ -642,14 +660,14 @@ export function ContentClient({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-3 border-t border-border/80 mt-3 text-xs">
+              <div className="mt-3 flex items-center justify-between border-t border-border/80 pt-3 text-xs">
                 <button
                   type="button"
                   onClick={() => t.id && handleReviewToggle(t.id, t.isActive)}
-                  className="flex items-center gap-1.5 font-medium hover:opacity-80 cursor-pointer"
+                  className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                 >
                   {t.isActive ? (
-                    <span className="text-emerald-700 font-semibold">
+                    <span className="font-semibold text-status-success">
                       Published
                     </span>
                   ) : (
@@ -662,20 +680,20 @@ export function ContentClient({
                     size="icon-xs"
                     disabled={idx === 0}
                     onClick={() => handleReviewMove(idx, -1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Up"
                   >
-                    <ArrowUp className="size-3.5" />
+                    <ArrowUp className="size-3.5" aria-hidden="true" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     disabled={idx === testimonials.length - 1}
                     onClick={() => handleReviewMove(idx, 1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Down"
                   >
-                    <ArrowDown className="size-3.5" />
+                    <ArrowDown className="size-3.5" aria-hidden="true" />
                   </Button>
                   <TestimonialDialog
                     testimonial={t}
@@ -683,9 +701,9 @@ export function ContentClient({
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="size-7 cursor-pointer"
+                        className="size-7 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
-                        <Edit2 className="size-3.5" />
+                        <Edit2 className="size-3.5" aria-hidden="true" />
                       </Button>
                     }
                   />
@@ -695,9 +713,9 @@ export function ContentClient({
                     onClick={() =>
                       t.id && handleReviewDelete(t.id, t.pilgrimName)
                     }
-                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                    className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
@@ -712,35 +730,32 @@ export function ContentClient({
           {faqs.map((f, idx) => (
             <div
               key={f.id}
-              className={`flex flex-col justify-between rounded-xl border bg-card p-4 shadow-2xs transition-all ${
+              className={`flex flex-col justify-between rounded-xl border bg-card p-4 shadow-2xs transition-shadow motion-reduce:transition-none ${
                 f.isActive
-                  ? "border-border hover:border-gold/60"
-                  : "border-border/60 opacity-60 bg-muted/20"
+                  ? "border-border hover:border-gold-border"
+                  : "border-border/60 bg-muted/20 opacity-60"
               }`}
             >
               <div className="space-y-2">
-                <Badge
-                  variant="outline"
-                  className="font-mono text-[10px] capitalize"
-                >
+                <Badge variant="outline" className="text-[10px] capitalize">
                   {f.category}
                 </Badge>
-                <h4 className="font-semibold text-sm text-foreground">
+                <h4 className="text-sm font-semibold text-foreground">
                   {f.question}
                 </h4>
-                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                <p className="line-clamp-3 text-xs leading-relaxed text-muted-foreground">
                   {f.answer}
                 </p>
               </div>
 
-              <div className="flex items-center justify-between pt-3 border-t border-border/80 mt-3 text-xs">
+              <div className="mt-3 flex items-center justify-between border-t border-border/80 pt-3 text-xs">
                 <button
                   type="button"
                   onClick={() => f.id && handleFaqToggle(f.id, f.isActive)}
-                  className="flex items-center gap-1.5 font-medium hover:opacity-80 cursor-pointer"
+                  className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                 >
                   {f.isActive ? (
-                    <span className="text-emerald-700 font-semibold">
+                    <span className="font-semibold text-status-success">
                       Visible
                     </span>
                   ) : (
@@ -753,20 +768,20 @@ export function ContentClient({
                     size="icon-xs"
                     disabled={idx === 0}
                     onClick={() => handleFaqMove(idx, -1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Up"
                   >
-                    <ArrowUp className="size-3.5" />
+                    <ArrowUp className="size-3.5" aria-hidden="true" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     disabled={idx === faqs.length - 1}
                     onClick={() => handleFaqMove(idx, 1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Down"
                   >
-                    <ArrowDown className="size-3.5" />
+                    <ArrowDown className="size-3.5" aria-hidden="true" />
                   </Button>
                   <FaqDialog
                     faq={f}
@@ -774,9 +789,9 @@ export function ContentClient({
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="size-7 cursor-pointer"
+                        className="size-7 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
-                        <Edit2 className="size-3.5" />
+                        <Edit2 className="size-3.5" aria-hidden="true" />
                       </Button>
                     }
                   />
@@ -784,9 +799,9 @@ export function ContentClient({
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => f.id && handleFaqDelete(f.id, f.question)}
-                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                    className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
@@ -797,7 +812,7 @@ export function ContentClient({
 
       {/* Property Photo Gallery Manager Tab */}
       {activeTab === "gallery" && (
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-xs space-y-5">
+        <div className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-xs">
           {hotels.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               Add at least one hotel in the Hotels Catalog tab first to curate
@@ -814,11 +829,11 @@ export function ContentClient({
                     id="gallery-hotel-select"
                     value={selectedHotelId}
                     onChange={(e) => handleSelectGalleryHotel(e.target.value)}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     {hotels.map((h) => (
                       <option key={h.id} value={h.id}>
-                        {h.name} ({h.city.toUpperCase()} ·{" "}
+                        {h.name} ({h.city === "makkah" ? "Makkah" : "Madinah"} ·{" "}
                         {h.galleryUrls?.length ?? 0} gallery photos)
                       </option>
                     ))}
@@ -833,7 +848,7 @@ export function ContentClient({
                     id="gallery-cover-url"
                     value={galleryCoverUrl}
                     onChange={(e) => setGalleryCoverUrl(e.target.value)}
-                    placeholder="https://..."
+                    placeholder="https://cdn.example.com/hotels/cover.jpg"
                   />
                 </div>
               </div>
@@ -847,15 +862,15 @@ export function ContentClient({
                     id="gallery-new-url"
                     value={newGalleryUrl}
                     onChange={(e) => setNewGalleryUrl(e.target.value)}
-                    placeholder="https://pub-....r2.dev/... or https://images.unsplash.com/..."
+                    placeholder="https://cdn.example.com/posters/hotel.jpg"
                   />
                   <Button
                     type="button"
                     variant="outline"
                     onClick={handleAddGalleryPhoto}
-                    className="gap-1.5 shrink-0 cursor-pointer"
+                    className="shrink-0 cursor-pointer gap-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <Plus className="size-4" />
+                    <Plus className="size-4" aria-hidden="true" />
                     <span>Add Photo</span>
                   </Button>
                 </div>
@@ -870,7 +885,7 @@ export function ContentClient({
                   {galleryUrls.map((url, idx) => (
                     <div
                       key={`${url}-${idx}`}
-                      className="overflow-hidden rounded-xl border border-border bg-muted/20"
+                      className="overflow-hidden rounded-xl bg-secondary/50"
                     >
                       <div className="relative h-36 w-full bg-muted">
                         <Image
@@ -880,7 +895,7 @@ export function ContentClient({
                           unoptimized
                           className="object-cover"
                         />
-                        <Badge className="absolute top-2 left-2 bg-black/70 text-white font-mono text-[10px]">
+                        <Badge className="absolute top-2 left-2 bg-primary font-mono text-[10px] text-primary-foreground">
                           #{idx + 1}
                         </Badge>
                       </div>
@@ -888,17 +903,17 @@ export function ContentClient({
                         <span className="truncate font-mono text-[10px] text-muted-foreground">
                           {url}
                         </span>
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex shrink-0 items-center gap-1">
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon-xs"
                             disabled={idx === 0}
                             onClick={() => handleMoveGalleryPhoto(idx, -1)}
-                            className="size-6 cursor-pointer"
+                            className="size-6 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             title="Move Earlier"
                           >
-                            <ArrowUp className="size-3" />
+                            <ArrowUp className="size-3" aria-hidden="true" />
                           </Button>
                           <Button
                             type="button"
@@ -906,20 +921,20 @@ export function ContentClient({
                             size="icon-xs"
                             disabled={idx === galleryUrls.length - 1}
                             onClick={() => handleMoveGalleryPhoto(idx, 1)}
-                            className="size-6 cursor-pointer"
+                            className="size-6 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             title="Move Later"
                           >
-                            <ArrowDown className="size-3" />
+                            <ArrowDown className="size-3" aria-hidden="true" />
                           </Button>
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon-xs"
                             onClick={() => handleRemoveGalleryPhoto(idx)}
-                            className="size-6 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                            className="size-6 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             title="Remove Photo"
                           >
-                            <Trash2 className="size-3" />
+                            <Trash2 className="size-3" aria-hidden="true" />
                           </Button>
                         </div>
                       </div>
@@ -932,12 +947,15 @@ export function ContentClient({
                 <Button
                   type="submit"
                   disabled={savingGallery}
-                  className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                  className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {savingGallery ? (
-                    <Loader2 className="size-4 animate-spin" />
+                    <Loader2
+                      className="size-4 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Save className="size-4" />
+                    <Save className="size-4" aria-hidden="true" />
                   )}
                   <span>Save Property Gallery</span>
                 </Button>

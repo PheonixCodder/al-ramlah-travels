@@ -61,9 +61,15 @@ export function QuoteDispatchBar({
   liveQuote,
 }: QuoteDispatchBarProps) {
   const activeQuote = liveQuote ?? latestQuote
-  const [pdfUrl, setPdfUrl] = React.useState<string | null>(
-    activeQuote?.quotationPdfUrl ?? null
-  )
+  const serverPdfUrl = activeQuote?.quotationPdfUrl ?? null
+  const [generatedPdf, setGeneratedPdf] = React.useState<{
+    forServerUrl: string | null
+    url: string
+  } | null>(null)
+  const pdfUrl =
+    generatedPdf && generatedPdf.forServerUrl === serverPdfUrl
+      ? generatedPdf.url
+      : serverPdfUrl
   const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false)
   const [isSendingEmail, setIsSendingEmail] = React.useState(false)
   const [isCheckingWaWindow, setIsCheckingWaWindow] = React.useState(false)
@@ -72,17 +78,13 @@ export function QuoteDispatchBar({
     message: string
   } | null>(null)
 
-  React.useEffect(() => {
-    setPdfUrl(activeQuote?.quotationPdfUrl ?? null)
-  }, [activeQuote?.quotationPdfUrl])
-
   const handleGenerateLuxuryPdf = async () => {
     setIsGeneratingPdf(true)
     setDispatchNotice(null)
     try {
       const res = await generateApplicationLuxuryPdf(application.id)
       if (res.success && res.pdfUrl) {
-        setPdfUrl(res.pdfUrl)
+        setGeneratedPdf({ forServerUrl: serverPdfUrl, url: res.pdfUrl })
         window.open(res.pdfUrl, "_blank", "noopener,noreferrer")
       } else {
         setDispatchNotice({
@@ -255,7 +257,7 @@ export function QuoteDispatchBar({
     (activeQuote?.grandTotalPkr ?? 0) > 0
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-gold/30 bg-gold/5 p-3 shadow-2xs">
+    <div className="flex flex-col gap-2 rounded-xl border border-gold-border/60 bg-accent/35 p-3 shadow-2xs">
       <div className="flex flex-wrap items-center gap-2 sm:justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-foreground">
@@ -269,10 +271,10 @@ export function QuoteDispatchBar({
             href={waUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-800/30 bg-emerald-800 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-emerald-900"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             title="Open WhatsApp Click-to-Chat with itemized quotation"
           >
-            <MessageSquare className="size-3.5" />
+            <MessageSquare className="size-3.5" aria-hidden="true" />
             <span>WhatsApp Chat</span>
           </a>
 
@@ -283,13 +285,13 @@ export function QuoteDispatchBar({
             size="sm"
             disabled={isCheckingWaWindow}
             onClick={handleVerifyWhatsappWindow}
-            className="border-emerald-700/30 bg-card text-emerald-800 hover:bg-emerald-50 text-xs font-medium gap-1.5"
+            className="gap-1.5 border-status-success-border bg-card text-xs font-medium text-status-success hover:bg-status-success-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             title="Check Meta 24-hour customer care window before sending freeform PDF"
           >
             {isCheckingWaWindow ? (
-              <Loader2 className="size-3.5 animate-spin" />
+              <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
             ) : (
-              <Send className="size-3.5" />
+              <Send className="size-3.5" aria-hidden="true" />
             )}
             <span>Check WA 24h Window</span>
           </Button>
@@ -301,7 +303,7 @@ export function QuoteDispatchBar({
             size="sm"
             disabled={isSendingEmail || !application.customerEmail}
             onClick={handleSendEmail}
-            className="border-border bg-card text-foreground hover:border-gold hover:bg-secondary text-xs font-medium gap-1.5"
+            className="gap-1.5 border-border bg-card text-xs font-medium text-foreground hover:border-gold hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             title={
               application.customerEmail
                 ? `Send official quotation email to ${application.customerEmail}`
@@ -309,9 +311,9 @@ export function QuoteDispatchBar({
             }
           >
             {isSendingEmail ? (
-              <Loader2 className="size-3.5 animate-spin" />
+              <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
             ) : (
-              <Mail className="size-3.5 text-muted-foreground" />
+              <Mail className="size-3.5 text-muted-foreground" aria-hidden="true" />
             )}
             <span>Email Quote</span>
           </Button>
@@ -323,12 +325,12 @@ export function QuoteDispatchBar({
             size="sm"
             disabled={isGeneratingPdf}
             onClick={handleGenerateLuxuryPdf}
-            className="border-gold bg-[#0A3622] text-white hover:bg-[#0A3622]/90 text-xs font-semibold cursor-pointer gap-1.5"
+            className="cursor-pointer gap-1.5 border-gold bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             {isGeneratingPdf ? (
-              <Loader2 className="size-3.5 animate-spin text-gold" />
+              <Loader2 className="size-3.5 animate-spin text-gold motion-reduce:animate-none" aria-hidden="true" />
             ) : (
-              <FileText className="size-3.5 text-gold" />
+              <FileText className="size-3.5 text-gold" aria-hidden="true" />
             )}
             <span>3-Page Luxury PDF</span>
           </Button>
@@ -338,10 +340,10 @@ export function QuoteDispatchBar({
               href={pdfUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded-lg border border-gold/50 bg-white px-2.5 py-1.5 text-xs font-bold text-primary hover:bg-secondary"
+              className="inline-flex items-center gap-1 rounded-lg border border-gold-border bg-background px-2.5 py-1.5 text-xs font-bold text-primary transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               <span>Open PDF</span>
-              <ExternalLink className="size-3 text-gold" />
+              <ExternalLink className="size-3 text-gold-text" aria-hidden="true" />
             </a>
           )}
 
@@ -350,7 +352,7 @@ export function QuoteDispatchBar({
             <Button
               variant="outline"
               size="sm"
-              className="border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 text-xs font-medium"
+              className="border-primary/30 bg-primary/5 text-xs font-medium text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               render={
                 <Link
                   href={`/admin/applications/${application.id}/voucher`}
@@ -359,9 +361,9 @@ export function QuoteDispatchBar({
               }
               nativeButton={false}
             >
-              <Printer className="size-3.5" />
+              <Printer className="size-3.5" aria-hidden="true" />
               <span>Print Voucher</span>
-              <ExternalLink className="size-3 text-muted-foreground" />
+              <ExternalLink className="size-3 text-muted-foreground" aria-hidden="true" />
             </Button>
           ) : (
             <Button
@@ -370,9 +372,9 @@ export function QuoteDispatchBar({
               size="sm"
               disabled
               title="Voucher unlocks once booking is Approved and Deposit or Full Payment is verified"
-              className="border-border bg-muted/50 text-muted-foreground text-xs font-medium gap-1.5"
+              className="gap-1.5 border-border bg-muted/50 text-xs font-medium text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <Lock className="size-3.5" />
+              <Lock className="size-3.5" aria-hidden="true" />
               <span>Voucher Locked</span>
             </Button>
           )}
@@ -383,10 +385,10 @@ export function QuoteDispatchBar({
         <div
           className={`rounded-lg border px-3 py-1.5 text-[11px] font-medium ${
             dispatchNotice.tone === "success"
-              ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+              ? "border-status-success-border bg-status-success-bg text-status-success"
               : dispatchNotice.tone === "warning"
-                ? "border-amber-300 bg-amber-50 text-amber-900"
-                : "border-red-300 bg-red-50 text-red-900"
+                ? "border-status-warning-border bg-status-warning-bg text-status-warning"
+                : "border-status-danger-border bg-status-danger-bg text-status-danger"
           }`}
         >
           {dispatchNotice.message}

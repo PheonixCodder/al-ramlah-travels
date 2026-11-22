@@ -11,7 +11,7 @@ export default function AdminDashboardLoading() {
       className="flex w-full flex-col gap-6"
     >
       <span className="sr-only">
-        Loading Al Ramlah Travels operational workspace...
+        Loading Al Ramlah Travels operational workspace…
       </span>
 
       {/* Header bar skeleton */}

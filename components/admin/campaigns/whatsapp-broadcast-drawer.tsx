@@ -5,6 +5,7 @@ import { useState, useMemo } from "react"
 import {
   Check,
   CheckCheck,
+  CheckCircle2,
   FileSpreadsheet,
   Image as ImageIcon,
   Loader2,
@@ -12,6 +13,7 @@ import {
   RefreshCw,
   Search,
   Send,
+  Smartphone,
   Sparkles,
   XCircle,
 } from "lucide-react"
@@ -163,43 +165,56 @@ export function WhatsappBroadcastDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col gap-0 overflow-hidden bg-card p-0">
         {/* Header */}
-        <DialogHeader className="p-6 pb-4 border-b border-border/60 bg-muted/20">
+        <DialogHeader className="border-b border-border/60 bg-secondary/40 p-6 pb-4">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700 border border-emerald-500/30">
-                <Radio className="size-5" />
+              <div className="flex size-10 items-center justify-center rounded-xl bg-status-success-bg text-status-success">
+                <Radio className="size-5" aria-hidden="true" />
               </div>
               <div>
-                <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                <DialogTitle className="flex items-center gap-2 text-base font-bold text-foreground">
                   <span>{broadcast.name}</span>
                   <Badge
                     variant="outline"
                     className={cn(
-                      "text-[10px] font-semibold uppercase",
+                      "text-[11px] font-semibold capitalize",
                       broadcast.status === "completed"
-                        ? "border-emerald-500/40 text-emerald-700 bg-emerald-500/10"
+                        ? "border-status-success-border bg-status-success-bg text-status-success"
                         : broadcast.status === "processing"
-                        ? "border-blue-500/40 text-blue-700 bg-blue-500/10"
-                        : broadcast.status === "scheduled"
-                        ? "border-amber-500/40 text-amber-700 bg-amber-500/10"
-                        : "border-rose-500/40 text-rose-700 bg-rose-500/10"
+                          ? "border-status-info-border bg-status-info-bg text-status-info"
+                          : broadcast.status === "scheduled"
+                            ? "border-status-warning-border bg-status-warning-bg text-status-warning"
+                            : "border-status-danger-border bg-status-danger-bg text-status-danger"
                     )}
                   >
                     {broadcast.status}
                   </Badge>
                 </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                  Template:{" "}
-                  <code className="font-semibold text-foreground">
-                    {broadcast.templateName}
-                  </code>{" "}
-                  ({broadcast.templateLanguage || "en_US"})
+                <DialogDescription className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                  <span>
+                    Template:{" "}
+                    <code className="font-semibold text-foreground">
+                      {broadcast.templateName}
+                    </code>{" "}
+                    ({broadcast.templateLanguage || "en_US"})
+                  </span>
                   {broadcast.senderPhone && (
-                    <> &bull; WABA Line: <strong className="text-foreground">📱 {broadcast.senderPhone}</strong></>
+                    <span className="inline-flex items-center gap-1">
+                      <span>WABA Line:</span>
+                      <Smartphone
+                        className="size-3 text-gold-text"
+                        aria-hidden="true"
+                      />
+                      <strong className="font-mono text-foreground tabular-nums">
+                        {broadcast.senderPhone}
+                      </strong>
+                    </span>
                   )}
-                  {broadcast.headerMediaUrl && " • Media Header attached"}
+                  {broadcast.headerMediaUrl && (
+                    <span>Media Header attached</span>
+                  )}
                 </DialogDescription>
               </div>
             </div>
@@ -208,115 +223,137 @@ export function WhatsappBroadcastDetailsDialog({
             {broadcast.failedCount > 0 &&
               onRetryFailed &&
               userRole === "super_admin" && (
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => onRetryFailed(broadcast.id)}
-                disabled={isRetrying}
-                className="h-8 gap-1.5 text-xs bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-sm shrink-0"
-              >
-                <RefreshCw
-                  className={cn("size-3.5", isRetrying && "animate-spin")}
-                />
-                {isRetrying
-                  ? "Retrying..."
-                  : `Retry Failed (${broadcast.failedCount})`}
-              </Button>
-            )}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => onRetryFailed(broadcast.id)}
+                  disabled={isRetrying}
+                  className="h-8 shrink-0 cursor-pointer gap-1.5 bg-status-warning text-xs font-semibold text-primary-foreground shadow-sm hover:bg-status-warning/90 active:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  <RefreshCw
+                    className={cn(
+                      "size-3.5",
+                      isRetrying && "animate-spin motion-reduce:animate-none"
+                    )}
+                    aria-hidden="true"
+                  />
+                  {isRetrying
+                    ? "Retrying…"
+                    : `Retry Failed (${broadcast.failedCount})`}
+                </Button>
+              )}
           </div>
         </DialogHeader>
 
         {/* Funnel Progress Visual Strip */}
-        <div className="p-6 pb-4 border-b border-border/50 bg-background">
-          <div className="text-xs font-semibold text-foreground mb-3 flex items-center justify-between">
+        <div className="border-b border-border/50 bg-background p-6 pb-4">
+          <div className="mb-3 flex items-center justify-between text-xs font-semibold text-foreground">
             <span>Delivery Funnel Breakdown</span>
-            <span className="text-[11px] text-muted-foreground font-normal">
+            <span className="text-[11px] font-normal text-muted-foreground">
               Total Target:{" "}
-              <strong className="text-foreground">
+              <strong className="font-mono text-foreground tabular-nums">
                 {broadcast.totalRecipients}
               </strong>
             </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {/* Sent */}
-            <div className="rounded-lg border border-border/70 p-3 bg-muted/15 flex flex-col justify-between">
+            <div className="flex flex-col justify-between rounded-xl bg-secondary/60 p-3">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
-                  <Send className="size-3.5 text-blue-600" />
+                  <Send
+                    className="size-3.5 text-status-info"
+                    aria-hidden="true"
+                  />
                   Sent
                 </span>
-                <span className="font-mono text-[10px]">{sentPercent}%</span>
+                <span className="font-mono text-[11px] tabular-nums">
+                  {sentPercent}%
+                </span>
               </div>
-              <div className="mt-2 text-lg font-bold text-foreground">
+              <div className="mt-2 font-mono text-lg font-bold text-foreground tabular-nums">
                 {broadcast.sentCount}
               </div>
-              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mt-1.5">
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full bg-blue-600 transition-all duration-300"
-                  style={{ width: `${sentPercent}%` }}
+                  className="h-full w-full origin-left bg-status-info transition-transform duration-300 motion-reduce:transition-none"
+                  style={{ transform: `scaleX(${sentPercent / 100})` }}
                 />
               </div>
             </div>
 
             {/* Delivered */}
-            <div className="rounded-lg border border-border/70 p-3 bg-muted/15 flex flex-col justify-between">
+            <div className="flex flex-col justify-between rounded-xl bg-secondary/60 p-3">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
-                  <Check className="size-3.5 text-emerald-600" />
+                  <Check
+                    className="size-3.5 text-status-success"
+                    aria-hidden="true"
+                  />
                   Delivered
                 </span>
-                <span className="font-mono text-[10px]">
+                <span className="font-mono text-[11px] tabular-nums">
                   {deliveredPercent}%
                 </span>
               </div>
-              <div className="mt-2 text-lg font-bold text-foreground">
+              <div className="mt-2 font-mono text-lg font-bold text-foreground tabular-nums">
                 {broadcast.deliveredCount}
               </div>
-              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mt-1.5">
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full bg-emerald-600 transition-all duration-300"
-                  style={{ width: `${deliveredPercent}%` }}
+                  className="h-full w-full origin-left bg-status-success transition-transform duration-300 motion-reduce:transition-none"
+                  style={{ transform: `scaleX(${deliveredPercent / 100})` }}
                 />
               </div>
             </div>
 
             {/* Read */}
-            <div className="rounded-lg border border-border/70 p-3 bg-muted/15 flex flex-col justify-between">
+            <div className="flex flex-col justify-between rounded-xl bg-secondary/60 p-3">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
-                  <CheckCheck className="size-3.5 text-violet-600" />
+                  <CheckCheck
+                    className="size-3.5 text-gold-text"
+                    aria-hidden="true"
+                  />
                   Read (Ticks)
                 </span>
-                <span className="font-mono text-[10px]">{readPercent}%</span>
+                <span className="font-mono text-[11px] tabular-nums">
+                  {readPercent}%
+                </span>
               </div>
-              <div className="mt-2 text-lg font-bold text-foreground">
+              <div className="mt-2 font-mono text-lg font-bold text-foreground tabular-nums">
                 {broadcast.readCount}
               </div>
-              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mt-1.5">
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full bg-violet-600 transition-all duration-300"
-                  style={{ width: `${readPercent}%` }}
+                  className="h-full w-full origin-left bg-gold transition-transform duration-300 motion-reduce:transition-none"
+                  style={{ transform: `scaleX(${readPercent / 100})` }}
                 />
               </div>
             </div>
 
             {/* Failed */}
-            <div className="rounded-lg border border-border/70 p-3 bg-muted/15 flex flex-col justify-between">
+            <div className="flex flex-col justify-between rounded-xl bg-secondary/60 p-3">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
-                  <XCircle className="size-3.5 text-rose-600" />
+                  <XCircle
+                    className="size-3.5 text-status-danger"
+                    aria-hidden="true"
+                  />
                   Failed
                 </span>
-                <span className="font-mono text-[10px]">{failedPercent}%</span>
+                <span className="font-mono text-[11px] tabular-nums">
+                  {failedPercent}%
+                </span>
               </div>
-              <div className="mt-2 text-lg font-bold text-rose-600">
+              <div className="mt-2 font-mono text-lg font-bold text-status-danger tabular-nums">
                 {broadcast.failedCount}
               </div>
-              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mt-1.5">
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full bg-rose-600 transition-all duration-300"
-                  style={{ width: `${failedPercent}%` }}
+                  className="h-full w-full origin-left bg-status-danger transition-transform duration-300 motion-reduce:transition-none"
+                  style={{ transform: `scaleX(${failedPercent / 100})` }}
                 />
               </div>
             </div>
@@ -324,14 +361,14 @@ export function WhatsappBroadcastDetailsDialog({
         </div>
 
         {/* Recipients Filter Bar */}
-        <div className="px-6 py-2.5 border-b border-border/40 bg-muted/30 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 bg-secondary/40 px-6 py-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <Button
               type="button"
               variant={filterTab === "all" ? "default" : "ghost"}
               size="sm"
               onClick={() => setFilterTab("all")}
-              className="h-7 text-[11px] px-2.5"
+              className="h-7 cursor-pointer px-2.5 text-[11px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               All ({recipients.length})
             </Button>
@@ -340,7 +377,7 @@ export function WhatsappBroadcastDetailsDialog({
               variant={filterTab === "delivered_read" ? "default" : "ghost"}
               size="sm"
               onClick={() => setFilterTab("delivered_read")}
-              className="h-7 text-[11px] px-2.5"
+              className="h-7 cursor-pointer px-2.5 text-[11px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               Delivered / Read (
               {
@@ -355,7 +392,12 @@ export function WhatsappBroadcastDetailsDialog({
               variant={filterTab === "failed" ? "default" : "ghost"}
               size="sm"
               onClick={() => setFilterTab("failed")}
-              className="h-7 text-[11px] px-2.5 text-rose-700"
+              className={cn(
+                "h-7 cursor-pointer px-2.5 text-[11px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                filterTab === "failed"
+                  ? "bg-status-danger text-primary-foreground hover:bg-status-danger/90"
+                  : "text-status-danger"
+              )}
             >
               Failed ({recipients.filter((r) => r.status === "failed").length})
             </Button>
@@ -364,7 +406,7 @@ export function WhatsappBroadcastDetailsDialog({
               variant={filterTab === "pending" ? "default" : "ghost"}
               size="sm"
               onClick={() => setFilterTab("pending")}
-              className="h-7 text-[11px] px-2.5"
+              className="h-7 cursor-pointer px-2.5 text-[11px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               In Flight (
               {
@@ -377,12 +419,15 @@ export function WhatsappBroadcastDetailsDialog({
           </div>
 
           <div className="relative w-48">
-            <Search className="absolute left-2.5 top-2 size-3 text-muted-foreground" />
+            <Search
+              className="absolute top-2 left-2.5 size-3 text-muted-foreground"
+              aria-hidden="true"
+            />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search phone or error..."
-              className="h-7 text-xs pl-7 pr-2"
+              placeholder="Search phone or error…"
+              className="h-7 bg-background pr-2 pl-7 text-xs"
             />
           </div>
         </div>
@@ -390,18 +435,25 @@ export function WhatsappBroadcastDetailsDialog({
         {/* Recipients Table */}
         <div className="flex-1 overflow-y-auto p-6 pt-2">
           {isLoading ? (
-            <div className="py-16 text-center text-xs text-muted-foreground flex flex-col items-center justify-center">
-              <Loader2 className="size-6 animate-spin text-emerald-600 mb-2" />
-              Loading recipient dispatches...
+            <div className="flex flex-col items-center justify-center py-16 text-center text-xs text-muted-foreground">
+              <Loader2
+                className="mb-2 size-6 animate-spin text-primary motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+              Loading recipient dispatches…
             </div>
           ) : filteredRecipients.length === 0 ? (
             <div className="py-12 text-center text-xs text-muted-foreground">
               No recipients match the selected filter.
             </div>
           ) : (
-            <div className="rounded-lg border border-border/70 overflow-hidden">
+            <div
+              tabIndex={0}
+              aria-label="Broadcast recipients status table"
+              className="overflow-x-auto rounded-xl bg-secondary/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
               <table className="w-full text-left text-xs">
-                <thead className="bg-muted/40 text-[11px] font-semibold text-muted-foreground border-b border-border/60">
+                <thead className="border-b border-border/60 bg-secondary/60 text-[11px] font-semibold text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2">Recipient Phone</th>
                     <th className="px-3 py-2">Status</th>
@@ -410,46 +462,46 @@ export function WhatsappBroadcastDetailsDialog({
                     <th className="px-3 py-2">Failure Details</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/40">
+                <tbody className="divide-y divide-border/50">
                   {filteredRecipients.map((recip) => (
-                    <tr key={recip.id} className="hover:bg-muted/20">
-                      <td className="px-3 py-2.5 font-mono text-foreground font-semibold">
+                    <tr key={recip.id} className="hover:bg-secondary/40">
+                      <td className="px-3 py-2.5 font-mono font-semibold text-foreground tabular-nums">
                         {recip.contactPhone}
                       </td>
                       <td className="px-3 py-2.5">
                         <Badge
                           variant="outline"
                           className={cn(
-                            "text-[10px] font-semibold uppercase",
+                            "text-[11px] font-semibold capitalize",
                             recip.status === "read"
-                              ? "border-violet-500/40 text-violet-700 bg-violet-500/10"
+                              ? "border-gold-border bg-accent text-gold-text"
                               : recip.status === "delivered"
-                              ? "border-emerald-500/40 text-emerald-700 bg-emerald-500/10"
-                              : recip.status === "sent"
-                              ? "border-blue-500/40 text-blue-700 bg-blue-500/10"
-                              : recip.status === "failed"
-                              ? "border-rose-500/40 text-rose-700 bg-rose-500/10"
-                              : "border-border text-muted-foreground"
+                                ? "border-status-success-border bg-status-success-bg text-status-success"
+                                : recip.status === "sent"
+                                  ? "border-status-info-border bg-status-info-bg text-status-info"
+                                  : recip.status === "failed"
+                                    ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+                                    : "border-border text-muted-foreground"
                           )}
                         >
                           {recip.status}
                         </Badge>
                       </td>
-                      <td className="px-3 py-2.5 text-muted-foreground max-w-xs truncate text-[11px]">
+                      <td className="max-w-xs truncate px-3 py-2.5 text-[11px] text-muted-foreground">
                         {recip.templateParams &&
                         Object.keys(recip.templateParams).length > 0 ? (
                           <span className="font-mono text-[10px]">
                             {JSON.stringify(recip.templateParams)}
                           </span>
                         ) : (
-                          <span className="italic text-muted-foreground/60">
+                          <span className="italic text-muted-foreground/70">
                             Default
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-muted-foreground text-[11px]">
+                      <td className="px-3 py-2.5 text-[11px] text-muted-foreground tabular-nums">
                         {recip.readAt ? (
-                          <span className="text-violet-700 font-semibold">
+                          <span className="font-semibold text-gold-text">
                             Read{" "}
                             {new Date(recip.readAt).toLocaleTimeString([], {
                               hour: "2-digit",
@@ -459,10 +511,13 @@ export function WhatsappBroadcastDetailsDialog({
                         ) : recip.deliveredAt ? (
                           <span>
                             Delivered{" "}
-                            {new Date(recip.deliveredAt).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                            {new Date(recip.deliveredAt).toLocaleTimeString(
+                              [],
+                              {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              }
+                            )}
                           </span>
                         ) : recip.sentAt ? (
                           <span>
@@ -473,20 +528,22 @@ export function WhatsappBroadcastDetailsDialog({
                             })}
                           </span>
                         ) : (
-                          "—"
+                          "-"
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-rose-600 text-[11px] max-w-xs">
+                      <td className="max-w-xs px-3 py-2.5 text-[11px] text-status-danger">
                         {recip.errorMessage || recip.failureReason ? (
                           <span
-                            title={recip.errorMessage || recip.failureReason || ""}
+                            title={
+                              recip.errorMessage || recip.failureReason || ""
+                            }
                             className="line-clamp-1"
                           >
                             {recip.errorCode && `[${recip.errorCode}] `}
                             {recip.errorMessage || recip.failureReason}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground/40">—</span>
+                          <span className="text-muted-foreground/60">-</span>
                         )}
                       </td>
                     </tr>
@@ -497,8 +554,8 @@ export function WhatsappBroadcastDetailsDialog({
           )}
         </div>
 
-        <DialogFooter className="p-4 border-t border-border/40 bg-muted/10 flex items-center justify-between">
-          <div className="text-[11px] text-muted-foreground">
+        <DialogFooter className="flex items-center justify-between border-t border-border/40 bg-secondary/40 p-4">
+          <div className="text-[11px] text-muted-foreground tabular-nums">
             Showing {filteredRecipients.length} of {recipients.length} recipients
           </div>
           <Button
@@ -506,7 +563,7 @@ export function WhatsappBroadcastDetailsDialog({
             variant="outline"
             size="sm"
             onClick={onClose}
-            className="h-8 text-xs"
+            className="h-8 cursor-pointer text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             Close
           </Button>
@@ -584,10 +641,13 @@ export function WhatsappBroadcastPersonalizerFields({
       {(templateHeaderType === "IMAGE" ||
         templateHeaderType === "DOCUMENT" ||
         templateHeaderType === "VIDEO") && (
-        <div className="flex flex-col gap-1.5 p-3 rounded-lg border border-border/80 bg-muted/20">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs font-semibold flex items-center gap-1.5">
-              <ImageIcon className="size-3.5 text-emerald-600" />
+        <div className="flex flex-col gap-1.5 rounded-xl bg-secondary/60 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="flex items-center gap-1.5 text-xs font-semibold">
+              <ImageIcon
+                className="size-3.5 text-status-success"
+                aria-hidden="true"
+              />
               Header Media URL ({templateHeaderType})
             </Label>
             <span className="text-[10px] text-muted-foreground">
@@ -598,17 +658,20 @@ export function WhatsappBroadcastPersonalizerFields({
             value={headerMediaUrl}
             onChange={(e) => onHeaderMediaUrlChange(e.target.value)}
             placeholder="https://.../posters/ramadan_offer.jpg"
-            className="text-xs h-8 font-mono"
+            className="h-8 bg-background font-mono text-xs"
           />
         </div>
       )}
 
       {/* Dynamic Placeholder Variable Inputs */}
       {placeholders.length > 0 && (
-        <div className="flex flex-col gap-3 p-4 rounded-lg border border-border/80 bg-background">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs font-semibold flex items-center gap-1.5">
-              <Sparkles className="size-3.5 text-amber-600" />
+        <div className="flex flex-col gap-3 rounded-xl bg-secondary/60 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label className="flex items-center gap-1.5 text-xs font-semibold">
+              <Sparkles
+                className="size-3.5 text-gold-text"
+                aria-hidden="true"
+              />
               Template Parameters ({placeholders.length} detected)
             </Label>
             <span className="text-[10px] text-muted-foreground">
@@ -616,32 +679,35 @@ export function WhatsappBroadcastPersonalizerFields({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {placeholders.map((idx) => {
               const val = templateParams[String(idx)] || ""
               return (
                 <div
                   key={idx}
-                  className="flex flex-col gap-1.5 p-2.5 rounded border border-border/60 bg-muted/15"
+                  className="flex flex-col gap-1.5 rounded-lg bg-background p-2.5"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-mono font-bold text-emerald-800">
-                      Placeholder &#123;&#123;{idx}&#125;&#125;
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold text-primary">
+                      Placeholder{" "}
+                      <span className="font-mono">
+                        &#123;&#123;{idx}&#125;&#125;
+                      </span>
                     </span>
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={() => handleInsertToken(idx, "{{name}}")}
-                        className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 font-mono"
+                        className="cursor-pointer whitespace-nowrap rounded bg-status-success-bg px-1.5 py-0.5 text-[10px] font-semibold text-status-success hover:bg-status-success-border/40 active:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
-                        + &#123;&#123;name&#125;&#125;
+                        {"+ {{name}}"}
                       </button>
                       <button
                         type="button"
                         onClick={() => handleInsertToken(idx, "{{phone}}")}
-                        className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 font-mono"
+                        className="cursor-pointer whitespace-nowrap rounded bg-status-info-bg px-1.5 py-0.5 text-[10px] font-semibold text-status-info hover:bg-status-info-border/40 active:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
-                        + &#123;&#123;phone&#125;&#125;
+                        {"+ {{phone}}"}
                       </button>
                     </div>
                   </div>
@@ -649,7 +715,7 @@ export function WhatsappBroadcastPersonalizerFields({
                     value={val}
                     onChange={(e) => handleParamChange(idx, e.target.value)}
                     placeholder={`e.g. Ramadan 2027 or {{name}}`}
-                    className="text-xs h-7"
+                    className="h-7 text-xs"
                   />
                 </div>
               )
@@ -661,8 +727,11 @@ export function WhatsappBroadcastPersonalizerFields({
       {/* CSV Ingestion Section */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <Label className="text-xs font-semibold flex items-center gap-1.5">
-            <FileSpreadsheet className="size-3.5 text-emerald-600" />
+          <Label className="flex items-center gap-1.5 text-xs font-semibold">
+            <FileSpreadsheet
+              className="size-3.5 text-status-success"
+              aria-hidden="true"
+            />
             CSV Recipient Import (Paste or Upload)
           </Label>
           <span className="text-[10px] text-muted-foreground">
@@ -675,29 +744,40 @@ export function WhatsappBroadcastPersonalizerFields({
           onChange={(e) => onCsvTextChange(e.target.value)}
           placeholder={`Name,Phone\nMuhammad Ali,03001234567\nUsman Tariq,+923219876543\nFatima Bibi,03451122334`}
           rows={4}
-          className="text-xs font-mono resize-none"
+          className="resize-none bg-background font-mono text-xs"
         />
 
         {parsedRecipients.length > 0 && (
-          <div className="flex items-center justify-between text-[11px] text-emerald-700 font-medium px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/20">
-            <span>
-              ✓ Successfully parsed <strong>{parsedRecipients.length}</strong> unique recipients
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-status-success-bg px-2.5 py-1.5 text-[11px] font-medium text-status-success">
+            <span className="inline-flex items-center gap-1.5">
+              <CheckCircle2 className="size-3.5 shrink-0" aria-hidden="true" />
+              <span>
+                Successfully parsed{" "}
+                <strong className="font-mono tabular-nums">
+                  {parsedRecipients.length}
+                </strong>{" "}
+                unique recipients
+              </span>
             </span>
             <span className="text-[10px] text-muted-foreground">
-              Sample: {parsedRecipients[0]?.phone} ({parsedRecipients[0]?.name || "No Name"})
+              Sample:{" "}
+              <span className="font-mono tabular-nums">
+                {parsedRecipients[0]?.phone}
+              </span>{" "}
+              ({parsedRecipients[0]?.name || "No Name"})
             </span>
           </div>
         )}
 
         {csvErrors && csvErrors.length > 0 && (
-          <div className="p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-900 text-[11px]">
+          <div className="rounded-lg bg-status-warning-bg p-2.5 text-[11px] text-status-warning">
             <span className="font-semibold">CSV Warnings:</span>
-            <ul className="list-disc pl-4 mt-1 space-y-0.5 text-[10px]">
+            <ul className="mt-1 list-disc pl-4 text-[10px]">
               {csvErrors.slice(0, 3).map((err, i) => (
                 <li key={i}>{err}</li>
               ))}
               {csvErrors.length > 3 && (
-                <li>...and {csvErrors.length - 3} more invalid rows.</li>
+                <li>…and {csvErrors.length - 3} more invalid rows.</li>
               )}
             </ul>
           </div>
@@ -710,8 +790,8 @@ export function WhatsappBroadcastPersonalizerFields({
           <Label className="text-xs font-semibold text-muted-foreground">
             Live Preview for First Recipient ({sampleContact.name}):
           </Label>
-          <div className="p-3 rounded-xl bg-[#EFEAE2] border border-border/80 text-xs">
-            <div className="p-3 rounded-lg bg-white border border-border/40 shadow-sm text-foreground whitespace-pre-wrap leading-relaxed text-[11px]">
+          <div className="rounded-xl bg-secondary/60 p-3 text-xs">
+            <div className="rounded-lg bg-background p-3 text-[11px] leading-relaxed whitespace-pre-wrap text-foreground shadow-2xs">
               {simulatedPreview}
             </div>
           </div>

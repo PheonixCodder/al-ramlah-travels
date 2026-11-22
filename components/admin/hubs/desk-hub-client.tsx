@@ -31,28 +31,27 @@ import {
   Bot,
   Image as ImageIcon,
   Music,
-  Video,
   RefreshCw,
   List as ListIcon,
   MousePointerClick,
   Smile,
   ArrowDownToLine,
   Pin,
-  PinOff,
   Archive,
   ArchiveRestore,
   UserCheck,
   StickyNote,
   Smartphone,
-  ShieldCheck,
-  Pause,
-  Play,
+  Cloud,
+  Lock,
+  Compass,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { TabularPrice } from "@/components/layout/status-badge"
 import {
   Dialog,
   DialogContent,
@@ -353,6 +352,7 @@ export interface DeskStaffMember {
 
 export interface DeskHubClientProps {
   initialTab?: string
+  initialNowMs?: number
   applications: DeskApplicationItem[]
   slaHours?: number
   whatsappAccounts: WhatsAppAccountRecord[]
@@ -367,10 +367,33 @@ export interface DeskHubClientProps {
   currentUserRole?: string
 }
 
-const QUICK_REACTION_EMOJIS = ["👍", "❤️", "🤲", "✅", "🌟"]
+let fallbackOptimisticIdSeq = 0
+
+function createOptimisticMessageId(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID()
+  }
+  fallbackOptimisticIdSeq += 1
+  return `optimistic-${fallbackOptimisticIdSeq}`
+}
+
+const QUICK_REACTION_EMOJIS: ReadonlyArray<{
+  emoji: string
+  label: string
+}> = [
+  { emoji: String.fromCodePoint(0x1f44d), label: "Thumbs up" },
+  { emoji: String.fromCodePoint(0x2764, 0xfe0f), label: "Heart" },
+  { emoji: String.fromCodePoint(0x1f932), label: "Dua" },
+  { emoji: String.fromCodePoint(0x2705), label: "Check mark" },
+  { emoji: String.fromCodePoint(0x1f31f), label: "Star" },
+]
 
 export function DeskHubClient({
   initialTab,
+  initialNowMs,
   applications,
   slaHours = 24,
   whatsappAccounts: initialAccounts,
@@ -384,6 +407,20 @@ export function DeskHubClient({
   currentUserId,
   currentUserRole,
 }: DeskHubClientProps) {
+  const [nowMs, setNowMs] = React.useState<number>(() => initialNowMs ?? 0)
+
+  React.useEffect(() => {
+    const syncTimer = window.setTimeout(() => {
+      setNowMs(Date.now())
+    }, 0)
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now())
+    }, 60_000)
+    return () => {
+      window.clearTimeout(syncTimer)
+      window.clearInterval(intervalId)
+    }
+  }, [])
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -491,7 +528,8 @@ export function DeskHubClient({
     const overdue = applications.filter(
       (a) =>
         a.status === "pending_quote" &&
-        Date.now() - new Date(a.createdAt).getTime() > slaHours * 3600 * 1000
+        nowMs > 0 &&
+        nowMs - new Date(a.createdAt).getTime() > slaHours * 3600 * 1000
     ).length
     const quotedPipelinePkr = applications
       .filter((a) => a.status === "quoted")
@@ -507,7 +545,7 @@ export function DeskHubClient({
       quotedPipelinePkr,
       approvedRevenuePkr,
     }
-  }, [applications, slaHours])
+  }, [applications, nowMs, slaHours])
 
   // Pipeline AI Quote Copilot Preview Modal State (Spec 0015 AC-5)
   const [pipelineCopilotOpen, setPipelineCopilotOpen] = React.useState(false)
@@ -586,16 +624,24 @@ export function DeskHubClient({
 
   // Distinct phone lines present across accounts and conversations
   const phoneLineFilters = React.useMemo(() => {
-    const list: Array<{ id: string; label: string; icon: string; count: number }> = [
+    const list: Array<{
+      id: string
+      label: string
+      prefixLabel: string
+      count: number
+    }> = [
       {
         id: "all",
         label: "All Lines",
-        icon: "🌐",
+        prefixLabel: "",
         count: conversations.length,
       },
     ]
 
-    const map = new Map<string, { label: string; icon: string; count: number }>()
+    const map = new Map<
+      string,
+      { label: string; prefixLabel: string; count: number }
+    >()
 
     for (const c of conversations) {
       const key =
@@ -609,14 +655,15 @@ export function DeskHubClient({
         (c.accountId ? "Line" : "Unassigned")
       const isCloud =
         c.account?.platformType === "CLOUD_API" ||
-        (!c.account?.platformType && !c.account?.phoneNumberId?.startsWith("linked-"))
-      const icon = isCloud ? "☁️" : "📱"
+        (!c.account?.platformType &&
+          !c.account?.phoneNumberId?.startsWith("linked-"))
+      const prefixLabel = isCloud ? "Cloud" : "Linked"
 
       const existing = map.get(key)
       if (existing) {
         existing.count++
       } else {
-        map.set(key, { label, icon, count: 1 })
+        map.set(key, { label, prefixLabel, count: 1 })
       }
     }
 
@@ -624,7 +671,7 @@ export function DeskHubClient({
       list.push({
         id: key,
         label: val.label,
-        icon: val.icon,
+        prefixLabel: val.prefixLabel,
         count: val.count,
       })
     }
@@ -682,51 +729,111 @@ export function DeskHubClient({
     }
   }
 
-  // Messages in active conversation
-  const [activeMessages, setActiveMessages] = React.useState<
-    WhatsAppMessageRecord[]
-  >(activeConversation?.messages ?? [])
-  const [isLoadingMessages, setIsLoadingMessages] = React.useState(false)
+  // Messages in active conversation (derived per conversation ID without sync setState in effect)
+  const [messagesByConvId, setMessagesByConvId] = React.useState<
+    Record<string, WhatsAppMessageRecord[]>
+  >(() => {
+    const seeded: Record<string, WhatsAppMessageRecord[]> = {}
+    for (const conv of initialConversations) {
+      if (conv.messages && conv.messages.length > 0) {
+        seeded[conv.id] = conv.messages
+      }
+    }
+    return seeded
+  })
+  const [loadingConvId, setLoadingConvId] = React.useState<string | null>(null)
   const [isMarkingRead, setIsMarkingRead] = React.useState(false)
   const [mirroringMessageId, setMirroringMessageId] = React.useState<
     string | null
   >(null)
 
-  // Sync active messages & automatically trigger Blue-Tick Read Receipts when unread thread opens (Spec 0013 AC-3, AC-6)
-  React.useEffect(() => {
-    if (!activeConversation) {
-      setActiveMessages([])
-      return
-    }
+  const activeMessages = React.useMemo(() => {
+    if (!activeConversation) return []
+    return (
+      messagesByConvId[activeConversation.id] ??
+      activeConversation.messages ??
+      []
+    )
+  }, [activeConversation, messagesByConvId])
 
-    if (activeConversation.messages && activeConversation.messages.length > 0) {
-      setActiveMessages(activeConversation.messages)
-    } else {
-      setIsLoadingMessages(true)
-      getConversationMessagesAction(activeConversation.id)
-        .then((res) => {
-          if (res.success && res.messages) {
-            setActiveMessages(res.messages as WhatsAppMessageRecord[])
+  const setActiveMessages = React.useCallback(
+    (
+      updater:
+        | WhatsAppMessageRecord[]
+        | ((prev: WhatsAppMessageRecord[]) => WhatsAppMessageRecord[])
+    ) => {
+      if (!activeConversation) return
+      const targetId = activeConversation.id
+      const fallback = activeConversation.messages ?? []
+      setMessagesByConvId((prev) => {
+        const current = prev[targetId] ?? fallback
+        const next = typeof updater === "function" ? updater(current) : updater
+        return {
+          ...prev,
+          [targetId]: next,
+        }
+      })
+    },
+    [activeConversation]
+  )
+
+  const activeConvId = activeConversation?.id ?? null
+  const activeConvHasLoadedOrSeeded = Boolean(
+    activeConversation &&
+      (Object.prototype.hasOwnProperty.call(
+        messagesByConvId,
+        activeConversation.id
+      ) ||
+        (activeConversation.messages?.length ?? 0) > 0)
+  )
+  const activeConvUnreadCount = activeConversation?.unreadCount ?? 0
+  const isLoadingMessages =
+    Boolean(activeConvId) && loadingConvId === activeConvId
+
+  // Load thread messages lazily & trigger Blue-Tick Read Receipts when unread thread opens (Spec 0013 AC-3, AC-6)
+  React.useEffect(() => {
+    if (!activeConvId) return
+    let cancelled = false
+
+    if (!activeConvHasLoadedOrSeeded) {
+      void Promise.resolve().then(async () => {
+        if (cancelled) return
+        setLoadingConvId(activeConvId)
+        try {
+          const res = await getConversationMessagesAction(activeConvId)
+          if (!cancelled && res.success && res.messages) {
+            setMessagesByConvId((prev) => ({
+              ...prev,
+              [activeConvId]: res.messages as WhatsAppMessageRecord[],
+            }))
           }
-        })
-        .finally(() => setIsLoadingMessages(false))
+        } finally {
+          if (!cancelled) {
+            setLoadingConvId((curr) => (curr === activeConvId ? null : curr))
+          }
+        }
+      })
     }
 
     // Auto blue-tick read receipt when opening a thread with unread inbound messages
-    if (activeConversation.unreadCount > 0) {
+    if (activeConvUnreadCount > 0) {
       markConversationMessagesAsReadAction({
-        conversationId: activeConversation.id,
+        conversationId: activeConvId,
       }).then((res) => {
-        if (res.success) {
+        if (!cancelled && res.success) {
           setConversations((prev) =>
             prev.map((c) =>
-              c.id === activeConversation.id ? { ...c, unreadCount: 0 } : c
+              c.id === activeConvId ? { ...c, unreadCount: 0 } : c
             )
           )
         }
       })
     }
-  }, [activeConversation])
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeConvId, activeConvHasLoadedOrSeeded, activeConvUnreadCount])
 
   // Manual 1-Click Blue-Tick Read Receipt button handler
   const handleMarkConversationRead = async () => {
@@ -785,15 +892,20 @@ export function DeskHubClient({
             50
           )
           if (msgRes.success && msgRes.messages) {
-            setActiveMessages((prev) => {
-              const prevSummary = prev
+            setMessagesByConvId((prev) => {
+              const current = prev[activeConversationId] ?? []
+              const prevSummary = current
                 .map((m) => `${m.id}-${m.status}-${m.mediaUrl}`)
                 .join(",")
               const nextSummary = msgRes.messages
                 .map((m) => `${m.id}-${m.status}-${m.mediaUrl}`)
                 .join(",")
               if (prevSummary !== nextSummary) {
-                return msgRes.messages as WhatsAppMessageRecord[]
+                return {
+                  ...prev,
+                  [activeConversationId]:
+                    msgRes.messages as WhatsAppMessageRecord[],
+                }
               }
               return prev
             })
@@ -1020,20 +1132,24 @@ export function DeskHubClient({
 
   // 24-hour service window calculation for active conversation
   const active24hState = React.useMemo(() => {
-    if (!activeConversation || !activeConversation.lastCustomerMessageAt) {
+    if (
+      !activeConversation ||
+      !activeConversation.lastCustomerMessageAt ||
+      nowMs <= 0
+    ) {
       return { isInside: false, remainingHours: 0, remainingMinutes: 0 }
     }
     const lastTime = new Date(
       activeConversation.lastCustomerMessageAt
     ).getTime()
-    const diffMs = 24 * 60 * 60 * 1000 - (Date.now() - lastTime)
+    const diffMs = 24 * 60 * 60 * 1000 - (nowMs - lastTime)
     if (diffMs <= 0) {
       return { isInside: false, remainingHours: 0, remainingMinutes: 0 }
     }
     const remainingHours = Math.floor(diffMs / 3600000)
     const remainingMinutes = Math.floor((diffMs % 3600000) / 60000)
     return { isInside: true, remainingHours, remainingMinutes }
-  }, [activeConversation])
+  }, [activeConversation, nowMs])
 
   // Composer Modes: Standard Text vs Interactive Reply Buttons vs Interactive List Menu (Spec 0013 AC-4, AC-6)
   const [composerMode, setComposerMode] = React.useState<
@@ -1077,81 +1193,143 @@ export function DeskHubClient({
     },
   ])
 
-  // AI Quoting Copilot Draft state for WhatsApp Inbox (Spec 0015 AC-4)
-  const [isGeneratingWaCopilot, setIsGeneratingWaCopilot] =
-    React.useState(false)
-  const [waCopilotDraft, setWaCopilotDraft] =
-    React.useState<WaCopilotDraftResult | null>(null)
-  const [waCopilotEditableText, setWaCopilotEditableText] = React.useState("")
-  const [waCopilotMeta, setWaCopilotMeta] = React.useState<{
-    modelUsed: string
-    executionMode: string
+  // AI Quoting Copilot Draft state for WhatsApp Inbox (Spec 0015 AC-4, scoped per conversation)
+  const [generatingWaCopilotConvId, setGeneratingWaCopilotConvId] =
+    React.useState<string | null>(null)
+  const [waCopilotDraftState, setWaCopilotDraftState] = React.useState<{
+    conversationId: string
+    draft: WaCopilotDraftResult
+    editableText: string
+    meta: { modelUsed: string; executionMode: string } | null
   } | null>(null)
-  const [waCopilotRun, setWaCopilotRun] = React.useState<{
+  const [waCopilotRunState, setWaCopilotRunState] = React.useState<{
+    conversationId: string
     runId: string
     publicAccessToken?: string
     mode: "cloud" | "inline"
   } | null>(null)
 
-  // Reset WaCopilot card & rehydrate active Trigger.dev runs when switching conversation
-  React.useEffect(() => {
-    setWaCopilotDraft(null)
-    setWaCopilotEditableText("")
-    setWaCopilotMeta(null)
-    setWaCopilotRun(null)
+  const currentActiveConvId = activeConversation?.id ?? null
+  const isGeneratingWaCopilot =
+    Boolean(currentActiveConvId) &&
+    generatingWaCopilotConvId === currentActiveConvId
+  const waCopilotDraft =
+    waCopilotDraftState &&
+    waCopilotDraftState.conversationId === currentActiveConvId
+      ? waCopilotDraftState.draft
+      : null
+  const waCopilotEditableText =
+    waCopilotDraftState &&
+    waCopilotDraftState.conversationId === currentActiveConvId
+      ? waCopilotDraftState.editableText
+      : ""
+  const waCopilotMeta =
+    waCopilotDraftState &&
+    waCopilotDraftState.conversationId === currentActiveConvId
+      ? waCopilotDraftState.meta
+      : null
+  const waCopilotRun =
+    waCopilotRunState &&
+    waCopilotRunState.conversationId === currentActiveConvId
+      ? waCopilotRunState
+      : null
 
-    if (activeConversationId) {
-      listActiveRunsByTagsAction([`copilot:wa:${activeConversationId}`])
-        .then((runRes) => {
-          if (runRes.success && runRes.activeRuns.length > 0) {
-            const latestActive = runRes.activeRuns[0]
-            setWaCopilotRun({
-              runId: latestActive.runId,
-              publicAccessToken: runRes.publicAccessToken,
-              mode: runRes.mode === "cloud" ? "cloud" : "inline",
-            })
-            setIsGeneratingWaCopilot(true)
-          }
-        })
-        .catch(() => null)
+  const setWaCopilotDraft = React.useCallback(
+    (
+      draft: WaCopilotDraftResult | null,
+      editableText?: string,
+      meta?: { modelUsed: string; executionMode: string } | null
+    ) => {
+      if (!draft || !currentActiveConvId) {
+        setWaCopilotDraftState(null)
+        return
+      }
+      setWaCopilotDraftState({
+        conversationId: currentActiveConvId,
+        draft,
+        editableText: editableText ?? draft.bilingualReplyDraft,
+        meta: meta ?? null,
+      })
+    },
+    [currentActiveConvId]
+  )
+
+  const setWaCopilotEditableText = React.useCallback(
+    (text: string) => {
+      setWaCopilotDraftState((prev) =>
+        prev && prev.conversationId === currentActiveConvId
+          ? { ...prev, editableText: text }
+          : prev
+      )
+    },
+    [currentActiveConvId]
+  )
+
+  // Rehydrate active Trigger.dev runs when switching conversation (async callback only)
+  React.useEffect(() => {
+    if (!activeConversationId) return
+    let cancelled = false
+
+    listActiveRunsByTagsAction([`copilot:wa:${activeConversationId}`])
+      .then((runRes) => {
+        if (!cancelled && runRes.success && runRes.activeRuns.length > 0) {
+          const latestActive = runRes.activeRuns[0]
+          setWaCopilotRunState({
+            conversationId: activeConversationId,
+            runId: latestActive.runId,
+            publicAccessToken: runRes.publicAccessToken,
+            mode: runRes.mode === "cloud" ? "cloud" : "inline",
+          })
+          setGeneratingWaCopilotConvId(activeConversationId)
+        }
+      })
+      .catch(() => null)
+
+    return () => {
+      cancelled = true
     }
   }, [activeConversationId])
 
   const handleGenerateWaCopilotDraft = async () => {
     if (!activeConversation) return
-    setIsGeneratingWaCopilot(true)
+    const convId = activeConversation.id
+    setGeneratingWaCopilotConvId(convId)
     setComposerError(null)
     try {
       const res = await startWhatsappCopilotRunAction({
-        conversationId: activeConversation.id,
+        conversationId: convId,
       })
       if (!res.success) {
         setComposerError(
           res.error || "Failed to generate AI Copilot WhatsApp draft"
         )
-        setIsGeneratingWaCopilot(false)
+        setGeneratingWaCopilotConvId((curr) => (curr === convId ? null : curr))
       } else if (res.mode === "cloud" && res.runId) {
-        setWaCopilotRun({
+        setWaCopilotRunState({
+          conversationId: convId,
           runId: res.runId,
           publicAccessToken: res.publicAccessToken,
           mode: "cloud",
         })
       } else if (res.inlineOutput && res.inlineOutput.success) {
-        setWaCopilotDraft(res.inlineOutput.draft)
-        setWaCopilotEditableText(res.inlineOutput.draft.bilingualReplyDraft)
-        setWaCopilotMeta({
-          modelUsed: res.inlineOutput.modelUsed,
-          executionMode: res.inlineOutput.executionMode,
+        setWaCopilotDraftState({
+          conversationId: convId,
+          draft: res.inlineOutput.draft,
+          editableText: res.inlineOutput.draft.bilingualReplyDraft,
+          meta: {
+            modelUsed: res.inlineOutput.modelUsed,
+            executionMode: res.inlineOutput.executionMode,
+          },
         })
-        setIsGeneratingWaCopilot(false)
+        setGeneratingWaCopilotConvId((curr) => (curr === convId ? null : curr))
       } else {
-        setIsGeneratingWaCopilot(false)
+        setGeneratingWaCopilotConvId((curr) => (curr === convId ? null : curr))
       }
     } catch (err) {
       setComposerError(
         err instanceof Error ? err.message : "Error generating AI Copilot draft"
       )
-      setIsGeneratingWaCopilot(false)
+      setGeneratingWaCopilotConvId((curr) => (curr === convId ? null : curr))
     }
   }
 
@@ -1226,7 +1404,7 @@ export function DeskHubClient({
             )
           } else {
             const newMsg: WhatsAppMessageRecord = {
-              id: res.messageId || Math.random().toString(),
+              id: res.messageId || createOptimisticMessageId(),
               conversationId: activeConversation.id,
               wamid: res.wamid || "wamid.local",
               direction: "outbound",
@@ -1278,7 +1456,7 @@ export function DeskHubClient({
             setComposerError(res.error || "Failed to send interactive list menu")
           } else {
             const newMsg: WhatsAppMessageRecord = {
-              id: res.messageId || Math.random().toString(),
+              id: res.messageId || createOptimisticMessageId(),
               conversationId: activeConversation.id,
               wamid: res.wamid || "wamid.local",
               direction: "outbound",
@@ -1315,7 +1493,7 @@ export function DeskHubClient({
             setComposerError(res.error || "Failed to dispatch message")
           } else {
             const newMsg: WhatsAppMessageRecord = {
-              id: res.messageId || Math.random().toString(),
+              id: res.messageId || createOptimisticMessageId(),
               conversationId: activeConversation.id,
               wamid: res.wamid || "wamid.local",
               direction: "outbound",
@@ -1363,7 +1541,7 @@ export function DeskHubClient({
           setComposerError(res.error || "Failed to dispatch template")
         } else {
           const newMsg: WhatsAppMessageRecord = {
-            id: res.messageId || Math.random().toString(),
+            id: res.messageId || createOptimisticMessageId(),
             conversationId: activeConversation.id,
             wamid: res.wamid || "wamid.local",
             direction: "outbound",
@@ -1421,7 +1599,7 @@ export function DeskHubClient({
           `3-Page Luxury PDF quotation dispatched successfully to ${activeConversation.contactPhone}!`
         )
         const docMsg: WhatsAppMessageRecord = {
-          id: res.messageId || Math.random().toString(),
+          id: res.messageId || createOptimisticMessageId(),
           conversationId: activeConversation.id,
           wamid: res.wamid || "wamid.pdf",
           direction: "outbound",
@@ -1490,10 +1668,7 @@ export function DeskHubClient({
     }
   }
 
-  // Coexistence Intent Gatekeeper Filter
-  const [intentFilter, setIntentFilter] = React.useState<
-    "travel_only" | "personal_only" | "all_intents"
-  >("all_intents")
+  // Coexistence Intent Gatekeeper Handlers
   const [isUpdatingIntent, setIsUpdatingIntent] = React.useState(false)
   const [isHandingOffToAgent, setIsHandingOffToAgent] = React.useState(false)
 
@@ -1570,19 +1745,6 @@ export function DeskHubClient({
     }
   }
 
-  const travelLeadCount = React.useMemo(
-    () =>
-      conversations.filter((c) => c.intentCategory !== "PERSONAL_OR_OTHER")
-        .length,
-    [conversations]
-  )
-  const personalMutedCount = React.useMemo(
-    () =>
-      conversations.filter((c) => c.intentCategory === "PERSONAL_OR_OTHER")
-        .length,
-    [conversations]
-  )
-
   const activeConversationsCount = React.useMemo(
     () => conversations.filter((c) => !c.isArchived).length,
     [conversations]
@@ -1608,20 +1770,6 @@ export function DeskHubClient({
       if (conversationFilterTab === "archived" && !c.isArchived) return false
       if (conversationFilterTab === "active" && c.isArchived) return false
 
-      // Coexistence AI Intent Gatekeeper Filter
-      if (
-        intentFilter === "travel_only" &&
-        c.intentCategory === "PERSONAL_OR_OTHER"
-      ) {
-        return false
-      }
-      if (
-        intentFilter === "personal_only" &&
-        c.intentCategory !== "PERSONAL_OR_OTHER"
-      ) {
-        return false
-      }
-
       if (inboxSearch.trim()) {
         const q = inboxSearch.toLowerCase().trim()
         const matchName = c.contactName?.toLowerCase().includes(q) ?? false
@@ -1635,8 +1783,9 @@ export function DeskHubClient({
 
       if (inboxFilter === "active_24h" || inboxFilter === "overdue_24h") {
         if (!c.lastCustomerMessageAt) return inboxFilter === "overdue_24h"
+        if (nowMs <= 0) return inboxFilter === "overdue_24h"
         const last = new Date(c.lastCustomerMessageAt).getTime()
-        const isInside = Date.now() - last <= 24 * 3600 * 1000
+        const isInside = nowMs - last <= 24 * 3600 * 1000
         if (inboxFilter === "active_24h" && !isInside) return false
         if (inboxFilter === "overdue_24h" && isInside) return false
       }
@@ -1656,9 +1805,9 @@ export function DeskHubClient({
     conversations,
     inboxSearch,
     inboxFilter,
-    intentFilter,
     conversationFilterTab,
     phoneLineFilter,
+    nowMs,
   ])
 
   const autoReplyEnabled = activeAccount?.autoReplyEnabled ?? true
@@ -1672,7 +1821,7 @@ export function DeskHubClient({
         <div>
           <div className="flex items-center gap-2.5">
             <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-xs">
-              <Inbox className="size-5" />
+              <Inbox className="size-5" aria-hidden="true" />
             </div>
             <div>
               <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
@@ -1696,9 +1845,9 @@ export function DeskHubClient({
                 handleRunPipelineCopilot(selectedPipelineAppId)
               }
             }}
-            className="border-[#C5A059]/60 bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-semibold shadow-2xs gap-1.5"
+            className="gap-1.5 border-gold-border bg-primary font-semibold text-primary-foreground shadow-2xs hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80"
           >
-            <Sparkles className="size-3.5 text-[#C5A059]" />
+            <Sparkles className="size-3.5 text-gold" aria-hidden="true" />
             <span>AI Quote Copilot</span>
           </Button>
 
@@ -1708,12 +1857,12 @@ export function DeskHubClient({
             onClick={() =>
               window.dispatchEvent(new CustomEvent("open-post-lookup"))
             }
-            className="border-primary/40 bg-card hover:bg-primary/5 hover:border-primary text-primary font-medium shadow-2xs gap-1.5"
+            className="gap-1.5 border-primary/40 bg-card font-medium text-primary shadow-2xs hover:border-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
             title="Search packages and instant convert to quote (Ctrl+K or Cmd+K)"
           >
-            <Command className="size-3.5" />
+            <Command className="size-3.5" aria-hidden="true" />
             <span>Lookup Post Ref</span>
-            <kbd className="ml-1 rounded border border-primary/30 bg-secondary px-1.5 py-0.2 text-[10px] font-mono text-muted-foreground">
+            <kbd className="ml-1 rounded border border-primary/30 bg-secondary px-1.5 py-0.2 font-mono text-[11px] text-muted-foreground">
               ⌘K
             </kbd>
           </Button>
@@ -1730,21 +1879,21 @@ export function DeskHubClient({
             type="button"
             onClick={() => switchTab("pipeline")}
             className={cn(
-              "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all shadow-2xs",
+              "flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold shadow-2xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 active:opacity-80 motion-reduce:transition-none",
               activeTab === "pipeline"
-                ? "bg-primary text-primary-foreground shadow-xs"
-                : "bg-card text-muted-foreground hover:bg-secondary hover:text-foreground border border-border"
+                ? "bg-primary text-primary-foreground shadow-xs focus-visible:outline-gold"
+                : "border border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-primary"
             )}
           >
-            <Kanban className="size-4" />
+            <Kanban className="size-4" aria-hidden="true" />
             <span>Inquiries &amp; Quoting Pipeline</span>
             {pendingCount > 0 && (
               <span
                 className={cn(
                   "rounded-full px-2 py-0.2 text-xs font-bold tabular-nums",
                   activeTab === "pipeline"
-                    ? "bg-white/20 text-white"
-                    : "bg-amber-100 text-amber-900 border border-amber-300"
+                    ? "bg-primary-foreground/20 text-primary-foreground"
+                    : "border border-status-warning-border bg-status-warning-bg text-status-warning"
                 )}
               >
                 {pendingCount}
@@ -1757,21 +1906,21 @@ export function DeskHubClient({
             type="button"
             onClick={() => switchTab("inbox")}
             className={cn(
-              "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all shadow-2xs",
+              "flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold shadow-2xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 active:opacity-80 motion-reduce:transition-none",
               activeTab === "inbox"
-                ? "bg-primary text-primary-foreground shadow-xs"
-                : "bg-card text-muted-foreground hover:bg-secondary hover:text-foreground border border-border"
+                ? "bg-primary text-primary-foreground shadow-xs focus-visible:outline-gold"
+                : "border border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-primary"
             )}
           >
-            <MessageCircle className="size-4" />
+            <MessageCircle className="size-4" aria-hidden="true" />
             <span>WhatsApp Shared Team Inbox</span>
             {totalUnreadWhatsApp > 0 && (
               <span
                 className={cn(
                   "rounded-full px-2 py-0.2 text-xs font-bold tabular-nums",
                   activeTab === "inbox"
-                    ? "bg-white/20 text-white"
-                    : "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                    ? "bg-primary-foreground/20 text-primary-foreground"
+                    : "border border-status-success-border bg-status-success-bg text-status-success"
                 )}
               >
                 {totalUnreadWhatsApp}
@@ -1784,21 +1933,21 @@ export function DeskHubClient({
             type="button"
             onClick={() => switchTab("web_messages")}
             className={cn(
-              "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all shadow-2xs",
+              "flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold shadow-2xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 active:opacity-80 motion-reduce:transition-none",
               activeTab === "web_messages"
-                ? "bg-primary text-primary-foreground shadow-xs"
-                : "bg-card text-muted-foreground hover:bg-secondary hover:text-foreground border border-border"
+                ? "bg-primary text-primary-foreground shadow-xs focus-visible:outline-gold"
+                : "border border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-primary"
             )}
           >
-            <FileText className="size-4" />
+            <FileText className="size-4" aria-hidden="true" />
             <span>Website &amp; Hajj Messages</span>
             {unreadContactMessages > 0 && (
               <span
                 className={cn(
                   "rounded-full px-2 py-0.2 text-xs font-bold tabular-nums",
                   activeTab === "web_messages"
-                    ? "bg-white/20 text-white"
-                    : "bg-sky-100 text-sky-900 border border-sky-300"
+                    ? "bg-primary-foreground/20 text-primary-foreground"
+                    : "border border-status-info-border bg-status-info-bg text-status-info"
                 )}
               >
                 {unreadContactMessages}
@@ -1811,12 +1960,12 @@ export function DeskHubClient({
         {activeTab === "inbox" && (
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-1.5 shadow-2xs">
-              <Bot className="size-4 text-primary" />
+              <Bot className="size-4 text-primary" aria-hidden="true" />
               <div className="flex flex-col">
-                <span className="text-[11px] font-bold text-foreground leading-none">
-                  ART-... Auto-Responder Bot
+                <span className="text-[11px] font-bold leading-none text-foreground">
+                  ART-… Auto-Responder Bot
                 </span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-[11px] text-muted-foreground">
                   3s instant flyer &amp; PKR rates reply
                 </span>
               </div>
@@ -1825,15 +1974,18 @@ export function DeskHubClient({
                 disabled={isTogglingAutoResponder}
                 onClick={handleToggleAutoResponder}
                 className={cn(
-                  "ml-2 flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold transition-colors border",
+                  "ml-2 flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none",
                   autoReplyEnabled
-                    ? "border-emerald-400 bg-emerald-600 text-white"
+                    ? "border-status-success-border bg-status-success text-primary-foreground"
                     : "border-border bg-secondary text-muted-foreground"
                 )}
                 title="Toggle automatic 3-second replies when pilgrims send ART-... post codes"
               >
                 {isTogglingAutoResponder ? (
-                  <Loader2 className="size-3 animate-spin" />
+                  <Loader2
+                    className="size-3 animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 ) : (
                   <span>{autoReplyEnabled ? "ON" : "OFF"}</span>
                 )}
@@ -1845,12 +1997,15 @@ export function DeskHubClient({
               size="sm"
               variant="outline"
               onClick={() => setTemplateStudioOpen(true)}
-              className="border border-[#C5A059]/60 bg-card text-[#0A3622] hover:bg-[#FAF8F5] font-semibold shadow-2xs gap-1.5 h-9"
+              className="h-9 gap-1.5 border border-gold-border bg-card font-semibold text-primary shadow-2xs hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
               title="Open Official Meta WhatsApp HSM Template Studio (Create, Sync & Manage Templates)"
             >
-              <Layers className="size-3.5 text-[#C5A059]" />
+              <Layers
+                className="size-3.5 text-gold-text"
+                aria-hidden="true"
+              />
               <span>Meta Templates</span>
-              <span className="ml-0.5 rounded-full bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 text-[10px] font-mono text-emerald-900">
+              <span className="ml-0.5 rounded-full border border-status-success-border bg-status-success-bg px-1.5 py-0.2 font-mono text-[11px] tabular-nums text-status-success">
                 {approvedTemplatesList.length}
               </span>
             </Button>
@@ -1859,12 +2014,12 @@ export function DeskHubClient({
               type="button"
               size="sm"
               onClick={() => setAutoReplyStudioOpen(true)}
-              className="border border-[#C5A059]/60 bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-semibold shadow-2xs gap-1.5 h-9"
+              className="h-9 gap-1.5 border border-gold-border bg-primary font-semibold text-primary-foreground shadow-2xs hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80"
               title="Open WaCRM Keyword Auto-Reply Rules Engine, Greeting & Business Hours Setup, and Quick-Reply Manager"
             >
-              <Zap className="size-3.5 text-[#C5A059]" />
+              <Zap className="size-3.5 text-gold" aria-hidden="true" />
               <span>Auto-Replies &amp; Setup</span>
-              <span className="ml-0.5 rounded-full bg-[#C5A059]/20 border border-[#C5A059]/40 px-1.5 py-0.2 text-[10px] font-mono text-[#C5A059]">
+              <span className="ml-0.5 rounded-full border border-gold-border/50 bg-gold/20 px-1.5 py-0.2 font-mono text-[11px] tabular-nums text-gold">
                 {autoReplyRules.filter((r) => r.isActive).length}
               </span>
             </Button>
@@ -1876,7 +2031,7 @@ export function DeskHubClient({
           TAB 1: INQUIRIES & QUOTING PIPELINE (KANBAN DESK & TABLE VIEW TOGGLE)
           ========================================================================= */}
       {activeTab === "pipeline" && (
-        <div className="flex flex-col gap-6 animate-in fade-in-50 duration-200">
+        <div className="flex flex-col gap-6 animate-in fade-in-50 duration-200 motion-reduce:animate-none">
           {/* 1. KPI Summary Strip */}
           <ApplicationsKpiStrip data={kpiData} />
 
@@ -1884,20 +2039,24 @@ export function DeskHubClient({
           <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-xs sm:flex-row sm:items-center sm:justify-between">
             {/* Search Input */}
             <div className="relative flex-1 sm:max-w-md">
-              <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Search
+                className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search reference (ART-...), pilgrim name, phone, city..."
+                placeholder="Search reference (ART-…), pilgrim name, phone, city…"
                 className="pl-9 pr-8 text-sm"
               />
               {searchQuery && (
                 <button
                   type="button"
+                  aria-label="Clear search query"
                   onClick={() => setSearchQuery("")}
-                  className="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
-                  <X className="size-3.5" />
+                  <X className="size-3.5" aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -1905,7 +2064,7 @@ export function DeskHubClient({
             {/* Source Filters & View Switcher */}
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1 overflow-x-auto">
-                <span className="text-xs font-semibold text-muted-foreground mr-1">
+                <span className="mr-1 text-xs font-semibold text-muted-foreground">
                   Source:
                 </span>
                 {[
@@ -1920,10 +2079,10 @@ export function DeskHubClient({
                     type="button"
                     onClick={() => setSourceFilter(s.key)}
                     className={cn(
-                      "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap",
+                      "whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 active:opacity-80 motion-reduce:transition-none",
                       sourceFilter === s.key
-                        ? "bg-primary text-primary-foreground font-semibold"
-                        : "bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
+                        ? "bg-primary font-semibold text-primary-foreground focus-visible:outline-gold"
+                        : "bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground focus-visible:outline-primary"
                     )}
                   >
                     {s.label}
@@ -1937,26 +2096,26 @@ export function DeskHubClient({
                   type="button"
                   onClick={() => setPipelineViewMode("kanban")}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition-all",
+                    "flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                     pipelineViewMode === "kanban"
-                      ? "bg-card text-foreground shadow-2xs"
+                      ? "bg-background text-foreground shadow-2xs"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <Kanban className="size-3.5" />
+                  <Kanban className="size-3.5" aria-hidden="true" />
                   <span>Kanban Board</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setPipelineViewMode("table")}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition-all",
+                    "flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                     pipelineViewMode === "table"
-                      ? "bg-card text-foreground shadow-2xs"
+                      ? "bg-background text-foreground shadow-2xs"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <TableIcon className="size-3.5" />
+                  <TableIcon className="size-3.5" aria-hidden="true" />
                   <span>Table View</span>
                 </button>
               </div>
@@ -1970,6 +2129,7 @@ export function DeskHubClient({
                 filteredApplications as unknown as KanbanApplicationItem[]
               }
               slaHours={slaHours}
+              initialNowMs={nowMs > 0 ? nowMs : initialNowMs}
             />
           ) : (
             <ApplicationsTable applications={filteredApplications} />
@@ -1981,14 +2141,17 @@ export function DeskHubClient({
           TAB 2: LIVE WHATSAPP CLOUD API SHARED TEAM INBOX (3-PANE WACRM LAYOUT)
           ========================================================================= */}
       {activeTab === "inbox" && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 xl:gap-5 animate-in fade-in-50 duration-200">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 xl:gap-5 animate-in fade-in-50 duration-200 motion-reduce:animate-none">
           {/* PANE 1: Conversation List (4 Cols) */}
-          <div className="flex flex-col rounded-2xl border border-border bg-card shadow-xs lg:col-span-4 min-h-[700px] overflow-hidden">
+          <div className="flex min-h-[700px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xs lg:col-span-4">
             {/* Header & Search */}
             <div className="flex flex-col gap-2.5 border-b border-border p-3.5">
               <div className="flex items-center justify-between">
-                <span className="font-display text-sm font-bold tracking-tight text-foreground flex items-center gap-1.5">
-                  <MessageCircle className="size-4 text-emerald-600" />
+                <span className="flex items-center gap-1.5 font-display text-sm font-bold tracking-tight text-foreground">
+                  <MessageCircle
+                    className="size-4 text-status-success"
+                    aria-hidden="true"
+                  />
                   <span>Pilgrim Conversations</span>
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -1996,9 +2159,9 @@ export function DeskHubClient({
                     type="button"
                     onClick={() => setIsLiveSyncEnabled(!isLiveSyncEnabled)}
                     className={cn(
-                      "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold transition-all border cursor-pointer",
+                      "flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                       isLiveSyncEnabled
-                        ? "border-emerald-500/30 bg-emerald-50 text-emerald-700"
+                        ? "border-status-success-border bg-status-success-bg text-status-success"
                         : "border-border bg-secondary text-muted-foreground"
                     )}
                     title={
@@ -2011,13 +2174,13 @@ export function DeskHubClient({
                       className={cn(
                         "size-1.5 rounded-full",
                         isLiveSyncEnabled
-                          ? "bg-emerald-500 animate-pulse"
+                          ? "animate-pulse bg-status-success motion-reduce:animate-none"
                           : "bg-muted-foreground/60"
                       )}
                     />
                     <span>{isLiveSyncEnabled ? "Live (4s)" : "Paused"}</span>
                   </button>
-                  <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-bold text-muted-foreground">
+                  <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-bold tabular-nums text-muted-foreground">
                     {filteredConversations.length}
                   </span>
                 </div>
@@ -2026,31 +2189,36 @@ export function DeskHubClient({
               {/* Row 1: Search Bar + Dynamic Phone Line Filter */}
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Search
+                    className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden="true"
+                  />
                   <Input
                     value={inboxSearch}
                     onChange={(e) => setInboxSearch(e.target.value)}
-                    placeholder="Search name, phone, or package code..."
-                    className="pl-8 text-xs h-8 bg-white"
+                    placeholder="Search name, phone, or package code…"
+                    className="h-8 bg-background pl-8 text-xs"
                   />
                 </div>
                 {phoneLineFilters.length > 1 && (
                   <select
+                    aria-label="Filter conversations by phone line"
                     value={phoneLineFilter}
                     onChange={(e) => setPhoneLineFilter(e.target.value)}
-                    className="h-8 rounded-md border border-border bg-white px-2 text-[11px] font-medium text-foreground focus:outline-none max-w-[130px]"
+                    className="h-8 max-w-[130px] rounded-md border border-input bg-background px-2 text-[11px] font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     {phoneLineFilters.map((tab) => (
                       <option key={tab.id} value={tab.id}>
-                        {tab.icon} {tab.label} ({tab.count})
+                        {tab.prefixLabel ? `${tab.prefixLabel}: ` : ""}
+                        {tab.label} ({tab.count})
                       </option>
                     ))}
                   </select>
                 )}
               </div>
 
-              {/* Row 2: 1 Single Status Filter Row (All, Unread, Pinned, Archived) */}
-              <div className="flex items-center gap-1 rounded-xl border border-border/80 bg-secondary/30 p-1 text-[11px]">
+              {/* Row 2: Status Filter Bar (All, Unread, Pinned, Archived) */}
+              <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border/80 bg-secondary/30 p-1 text-[11px]">
                 <button
                   type="button"
                   onClick={() => {
@@ -2058,15 +2226,15 @@ export function DeskHubClient({
                     setInboxFilter("all")
                   }}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-1 rounded-lg px-2 py-1 font-semibold transition-all whitespace-nowrap cursor-pointer",
+                    "flex min-h-7 flex-1 cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 active:opacity-80 motion-reduce:transition-none",
                     conversationFilterTab === "active" && inboxFilter === "all"
-                      ? "bg-primary text-primary-foreground shadow-2xs"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "bg-primary text-primary-foreground shadow-2xs focus-visible:outline-gold"
+                      : "text-muted-foreground hover:text-foreground focus-visible:outline-primary"
                   )}
                 >
-                  <Inbox className="size-3" />
+                  <Inbox className="size-3" aria-hidden="true" />
                   <span>All</span>
-                  <span className="rounded-full bg-black/10 px-1.5 py-0.1 text-[9px]">
+                  <span className="rounded-full bg-foreground/10 px-1.5 py-0.1 text-[11px] tabular-nums">
                     {activeConversationsCount}
                   </span>
                 </button>
@@ -2077,14 +2245,14 @@ export function DeskHubClient({
                     setInboxFilter("unread")
                   }}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-1 rounded-lg px-2 py-1 font-semibold transition-all whitespace-nowrap cursor-pointer",
+                    "flex min-h-7 flex-1 cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                     inboxFilter === "unread"
-                      ? "bg-emerald-700 text-white shadow-2xs"
+                      ? "bg-status-success text-primary-foreground shadow-2xs"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   <span>Unread</span>
-                  <span className="rounded-full bg-black/10 px-1.5 py-0.1 text-[9px]">
+                  <span className="rounded-full bg-foreground/10 px-1.5 py-0.1 text-[11px] tabular-nums">
                     {unreadConversationsCount}
                   </span>
                 </button>
@@ -2095,15 +2263,15 @@ export function DeskHubClient({
                     setInboxFilter("all")
                   }}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-1 rounded-lg px-2 py-1 font-semibold transition-all whitespace-nowrap cursor-pointer",
+                    "flex min-h-7 flex-1 cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                     conversationFilterTab === "pinned"
-                      ? "bg-amber-600 text-white shadow-2xs"
+                      ? "bg-gold-text text-primary-foreground shadow-2xs"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <Pin className="size-3" />
+                  <Pin className="size-3" aria-hidden="true" />
                   <span>Pinned</span>
-                  <span className="rounded-full bg-white/20 px-1.5 py-0.1 text-[9px]">
+                  <span className="rounded-full bg-foreground/10 px-1.5 py-0.1 text-[11px] tabular-nums">
                     {pinnedConversationsCount}
                   </span>
                 </button>
@@ -2114,15 +2282,15 @@ export function DeskHubClient({
                     setInboxFilter("all")
                   }}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-1 rounded-lg px-2 py-1 font-semibold transition-all whitespace-nowrap cursor-pointer",
+                    "flex min-h-7 flex-1 cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                     conversationFilterTab === "archived"
-                      ? "bg-slate-700 text-white shadow-2xs"
+                      ? "bg-foreground text-background shadow-2xs"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <Archive className="size-3" />
+                  <Archive className="size-3" aria-hidden="true" />
                   <span>Archived</span>
-                  <span className="rounded-full bg-white/20 px-1.5 py-0.1 text-[9px]">
+                  <span className="rounded-full bg-foreground/10 px-1.5 py-0.1 text-[11px] tabular-nums">
                     {archivedConversationsCount}
                   </span>
                 </button>
@@ -2130,10 +2298,13 @@ export function DeskHubClient({
             </div>
 
             {/* Conversation Items */}
-            <div className="flex flex-1 flex-col divide-y divide-border/60 overflow-y-auto max-h-[640px]">
+            <div className="flex max-h-[640px] flex-1 flex-col divide-y divide-border/60 overflow-y-auto">
               {filteredConversations.length === 0 ? (
                 <div className="flex flex-1 flex-col items-center justify-center p-8 text-center text-xs text-muted-foreground">
-                  <MessageCircle className="size-8 text-muted-foreground/40 mb-2" />
+                  <MessageCircle
+                    className="mb-2 size-8 text-muted-foreground/40"
+                    aria-hidden="true"
+                  />
                   <p className="font-medium text-foreground">
                     No conversations found
                   </p>
@@ -2148,10 +2319,10 @@ export function DeskHubClient({
                   // Calculate 24h window
                   let isInside24h = false
                   let windowLabel = "Template Required"
-                  if (conv.lastCustomerMessageAt) {
+                  if (conv.lastCustomerMessageAt && nowMs > 0) {
                     const diff =
                       24 * 3600 * 1000 -
-                      (Date.now() -
+                      (nowMs -
                         new Date(conv.lastCustomerMessageAt).getTime())
                     if (diff > 0) {
                       isInside24h = true
@@ -2175,20 +2346,23 @@ export function DeskHubClient({
                       type="button"
                       onClick={() => setActiveConversationId(conv.id)}
                       className={cn(
-                        "flex flex-col gap-1.5 p-3.5 text-left transition-colors hover:bg-secondary/40",
-                        isSelected && "bg-secondary/70 border-l-3 border-primary"
+                        "flex flex-col gap-1.5 p-3.5 text-left transition-colors hover:bg-secondary/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
+                        isSelected && "border-l-3 border-primary bg-secondary/70"
                       )}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 truncate max-w-[170px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex max-w-[170px] items-center gap-1.5 truncate">
                           {conv.isPinned && (
-                            <Pin className="size-3 fill-amber-500 text-amber-500 shrink-0" />
+                            <Pin
+                              className="size-3 shrink-0 fill-gold-text text-gold-text"
+                              aria-hidden="true"
+                            />
                           )}
-                          <span className="font-display text-xs font-bold text-foreground truncate">
+                          <span className="truncate font-display text-xs font-bold text-foreground">
                             {conv.contactName || conv.contactPhone}
                           </span>
                         </div>
-                        <span className="text-[10px] text-muted-foreground shrink-0 font-mono">
+                        <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
                           {new Date(conv.lastMessageAt).toLocaleDateString(
                             "en-PK",
                             {
@@ -2203,55 +2377,79 @@ export function DeskHubClient({
                         {snippet}
                       </p>
 
-                      <div className="flex items-center justify-between mt-1 text-[10px]">
+                      <div className="mt-1 flex items-center justify-between text-[11px]">
                         <div className="flex flex-wrap items-center gap-1">
                           {/* Multi-Number Phone Line Badge */}
                           {conv.account?.platformType === "LINKED_DEVICE" ? (
-                            <span className="rounded-full border border-emerald-400 bg-emerald-50 px-1.5 py-0.2 font-mono font-bold text-emerald-950 text-[9px] flex items-center gap-0.5">
-                              <span>📱</span>
-                              <span>{conv.account.displayPhoneNumber || "Line"} · Linked</span>
+                            <span className="flex items-center gap-1 rounded-full border border-status-success-border bg-status-success-bg px-1.5 py-0.2 text-[10px] font-semibold text-status-success">
+                              <Smartphone
+                                className="size-2.5 shrink-0"
+                                aria-hidden="true"
+                              />
+                              <span className="font-mono tabular-nums">
+                                {conv.account.displayPhoneNumber || "Line"}
+                              </span>
+                              <span>(Linked)</span>
                             </span>
                           ) : (
-                            <span className="rounded-full border border-blue-300 bg-blue-50 px-1.5 py-0.2 font-mono font-medium text-blue-900 text-[9px] flex items-center gap-0.5">
-                              <span>☁️</span>
-                              <span>{conv.account?.displayPhoneNumber || "Cloud API"} · Meta</span>
+                            <span className="flex items-center gap-1 rounded-full border border-status-info-border bg-status-info-bg px-1.5 py-0.2 text-[10px] font-medium text-status-info">
+                              <Cloud
+                                className="size-2.5 shrink-0"
+                                aria-hidden="true"
+                              />
+                              <span className="font-mono tabular-nums">
+                                {conv.account?.displayPhoneNumber || "Cloud API"}
+                              </span>
+                              <span>(Meta)</span>
                             </span>
                           )}
 
                           <span
                             className={cn(
-                              "rounded-full px-1.5 py-0.2 font-medium border text-[10px]",
+                              "rounded-full border px-1.5 py-0.2 text-[10px] font-medium",
                               isInside24h
-                                ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                                : "border-amber-300 bg-amber-50 text-amber-900"
+                                ? "border-status-success-border bg-status-success-bg text-status-success"
+                                : "border-status-warning-border bg-status-warning-bg text-status-warning"
                             )}
                           >
                             {windowLabel}
                           </span>
 
                           {isPersonalMuted ? (
-                            <span className="rounded-full border border-slate-300 bg-slate-100 px-1.5 py-0.2 font-semibold text-slate-700 text-[9px]">
-                              🔒 Personal (Bot Muted)
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-1.5 py-0.2 text-[10px] font-semibold text-muted-foreground">
+                              <Lock
+                                className="size-2.5 shrink-0"
+                                aria-hidden="true"
+                              />
+                              <span>Personal (Bot Muted)</span>
                             </span>
                           ) : isHandoff ? (
-                            <span className="rounded-full border border-purple-300 bg-purple-50 px-1.5 py-0.2 font-semibold text-purple-900 text-[9px]">
-                              🤝 Agent Handoff
+                            <span className="inline-flex items-center gap-1 rounded-full border border-gold-border bg-accent px-1.5 py-0.2 text-[10px] font-semibold text-gold-text">
+                              <UserCheck
+                                className="size-2.5 shrink-0"
+                                aria-hidden="true"
+                              />
+                              <span>Agent Handoff</span>
                             </span>
                           ) : isTravelLead ? (
-                            <span className="rounded-full border border-emerald-300 bg-emerald-50 px-1.5 py-0.2 font-semibold text-emerald-900 text-[9px]">
-                              🕋 Travel Lead
+                            <span className="inline-flex items-center gap-1 rounded-full border border-status-success-border bg-status-success-bg px-1.5 py-0.2 text-[10px] font-semibold text-status-success">
+                              <Compass
+                                className="size-2.5 shrink-0"
+                                aria-hidden="true"
+                              />
+                              <span>Travel Lead</span>
                             </span>
                           ) : null}
 
                           {conv.detectedPostCode && (
-                            <span className="rounded-full border border-amber-400 bg-amber-100 px-1.5 py-0.2 font-mono font-bold text-amber-950 text-[9px]">
+                            <span className="rounded-full border border-gold-border bg-accent px-1.5 py-0.2 font-mono text-[10px] font-bold text-primary">
                               {conv.detectedPostCode}
                             </span>
                           )}
                         </div>
 
                         {conv.unreadCount > 0 && (
-                          <span className="rounded-full bg-emerald-600 px-1.5 py-0.2 font-bold text-white text-[10px]">
+                          <span className="rounded-full bg-status-success px-1.5 py-0.2 text-[10px] font-bold tabular-nums text-primary-foreground">
                             {conv.unreadCount}
                           </span>
                         )}
@@ -2264,13 +2462,13 @@ export function DeskHubClient({
           </div>
 
           {/* PANE 2: Center Message Stream & Composer (5 Cols) */}
-          <div className="flex flex-col rounded-2xl border border-border bg-card shadow-xs lg:col-span-5 min-h-[700px] overflow-hidden">
+          <div className="flex min-h-[700px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xs lg:col-span-5">
             {activeConversation ? (
               <>
                 {/* Active Chat Header */}
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-3.5 bg-secondary/30">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-secondary/30 p-3.5">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex size-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs">
+                    <div className="flex size-9 items-center justify-center rounded-full bg-status-success-bg text-xs font-bold text-status-success">
                       {activeConversation.contactName
                         ? activeConversation.contactName
                             .slice(0, 2)
@@ -2286,7 +2484,7 @@ export function DeskHubClient({
                         {activeConversation.detectedPostCode && (
                           <Badge
                             variant="outline"
-                            className="border-amber-300 bg-amber-50 text-amber-900 font-mono text-[10px]"
+                            className="border-gold-border bg-accent font-mono text-[11px] text-primary"
                           >
                             {activeConversation.detectedPostCode}
                           </Badge>
@@ -2296,62 +2494,88 @@ export function DeskHubClient({
                         "PERSONAL_OR_OTHER" ? (
                           <Badge
                             variant="outline"
-                            className="border-slate-300 bg-slate-100 text-slate-800 text-[10px] font-semibold"
+                            className="gap-1 border-border bg-secondary text-[11px] font-semibold text-muted-foreground"
                             title={
                               activeConversation.intentReason ||
                               "Personal or non-travel conversation (Auto-replies muted)"
                             }
                           >
-                            🔒 Personal / Bot Muted
+                            <Lock className="size-3" aria-hidden="true" />
+                            <span>Personal / Bot Muted</span>
                           </Badge>
                         ) : activeConversation.intentCategory ===
                           "FOUNDER_HANDOFF" ? (
                           <Badge
                             variant="outline"
-                            className="border-purple-300 bg-purple-50 text-purple-900 text-[10px] font-semibold"
+                            className="gap-1 border-gold-border bg-accent text-[11px] font-semibold text-gold-text"
                             title={
                               activeConversation.intentReason ||
                               "Handed off from Founder Line to Dedicated AI Agent"
                             }
                           >
-                            🤝 Founder Handoff
+                            <UserCheck className="size-3" aria-hidden="true" />
+                            <span>Founder Handoff</span>
                           </Badge>
                         ) : (
                           <Badge
                             variant="outline"
-                            className="border-emerald-300 bg-emerald-50 text-emerald-900 text-[10px] font-semibold"
+                            className="gap-1 border-status-success-border bg-status-success-bg text-[11px] font-semibold text-status-success"
                             title={
                               activeConversation.intentReason ||
                               "Verified Al Ramlah Travels inquiry"
                             }
                           >
-                            🕋 Travel Lead
-                            {activeConversation.intentConfidence
-                              ? ` (${activeConversation.intentConfidence}%)`
-                              : ""}
+                            <Compass className="size-3" aria-hidden="true" />
+                            <span>
+                              Travel Lead
+                              {activeConversation.intentConfidence
+                                ? ` (${activeConversation.intentConfidence}%)`
+                                : ""}
+                            </span>
                           </Badge>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-muted-foreground font-mono">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs tabular-nums text-muted-foreground">
                           {activeConversation.contactPhone}
                         </span>
                         {/* Multi-Number Phone Line Badge & Role Indicator in Active Chat Header */}
-                        {activeConversation.account?.platformType === "LINKED_DEVICE" ? (
+                        {activeConversation.account?.platformType ===
+                        "LINKED_DEVICE" ? (
                           <Badge
                             variant="outline"
-                            className="border-emerald-500/50 bg-emerald-50 text-emerald-950 font-mono text-[10px] font-bold flex items-center gap-1"
+                            className="flex items-center gap-1 border-status-success-border bg-status-success-bg text-[11px] font-bold text-status-success"
                           >
-                            <span>📱</span>
-                            <span>Line: {activeConversation.account.displayPhoneNumber || "Linked"} · Linked Device SIM</span>
+                            <Smartphone
+                              className="size-3 shrink-0"
+                              aria-hidden="true"
+                            />
+                            <span>
+                              Line:{" "}
+                              <span className="font-mono tabular-nums">
+                                {activeConversation.account
+                                  .displayPhoneNumber || "Linked"}
+                              </span>{" "}
+                              (Linked Device SIM)
+                            </span>
                           </Badge>
                         ) : (
                           <Badge
                             variant="outline"
-                            className="border-blue-400/50 bg-blue-50 text-blue-950 font-mono text-[10px] font-medium flex items-center gap-1"
+                            className="flex items-center gap-1 border-status-info-border bg-status-info-bg text-[11px] font-medium text-status-info"
                           >
-                            <span>☁️</span>
-                            <span>Line: {activeConversation.account?.displayPhoneNumber || "Official WABA"} · Meta Cloud API</span>
+                            <Cloud
+                              className="size-3 shrink-0"
+                              aria-hidden="true"
+                            />
+                            <span>
+                              Line:{" "}
+                              <span className="font-mono tabular-nums">
+                                {activeConversation.account
+                                  ?.displayPhoneNumber || "Official WABA"}
+                              </span>{" "}
+                              (Meta Cloud API)
+                            </span>
                           </Badge>
                         )}
                         {/* 1-Click Intent Override Toggle */}
@@ -2366,7 +2590,7 @@ export function DeskHubClient({
                                 : "PERSONAL_OR_OTHER"
                             )
                           }
-                          className="text-[10px] font-semibold text-primary underline-offset-2 hover:underline disabled:opacity-50"
+                          className="rounded text-[11px] font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
                           title="Override AI Intent Gatekeeper classification for this contact"
                         >
                           {activeConversation.intentCategory ===
@@ -2381,14 +2605,19 @@ export function DeskHubClient({
                   {/* Header Actions: Hand Off to AI Agent + Blue-Tick Mark Read + AI Copilot Draft + Pin/Archive + Agent Assignment + 24-Hour Pill */}
                   <div className="flex flex-wrap items-center gap-1.5">
                     {/* Spec 0019 (Slice 38): Staff Agent Assignment Dropdown */}
-                    <div className="flex items-center gap-1 rounded-lg border border-border/80 bg-card px-2 py-0.5 text-xs">
-                      <UserCheck className="size-3 text-muted-foreground shrink-0" />
+                    <div className="flex items-center gap-1 rounded-lg border border-input bg-background px-2 py-0.5 text-xs">
+                      <UserCheck
+                        className="size-3 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <select
                         aria-label="Assign consultant to conversation"
                         value={activeConversation.assignedUserId || ""}
                         disabled={isAssigningAgent}
-                        onChange={(e) => handleAssignAgent(e.target.value || null)}
-                        className="bg-transparent text-[11px] font-medium text-foreground focus:outline-none cursor-pointer"
+                        onChange={(e) =>
+                          handleAssignAgent(e.target.value || null)
+                        }
+                        className="cursor-pointer bg-transparent text-[11px] font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         title="Assign active consultant to this pilgrim conversation"
                       >
                         <option value="">Unassigned</option>
@@ -2408,15 +2637,17 @@ export function DeskHubClient({
 
                     {/* Spec 0019: Pin Toggle Button */}
                     <Button
-                      variant={activeConversation.isPinned ? "secondary" : "ghost"}
+                      variant={
+                        activeConversation.isPinned ? "secondary" : "ghost"
+                      }
                       size="xs"
                       type="button"
                       disabled={isTogglingPin}
                       onClick={handleTogglePin}
                       className={cn(
-                        "text-[11px] gap-1 px-2 font-medium transition-all cursor-pointer",
+                        "cursor-pointer gap-1 px-2 text-[11px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                         activeConversation.isPinned
-                          ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                          ? "border-gold-border bg-accent text-gold-text hover:bg-accent/80"
                           : "text-muted-foreground hover:text-foreground"
                       )}
                       title={
@@ -2426,31 +2657,39 @@ export function DeskHubClient({
                       }
                     >
                       {isTogglingPin ? (
-                        <Loader2 className="size-3 animate-spin" />
+                        <Loader2
+                          className="size-3 animate-spin motion-reduce:animate-none"
+                          aria-hidden="true"
+                        />
                       ) : (
                         <Pin
                           className={cn(
                             "size-3.5",
                             activeConversation.isPinned
-                              ? "fill-amber-600 text-amber-600"
+                              ? "fill-gold-text text-gold-text"
                               : ""
                           )}
+                          aria-hidden="true"
                         />
                       )}
-                      <span>{activeConversation.isPinned ? "Pinned" : "Pin"}</span>
+                      <span>
+                        {activeConversation.isPinned ? "Pinned" : "Pin"}
+                      </span>
                     </Button>
 
                     {/* Spec 0019: Archive Toggle Button */}
                     <Button
-                      variant={activeConversation.isArchived ? "secondary" : "ghost"}
+                      variant={
+                        activeConversation.isArchived ? "secondary" : "ghost"
+                      }
                       size="xs"
                       type="button"
                       disabled={isTogglingArchive}
                       onClick={handleToggleArchive}
                       className={cn(
-                        "text-[11px] gap-1 px-2 font-medium transition-all cursor-pointer",
+                        "cursor-pointer gap-1 px-2 text-[11px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                         activeConversation.isArchived
-                          ? "border-slate-300 bg-slate-100 text-slate-800"
+                          ? "border-border bg-secondary text-foreground"
                           : "text-muted-foreground hover:text-foreground"
                       )}
                       title={
@@ -2460,13 +2699,23 @@ export function DeskHubClient({
                       }
                     >
                       {isTogglingArchive ? (
-                        <Loader2 className="size-3 animate-spin" />
+                        <Loader2
+                          className="size-3 animate-spin motion-reduce:animate-none"
+                          aria-hidden="true"
+                        />
                       ) : activeConversation.isArchived ? (
-                        <ArchiveRestore className="size-3.5" />
+                        <ArchiveRestore
+                          className="size-3.5"
+                          aria-hidden="true"
+                        />
                       ) : (
-                        <Archive className="size-3.5" />
+                        <Archive className="size-3.5" aria-hidden="true" />
                       )}
-                      <span>{activeConversation.isArchived ? "Unarchive" : "Archive"}</span>
+                      <span>
+                        {activeConversation.isArchived
+                          ? "Unarchive"
+                          : "Archive"}
+                      </span>
                     </Button>
 
                     {/* 1-Click Hand Off to Dedicated AI Agent */}
@@ -2476,13 +2725,19 @@ export function DeskHubClient({
                       type="button"
                       disabled={isHandingOffToAgent}
                       onClick={handleHandoffToAgent}
-                      className="text-[11px] font-semibold border-purple-300 bg-purple-50/80 text-purple-900 hover:bg-purple-100 gap-1 px-2"
+                      className="gap-1 border-gold-border bg-accent px-2 text-[11px] font-semibold text-primary hover:bg-accent/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
                       title="Transfer this contact from Founder Coexistence Line (+92 319 0462638) to Dedicated AI Agent Line"
                     >
                       {isHandingOffToAgent ? (
-                        <Loader2 className="size-3 animate-spin" />
+                        <Loader2
+                          className="size-3 animate-spin motion-reduce:animate-none"
+                          aria-hidden="true"
+                        />
                       ) : (
-                        <Bot className="size-3.5 text-purple-700" />
+                        <Bot
+                          className="size-3.5 text-gold-text"
+                          aria-hidden="true"
+                        />
                       )}
                       <span>Hand Off to AI Agent</span>
                     </Button>
@@ -2494,13 +2749,19 @@ export function DeskHubClient({
                       type="button"
                       disabled={isMarkingRead}
                       onClick={handleMarkConversationRead}
-                      className="text-[11px] font-medium text-sky-700 hover:bg-sky-50 gap-1 px-2"
+                      className="gap-1 px-2 text-[11px] font-medium text-status-info hover:bg-status-info-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
                       title="Dispatch official Meta Blue-Tick Read Receipt to pilgrim's phone"
                     >
                       {isMarkingRead ? (
-                        <Loader2 className="size-3 animate-spin" />
+                        <Loader2
+                          className="size-3 animate-spin motion-reduce:animate-none"
+                          aria-hidden="true"
+                        />
                       ) : (
-                        <CheckCheck className="size-3.5 text-sky-500" />
+                        <CheckCheck
+                          className="size-3.5 text-status-info"
+                          aria-hidden="true"
+                        />
                       )}
                       <span>Mark Read</span>
                     </Button>
@@ -2511,27 +2772,36 @@ export function DeskHubClient({
                       type="button"
                       disabled={isGeneratingWaCopilot}
                       onClick={handleGenerateWaCopilotDraft}
-                      className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 border border-[#C5A059]/60 text-[11px] font-semibold gap-1 shadow-2xs"
+                      className="gap-1 border border-gold-border bg-primary text-[11px] font-semibold text-primary-foreground shadow-2xs hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80"
                     >
                       {isGeneratingWaCopilot ? (
-                        <Loader2 className="size-3 animate-spin text-[#C5A059]" />
+                        <Loader2
+                          className="size-3 animate-spin text-gold motion-reduce:animate-none"
+                          aria-hidden="true"
+                        />
                       ) : (
-                        <Sparkles className="size-3 text-[#C5A059]" />
+                        <Sparkles
+                          className="size-3 text-gold"
+                          aria-hidden="true"
+                        />
                       )}
                       <span>AI Copilot Draft</span>
                     </Button>
 
                     {active24hState.isInside ? (
-                      <span className="flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
-                        <span className="size-1.5 rounded-full bg-emerald-600" />
+                      <span className="flex items-center gap-1 rounded-full border border-status-success-border bg-status-success-bg px-2 py-0.5 text-[11px] font-semibold tabular-nums text-status-success">
+                        <span className="size-1.5 rounded-full bg-status-success" />
                         <span>
                           {active24hState.remainingHours}h{" "}
                           {active24hState.remainingMinutes}m
                         </span>
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
-                        <AlertCircle className="size-3 text-amber-600" />
+                      <span className="flex items-center gap-1 rounded-full border border-status-warning-border bg-status-warning-bg px-2 py-0.5 text-[11px] font-semibold text-status-warning">
+                        <AlertCircle
+                          className="size-3 text-status-warning"
+                          aria-hidden="true"
+                        />
                         <span>Template Required</span>
                       </span>
                     )}
@@ -2540,75 +2810,89 @@ export function DeskHubClient({
 
                 {/* Banner Notifications */}
                 {pdfSuccessBanner && (
-                  <div className="flex items-center justify-between bg-emerald-50 border-b border-emerald-200 p-2.5 text-xs text-emerald-900">
+                  <div className="flex items-center justify-between border-b border-status-success-border bg-status-success-bg p-2.5 text-xs text-status-success">
                     <div className="flex items-center gap-1.5 font-medium">
-                      <Check className="size-4 text-emerald-600" />
+                      <Check
+                        className="size-4 text-status-success"
+                        aria-hidden="true"
+                      />
                       <span>{pdfSuccessBanner}</span>
                     </div>
                     <button
                       type="button"
+                      aria-label="Dismiss PDF status notice"
                       onClick={() => setPdfSuccessBanner(null)}
-                      className="text-emerald-700 hover:text-emerald-900"
+                      className="rounded text-status-success hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <X className="size-3.5" />
+                      <X className="size-3.5" aria-hidden="true" />
                     </button>
                   </div>
                 )}
 
                 {composerError && (
-                  <div className="flex items-center justify-between bg-red-50 border-b border-red-200 p-2.5 text-xs text-red-900">
+                  <div className="flex items-center justify-between border-b border-status-danger-border bg-status-danger-bg p-2.5 text-xs text-status-danger">
                     <div className="flex items-center gap-1.5 font-medium">
-                      <AlertCircle className="size-4 text-red-600" />
+                      <AlertCircle
+                        className="size-4 text-status-danger"
+                        aria-hidden="true"
+                      />
                       <span>{composerError}</span>
                     </div>
                     <button
                       type="button"
+                      aria-label="Dismiss composer error"
                       onClick={() => setComposerError(null)}
-                      className="text-red-700 hover:text-red-900"
+                      className="rounded text-status-danger hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <X className="size-3.5" />
+                      <X className="size-3.5" aria-hidden="true" />
                     </button>
                   </div>
                 )}
 
                 {waCopilotRun && (
-                  <div className="p-3 border-b border-[#C5A059]/40 bg-[#0A3622]/5">
+                  <div className="border-b border-gold-border/50 bg-secondary/40 p-3">
                     <CopilotRealtimeRunBanner
                       runId={waCopilotRun.runId}
                       publicAccessToken={waCopilotRun.publicAccessToken}
                       mode={waCopilotRun.mode}
                       title="AI Quoting Concierge Telemetry"
                       onComplete={async (output) => {
-                        setIsGeneratingWaCopilot(false)
-                        if (output?.draft) {
-                          setWaCopilotDraft(output.draft)
-                          setWaCopilotEditableText(
-                            output.draft.bilingualReplyDraft || ""
-                          )
-                          setWaCopilotMeta({
-                            modelUsed: output.modelUsed || "Trigger.dev Worker",
-                            executionMode: output.executionMode || "ai_provider",
+                        setGeneratingWaCopilotConvId(null)
+                        if (output?.draft && activeConversation?.id) {
+                          setWaCopilotDraftState({
+                            conversationId: activeConversation.id,
+                            draft: output.draft,
+                            editableText:
+                              output.draft.bilingualReplyDraft || "",
+                            meta: {
+                              modelUsed:
+                                output.modelUsed || "Trigger.dev Worker",
+                              executionMode:
+                                output.executionMode || "ai_provider",
+                            },
                           })
                         } else if (activeConversation?.id) {
+                          const targetId = activeConversation.id
                           const res =
                             await generateWaConversationCopilotDraftAction({
-                              conversationId: activeConversation.id,
+                              conversationId: targetId,
                             })
                           if (res.success) {
-                            setWaCopilotDraft(res.draft)
-                            setWaCopilotEditableText(
-                              res.draft.bilingualReplyDraft
-                            )
-                            setWaCopilotMeta({
-                              modelUsed: res.modelUsed,
-                              executionMode: res.executionMode,
+                            setWaCopilotDraftState({
+                              conversationId: targetId,
+                              draft: res.draft,
+                              editableText: res.draft.bilingualReplyDraft,
+                              meta: {
+                                modelUsed: res.modelUsed,
+                                executionMode: res.executionMode,
+                              },
                             })
                           }
                         }
                       }}
                       onDismiss={() => {
-                        setWaCopilotRun(null)
-                        setIsGeneratingWaCopilot(false)
+                        setWaCopilotRunState(null)
+                        setGeneratingWaCopilotConvId(null)
                       }}
                     />
                   </div>
@@ -2616,32 +2900,36 @@ export function DeskHubClient({
 
                 {/* AI Concierge Draft Review Card (Spec 0015 AC-4, requiresHumanApproval: true) */}
                 {waCopilotDraft && (
-                  <div className="border-b border-[#C5A059]/50 bg-[#0A3622]/5 p-3.5 text-xs space-y-2.5 animate-in fade-in-50 duration-150">
+                  <div className="space-y-2.5 border-b border-gold-border/50 bg-secondary/50 p-3.5 text-xs animate-in fade-in-50 duration-150 motion-reduce:animate-none">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
-                        <Bot className="size-4 text-primary" />
+                        <Bot
+                          className="size-4 text-primary"
+                          aria-hidden="true"
+                        />
                         <span className="font-display font-bold text-foreground">
                           AI Quoting Concierge Draft (Bilingual EN + Roman Urdu)
                         </span>
                         <Badge
                           variant="outline"
-                          className="border-amber-400 bg-amber-100 text-amber-950 text-[10px] font-mono"
+                          className="border-status-warning-border bg-status-warning-bg text-[11px] text-status-warning"
                         >
                           Human Review Required
                         </Badge>
                       </div>
                       <div className="flex items-center gap-1.5">
                         {waCopilotMeta && (
-                          <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                          <span className="rounded bg-background px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
                             {waCopilotMeta.modelUsed}
                           </span>
                         )}
                         <button
                           type="button"
+                          aria-label="Dismiss AI draft"
                           onClick={() => setWaCopilotDraft(null)}
-                          className="text-muted-foreground hover:text-foreground"
+                          className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
-                          <X className="size-3.5" />
+                          <X className="size-3.5" aria-hidden="true" />
                         </button>
                       </div>
                     </div>
@@ -2653,24 +2941,30 @@ export function DeskHubClient({
                       {waCopilotDraft.matchedPackageCode && (
                         <Badge
                           variant="outline"
-                          className="border-amber-300 bg-amber-50 text-amber-900 font-mono text-[10px]"
+                          className="border-gold-border bg-accent text-[11px] text-primary"
                         >
-                          Package: {waCopilotDraft.matchedPackageCode}
+                          Package:{" "}
+                          <span className="font-mono">
+                            {waCopilotDraft.matchedPackageCode}
+                          </span>
                         </Badge>
                       )}
                       {waCopilotDraft.matchedBatchCode && (
                         <Badge
                           variant="outline"
-                          className="border-emerald-300 bg-emerald-50 text-emerald-900 font-mono text-[10px]"
+                          className="border-status-success-border bg-status-success-bg text-[11px] text-status-success"
                         >
-                          Batch: {waCopilotDraft.matchedBatchCode}
+                          Batch:{" "}
+                          <span className="font-mono">
+                            {waCopilotDraft.matchedBatchCode}
+                          </span>
                         </Badge>
                       )}
                     </div>
 
                     {/* Recommended Pricing Bullets */}
                     {waCopilotDraft.recommendedPricingBullets.length > 0 && (
-                      <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-muted-foreground">
+                      <ul className="list-disc space-y-0.5 pl-4 text-[11px] text-muted-foreground">
                         {waCopilotDraft.recommendedPricingBullets.map(
                           (b, idx) => (
                             <li key={idx}>{b}</li>
@@ -2684,7 +2978,7 @@ export function DeskHubClient({
                       value={waCopilotEditableText}
                       onChange={(e) => setWaCopilotEditableText(e.target.value)}
                       rows={4}
-                      className="text-xs bg-card"
+                      className="bg-background text-xs"
                     />
 
                     <div className="flex items-center justify-end gap-2">
@@ -2700,9 +2994,12 @@ export function DeskHubClient({
                         type="button"
                         size="xs"
                         onClick={handleUseCopilotDraftInComposer}
-                        className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-bold gap-1"
+                        className="gap-1 bg-primary font-bold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80"
                       >
-                        <ArrowDownToLine className="size-3 text-[#C5A059]" />
+                        <ArrowDownToLine
+                          className="size-3 text-gold"
+                          aria-hidden="true"
+                        />
                         <span>Use Draft in Composer</span>
                       </Button>
                     </div>
@@ -2712,15 +3009,21 @@ export function DeskHubClient({
                 {/* Messages Stream */}
                 <div
                   ref={messagesScrollContainerRef}
-                  className="flex flex-1 flex-col gap-3 p-4 overflow-y-auto max-h-[500px] bg-secondary/15"
+                  className="flex max-h-[500px] flex-1 flex-col gap-3 overflow-y-auto bg-secondary/20 p-4"
                 >
                   {isLoadingMessages ? (
                     <div className="flex flex-1 items-center justify-center py-12 text-muted-foreground">
-                      <Loader2 className="size-6 animate-spin" />
+                      <Loader2
+                        className="size-6 animate-spin motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
                     </div>
                   ) : activeMessages.length === 0 ? (
                     <div className="flex flex-1 flex-col items-center justify-center p-8 text-center text-xs text-muted-foreground">
-                      <Clock className="size-6 text-muted-foreground/40 mb-1" />
+                      <Clock
+                        className="mb-1 size-6 text-muted-foreground/40"
+                        aria-hidden="true"
+                      />
                       <p>No messages yet in this conversation.</p>
                     </div>
                   ) : (
@@ -2771,30 +3074,30 @@ export function DeskHubClient({
                         <div
                           key={msg.id}
                           className={cn(
-                            "group relative flex flex-col max-w-[85%] rounded-2xl p-3 shadow-2xs text-xs",
+                            "group relative flex max-w-[85%] flex-col rounded-2xl p-3 text-xs shadow-2xs",
                             isOutbound
-                              ? "self-end bg-primary text-primary-foreground rounded-tr-xs border border-primary/80"
-                              : "self-start bg-card text-foreground rounded-tl-xs border border-border"
+                              ? "self-end rounded-tr-xs border border-primary/80 bg-primary text-primary-foreground"
+                              : "self-start rounded-tl-xs border border-border bg-background text-foreground"
                           )}
                         >
                           {/* Auto-Bot Badge (Spec 0013 AC-2, AC-6) */}
                           {msg.isAutoReply && (
                             <div className="mb-1.5 flex items-center gap-1">
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/20 border border-amber-300/60 px-2 py-0.5 text-[10px] font-bold text-amber-200">
-                                <Bot className="size-3" />
-                                <span>ART-... Auto-Bot Reply</span>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-gold-border/60 bg-gold/20 px-2 py-0.5 text-[11px] font-bold text-gold">
+                                <Bot className="size-3" aria-hidden="true" />
+                                <span>ART-… Auto-Bot Reply</span>
                               </span>
                             </div>
                           )}
 
                           {/* 1. R2 Inbound/Outbound Image or Sticker Preview (Spec 0013 AC-1, AC-6) */}
                           {isImageOrSticker && msg.mediaUrl && (
-                            <div className="mb-2 overflow-hidden rounded-xl border border-border/40 bg-black/5">
+                            <div className="mb-2 overflow-hidden rounded-xl border border-border/40 bg-foreground/5 transition-colors hover:border-gold-border motion-reduce:transition-none">
                               <a
                                 href={msg.mediaUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="block"
+                                className="block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               >
                                 <Image
                                   src={msg.mediaUrl}
@@ -2802,7 +3105,7 @@ export function DeskHubClient({
                                   width={480}
                                   height={320}
                                   unoptimized
-                                  className="max-h-56 w-full object-cover transition-transform hover:scale-[1.02]"
+                                  className="max-h-56 w-full object-cover"
                                 />
                               </a>
                             </div>
@@ -2810,9 +3113,9 @@ export function DeskHubClient({
 
                           {/* 2. R2 Audio / Urdu Voice Note Player (Spec 0013 AC-1, AC-6) */}
                           {isAudio && msg.mediaUrl && (
-                            <div className="mb-2 flex flex-col gap-1 rounded-xl bg-black/10 p-2">
-                              <div className="flex items-center gap-1.5 text-[10px] opacity-90">
-                                <Music className="size-3.5" />
+                            <div className="mb-2 flex flex-col gap-1 rounded-xl bg-foreground/10 p-2">
+                              <div className="flex items-center gap-1.5 text-[11px] opacity-90">
+                                <Music className="size-3.5" aria-hidden="true" />
                                 <span>Voice Note / Audio Attachment</span>
                               </div>
                               <audio
@@ -2825,9 +3128,11 @@ export function DeskHubClient({
 
                           {/* 3. R2 Video Player (Spec 0013 AC-1, AC-6) */}
                           {isVideo && msg.mediaUrl && (
-                            <div className="mb-2 overflow-hidden rounded-xl bg-black/10">
+                            <div className="mb-2 overflow-hidden rounded-xl bg-foreground/10">
                               <video
                                 controls
+                                preload="metadata"
+                                poster="/logo.jpg"
                                 src={msg.mediaUrl}
                                 className="max-h-56 w-full rounded-xl"
                               />
@@ -2838,24 +3143,24 @@ export function DeskHubClient({
                           {isDocument && (
                             <div
                               className={cn(
-                                "flex items-center gap-3 rounded-xl p-2.5 mb-1.5 border",
+                                "mb-1.5 flex items-center gap-3 rounded-xl border p-2.5",
                                 isOutbound
-                                  ? "bg-white/10 border-white/20 text-white"
-                                  : "bg-secondary border-border text-foreground"
+                                  ? "border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground"
+                                  : "border-border bg-secondary text-foreground"
                               )}
                             >
-                              <div className="flex size-9 items-center justify-center rounded-lg bg-red-100 text-red-700 shrink-0">
-                                <FileText className="size-5" />
+                              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-status-danger-bg text-status-danger">
+                                <FileText className="size-5" aria-hidden="true" />
                               </div>
                               <div className="flex flex-col truncate">
-                                <span className="font-bold text-xs truncate">
+                                <span className="truncate text-xs font-bold">
                                   {msg.mediaFilename ||
                                     "Al_Ramlah_Document.pdf"}
                                 </span>
-                                <span className="text-[10px] opacity-80">
+                                <span className="text-[11px] opacity-85">
                                   {msg.mediaMimeType || "PDF Document"}
                                   {msg.mediaFileSize
-                                    ? ` · ${Math.round(msg.mediaFileSize / 1024)} KB`
+                                    ? ` (${Math.round(msg.mediaFileSize / 1024)} KB)`
                                     : ""}
                                 </span>
                               </div>
@@ -2864,10 +3169,13 @@ export function DeskHubClient({
                                   href={msg.mediaUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="ml-auto p-1.5 rounded-lg hover:bg-white/20 transition-colors"
+                                  className="ml-auto rounded-lg p-1.5 transition-colors hover:bg-primary-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
                                   title="Download / Preview Document"
                                 >
-                                  <Download className="size-4" />
+                                  <Download
+                                    className="size-4"
+                                    aria-hidden="true"
+                                  />
                                 </a>
                               )}
                             </div>
@@ -2875,9 +3183,12 @@ export function DeskHubClient({
 
                           {/* Manual "Mirror to R2" Retry Button when rawMediaId is present without mediaUrl (Spec 0013 AC-1, AC-6) */}
                           {msg.rawMediaId && !msg.mediaUrl && (
-                            <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 p-2 text-amber-950">
+                            <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-status-warning-border bg-status-warning-bg p-2 text-status-warning">
                               <div className="flex items-center gap-1.5 text-[11px]">
-                                <ImageIcon className="size-3.5 text-amber-700" />
+                                <ImageIcon
+                                  className="size-3.5 text-status-warning"
+                                  aria-hidden="true"
+                                />
                                 <span>Media pending R2 archival</span>
                               </div>
                               <Button
@@ -2886,12 +3197,18 @@ export function DeskHubClient({
                                 variant="outline"
                                 disabled={mirroringMessageId === msg.id}
                                 onClick={() => handleManualMediaMirror(msg.id)}
-                                className="h-6 border-amber-400 bg-white text-[10px] font-bold text-amber-900 hover:bg-amber-100 gap-1"
+                                className="h-6 gap-1 border-status-warning-border bg-background text-[11px] font-bold text-status-warning hover:bg-status-warning-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               >
                                 {mirroringMessageId === msg.id ? (
-                                  <Loader2 className="size-3 animate-spin" />
+                                  <Loader2
+                                    className="size-3 animate-spin motion-reduce:animate-none"
+                                    aria-hidden="true"
+                                  />
                                 ) : (
-                                  <RefreshCw className="size-3" />
+                                  <RefreshCw
+                                    className="size-3"
+                                    aria-hidden="true"
+                                  />
                                 )}
                                 <span>Mirror to R2</span>
                               </Button>
@@ -2900,7 +3217,7 @@ export function DeskHubClient({
 
                           {/* Interactive Header */}
                           {payload?.headerText && (
-                            <div className="mb-1 font-bold text-xs opacity-95">
+                            <div className="mb-1 text-xs font-bold opacity-95">
                               {payload.headerText}
                             </div>
                           )}
@@ -2914,7 +3231,7 @@ export function DeskHubClient({
 
                           {/* Interactive Footer */}
                           {payload?.footerText && (
-                            <div className="mt-1 text-[10px] opacity-75">
+                            <div className="mt-1 text-[11px] opacity-80">
                               {payload.footerText}
                             </div>
                           )}
@@ -2923,14 +3240,14 @@ export function DeskHubClient({
                           {payload?.buttons &&
                             Array.isArray(payload.buttons) &&
                             payload.buttons.length > 0 && (
-                              <div className="mt-2 flex flex-col gap-1 border-t border-white/20 pt-2">
+                              <div className="mt-2 flex flex-col gap-1 border-t border-primary-foreground/20 pt-2">
                                 {payload.buttons.map((b) => (
                                   <div
                                     key={b.id}
                                     className={cn(
-                                      "flex items-center justify-center rounded-lg py-1.5 px-2 text-center text-[11px] font-bold border",
+                                      "flex items-center justify-center rounded-lg border px-2 py-1.5 text-center text-[11px] font-bold",
                                       isOutbound
-                                        ? "border-white/30 bg-white/10 text-white"
+                                        ? "border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground"
                                         : "border-primary/30 bg-primary/5 text-primary"
                                     )}
                                   >
@@ -2944,9 +3261,12 @@ export function DeskHubClient({
                           {payload?.sections &&
                             Array.isArray(payload.sections) &&
                             payload.sections.length > 0 && (
-                              <div className="mt-2 flex flex-col gap-1.5 border-t border-white/20 pt-2">
-                                <div className="flex items-center gap-1 text-[10px] font-bold uppercase opacity-85">
-                                  <ListIcon className="size-3" />
+                              <div className="mt-2 flex flex-col gap-1.5 border-t border-primary-foreground/20 pt-2">
+                                <div className="flex items-center gap-1 text-[11px] font-bold opacity-90">
+                                  <ListIcon
+                                    className="size-3"
+                                    aria-hidden="true"
+                                  />
                                   <span>
                                     {payload.buttonText || "Menu Options"}
                                   </span>
@@ -2954,21 +3274,21 @@ export function DeskHubClient({
                                 {payload.sections.map((sec, sIdx) => (
                                   <div
                                     key={sIdx}
-                                    className="flex flex-col gap-1 rounded-lg bg-black/10 p-1.5"
+                                    className="flex flex-col gap-1 rounded-lg bg-foreground/10 p-1.5"
                                   >
-                                    <span className="text-[10px] font-bold opacity-90">
+                                    <span className="text-[11px] font-bold opacity-90">
                                       {sec.title}
                                     </span>
                                     {sec.rows.map((r) => (
                                       <div
                                         key={r.id}
-                                        className="rounded bg-white/10 px-2 py-1 text-[10px]"
+                                        className="rounded bg-primary-foreground/10 px-2 py-1 text-[11px]"
                                       >
                                         <div className="font-semibold">
                                           {r.title}
                                         </div>
                                         {r.description && (
-                                          <div className="opacity-75 text-[9px]">
+                                          <div className="text-[10px] opacity-80">
                                             {r.description}
                                           </div>
                                         )}
@@ -2982,7 +3302,7 @@ export function DeskHubClient({
                           {/* Time, Reaction Badge & Delivery Status Ticks */}
                           <div
                             className={cn(
-                              "flex items-center justify-between gap-2 text-[10px] mt-1.5 opacity-80 font-mono",
+                              "mt-1.5 flex items-center justify-between gap-2 font-mono text-[11px] tabular-nums opacity-85",
                               isOutbound
                                 ? "text-primary-foreground"
                                 : "text-muted-foreground"
@@ -2990,7 +3310,7 @@ export function DeskHubClient({
                           >
                             <div className="flex items-center gap-1">
                               {msg.reactionEmoji && (
-                                <span className="rounded-full bg-black/15 px-1.5 py-0.2 text-xs">
+                                <span className="rounded-full bg-foreground/15 px-1.5 py-0.2 text-xs">
                                   {msg.reactionEmoji}
                                 </span>
                               )}
@@ -2999,6 +3319,7 @@ export function DeskHubClient({
                               <div className="relative">
                                 <button
                                   type="button"
+                                  aria-label="React to message"
                                   onClick={() =>
                                     setReactionTargetWamid(
                                       reactionTargetWamid === msg.wamid
@@ -3006,23 +3327,30 @@ export function DeskHubClient({
                                         : msg.wamid
                                     )
                                   }
-                                  className="opacity-60 hover:opacity-100 transition-opacity p-0.5"
+                                  className="rounded p-0.5 opacity-75 transition-opacity hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                                   title="React with emoji"
                                 >
-                                  <Smile className="size-3" />
+                                  <Smile
+                                    className="size-3"
+                                    aria-hidden="true"
+                                  />
                                 </button>
                                 {reactionTargetWamid === msg.wamid && (
-                                  <div className="absolute bottom-5 left-0 z-20 flex items-center gap-1 rounded-full border border-border bg-card px-2 py-1 shadow-md">
-                                    {QUICK_REACTION_EMOJIS.map((emoji) => (
+                                  <div className="absolute bottom-5 left-0 z-20 flex items-center gap-1 rounded-full border border-border bg-popover px-2 py-1 shadow-md">
+                                    {QUICK_REACTION_EMOJIS.map((item) => (
                                       <button
-                                        key={emoji}
+                                        key={item.label}
                                         type="button"
+                                        aria-label={`React with ${item.label}`}
                                         onClick={() =>
-                                          handleSendReaction(msg.wamid, emoji)
+                                          handleSendReaction(
+                                            msg.wamid,
+                                            item.emoji
+                                          )
                                         }
-                                        className="text-sm hover:scale-125 transition-transform"
+                                        className="rounded text-sm transition-transform hover:scale-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transform-none motion-reduce:transition-none"
                                       >
-                                        {emoji}
+                                        {item.emoji}
                                       </button>
                                     ))}
                                   </div>
@@ -3043,15 +3371,30 @@ export function DeskHubClient({
                               {isOutbound && (
                                 <span>
                                   {msg.status === "read" ? (
-                                    <CheckCheck className="size-3 text-sky-300" />
+                                    <CheckCheck
+                                      className="size-3 text-gold"
+                                      aria-hidden="true"
+                                    />
                                   ) : msg.status === "delivered" ? (
-                                    <CheckCheck className="size-3" />
+                                    <CheckCheck
+                                      className="size-3"
+                                      aria-hidden="true"
+                                    />
                                   ) : msg.status === "sent" ? (
-                                    <Check className="size-3" />
+                                    <Check
+                                      className="size-3"
+                                      aria-hidden="true"
+                                    />
                                   ) : msg.status === "failed" ? (
-                                    <AlertCircle className="size-3 text-red-300" />
+                                    <AlertCircle
+                                      className="size-3 text-status-danger-bg"
+                                      aria-hidden="true"
+                                    />
                                   ) : (
-                                    <Clock className="size-3" />
+                                    <Clock
+                                      className="size-3"
+                                      aria-hidden="true"
+                                    />
                                   )}
                                 </span>
                               )}
@@ -3066,10 +3409,13 @@ export function DeskHubClient({
 
                 {/* Quick-Reply Macros Drawer */}
                 {showQuickReplyPicker && (
-                  <div className="border-t border-border bg-card p-3 shadow-sm animate-in slide-in-from-bottom-2 duration-150">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                        <Zap className="size-3.5 text-primary" />
+                  <div className="border-t border-border bg-secondary/50 p-3 shadow-sm animate-in slide-in-from-bottom-2 duration-150 motion-reduce:animate-none">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                        <Zap
+                          className="size-3.5 text-primary"
+                          aria-hidden="true"
+                        />
                         <span>
                           Quick Replies (Type &apos;/&apos; or pick below)
                         </span>
@@ -3081,20 +3427,21 @@ export function DeskHubClient({
                             setShowQuickReplyPicker(false)
                             setAutoReplyStudioOpen(true)
                           }}
-                          className="text-[11px] font-semibold text-primary hover:underline"
+                          className="whitespace-nowrap rounded text-[11px] font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           Manage /shortcuts &amp; Auto-Replies
                         </button>
                         <button
                           type="button"
+                          aria-label="Close quick reply picker"
                           onClick={() => setShowQuickReplyPicker(false)}
-                          className="text-muted-foreground hover:text-foreground"
+                          className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
-                          <X className="size-3.5" />
+                          <X className="size-3.5" aria-hidden="true" />
                         </button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 max-h-36 overflow-y-auto">
+                    <div className="grid max-h-36 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
                       {quickRepliesList.map((qr) => (
                         <button
                           key={qr.id}
@@ -3103,17 +3450,17 @@ export function DeskHubClient({
                             setComposerText(qr.bodyText)
                             setShowQuickReplyPicker(false)
                           }}
-                          className="flex flex-col rounded-lg border border-border p-2 text-left hover:bg-secondary/60 transition-colors"
+                          className="flex flex-col rounded-lg border border-border bg-background p-2 text-left transition-colors hover:bg-secondary/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
                         >
                           <div className="flex items-center justify-between">
                             <span className="font-mono text-[11px] font-bold text-primary">
                               /{qr.shortcut.replace(/^\/+/, "")}
                             </span>
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-[11px] text-muted-foreground">
                               {qr.category}
                             </span>
                           </div>
-                          <span className="text-xs font-medium text-foreground truncate">
+                          <span className="truncate text-xs font-medium text-foreground">
                             {qr.title}
                           </span>
                         </button>
@@ -3123,7 +3470,7 @@ export function DeskHubClient({
                 )}
 
                 {/* Message Composer Area (Text, Interactive Reply Buttons, Interactive List Menus, or Template) */}
-                <div className="border-t border-border p-3.5 bg-card">
+                <div className="border-t border-border bg-secondary/30 p-3.5">
                   {active24hState.isInside ? (
                     <div className="flex flex-col gap-2.5">
                       {/* Composer Mode Switcher (Spec 0013 AC-4, AC-6) */}
@@ -3133,9 +3480,9 @@ export function DeskHubClient({
                             type="button"
                             onClick={() => setComposerMode("text")}
                             className={cn(
-                              "rounded-md px-2.5 py-1 font-semibold transition-colors",
+                              "rounded-md px-2.5 py-1 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                               composerMode === "text"
-                                ? "bg-card text-foreground shadow-2xs"
+                                ? "bg-background text-foreground shadow-2xs"
                                 : "text-muted-foreground hover:text-foreground"
                             )}
                           >
@@ -3145,26 +3492,29 @@ export function DeskHubClient({
                             type="button"
                             onClick={() => setComposerMode("buttons")}
                             className={cn(
-                              "flex items-center gap-1 rounded-md px-2.5 py-1 font-semibold transition-colors",
+                              "flex items-center gap-1 rounded-md px-2.5 py-1 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                               composerMode === "buttons"
-                                ? "bg-card text-foreground shadow-2xs"
+                                ? "bg-background text-foreground shadow-2xs"
                                 : "text-muted-foreground hover:text-foreground"
                             )}
                           >
-                            <MousePointerClick className="size-3" />
-                            <span>Reply Buttons (1–3)</span>
+                            <MousePointerClick
+                              className="size-3"
+                              aria-hidden="true"
+                            />
+                            <span>Reply Buttons (1 to 3)</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => setComposerMode("list")}
                             className={cn(
-                              "flex items-center gap-1 rounded-md px-2.5 py-1 font-semibold transition-colors",
+                              "flex items-center gap-1 rounded-md px-2.5 py-1 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none",
                               composerMode === "list"
-                                ? "bg-card text-foreground shadow-2xs"
+                                ? "bg-background text-foreground shadow-2xs"
                                 : "text-muted-foreground hover:text-foreground"
                             )}
                           >
-                            <ListIcon className="size-3" />
+                            <ListIcon className="size-3" aria-hidden="true" />
                             <span>List Menu</span>
                           </button>
                         </div>
@@ -3175,9 +3525,12 @@ export function DeskHubClient({
                           type="button"
                           onClick={handleGenerateWaCopilotDraft}
                           disabled={isGeneratingWaCopilot}
-                          className="text-[11px] font-semibold text-primary hover:bg-primary/10 gap-1"
+                          className="gap-1 text-[11px] font-semibold text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
-                          <Sparkles className="size-3 text-[#C5A059]" />
+                          <Sparkles
+                            className="size-3 text-gold-text"
+                            aria-hidden="true"
+                          />
                           <span>AI Draft</span>
                         </Button>
                       </div>
@@ -3193,7 +3546,7 @@ export function DeskHubClient({
                             }
                             placeholder="Optional Header (max 60 chars)"
                             maxLength={60}
-                            className="h-7 text-xs"
+                            className="h-7 bg-background text-xs"
                           />
                           <Input
                             value={interactiveFooter}
@@ -3202,7 +3555,7 @@ export function DeskHubClient({
                             }
                             placeholder="Optional Footer (max 60 chars)"
                             maxLength={60}
-                            className="h-7 text-xs"
+                            className="h-7 bg-background text-xs"
                           />
                         </div>
                       )}
@@ -3231,16 +3584,16 @@ export function DeskHubClient({
                               ? "Type response to pilgrim... (Press Enter to send, type '/' for quick replies)"
                               : "Enter message body for interactive menu..."
                           }
-                          className="min-h-[68px] resize-none pr-10 text-xs"
+                          className="min-h-[68px] resize-none bg-background pr-10 text-xs"
                         />
                       </div>
 
                       {/* Interactive Reply Buttons Builder (1..3 buttons) */}
                       {composerMode === "buttons" && (
-                        <div className="rounded-xl border border-border bg-secondary/30 p-2.5 space-y-2">
+                        <div className="space-y-2 rounded-xl bg-secondary/60 p-2.5">
                           <div className="flex items-center justify-between text-[11px]">
                             <span className="font-bold text-foreground">
-                              Quick-Reply Buttons (Max 3 · 20 chars each)
+                              Quick-Reply Buttons (Max 3, 20 chars each)
                             </span>
                             {replyButtons.length < 3 && (
                               <button
@@ -3254,7 +3607,7 @@ export function DeskHubClient({
                                     },
                                   ])
                                 }
-                                className="text-primary font-bold hover:underline"
+                                className="rounded font-bold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
                               >
                                 + Add Button
                               </button>
@@ -3280,19 +3633,20 @@ export function DeskHubClient({
                                     )
                                   }}
                                   placeholder={`Button ${idx + 1}`}
-                                  className="h-7 text-xs bg-card"
+                                  className="h-7 bg-background text-xs"
                                 />
                                 {replyButtons.length > 1 && (
                                   <button
                                     type="button"
+                                    aria-label={`Remove button ${idx + 1}`}
                                     onClick={() =>
                                       setReplyButtons((prev) =>
                                         prev.filter((_, i) => i !== idx)
                                       )
                                     }
-                                    className="text-muted-foreground hover:text-red-600"
+                                    className="rounded text-muted-foreground hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
                                   >
-                                    <X className="size-3.5" />
+                                    <X className="size-3.5" aria-hidden="true" />
                                   </button>
                                 )}
                               </div>
@@ -3303,10 +3657,10 @@ export function DeskHubClient({
 
                       {/* Interactive List Menu Builder */}
                       {composerMode === "list" && (
-                        <div className="rounded-xl border border-border bg-secondary/30 p-2.5 space-y-2">
+                        <div className="space-y-2 rounded-xl bg-secondary/60 p-2.5">
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <label className="text-[10px] font-semibold text-muted-foreground">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
                                 Menu Button Text (max 20 chars)
                               </label>
                               <Input
@@ -3315,11 +3669,11 @@ export function DeskHubClient({
                                 onChange={(e) =>
                                   setListButtonText(e.target.value)
                                 }
-                                className="h-7 text-xs bg-card mt-0.5"
+                                className="mt-0.5 h-7 bg-background text-xs"
                               />
                             </div>
                             <div>
-                              <label className="text-[10px] font-semibold text-muted-foreground">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
                                 Section Title (max 24 chars)
                               </label>
                               <Input
@@ -3328,7 +3682,7 @@ export function DeskHubClient({
                                 onChange={(e) =>
                                   setListSectionTitle(e.target.value)
                                 }
-                                className="h-7 text-xs bg-card mt-0.5"
+                                className="mt-0.5 h-7 bg-background text-xs"
                               />
                             </div>
                           </div>
@@ -3350,18 +3704,18 @@ export function DeskHubClient({
                                     },
                                   ])
                                 }
-                                className="text-primary font-bold hover:underline"
+                                className="rounded font-bold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
                               >
                                 + Add Row
                               </button>
                             )}
                           </div>
 
-                          <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                          <div className="max-h-32 space-y-1.5 overflow-y-auto">
                             {listRows.map((row, idx) => (
                               <div
                                 key={idx}
-                                className="grid grid-cols-12 gap-1.5 items-center"
+                                className="grid grid-cols-12 items-center gap-1.5"
                               >
                                 <Input
                                   value={row.title}
@@ -3377,7 +3731,7 @@ export function DeskHubClient({
                                     )
                                   }}
                                   placeholder="Row title (max 24)"
-                                  className="col-span-5 h-7 text-xs bg-card"
+                                  className="col-span-5 h-7 bg-background text-xs"
                                 />
                                 <Input
                                   value={row.description}
@@ -3393,19 +3747,20 @@ export function DeskHubClient({
                                     )
                                   }}
                                   placeholder="Description (max 72)"
-                                  className="col-span-6 h-7 text-xs bg-card"
+                                  className="col-span-6 h-7 bg-background text-xs"
                                 />
                                 {listRows.length > 1 && (
                                   <button
                                     type="button"
+                                    aria-label={`Remove row ${idx + 1}`}
                                     onClick={() =>
                                       setListRows((prev) =>
                                         prev.filter((_, i) => i !== idx)
                                       )
                                     }
-                                    className="col-span-1 text-muted-foreground hover:text-red-600 flex justify-center"
+                                    className="col-span-1 flex justify-center rounded text-muted-foreground hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
                                   >
-                                    <X className="size-3.5" />
+                                    <X className="size-3.5" aria-hidden="true" />
                                   </button>
                                 )}
                               </div>
@@ -3422,9 +3777,9 @@ export function DeskHubClient({
                           onClick={() =>
                             setShowQuickReplyPicker(!showQuickReplyPicker)
                           }
-                          className="text-xs font-medium text-primary hover:bg-primary/10 gap-1"
+                          className="gap-1 text-xs font-medium text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
-                          <Zap className="size-3.5" />
+                          <Zap className="size-3.5" aria-hidden="true" />
                           <span>Macros (/)</span>
                         </Button>
 
@@ -3432,12 +3787,15 @@ export function DeskHubClient({
                           size="sm"
                           disabled={isSendingMessage || !composerText.trim()}
                           onClick={handleSendReply}
-                          className="gap-1.5 font-semibold"
+                          className="gap-1.5 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
                         >
                           {isSendingMessage ? (
-                            <Loader2 className="size-3.5 animate-spin" />
+                            <Loader2
+                              className="size-3.5 animate-spin motion-reduce:animate-none"
+                              aria-hidden="true"
+                            />
                           ) : (
-                            <Send className="size-3.5" />
+                            <Send className="size-3.5" aria-hidden="true" />
                           )}
                           <span>
                             {composerMode === "buttons"
@@ -3451,9 +3809,12 @@ export function DeskHubClient({
                     </div>
                   ) : (
                     /* Template Selector outside 24h */
-                    <div className="flex flex-col gap-2.5 rounded-xl border border-amber-300 bg-amber-50/50 p-3">
-                      <div className="flex items-center gap-2 text-xs font-bold text-amber-950">
-                        <AlertCircle className="size-4 text-amber-600 shrink-0" />
+                    <div className="flex flex-col gap-2.5 rounded-xl bg-status-warning-bg/80 p-3">
+                      <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                        <AlertCircle
+                          className="size-4 shrink-0 text-status-warning"
+                          aria-hidden="true"
+                        />
                         <span>
                           Outside 24h Window: Meta requires an approved template to contact pilgrim
                         </span>
@@ -3461,27 +3822,31 @@ export function DeskHubClient({
 
                       <div className="flex flex-col gap-1.5">
                         <div className="flex items-center justify-between">
-                          <label className="text-[11px] font-medium text-muted-foreground">
+                          <label
+                            htmlFor="wa-template-select"
+                            className="text-[11px] font-medium text-muted-foreground"
+                          >
                             Select Approved Message Template:
                           </label>
                           <button
                             type="button"
                             onClick={() => setTemplateStudioOpen(true)}
-                            className="text-[11px] font-semibold text-[#0A3622] hover:underline"
+                            className="rounded text-[11px] font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
                           >
                             + Create / Sync Meta Template
                           </button>
                         </div>
                         <select
+                          id="wa-template-select"
                           value={selectedTemplate?.name || selectedTemplateName}
                           onChange={(e) =>
                             setSelectedTemplateName(e.target.value)
                           }
-                          className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                          className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           {approvedTemplatesList.length === 0 ? (
                             <option value="">
-                              No APPROVED Meta templates — click Create / Sync
+                              No approved Meta templates; click Create or Sync
                             </option>
                           ) : (
                             approvedTemplatesList.map((t) => (
@@ -3498,33 +3863,40 @@ export function DeskHubClient({
                         (selectedTemplate?.headerType || "").toUpperCase()
                       ) && (
                         <div className="flex flex-col gap-1">
-                          <label className="text-[11px] font-medium text-muted-foreground">
+                          <label
+                            htmlFor="wa-template-header-url"
+                            className="text-[11px] font-medium text-muted-foreground"
+                          >
                             Header Media URL (
                             {(selectedTemplate?.headerType || "").toUpperCase()}
                             ):
                           </label>
                           <Input
+                            id="wa-template-header-url"
                             placeholder="https://..."
                             value={templateHeaderMediaUrl}
                             onChange={(e) =>
                               setTemplateHeaderMediaUrl(e.target.value)
                             }
-                            className="text-xs h-8 bg-card"
+                            className="h-8 bg-background text-xs"
                           />
                         </div>
                       )}
 
                       {/* Dynamic Template Variable Inputs (Spec 0019 AC-2) */}
                       {templatePlaceholders.length > 0 && (
-                        <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-100/40 p-2.5">
-                          <span className="text-[11px] font-bold text-amber-950 flex items-center gap-1">
-                            <Sparkles className="size-3 text-amber-700" />
+                        <div className="flex flex-col gap-2 rounded-lg bg-background/85 p-2.5">
+                          <span className="flex items-center gap-1 text-[11px] font-bold text-foreground">
+                            <Sparkles
+                              className="size-3 text-gold-text"
+                              aria-hidden="true"
+                            />
                             <span>
                               Template Parameters ({templatePlaceholders.length}{" "}
                               Variables)
                             </span>
                           </span>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             {templatePlaceholders.map((ph) => {
                               const currentValue =
                                 templateVariableValues[ph] ??
@@ -3533,8 +3905,8 @@ export function DeskHubClient({
                                   : "")
                               return (
                                 <div key={ph} className="flex flex-col gap-1">
-                                  <div className="flex items-center justify-between text-[10px]">
-                                    <span className="font-mono font-bold text-amber-900">{`{{${ph}}}`}</span>
+                                  <div className="flex items-center justify-between text-[11px]">
+                                    <code className="font-mono font-bold text-gold-text">{`{{${ph}}}`}</code>
                                     {ph === 1 &&
                                       activeConversation.contactName && (
                                         <button
@@ -3549,7 +3921,7 @@ export function DeskHubClient({
                                               })
                                             )
                                           }
-                                          className="text-amber-800 hover:underline"
+                                          className="rounded font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
                                         >
                                           Use Pilgrim Name
                                         </button>
@@ -3564,7 +3936,7 @@ export function DeskHubClient({
                                       }))
                                     }
                                     placeholder={`Value for {{${ph}}}`}
-                                    className="h-7 text-xs bg-card"
+                                    className="h-7 bg-background text-xs"
                                   />
                                 </div>
                               )
@@ -3574,8 +3946,8 @@ export function DeskHubClient({
                       )}
 
                       {selectedTemplate && (
-                        <div className="rounded-lg border border-amber-200 bg-card p-2 text-xs text-muted-foreground">
-                          <span className="font-semibold text-foreground block mb-0.5">
+                        <div className="rounded-lg bg-background/90 p-2 text-xs text-muted-foreground">
+                          <span className="mb-0.5 block font-semibold text-foreground">
                             Template Preview (Live Interpolation):
                           </span>
                           <p className="whitespace-pre-wrap font-sans text-foreground">
@@ -3602,12 +3974,15 @@ export function DeskHubClient({
                         size="sm"
                         disabled={isSendingMessage || !selectedTemplate}
                         onClick={handleSendReply}
-                        className="gap-1.5 font-semibold w-full sm:w-auto self-end"
+                        className="w-full self-end gap-1.5 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold sm:w-auto"
                       >
                         {isSendingMessage ? (
-                          <Loader2 className="size-3.5 animate-spin" />
+                          <Loader2
+                            className="size-3.5 animate-spin motion-reduce:animate-none"
+                            aria-hidden="true"
+                          />
                         ) : (
-                          <Send className="size-3.5" />
+                          <Send className="size-3.5" aria-hidden="true" />
                         )}
                         <span>Dispatch Meta Template</span>
                       </Button>
@@ -3617,8 +3992,11 @@ export function DeskHubClient({
               </>
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center p-8 text-center text-xs text-muted-foreground">
-                <MessageCircle className="size-10 text-muted-foreground/30 mb-2" />
-                <p className="font-semibold text-foreground text-sm">
+                <MessageCircle
+                  className="mb-2 size-10 text-muted-foreground/30"
+                  aria-hidden="true"
+                />
+                <p className="text-sm font-semibold text-foreground">
                   No Conversation Selected
                 </p>
                 <p className="mt-1">
@@ -3633,42 +4011,42 @@ export function DeskHubClient({
             {activeConversation ? (
               <>
                 {/* 1. Pilgrim Dossier Card */}
-                <div className="flex flex-col rounded-2xl border border-border bg-card p-4 shadow-xs gap-3">
+                <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-xs">
                   <div className="flex items-center justify-between border-b border-border/60 pb-2">
-                    <span className="font-display text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <h3 className="font-display text-xs font-bold text-foreground">
                       Pilgrim Dossier
-                    </span>
+                    </h3>
                     <a
                       href={`https://wa.me/${formatWhatsAppPhone(activeConversation.contactPhone)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-emerald-700 hover:text-emerald-800 text-xs font-medium flex items-center gap-1"
+                      className="flex items-center gap-1 rounded text-xs font-medium text-status-success hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <Phone className="size-3" />
+                      <Phone className="size-3" aria-hidden="true" />
                       <span>Direct WA</span>
                     </a>
                   </div>
 
                   <div className="flex flex-col gap-1 text-xs">
-                    <span className="font-bold text-foreground text-sm">
+                    <span className="text-sm font-bold text-foreground">
                       {activeConversation.contactName ||
                         "Direct WhatsApp Contact"}
                     </span>
-                    <span className="font-mono text-muted-foreground">
+                    <span className="tabular-nums text-muted-foreground">
                       {activeConversation.contactPhone}
                     </span>
                   </div>
 
                   {/* Linked Application & 1-Click Send Luxury PDF Action */}
                   {activeConversation.application ? (
-                    <div className="flex flex-col gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3">
+                    <div className="flex flex-col gap-2 rounded-xl bg-secondary/60 p-3">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-primary">
                           Ref: {activeConversation.application.referenceNumber}
                         </span>
                         <Badge
                           variant="outline"
-                          className="text-[10px] capitalize"
+                          className="text-[11px] capitalize"
                         >
                           {activeConversation.application.status.replace(
                             "_",
@@ -3678,7 +4056,7 @@ export function DeskHubClient({
                       </div>
 
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Users className="size-3" />
+                        <Users className="size-3" aria-hidden="true" />
                         <span>
                           Party:{" "}
                           {activeConversation.application.totalPassportCount ||
@@ -3689,17 +4067,20 @@ export function DeskHubClient({
                         </span>
                       </div>
 
-                      <div className="flex flex-col gap-1.5 mt-1 pt-2 border-t border-primary/20">
+                      <div className="mt-1 flex flex-col gap-1.5 border-t border-border pt-2">
                         <Button
                           size="xs"
                           disabled={isSendingPdf}
                           onClick={handleSendLuxuryPdf}
-                          className="w-full gap-1.5 font-bold shadow-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                          className="w-full gap-1.5 bg-primary font-bold text-primary-foreground shadow-xs hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
                         >
                           {isSendingPdf ? (
-                            <Loader2 className="size-3 animate-spin" />
+                            <Loader2
+                              className="size-3 animate-spin motion-reduce:animate-none"
+                              aria-hidden="true"
+                            />
                           ) : (
-                            <FileText className="size-3" />
+                            <FileText className="size-3" aria-hidden="true" />
                           )}
                           <span>Send 3-Page Luxury PDF</span>
                         </Button>
@@ -3714,15 +4095,18 @@ export function DeskHubClient({
                               title="Open quoting worksheet"
                             />
                           }
-                          className="w-full gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                          className="w-full gap-1 border-primary/30 text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           <span>Open Quote Worksheet</span>
-                          <ExternalLink className="size-3" />
+                          <ExternalLink
+                            className="size-3"
+                            aria-hidden="true"
+                          />
                         </Button>
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
+                    <div className="rounded-xl bg-secondary/45 p-3 text-center text-xs text-muted-foreground">
                       No application linked yet.
                     </div>
                   )}
@@ -3730,140 +4114,159 @@ export function DeskHubClient({
 
                 {/* 2. Detected Flyer Package Card (when customer messages code) */}
                 {detectedPackage && (
-                  <div className="flex flex-col rounded-2xl border border-amber-300 bg-amber-50/40 p-4 shadow-xs gap-3 animate-in fade-in-50 duration-150">
-                    <div className="flex items-center justify-between border-b border-amber-200 pb-2">
+                  <div className="flex flex-col gap-3 rounded-2xl border border-gold-border bg-status-warning-bg/35 p-4 shadow-xs animate-in fade-in-50 duration-150 motion-reduce:animate-none">
+                    <div className="flex items-center justify-between border-b border-gold-border/60 pb-2">
                       <div className="flex items-center gap-1.5">
-                        <Sparkles className="size-3.5 text-amber-600" />
-                        <span className="font-display text-xs font-bold uppercase tracking-wider text-amber-950">
+                        <Sparkles
+                          className="size-3.5 text-gold-text"
+                          aria-hidden="true"
+                        />
+                        <h3 className="font-display text-xs font-bold text-primary">
                           Detected Package Ref
-                        </span>
+                        </h3>
                       </div>
-                      <span className="font-mono font-bold text-xs text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                      <code className="rounded-full bg-accent px-2.5 py-0.5 font-mono text-xs font-bold text-primary">
                         {detectedPackage.postCode}
-                      </span>
+                      </code>
                     </div>
 
                     <div className="flex items-center gap-2 text-xs">
-                      <Plane className="size-3.5 text-primary shrink-0" />
+                      <Plane
+                        className="size-3.5 shrink-0 text-primary"
+                        aria-hidden="true"
+                      />
                       <span className="font-bold text-foreground">
                         {detectedPackage.flyer?.airlineName ||
                           "Airline Flights"}
                       </span>
-                      <span className="text-muted-foreground">·</span>
+                      <span className="text-muted-foreground" aria-hidden="true">
+                        /
+                      </span>
                       <span className="text-muted-foreground">
                         {detectedPackage.outboundDateLabel}
                       </span>
                     </div>
 
-                    <div className="flex flex-col gap-1 text-xs bg-card rounded-xl p-2.5 border border-amber-200/80">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-foreground truncate">
+                    <div className="flex flex-col gap-1 rounded-xl bg-background/90 p-2.5 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-semibold text-foreground">
                           {detectedPackage.makkahHotelName}
                         </span>
-                        <span className="text-muted-foreground text-[11px] shrink-0">
-                          {detectedPackage.makkahNights}N ·{" "}
+                        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                          {detectedPackage.makkahNights}N,{" "}
                           {detectedPackage.makkahDistanceLabel}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-foreground truncate">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-semibold text-foreground">
                           {detectedPackage.madinahHotelName}
                         </span>
-                        <span className="text-muted-foreground text-[11px] shrink-0">
-                          {detectedPackage.madinahNights}N ·{" "}
+                        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                          {detectedPackage.madinahNights}N,{" "}
                           {detectedPackage.madinahDistanceLabel}
                         </span>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-1.5 text-[11px] text-muted-foreground">
-                      <div className="flex flex-col rounded-lg bg-card p-1.5 border border-border">
-                        <span className="text-[10px]">Quad Retail</span>
-                        <span className="font-mono font-bold text-foreground">
-                          PKR {detectedPackage.retailQuadPkr.toLocaleString()}
-                        </span>
+                      <div className="flex flex-col rounded-lg bg-background/90 p-2">
+                        <span className="text-[11px]">Quad Retail</span>
+                        <TabularPrice
+                          amount={detectedPackage.retailQuadPkr}
+                          className="font-bold text-foreground"
+                        />
                       </div>
-                      <div className="flex flex-col rounded-lg bg-card p-1.5 border border-border">
-                        <span className="text-[10px]">Sharing Retail</span>
-                        <span className="font-mono font-bold text-foreground">
-                          PKR{" "}
-                          {detectedPackage.retailSharingPkr.toLocaleString()}
-                        </span>
+                      <div className="flex flex-col rounded-lg bg-background/90 p-2">
+                        <span className="text-[11px]">Sharing Retail</span>
+                        <TabularPrice
+                          amount={detectedPackage.retailSharingPkr}
+                          className="font-bold text-foreground"
+                        />
                       </div>
-                      <div className="flex flex-col rounded-lg bg-card p-1.5 border border-border">
-                        <span className="text-[10px]">Triple Retail</span>
-                        <span className="font-mono font-bold text-foreground">
-                          PKR {detectedPackage.retailTriplePkr.toLocaleString()}
-                        </span>
+                      <div className="flex flex-col rounded-lg bg-background/90 p-2">
+                        <span className="text-[11px]">Triple Retail</span>
+                        <TabularPrice
+                          amount={detectedPackage.retailTriplePkr}
+                          className="font-bold text-foreground"
+                        />
                       </div>
-                      <div className="flex flex-col rounded-lg bg-card p-1.5 border border-border">
-                        <span className="text-[10px]">Double Retail</span>
-                        <span className="font-mono font-bold text-foreground">
-                          PKR {detectedPackage.retailDoublePkr.toLocaleString()}
-                        </span>
+                      <div className="flex flex-col rounded-lg bg-background/90 p-2">
+                        <span className="text-[11px]">Double Retail</span>
+                        <TabularPrice
+                          amount={detectedPackage.retailDoublePkr}
+                          className="font-bold text-foreground"
+                        />
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
+                    <div className="flex items-center justify-between px-1 text-[11px] text-muted-foreground">
                       <span>
                         Net Wholesale:{" "}
-                        <strong className="text-foreground">
-                          PKR {detectedPackage.netSharingPkr.toLocaleString()}
-                        </strong>
+                        <TabularPrice
+                          amount={detectedPackage.netSharingPkr}
+                          className="font-bold text-foreground"
+                        />
                       </span>
                       <span>
                         Margin:{" "}
-                        <strong className="text-emerald-700">
-                          +PKR {detectedPackage.commissionPkr.toLocaleString()}
-                        </strong>
+                        <span className="font-semibold text-status-success">
+                          +
+                          <TabularPrice
+                            amount={detectedPackage.commissionPkr}
+                            className="font-bold text-status-success"
+                          />
+                        </span>
                       </span>
                     </div>
 
                     <Button
                       size="sm"
                       onClick={() => setConvertModalOpen(true)}
-                      className="w-full gap-1.5 font-bold shadow-sm bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
+                      className="w-full cursor-pointer gap-1.5 bg-primary font-bold text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
                     >
-                      <Plus className="size-3.5" />
+                      <Plus className="size-3.5 text-gold" aria-hidden="true" />
                       <span>Convert to Official Quote</span>
                     </Button>
                   </div>
                 )}
 
-                {/* 3. Internal Team Notes Card (Spec 0019 AC-3, Sticky Yellow Notes) */}
-                <div className="flex flex-col rounded-2xl border border-amber-300/80 bg-amber-50/30 p-4 shadow-xs gap-3">
-                  <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
+                {/* 3. Internal Team Notes Card (Spec 0019 AC-3) */}
+                <div className="flex flex-col gap-3 rounded-2xl border border-gold-border/70 bg-status-warning-bg/25 p-4 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-gold-border/50 pb-2">
                     <div className="flex items-center gap-1.5">
-                      <StickyNote className="size-3.5 text-amber-700" />
-                      <span className="font-display text-xs font-bold uppercase tracking-wider text-amber-950">
+                      <StickyNote
+                        className="size-3.5 text-gold-text"
+                        aria-hidden="true"
+                      />
+                      <h3 className="font-display text-xs font-bold text-primary">
                         Internal Team Notes
-                      </span>
+                      </h3>
                     </div>
-                    <span className="text-[10px] font-semibold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-200">
+                    <span className="rounded-full bg-status-warning-bg px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-status-warning">
                       {activeConversation.internalNotes?.length || 0} Notes
                     </span>
                   </div>
 
-                  <p className="text-[11px] text-amber-900/80 -mt-1">
+                  <p className="-mt-1 text-[11px] text-muted-foreground">
                     Private staff-only comments. Pilgrims never see these notes.
                   </p>
 
                   {/* Notes Feed */}
-                  <div className="flex flex-col gap-2 max-h-56 overflow-y-auto pr-1">
+                  <div className="flex max-h-56 flex-col gap-2 overflow-y-auto pr-1">
                     {!activeConversation.internalNotes ||
                     activeConversation.internalNotes.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-amber-200 bg-amber-100/30 p-3 text-center text-xs text-amber-800/70">
+                      <div className="rounded-xl bg-status-warning-bg/45 p-3 text-center text-xs text-muted-foreground">
                         No internal team notes recorded yet.
                       </div>
                     ) : (
                       activeConversation.internalNotes.map((n) => (
                         <div
                           key={n.id}
-                          className="flex flex-col gap-1 rounded-xl border border-amber-200 bg-amber-100/70 p-2.5 shadow-2xs text-xs text-amber-950"
+                          className="flex flex-col gap-1 rounded-xl bg-status-warning-bg/85 p-2.5 text-xs text-foreground shadow-2xs"
                         >
-                          <div className="flex items-center justify-between text-[10px] font-semibold text-amber-800 border-b border-amber-200/50 pb-1">
+                          <div className="flex items-center justify-between border-b border-gold-border/40 pb-1 text-[11px] font-semibold text-gold-text">
                             <span>{n.userName}</span>
-                            <span>
+                            <span className="tabular-nums">
                               {new Date(n.createdAt).toLocaleTimeString([], {
                                 hour: "2-digit",
                                 minute: "2-digit",
@@ -3872,7 +4275,7 @@ export function DeskHubClient({
                               })}
                             </span>
                           </div>
-                          <p className="whitespace-pre-wrap text-[11px] leading-relaxed pt-0.5">
+                          <p className="whitespace-pre-wrap pt-0.5 text-[11px] leading-relaxed">
                             {n.note}
                           </p>
                         </div>
@@ -3881,25 +4284,28 @@ export function DeskHubClient({
                   </div>
 
                   {/* Add Note Form */}
-                  <div className="flex flex-col gap-2 pt-1 border-t border-amber-200/60">
+                  <div className="flex flex-col gap-2 border-t border-gold-border/50 pt-2">
                     <Textarea
                       rows={2}
                       placeholder="Add staff comment (e.g. Call back at 5pm; budget PKR 650k)..."
                       value={internalNoteInput}
                       onChange={(e) => setInternalNoteInput(e.target.value)}
-                      className="text-xs bg-white border-amber-200 focus-visible:ring-amber-500"
+                      className="border-input bg-background text-xs focus-visible:ring-primary"
                     />
                     <Button
                       size="xs"
                       type="button"
                       disabled={isAddingNote || !internalNoteInput.trim()}
                       onClick={handleAddInternalNote}
-                      className="self-end gap-1 font-semibold bg-amber-700 hover:bg-amber-800 text-white text-[11px] cursor-pointer"
+                      className="cursor-pointer self-end gap-1 bg-primary text-[11px] font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
                     >
                       {isAddingNote ? (
-                        <Loader2 className="size-3 animate-spin" />
+                        <Loader2
+                          className="size-3 animate-spin motion-reduce:animate-none"
+                          aria-hidden="true"
+                        />
                       ) : (
-                        <Plus className="size-3" />
+                        <Plus className="size-3" aria-hidden="true" />
                       )}
                       <span>Add Team Note</span>
                     </Button>
@@ -3915,7 +4321,7 @@ export function DeskHubClient({
           TAB 3: WEBSITE CONTACT MESSAGES & HAJJ 2027 INQUIRIES
           ========================================================================= */}
       {activeTab === "web_messages" && (
-        <div className="flex flex-col gap-4 animate-in fade-in-50 duration-200">
+        <div className="flex flex-col gap-4 animate-in fade-in-50 duration-200 motion-reduce:animate-none">
           <MessagesClient initialMessages={contactMessages} />
         </div>
       )}
@@ -3924,11 +4330,11 @@ export function DeskHubClient({
           MODAL: Pipeline AI Quoting Copilot Preview (Spec 0015 AC-5)
           ========================================== */}
       <Dialog open={pipelineCopilotOpen} onOpenChange={setPipelineCopilotOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="shadow-md sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="size-5 text-[#C5A059]" />
-              <span>AI Quoting Copilot — Pipeline Pre-Fill &amp; Summary</span>
+              <Sparkles className="size-5 text-gold-text" aria-hidden="true" />
+              <span>AI Quoting Copilot: Pipeline Pre-Fill &amp; Summary</span>
             </DialogTitle>
             <DialogDescription>
               Select any active pilgrim inquiry to compute itemized SAR/PKR rate hints and executive notes (Human-in-the-Loop).
@@ -3938,16 +4344,17 @@ export function DeskHubClient({
           <div className="flex flex-col gap-3 py-2 text-xs">
             <div className="flex items-center gap-2">
               <select
+                aria-label="Select application for AI quoting copilot"
                 value={selectedPipelineAppId}
                 onChange={(e) => {
                   setSelectedPipelineAppId(e.target.value)
                   setPipelineCopilotDraft(null)
                 }}
-                className="flex-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-foreground"
+                className="flex-1 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 {applications.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.referenceNumber} — {a.customerName} (
+                    {a.referenceNumber}: {a.customerName} (
                     {a.totalPassportCount} Pax)
                   </option>
                 ))}
@@ -3959,12 +4366,15 @@ export function DeskHubClient({
                   isGeneratingPipelineCopilot || !selectedPipelineAppId
                 }
                 onClick={() => handleRunPipelineCopilot(selectedPipelineAppId)}
-                className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 gap-1.5 font-semibold"
+                className="gap-1.5 bg-primary font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
               >
                 {isGeneratingPipelineCopilot ? (
-                  <Loader2 className="size-3.5 animate-spin text-[#C5A059]" />
+                  <Loader2
+                    className="size-3.5 animate-spin text-gold motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Sparkles className="size-3.5 text-[#C5A059]" />
+                  <Sparkles className="size-3.5 text-gold" aria-hidden="true" />
                 )}
                 <span>Generate Estimate</span>
               </Button>
@@ -4006,91 +4416,103 @@ export function DeskHubClient({
             )}
 
             {pipelineCopilotError && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-red-900">
+              <div className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2.5 text-status-danger">
                 {pipelineCopilotError}
               </div>
             )}
 
             {pipelineCopilotDraft && (
-              <div className="rounded-xl border border-[#C5A059]/50 bg-[#0A3622]/5 p-3 space-y-2.5">
+              <div className="space-y-2.5 rounded-xl bg-secondary/60 p-3">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-foreground">
                     Executive Summary
                   </span>
                   {pipelineCopilotMeta && (
-                    <Badge variant="outline" className="font-mono text-[10px]">
+                    <Badge variant="outline" className="text-[11px]">
                       {pipelineCopilotMeta.modelUsed}
                     </Badge>
                   )}
                 </div>
-                <p className="text-foreground/90 leading-relaxed">
+                <p className="leading-relaxed text-foreground/90">
                   {pipelineCopilotDraft.executiveSummary}
                 </p>
 
-                <div className="grid grid-cols-3 gap-1.5 rounded-lg border border-border bg-card p-2 font-mono text-[11px]">
+                <div className="grid grid-cols-3 gap-1.5 rounded-lg bg-background p-2.5 text-[11px]">
                   <div>
-                    <span className="text-[10px] text-muted-foreground block">
+                    <span className="block text-[11px] text-muted-foreground">
                       Visa
                     </span>
-                    <span className="font-bold">
-                      PKR{" "}
-                      {pipelineCopilotDraft.suggestedQuoteWorksheet.visaTotalPkr.toLocaleString()}
-                    </span>
+                    <TabularPrice
+                      amount={
+                        pipelineCopilotDraft.suggestedQuoteWorksheet
+                          .visaTotalPkr
+                      }
+                      className="font-bold text-foreground"
+                    />
                   </div>
                   <div>
-                    <span className="text-[10px] text-muted-foreground block">
+                    <span className="block text-[11px] text-muted-foreground">
                       Flights
                     </span>
-                    <span className="font-bold">
-                      PKR{" "}
-                      {pipelineCopilotDraft.suggestedQuoteWorksheet.flightsTotalPkr.toLocaleString()}
-                    </span>
+                    <TabularPrice
+                      amount={
+                        pipelineCopilotDraft.suggestedQuoteWorksheet
+                          .flightsTotalPkr
+                      }
+                      className="font-bold text-foreground"
+                    />
                   </div>
                   <div>
-                    <span className="text-[10px] text-muted-foreground block">
+                    <span className="block text-[11px] text-muted-foreground">
                       Makkah &amp; Madinah
                     </span>
-                    <span className="font-bold">
-                      PKR{" "}
-                      {(
+                    <TabularPrice
+                      amount={
                         pipelineCopilotDraft.suggestedQuoteWorksheet
                           .makkahHotelTotalPkr +
                         pipelineCopilotDraft.suggestedQuoteWorksheet
                           .madinahHotelTotalPkr
-                      ).toLocaleString()}
-                    </span>
+                      }
+                      className="font-bold text-foreground"
+                    />
                   </div>
                   <div>
-                    <span className="text-[10px] text-muted-foreground block">
+                    <span className="block text-[11px] text-muted-foreground">
                       Transport &amp; Ziyarat
                     </span>
-                    <span className="font-bold">
-                      PKR{" "}
-                      {(
+                    <TabularPrice
+                      amount={
                         pipelineCopilotDraft.suggestedQuoteWorksheet
                           .transportTotalPkr +
                         pipelineCopilotDraft.suggestedQuoteWorksheet
                           .ziyaratTotalPkr
-                      ).toLocaleString()}
-                    </span>
+                      }
+                      className="font-bold text-foreground"
+                    />
                   </div>
                   <div>
-                    <span className="text-[10px] text-muted-foreground block">
+                    <span className="block text-[11px] text-muted-foreground">
                       Agency Margin
                     </span>
-                    <span className="font-bold text-emerald-700">
-                      PKR{" "}
-                      {pipelineCopilotDraft.suggestedQuoteWorksheet.commissionPkr.toLocaleString()}
-                    </span>
+                    <TabularPrice
+                      amount={
+                        pipelineCopilotDraft.suggestedQuoteWorksheet
+                          .commissionPkr
+                      }
+                      className="font-bold text-status-success"
+                    />
                   </div>
                   <div>
-                    <span className="text-[10px] text-muted-foreground block">
+                    <span className="block text-[11px] text-muted-foreground">
                       Grand Total
                     </span>
-                    <span className="font-bold text-primary">
-                      PKR{" "}
-                      {pipelineCopilotDraft.suggestedQuoteWorksheet.grandTotalPkr.toLocaleString()}
-                    </span>
+                    <TabularPrice
+                      amount={
+                        pipelineCopilotDraft.suggestedQuoteWorksheet
+                          .grandTotalPkr
+                      }
+                      className="font-bold text-primary"
+                    />
                   </div>
                 </div>
               </div>
@@ -4102,6 +4524,7 @@ export function DeskHubClient({
               variant="outline"
               size="sm"
               onClick={() => setPipelineCopilotOpen(false)}
+              className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               Close
             </Button>
@@ -4113,10 +4536,10 @@ export function DeskHubClient({
                     href={`/admin/applications/${selectedPipelineAppId}`}
                   />
                 }
-                className="gap-1.5 font-bold"
+                className="gap-1.5 font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
               >
                 <span>Open Full Quote Worksheet</span>
-                <ExternalLink className="size-3.5" />
+                <ExternalLink className="size-3.5" aria-hidden="true" />
               </Button>
             )}
           </DialogFooter>
@@ -4127,10 +4550,10 @@ export function DeskHubClient({
           MODAL: 1-Click Convert Post Lookup to Quote
           ========================================== */}
       <Dialog open={convertModalOpen} onOpenChange={setConvertModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="shadow-md sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="size-5 text-primary" />
+              <Sparkles className="size-5 text-primary" aria-hidden="true" />
               <span>Convert Post Lookup to Official Quote</span>
             </DialogTitle>
             <DialogDescription>
@@ -4143,10 +4566,14 @@ export function DeskHubClient({
 
           <div className="flex flex-col gap-3 py-2 text-xs">
             <div className="flex flex-col gap-1">
-              <label className="font-medium text-muted-foreground">
+              <label
+                htmlFor="convert-pilgrim-name"
+                className="font-medium text-muted-foreground"
+              >
                 Pilgrim Name
               </label>
               <Input
+                id="convert-pilgrim-name"
                 defaultValue={
                   activeConversation?.contactName || "WhatsApp Pilgrim"
                 }
@@ -4156,29 +4583,37 @@ export function DeskHubClient({
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="font-medium text-muted-foreground">
+              <label
+                htmlFor="convert-pilgrim-phone"
+                className="font-medium text-muted-foreground"
+              >
                 Phone Number
               </label>
               <Input
+                id="convert-pilgrim-phone"
                 defaultValue={activeConversation?.contactPhone || ""}
                 readOnly
-                className="bg-secondary/40 text-xs font-mono"
+                className="bg-secondary/40 text-xs tabular-nums"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1">
-                <label className="font-medium text-muted-foreground">
+                <label
+                  htmlFor="convert-room-type"
+                  className="font-medium text-muted-foreground"
+                >
                   Room Type
                 </label>
                 <select
+                  id="convert-room-type"
                   value={convertRoomType}
                   onChange={(e) =>
                     setConvertRoomType(
                       e.target.value as "sharing" | "quad" | "triple" | "double"
                     )
                   }
-                  className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-foreground"
+                  className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <option value="sharing">Sharing (Standard)</option>
                   <option value="quad">Quad Room</option>
@@ -4188,10 +4623,14 @@ export function DeskHubClient({
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="font-medium text-muted-foreground">
+                <label
+                  htmlFor="convert-num-adults"
+                  className="font-medium text-muted-foreground"
+                >
                   Number of Adults
                 </label>
                 <Input
+                  id="convert-num-adults"
                   type="number"
                   min={1}
                   max={20}
@@ -4199,7 +4638,7 @@ export function DeskHubClient({
                   onChange={(e) =>
                     setConvertAdults(parseInt(e.target.value) || 1)
                   }
-                  className="text-xs"
+                  className="bg-background text-xs tabular-nums"
                 />
               </div>
             </div>
@@ -4211,6 +4650,7 @@ export function DeskHubClient({
               size="sm"
               onClick={() => setConvertModalOpen(false)}
               disabled={isConvertingQuote}
+              className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               Cancel
             </Button>
@@ -4218,12 +4658,15 @@ export function DeskHubClient({
               size="sm"
               onClick={handleConvertPostLookup}
               disabled={isConvertingQuote}
-              className="gap-1.5 font-bold"
+              className="gap-1.5 font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
             >
               {isConvertingQuote ? (
-                <Loader2 className="size-3.5 animate-spin" />
+                <Loader2
+                  className="size-3.5 animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
               ) : (
-                <Check className="size-3.5" />
+                <Check className="size-3.5" aria-hidden="true" />
               )}
               <span>Create Quote Worksheet</span>
             </Button>

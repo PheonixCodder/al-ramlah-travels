@@ -136,7 +136,7 @@ export function OutreachClient({
   const buildPersonalizedMessage = (contactName: string) => {
     const firstName = contactName.split(" ")[0] || contactName
     if (selectedAsset) {
-      return `As-salamu alaykum ${firstName} Bhai,\n\nSharing our latest *Al Ramlah Travels* Umrah Spotlight (*${selectedAsset.title}* — Ref: *${selectedAsset.postCode}*).\n\nLet me know if you or your family in Askari/DHA are planning Umrah this season — happy to share customized dates or our full package sheet!\n\nJazakAllah Khair,\n*Al Ramlah Travels* (${senderLine})`
+      return `As-salamu alaykum ${firstName} Bhai,\n\nSharing our latest *Al Ramlah Travels* Umrah Spotlight (*${selectedAsset.title}*, Ref: *${selectedAsset.postCode}*).\n\nLet me know if you or your family in Askari/DHA are planning Umrah this season. We are happy to share customized dates or our full package sheet!\n\nJazakAllah Khair,\n*Al Ramlah Travels* (${senderLine})`
     }
     return `As-salamu alaykum ${firstName} Bhai,\n\nHope you and the family are doing well. Sharing our latest Umrah packages from Al Ramlah Travels. Let me know if you need any flight or hotel rates for Makkah & Madinah!\n\nJazakAllah Khair,\n*Al Ramlah Travels* (${senderLine})`
   }
@@ -185,7 +185,7 @@ export function OutreachClient({
       if (res.success) {
         setNotice({
           type: "success",
-          text: `${name} marked as "Active Inbound Reply" — 14-day cooldown unlocked so you can reply freely!`,
+          text: `${name} marked as "Active Inbound Reply" with the 14-day cooldown unlocked so you can reply freely!`,
         })
         router.refresh()
       }
@@ -222,17 +222,18 @@ export function OutreachClient({
   return (
     <div className="flex flex-col gap-6">
       {/* Top KPI & Package Selector Bar */}
-      <Card className="border-gold/40 bg-card shadow-sm">
-        <CardContent className="p-4 space-y-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-12 items-end">
+      <Card className="border-gold-border bg-card shadow-sm">
+        <CardContent className="space-y-4 p-4">
+          <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-12">
             <div className="md:col-span-6">
               <Label className="text-xs font-bold text-primary">
-                1. Package / Spotlight Poster to Share in Today&apos;s 1-on-1 Outreach
+                1. Package / Spotlight Poster to Share in Today&apos;s 1-on-1
+                Outreach
               </Label>
               <select
                 value={selectedPostAssetId}
                 onChange={(e) => setSelectedPostAssetId(e.target.value)}
-                className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 text-xs font-mono"
+                className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 {postAssets.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -249,21 +250,21 @@ export function OutreachClient({
               <select
                 value={senderLine}
                 onChange={(e) => setSenderLine(e.target.value)}
-                className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 text-xs font-mono"
+                className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 <option value="03274029701">Line 1: 03274029701</option>
                 <option value="03190462638">Line 2: 03190462638</option>
               </select>
             </div>
 
-            <div className="md:col-span-3 flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2 md:col-span-3">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setShowAddContact(!showAddContact)}
-                className="h-9 w-full text-xs font-bold gap-1.5 cursor-pointer"
+                className="h-9 w-full cursor-pointer gap-1.5 text-xs font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <Plus className="size-3.5 text-gold" />
+                <Plus className="size-3.5 text-gold-text" aria-hidden="true" />
                 <span>Add Prospective Pilgrim</span>
               </Button>
             </div>
@@ -272,7 +273,7 @@ export function OutreachClient({
           {showAddContact && (
             <form
               onSubmit={handleAddContact}
-              className="grid grid-cols-1 gap-3 sm:grid-cols-5 items-end rounded-xl border border-gold/40 bg-gold/5 p-3"
+              className="grid grid-cols-1 items-end gap-3 rounded-xl bg-accent/25 p-3 sm:grid-cols-5"
             >
               <div>
                 <Label className="text-[11px]">Full Name *</Label>
@@ -281,7 +282,7 @@ export function OutreachClient({
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g. Col. Salman Rashid"
-                  className="h-8 text-xs bg-white mt-1"
+                  className="mt-1 h-8 bg-background text-xs"
                 />
               </div>
               <div>
@@ -291,7 +292,7 @@ export function OutreachClient({
                   value={whatsappNumber}
                   onChange={(e) => setWhatsappNumber(e.target.value)}
                   placeholder="0321 4567890"
-                  className="h-8 text-xs bg-white font-mono mt-1"
+                  className="mt-1 h-8 bg-background font-mono text-xs"
                 />
               </div>
               <div>
@@ -299,7 +300,7 @@ export function OutreachClient({
                 <Input
                   value={areaCommunity}
                   onChange={(e) => setAreaCommunity(e.target.value)}
-                  className="h-8 text-xs bg-white mt-1"
+                  className="mt-1 h-8 bg-background text-xs"
                 />
               </div>
               <div>
@@ -307,14 +308,14 @@ export function OutreachClient({
                 <Input
                   value={sourceGroup}
                   onChange={(e) => setSourceGroup(e.target.value)}
-                  className="h-8 text-xs bg-white mt-1"
+                  className="mt-1 h-8 bg-background text-xs"
                 />
               </div>
               <div>
                 <Button
                   type="submit"
                   size="sm"
-                  className="h-8 w-full text-xs font-bold cursor-pointer"
+                  className="h-8 w-full cursor-pointer text-xs font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   Save Contact
                 </Button>
@@ -326,10 +327,10 @@ export function OutreachClient({
 
       {notice && (
         <div
-          className={`rounded-xl border p-4 text-xs font-medium flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+          className={`flex flex-col justify-between gap-3 rounded-xl border p-4 text-xs font-medium sm:flex-row sm:items-center ${
             notice.type === "error"
-              ? "border-red-300 bg-red-50 text-red-900"
-              : "border-emerald-300 bg-emerald-50 text-emerald-950"
+              ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+              : "border-status-success-border bg-status-success-bg text-status-success"
           }`}
         >
           <span>{notice.text}</span>
@@ -339,17 +340,17 @@ export function OutreachClient({
                 href={notice.waUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A3622] px-3 py-1.5 text-xs font-bold text-gold"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-gold hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <MessageSquare className="size-3.5" />
+                <MessageSquare className="size-3.5" aria-hidden="true" />
                 <span>Open WhatsApp Chat</span>
-                <ExternalLink className="size-3" />
+                <ExternalLink className="size-3" aria-hidden="true" />
               </a>
             )}
             <button
               type="button"
               onClick={() => setNotice(null)}
-              className="underline text-[11px]"
+              className="cursor-pointer text-[11px] underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               Dismiss
             </button>
@@ -363,9 +364,9 @@ export function OutreachClient({
           type="button"
           variant={queueFilter === "eligible" ? "default" : "outline"}
           onClick={() => setQueueFilter("eligible")}
-          className="gap-2 text-xs font-bold cursor-pointer"
+          className="cursor-pointer gap-2 text-xs font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          <Unlock className="size-3.5 text-gold" />
+          <Unlock className="size-3.5 text-gold" aria-hidden="true" />
           <span>Today&apos;s Eligible Outreach Queue ({eligibleCount})</span>
         </Button>
 
@@ -373,9 +374,9 @@ export function OutreachClient({
           type="button"
           variant={queueFilter === "locked" ? "default" : "outline"}
           onClick={() => setQueueFilter("locked")}
-          className="gap-2 text-xs font-bold cursor-pointer"
+          className="cursor-pointer gap-2 text-xs font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          <Lock className="size-3.5 text-amber-500" />
+          <Lock className="size-3.5 text-status-warning" aria-hidden="true" />
           <span>14-Day Cooldown Locked ({lockedCount})</span>
         </Button>
 
@@ -383,16 +384,16 @@ export function OutreachClient({
           type="button"
           variant={queueFilter === "all" ? "default" : "outline"}
           onClick={() => setQueueFilter("all")}
-          className="gap-2 text-xs font-semibold cursor-pointer"
+          className="cursor-pointer gap-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          <UserCheck className="size-3.5" />
+          <UserCheck className="size-3.5" aria-hidden="true" />
           <span>All Contacts ({initialContacts.length})</span>
         </Button>
       </div>
 
       {/* Contacts Queue Grid */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <div className="lg:col-span-8 space-y-3">
+        <div className="space-y-3 lg:col-span-8">
           {filteredContacts.map((contact) => {
             const alreadySharedSelected =
               selectedAsset &&
@@ -401,26 +402,26 @@ export function OutreachClient({
             return (
               <Card
                 key={contact.id}
-                className={`border transition-all ${
+                className={`border transition-colors motion-reduce:transition-none ${
                   contact.cooldown.isEligibleToday
                     ? "border-border bg-card"
-                    : "border-amber-300/80 bg-amber-50/25"
+                    : "border-status-warning-border bg-status-warning-bg/35"
                 }`}
               >
-                <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-display text-sm font-bold text-foreground">
                         {contact.fullName}
                       </h3>
-                      <span className="font-mono text-xs font-semibold text-emerald-800">
+                      <span className="font-mono text-xs font-semibold text-status-success">
                         {contact.whatsappNumber}
                       </span>
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge variant="outline" className="text-[11px]">
                         {contact.areaCommunity || contact.city}
                       </Badge>
                       {contact.sourceGroupOrChannel && (
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-[11px] text-muted-foreground">
                           Source: {contact.sourceGroupOrChannel}
                         </span>
                       )}
@@ -429,20 +430,27 @@ export function OutreachClient({
                     {/* Cooldown Status Pill */}
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       {contact.cooldown.isEligibleToday ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-[10px] font-bold text-emerald-900">
-                          <CheckCircle2 className="size-3 text-emerald-600" />
+                        <span className="inline-flex items-center gap-1 rounded-full border border-status-success-border bg-status-success-bg px-2.5 py-0.5 text-[11px] font-bold text-status-success">
+                          <CheckCircle2
+                            className="size-3 text-status-success"
+                            aria-hidden="true"
+                          />
                           <span>
                             {contact.cooldown.isActiveReplyExemption
-                              ? "Unlocked (Customer Replied — Active Conversation)"
+                              ? "Unlocked (Customer Replied: Active Conversation)"
                               : "Eligible for Today's Outreach"}
                           </span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 border border-amber-300 px-2.5 py-0.5 text-[10px] font-bold text-amber-900">
-                          <Lock className="size-3 text-amber-700" />
+                        <span className="inline-flex items-center gap-1 rounded-full border border-status-warning-border bg-status-warning-bg px-2.5 py-0.5 text-[11px] font-bold text-status-warning">
+                          <Lock
+                            className="size-3 text-status-warning"
+                            aria-hidden="true"
+                          />
                           <span>
-                            14-Day Cooldown Lock: {contact.cooldown.daysRemaining}{" "}
-                            Day(s) Left (Unlocks{" "}
+                            14-Day Cooldown Lock:{" "}
+                            {contact.cooldown.daysRemaining} Day(s) Left
+                            (Unlocks{" "}
                             {contact.cooldown.cooldownUntil?.toLocaleDateString(
                               "en-PK"
                             )}
@@ -452,8 +460,11 @@ export function OutreachClient({
                       )}
 
                       {alreadySharedSelected && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
-                          <AlertTriangle className="size-3 text-amber-700" />
+                        <span className="inline-flex items-center gap-1 rounded-full bg-status-warning-bg px-2 py-0.5 text-[11px] font-bold text-status-warning">
+                          <AlertTriangle
+                            className="size-3 text-status-warning"
+                            aria-hidden="true"
+                          />
                           <span>
                             Already received [{selectedAsset?.postCode}]
                           </span>
@@ -463,19 +474,20 @@ export function OutreachClient({
 
                     {/* Packages Previously Shared Memory */}
                     <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                      <span className="text-[10px] text-muted-foreground font-medium">
-                        Previously Shared ({contact.packagesSharedHistory?.length || 0}
+                      <span className="text-[11px] font-medium text-muted-foreground">
+                        Previously Shared (
+                        {contact.packagesSharedHistory?.length || 0}
                         ):
                       </span>
                       {(contact.packagesSharedHistory || []).length === 0 ? (
-                        <span className="text-[10px] text-muted-foreground italic">
+                        <span className="text-[11px] text-muted-foreground italic">
                           None yet
                         </span>
                       ) : (
                         contact.packagesSharedHistory.map((code) => (
                           <span
                             key={code}
-                            className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] font-bold text-primary"
+                            className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[11px] font-bold text-primary"
                           >
                             {code}
                           </span>
@@ -485,38 +497,45 @@ export function OutreachClient({
                   </div>
 
                   {/* Outreach Actions */}
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
                     {contact.cooldown.isEligibleToday ? (
                       <Button
                         type="button"
                         size="sm"
                         disabled={busyId === contact.id}
                         onClick={() => handleSendOutreach(contact, false)}
-                        className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 text-xs font-bold gap-1.5 cursor-pointer"
+                        className="cursor-pointer gap-1.5 bg-primary text-xs font-bold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
                         {busyId === contact.id ? (
-                          <Loader2 className="size-3.5 animate-spin text-gold" />
+                          <Loader2
+                            className="size-3.5 animate-spin text-gold motion-reduce:animate-none"
+                            aria-hidden="true"
+                          />
                         ) : (
-                          <Send className="size-3.5 text-gold" />
+                          <Send
+                            className="size-3.5 text-gold"
+                            aria-hidden="true"
+                          />
                         )}
                         <span>Send Package &amp; Lock 14 Days</span>
                       </Button>
                     ) : (
-                      <>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={busyId === `reply-${contact.id}`}
-                          onClick={() =>
-                            handleMarkInboundReply(contact.id, contact.fullName)
-                          }
-                          className="h-8 text-[11px] font-semibold border-emerald-400 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 cursor-pointer"
-                        >
-                          <Unlock className="size-3 text-emerald-700" />
-                          <span>Customer Replied (Unlock)</span>
-                        </Button>
-                      </>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={busyId === `reply-${contact.id}`}
+                        onClick={() =>
+                          handleMarkInboundReply(contact.id, contact.fullName)
+                        }
+                        className="h-8 cursor-pointer border-status-success-border bg-status-success-bg text-[11px] font-semibold text-status-success hover:bg-status-success-bg/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        <Unlock
+                          className="size-3 text-status-success"
+                          aria-hidden="true"
+                        />
+                        <span>Customer Replied (Unlock)</span>
+                      </Button>
                     )}
                   </div>
                 </CardContent>
@@ -528,25 +547,26 @@ export function OutreachClient({
         {/* Right Column: Recent 1-on-1 Outreach Audit Feed */}
         <div className="lg:col-span-4">
           <Card className="border-border bg-card shadow-xs">
-            <CardHeader className="pb-3 border-b border-border">
-              <CardTitle className="font-display text-sm font-bold flex items-center gap-2">
-                <Clock className="size-4 text-gold" />
+            <CardHeader className="border-b border-border pb-3">
+              <CardTitle className="flex items-center gap-2 font-display text-sm font-bold">
+                <Clock className="size-4 text-gold-text" aria-hidden="true" />
                 <span>Recent 1-on-1 Outreach Log</span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Every personal package share automatically starts a 14-day cooldown timer.
+                Every personal package share automatically starts a 14-day
+                cooldown timer.
               </CardDescription>
             </CardHeader>
-            <CardContent className="p-3 space-y-2.5 max-h-[540px] overflow-y-auto">
+            <CardContent className="max-h-[540px] space-y-2.5 overflow-y-auto p-3">
               {recentLogs.length === 0 ? (
-                <p className="text-xs text-muted-foreground p-4 text-center">
+                <p className="p-4 text-center text-xs text-muted-foreground">
                   No outreach logs recorded yet.
                 </p>
               ) : (
                 recentLogs.map((log) => (
                   <div
                     key={log.id}
-                    className="rounded-lg border border-border bg-secondary/20 p-2.5 text-xs space-y-1"
+                    className="space-y-1 rounded-lg bg-secondary/50 p-2.5 text-xs"
                   >
                     <div className="flex items-center justify-between">
                       <strong className="text-foreground">
@@ -558,10 +578,10 @@ export function OutreachClient({
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-muted-foreground line-clamp-2">
+                    <p className="line-clamp-2 text-[11px] text-muted-foreground">
                       {log.messageText}
                     </p>
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1">
+                    <div className="flex items-center justify-between pt-1 text-[11px] text-muted-foreground tabular-nums">
                       <span>Line: {log.senderWhatsappLine}</span>
                       <span>
                         {new Date(log.sentAt).toLocaleDateString("en-PK", {

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState, useTransition } from "react"
+import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { VehicleData, VehicleDialog } from "./vehicle-dialog"
@@ -68,29 +68,37 @@ export function TransportClient({
   initialRates = [],
 }: TransportClientProps) {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<
-    "vehicles" | "sectors" | "matrix"
-  >("vehicles")
+  const [activeTab, setActiveTab] = useState<"vehicles" | "sectors" | "matrix">(
+    "vehicles"
+  )
   const [vehicles, setVehicles] = useState<VehicleData[]>(initialVehicles)
   const [sectors, setSectors] = useState<SectorData[]>(initialSectors)
   const [rates, setRates] = useState<TransportRateData[]>(initialRates)
+
+  const [prevInitialVehicles, setPrevInitialVehicles] =
+    useState(initialVehicles)
+  if (prevInitialVehicles !== initialVehicles) {
+    setPrevInitialVehicles(initialVehicles)
+    setVehicles(initialVehicles)
+  }
+
+  const [prevInitialSectors, setPrevInitialSectors] = useState(initialSectors)
+  if (prevInitialSectors !== initialSectors) {
+    setPrevInitialSectors(initialSectors)
+    setSectors(initialSectors)
+  }
+
+  const [prevInitialRates, setPrevInitialRates] = useState(initialRates)
+  if (prevInitialRates !== initialRates) {
+    setPrevInitialRates(initialRates)
+    setRates(initialRates)
+  }
+
   const [notice, setNotice] = useState<{
     tone: "error" | "info"
     text: string
   } | null>(null)
   const [, startTransition] = useTransition()
-
-  useEffect(() => {
-    setVehicles(initialVehicles)
-  }, [initialVehicles])
-
-  useEffect(() => {
-    setSectors(initialSectors)
-  }, [initialSectors])
-
-  useEffect(() => {
-    setRates(initialRates)
-  }, [initialRates])
 
   const [editingCell, setEditingCell] = useState<{
     sectorId: string
@@ -165,7 +173,7 @@ export function TransportClient({
           tone: "info",
           text:
             res.error ||
-            "Vehicle is referenced by transport rates or bookings — deactivated instead.",
+            "Vehicle is referenced by transport rates or bookings, so it was deactivated instead.",
         })
         router.refresh()
         return
@@ -243,7 +251,7 @@ export function TransportClient({
           tone: "info",
           text:
             res.error ||
-            "Sector is referenced by transport rates — deactivated instead.",
+            "Sector is referenced by transport rates, so it was deactivated instead.",
         })
         router.refresh()
         return
@@ -345,8 +353,8 @@ export function TransportClient({
         <div
           className={`rounded-xl border p-3 text-xs font-medium ${
             notice.tone === "error"
-              ? "border-red-300 bg-red-50 text-red-800"
-              : "border-amber-300 bg-amber-50 text-amber-900"
+              ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+              : "border-status-warning-border bg-status-warning-bg text-status-warning"
           }`}
         >
           {notice.text}
@@ -358,39 +366,39 @@ export function TransportClient({
         <button
           type="button"
           onClick={() => setActiveTab("vehicles")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
             activeTab === "vehicles"
               ? "bg-primary text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <Car className="size-4" />
+          <Car className="size-4" aria-hidden="true" />
           <span>Fleet Vehicles ({vehicles.length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab("sectors")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
             activeTab === "sectors"
               ? "bg-primary text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <Compass className="size-4" />
+          <Compass className="size-4" aria-hidden="true" />
           <span>Transit Sectors ({sectors.length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab("matrix")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
             activeTab === "matrix"
               ? "bg-primary text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <Table className="size-4" />
+          <Table className="size-4" aria-hidden="true" />
           <span>Route × Vehicle Rate Matrix</span>
         </button>
       </div>
@@ -401,10 +409,10 @@ export function TransportClient({
           {vehicles.map((v, idx) => (
             <div
               key={v.id}
-              className={`flex flex-col justify-between overflow-hidden rounded-xl border bg-card shadow-xs transition-all hover:shadow-md ${
+              className={`flex flex-col justify-between overflow-hidden rounded-xl border bg-card shadow-xs transition-shadow hover:shadow-md motion-reduce:transition-none ${
                 v.isActive
-                  ? "border-border hover:border-gold/60"
-                  : "border-border/60 opacity-60 bg-muted/20"
+                  ? "border-border hover:border-gold-border"
+                  : "border-border/60 bg-muted/20 opacity-60"
               }`}
             >
               <div>
@@ -419,20 +427,20 @@ export function TransportClient({
                     />
                   ) : (
                     <div className="flex size-full items-center justify-center bg-muted text-muted-foreground">
-                      <Car className="size-12 opacity-40" />
+                      <Car className="size-12 opacity-40" aria-hidden="true" />
                     </div>
                   )}
                   <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-                    <Badge className="bg-black/70 text-white backdrop-blur-xs font-mono text-[10px] uppercase">
+                    <Badge className="bg-primary text-[10px] text-primary-foreground capitalize">
                       {v.category}
                     </Badge>
                     <Badge
                       className={`text-[10px] font-medium ${
                         v.bookingMode === "private_only"
-                          ? "bg-emerald-900 text-emerald-100"
+                          ? "border-status-success-border bg-status-success-bg text-status-success"
                           : v.bookingMode === "shared_and_private"
-                          ? "bg-amber-900 text-amber-100"
-                          : "bg-blue-900 text-blue-100"
+                            ? "border-status-warning-border bg-status-warning-bg text-status-warning"
+                            : "border-status-info-border bg-status-info-bg text-status-info"
                       }`}
                     >
                       {v.bookingMode.replace(/_/g, " ")}
@@ -440,48 +448,55 @@ export function TransportClient({
                   </div>
                 </div>
 
-                <div className="p-4 space-y-2.5">
-                  <h3 className="font-semibold text-base text-foreground leading-snug">
+                <div className="space-y-2.5 p-4">
+                  <h3 className="text-base leading-snug font-semibold text-foreground">
                     {v.name}
                   </h3>
                   {v.description && (
-                    <p className="text-xs text-muted-foreground line-clamp-2">
+                    <p className="line-clamp-2 text-xs text-muted-foreground">
                       {v.description}
                     </p>
                   )}
 
-                  <div className="flex items-center gap-4 text-xs font-medium text-foreground/80 pt-1">
+                  <div className="flex items-center gap-4 pt-1 text-xs font-medium text-foreground/80">
                     <div className="flex items-center gap-1.5">
-                      <Users className="size-3.5 text-emerald-700" />
+                      <Users
+                        className="size-3.5 text-status-success"
+                        aria-hidden="true"
+                      />
                       <span>{v.seatCapacity} Seats</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <Briefcase className="size-3.5 text-amber-700" />
+                      <Briefcase
+                        className="size-3.5 text-status-warning"
+                        aria-hidden="true"
+                      />
                       <span>{v.luggageCapacity} Bags</span>
                     </div>
                     {v.allowsCustomPickupTime && (
                       <div className="flex items-center gap-1 text-[11px] text-primary">
-                        <Clock className="size-3" />
+                        <Clock className="size-3" aria-hidden="true" />
                         <span>Custom Pickup</span>
                       </div>
                     )}
                   </div>
 
-                  <div className="rounded-lg border border-border/80 bg-muted/20 p-2 text-xs flex items-center justify-between font-mono tabular-nums">
-                    <div className="flex items-center gap-1 text-gold-text font-sans font-semibold">
-                      <Coins className="size-3.5" />
-                      <span>Default Rate:</span>
+                  <div className="flex items-center justify-between gap-2 rounded-lg bg-secondary/50 p-2 text-xs">
+                    <div className="flex items-center gap-1 font-semibold text-gold-text">
+                      <Coins className="size-3.5" aria-hidden="true" />
+                      <span>Default:</span>
+                      <span className="font-mono font-bold text-foreground tabular-nums">
+                        SAR {v.defaultRateSar ?? 250}
+                      </span>
                     </div>
-                    <span className="font-bold text-foreground">
-                      SAR {v.defaultRateSar ?? 250}
-                    </span>
-                    <span className="text-muted-foreground">·</span>
-                    <span className="text-[11px] text-muted-foreground font-sans">
-                      Ziyarat:
-                    </span>
-                    <span className="font-bold text-foreground">
-                      SAR {v.ziyaratRateSar ?? 200}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[11px] text-muted-foreground">
+                        Ziyarat:
+                      </span>
+                      <span className="font-mono font-bold text-foreground tabular-nums">
+                        SAR {v.ziyaratRateSar ?? 200}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -490,18 +505,24 @@ export function TransportClient({
                 <button
                   type="button"
                   onClick={() => v.id && handleVehicleToggle(v.id, v.isActive)}
-                  className="flex items-center gap-1.5 font-medium hover:opacity-80 cursor-pointer"
+                  className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                 >
                   {v.isActive ? (
                     <>
-                      <CheckCircle2 className="size-4 text-emerald-600" />
-                      <span className="text-emerald-700 font-semibold">
+                      <CheckCircle2
+                        className="size-4 text-status-success"
+                        aria-hidden="true"
+                      />
+                      <span className="font-semibold text-status-success">
                         Active Fleet
                       </span>
                     </>
                   ) : (
                     <>
-                      <XCircle className="size-4 text-muted-foreground" />
+                      <XCircle
+                        className="size-4 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <span className="text-muted-foreground">Inactive</span>
                     </>
                   )}
@@ -513,20 +534,20 @@ export function TransportClient({
                     size="icon-xs"
                     disabled={idx === 0}
                     onClick={() => handleVehicleMove(idx, -1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Up"
                   >
-                    <ArrowUp className="size-3.5" />
+                    <ArrowUp className="size-3.5" aria-hidden="true" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     disabled={idx === vehicles.length - 1}
                     onClick={() => handleVehicleMove(idx, 1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Down"
                   >
-                    <ArrowDown className="size-3.5" />
+                    <ArrowDown className="size-3.5" aria-hidden="true" />
                   </Button>
                   <VehicleDialog
                     vehicle={v}
@@ -534,10 +555,10 @@ export function TransportClient({
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         title="Edit Vehicle"
                       >
-                        <Edit2 className="size-3.5" />
+                        <Edit2 className="size-3.5" aria-hidden="true" />
                       </Button>
                     }
                   />
@@ -545,10 +566,10 @@ export function TransportClient({
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => v.id && handleVehicleDelete(v.id, v.name)}
-                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                    className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Delete Vehicle"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
@@ -563,10 +584,10 @@ export function TransportClient({
           {sectors.map((s, idx) => (
             <div
               key={s.id}
-              className={`flex flex-col justify-between rounded-xl border bg-card p-4 shadow-2xs transition-all hover:shadow-sm ${
+              className={`flex flex-col justify-between rounded-xl border bg-card p-4 shadow-2xs transition-shadow hover:shadow-sm motion-reduce:transition-none ${
                 s.isActive
-                  ? "border-border hover:border-gold/60"
-                  : "border-border/60 opacity-60 bg-muted/20"
+                  ? "border-border hover:border-gold-border"
+                  : "border-border/60 bg-muted/20 opacity-60"
               }`}
             >
               <div className="space-y-3">
@@ -575,56 +596,59 @@ export function TransportClient({
                     {s.code}
                   </Badge>
                   {s.supportsTrain && (
-                    <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-[10px] font-semibold gap-1">
-                      <Train className="size-3 text-emerald-700" />
+                    <Badge className="gap-1 border-status-success-border bg-status-success-bg text-[10px] font-semibold text-status-success">
+                      <Train
+                        className="size-3 text-status-success"
+                        aria-hidden="true"
+                      />
                       Bullet Train
                     </Badge>
                   )}
                 </div>
 
                 <div>
-                  <h4 className="font-semibold text-sm text-foreground">
+                  <h4 className="text-sm font-semibold text-foreground">
                     {s.label}
                   </h4>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1 font-mono">
+                  <div className="mt-1 flex items-center gap-2 font-mono text-xs text-muted-foreground">
                     <span>
                       {s.originCity} ({s.originType})
                     </span>
-                    <ArrowRight className="size-3" />
+                    <ArrowRight className="size-3" aria-hidden="true" />
                     <span>
                       {s.destinationCity} ({s.destinationType})
                     </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1 border-t border-border/60">
+                <div className="flex items-center gap-4 border-t border-border/60 pt-1 text-xs text-muted-foreground">
                   {s.approxDistanceKm && <span>~{s.approxDistanceKm} km</span>}
                   {s.approxDurationMinutes && (
                     <span>~{s.approxDurationMinutes} mins</span>
                   )}
                 </div>
 
-                <div className="rounded-lg bg-muted/30 p-2 text-xs space-y-1 font-mono tabular-nums">
+                <div className="space-y-1 rounded-lg bg-secondary/45 p-2 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-sans text-muted-foreground flex items-center gap-1">
-                      <Bus className="size-3" /> Shared Bus:
+                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Bus className="size-3" aria-hidden="true" /> Shared Bus:
                     </span>
                     {s.isSharedBusEligible ? (
-                      <span className="font-bold text-emerald-700">
+                      <span className="font-mono font-bold text-status-success tabular-nums">
                         SAR {s.sharedBusRateSarPerPax ?? 20} / pax
                       </span>
                     ) : (
-                      <span className="text-muted-foreground text-[10px] font-sans">
+                      <span className="text-[10px] text-muted-foreground">
                         Not eligible
                       </span>
                     )}
                   </div>
                   {s.terminalParkingFeeSar ? (
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-sans text-muted-foreground">
+                      <span className="text-muted-foreground">
                         Terminal Parking:
                       </span>
-                      <span className="font-bold text-foreground">
+                      <span className="font-mono font-bold text-foreground tabular-nums">
                         SAR {s.terminalParkingFeeSar}
                       </span>
                     </div>
@@ -632,14 +656,14 @@ export function TransportClient({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-3 border-t border-border/80 mt-3 text-xs">
+              <div className="mt-3 flex items-center justify-between border-t border-border/80 pt-3 text-xs">
                 <button
                   type="button"
                   onClick={() => s.id && handleSectorToggle(s.id, s.isActive)}
-                  className="flex items-center gap-1.5 font-medium hover:opacity-80 cursor-pointer"
+                  className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                 >
                   {s.isActive ? (
-                    <span className="text-emerald-700 font-semibold">
+                    <span className="font-semibold text-status-success">
                       Active Sector
                     </span>
                   ) : (
@@ -652,20 +676,20 @@ export function TransportClient({
                     size="icon-xs"
                     disabled={idx === 0}
                     onClick={() => handleSectorMove(idx, -1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Up"
                   >
-                    <ArrowUp className="size-3.5" />
+                    <ArrowUp className="size-3.5" aria-hidden="true" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     disabled={idx === sectors.length - 1}
                     onClick={() => handleSectorMove(idx, 1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Down"
                   >
-                    <ArrowDown className="size-3.5" />
+                    <ArrowDown className="size-3.5" aria-hidden="true" />
                   </Button>
                   <SectorDialog
                     sector={s}
@@ -673,10 +697,10 @@ export function TransportClient({
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         title="Edit Sector"
                       >
-                        <Edit2 className="size-3.5" />
+                        <Edit2 className="size-3.5" aria-hidden="true" />
                       </Button>
                     }
                   />
@@ -684,10 +708,10 @@ export function TransportClient({
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => s.id && handleSectorDelete(s.id, s.code)}
-                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                    className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Delete Sector"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
@@ -700,10 +724,10 @@ export function TransportClient({
       {activeTab === "matrix" && (
         <div className="space-y-4">
           <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
-            <div className="flex items-center justify-between mb-3">
+            <div className="mb-3 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-                  <Table className="size-4 text-gold" />
+                <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
+                  <Table className="size-4 text-gold-text" aria-hidden="true" />
                   <span>Interactive Route × Vehicle SAR Rate Matrix</span>
                 </h3>
                 <p className="text-xs text-muted-foreground">
@@ -713,20 +737,23 @@ export function TransportClient({
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div
+              tabIndex={0}
+              className="overflow-x-auto rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
               <table className="w-full text-left text-xs">
-                <thead className="border-b border-border bg-muted/40 uppercase tracking-wider text-[10px] text-muted-foreground">
+                <thead className="border-b border-border bg-muted/40 text-xs font-semibold text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3 min-w-[200px]">Sector / Route</th>
+                    <th className="min-w-[200px] px-4 py-3">Sector / Route</th>
                     {vehicles.map((v) => (
                       <th
                         key={v.id}
-                        className="px-3 py-3 text-center min-w-[130px]"
+                        className="min-w-[130px] px-3 py-3 text-center"
                       >
-                        <div className="font-bold text-foreground truncate">
+                        <div className="truncate font-bold text-foreground">
                           {v.name}
                         </div>
-                        <span className="text-[9px] font-mono lowercase text-muted-foreground">
+                        <span className="text-[10px] text-muted-foreground capitalize">
                           {v.category}
                         </span>
                       </th>
@@ -737,13 +764,13 @@ export function TransportClient({
                   {sectors.map((s) => (
                     <tr
                       key={s.id}
-                      className="hover:bg-muted/10 transition-colors"
+                      className="transition-colors hover:bg-muted/10 motion-reduce:transition-none"
                     >
                       <td className="px-4 py-3">
                         <div className="font-semibold text-foreground">
                           {s.label}
                         </div>
-                        <div className="text-[10px] font-mono text-muted-foreground">
+                        <div className="font-mono text-[10px] text-muted-foreground">
                           {s.code}
                         </div>
                       </td>
@@ -763,15 +790,17 @@ export function TransportClient({
                             <button
                               type="button"
                               onClick={() => openRateModal(s, v)}
-                              className={`group inline-flex flex-col items-center justify-center w-full rounded-md px-2 py-1.5 font-mono text-xs tabular-nums transition-all cursor-pointer ${
+                              className={`group inline-flex w-full cursor-pointer flex-col items-center justify-center rounded-md px-2 py-1.5 text-xs tabular-nums transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
                                 isCustom
-                                  ? "bg-gold/15 text-gold-foreground border border-gold/40 hover:bg-gold/25"
-                                  : "bg-muted/50 text-foreground border border-border/60 hover:border-gold/50 hover:bg-muted"
+                                  ? "bg-accent/70 text-foreground hover:bg-accent"
+                                  : "bg-secondary/70 text-foreground hover:bg-secondary"
                               }`}
                               title={`Click to edit rate for ${s.label} + ${v.name}`}
                             >
-                              <span className="font-bold">SAR {rateSar}</span>
-                              <span className="text-[9px] opacity-70 group-hover:underline">
+                              <span className="font-mono font-bold">
+                                SAR {rateSar}
+                              </span>
+                              <span className="text-[9px] opacity-75 group-hover:underline">
                                 {isCustom ? "Custom" : "Default"}
                               </span>
                             </button>
@@ -793,10 +822,7 @@ export function TransportClient({
           open={Boolean(editingCell)}
           onOpenChange={(o) => !o && setEditingCell(null)}
         >
-          <DialogContent
-            key={`${editingCell.sectorId}-${editingCell.vehicleId}`}
-            className="sm:max-w-sm"
-          >
+          <DialogContent className="sm:max-w-sm">
             <DialogHeader>
               <DialogTitle>Edit Route Rate</DialogTitle>
               <DialogDescription>
@@ -806,14 +832,14 @@ export function TransportClient({
             </DialogHeader>
 
             {rateError && (
-              <div className="rounded-lg bg-red-50 p-2 text-xs text-red-800 border border-red-200">
+              <div className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2 text-xs text-status-danger">
                 {rateError}
               </div>
             )}
 
             <form onSubmit={handleSaveRate} className="space-y-3.5 py-2">
               <div className="space-y-1">
-                <span className="text-xs font-semibold text-muted-foreground uppercase">
+                <span className="text-xs font-semibold text-muted-foreground">
                   Route Sector
                 </span>
                 <p className="text-sm font-medium text-foreground">
@@ -822,7 +848,7 @@ export function TransportClient({
               </div>
 
               <div className="space-y-1">
-                <span className="text-xs font-semibold text-muted-foreground uppercase">
+                <span className="text-xs font-semibold text-muted-foreground">
                   Vehicle
                 </span>
                 <p className="text-sm font-medium text-foreground">
@@ -844,15 +870,22 @@ export function TransportClient({
               </div>
 
               <DialogFooter className="pt-2">
-                <DialogClose render={<Button variant="outline" type="button" />}>
+                <DialogClose
+                  render={<Button variant="outline" type="button" />}
+                >
                   Cancel
                 </DialogClose>
                 <Button
                   type="submit"
                   disabled={rateSaving}
-                  className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                  className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
-                  {rateSaving && <Loader2 className="size-4 animate-spin" />}
+                  {rateSaving && (
+                    <Loader2
+                      className="size-4 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                  )}
                   <span>Save Rate</span>
                 </Button>
               </DialogFooter>

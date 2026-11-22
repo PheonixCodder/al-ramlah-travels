@@ -27,6 +27,15 @@ export interface CampaignRealtimeStatusProps {
   className?: string
 }
 
+type TokenResolutionState = {
+  runId: string
+  mode: "cloud" | "local" | "error"
+  accessToken: string | null
+  snapshot: TaskProgressMetadata | null
+  status: string
+  error: string | null
+}
+
 /**
  * Live Trigger.dev v4 Realtime Campaign Progress Indicator.
  *
@@ -41,23 +50,23 @@ export function CampaignRealtimeStatus({
   onComplete,
   className,
 }: CampaignRealtimeStatusProps) {
-  const [accessToken, setAccessToken] = React.useState<string | null>(null)
-  const [tokenMode, setTokenMode] = React.useState<
-    "loading" | "cloud" | "local" | "error"
-  >("loading")
-  const [localSnapshot, setLocalSnapshot] =
-    React.useState<TaskProgressMetadata | null>(null)
-  const [localStatus, setLocalStatus] = React.useState<string>("EXECUTING")
-  const [tokenError, setTokenError] = React.useState<string | null>(null)
+  const [tokenState, setTokenState] =
+    React.useState<TokenResolutionState | null>(null)
 
-  const hasNotifiedCompleteRef = React.useRef(false)
+  const notifiedRunIdRef = React.useRef<string | null>(null)
+
+  const isCurrentRun = tokenState?.runId === runId
+  const tokenMode: "loading" | "cloud" | "local" | "error" = isCurrentRun
+    ? tokenState.mode
+    : "loading"
+  const accessToken = isCurrentRun ? tokenState.accessToken : null
+  const localSnapshot = isCurrentRun ? tokenState.snapshot : null
+  const localStatus = isCurrentRun ? tokenState.status : "EXECUTING"
+  const tokenError = isCurrentRun ? tokenState.error : null
 
   // 1. Mint scoped read-only public token or retrieve local fallback snapshot
   React.useEffect(() => {
     let active = true
-    hasNotifiedCompleteRef.current = false
-    setTokenMode("loading")
-    setTokenError(null)
 
     mintRealtimeRunPublicTokenAction(runId)
       .then((res) => {
@@ -67,23 +76,45 @@ export function CampaignRealtimeStatus({
           res.mode === "cloud" &&
           (res.publicAccessToken || res.token)
         ) {
-          setAccessToken(res.publicAccessToken || res.token || null)
-          setTokenMode("cloud")
+          setTokenState({
+            runId,
+            mode: "cloud",
+            accessToken: res.publicAccessToken || res.token || null,
+            snapshot: null,
+            status: "EXECUTING",
+            error: null,
+          })
         } else if (res.success) {
-          setLocalSnapshot(res.snapshot ?? null)
-          setLocalStatus(res.fallbackStatus ?? "COMPLETED")
-          setTokenMode("local")
+          setTokenState({
+            runId,
+            mode: "local",
+            accessToken: null,
+            snapshot: res.snapshot ?? null,
+            status: res.fallbackStatus ?? "COMPLETED",
+            error: null,
+          })
         } else {
-          setTokenError(res.error || "Unable to connect to live run stream")
-          setTokenMode("error")
+          setTokenState({
+            runId,
+            mode: "error",
+            accessToken: null,
+            snapshot: null,
+            status: "EXECUTING",
+            error: res.error || "Unable to connect to live run stream",
+          })
         }
       })
       .catch((err: unknown) => {
         if (!active) return
-        setTokenError(
-          err instanceof Error ? err.message : "Realtime stream error"
-        )
-        setTokenMode("error")
+        setTokenState({
+          runId,
+          mode: "error",
+          accessToken: null,
+          snapshot: null,
+          status: "EXECUTING",
+          error:
+            err instanceof Error ? err.message : "Realtime stream error",
+        })
       })
 
     return () => {
@@ -105,10 +136,14 @@ export function CampaignRealtimeStatus({
     const timer = setInterval(async () => {
       const res = await getTaskRunProgressAction(runId)
       if (res.success && res.snapshot) {
-        setLocalSnapshot(res.snapshot)
-        if (res.status) {
-          setLocalStatus(res.status)
-        }
+        setTokenState((prev) => {
+          if (!prev || prev.runId !== runId) return prev
+          return {
+            ...prev,
+            snapshot: res.snapshot,
+            status: res.status || prev.status,
+          }
+        })
       }
     }, 1500)
 
@@ -161,11 +196,11 @@ export function CampaignRealtimeStatus({
 
   // Trigger onComplete callback once when run finishes
   React.useEffect(() => {
-    if ((isCompleted || isFailed) && !hasNotifiedCompleteRef.current) {
-      hasNotifiedCompleteRef.current = true
+    if ((isCompleted || isFailed) && notifiedRunIdRef.current !== runId) {
+      notifiedRunIdRef.current = runId
       onComplete?.()
     }
-  }, [isCompleted, isFailed, onComplete])
+  }, [isCompleted, isFailed, onComplete, runId])
 
   // Extract counters for Social Post Publishing or WhatsApp Broadcasts
   const completedTargets =
@@ -199,34 +234,43 @@ export function CampaignRealtimeStatus({
         ? "Broadcast delivery completed"
         : "Multi-channel publishing completed"
       : isFailed
-      ? metadata.error || "Execution encountered an error"
-      : mode === "whatsapp_broadcast"
-      ? "Dispatching rate-limited WhatsApp templates..."
-      : "Publishing across connected social channels...")
+        ? metadata.error || "Execution encountered an error"
+        : mode === "whatsapp_broadcast"
+          ? "Dispatching rate-limited WhatsApp templates…"
+          : "Publishing across connected social channels…")
 
   return (
     <div
       className={cn(
-        "rounded-xl border p-3.5 transition-all shadow-2xs space-y-2.5",
+        "flex flex-col gap-2.5 rounded-xl border p-3.5 shadow-2xs transition-colors motion-reduce:transition-none",
         isCompleted
-          ? "border-emerald-500/40 bg-emerald-50/60 text-emerald-950"
+          ? "border-status-success-border bg-status-success-bg text-status-success"
           : isFailed
-          ? "border-rose-500/40 bg-rose-50/60 text-rose-950"
-          : "border-[#C5A059]/50 bg-[#C5A059]/10 text-foreground",
+            ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+            : "border-gold-border bg-accent/40 text-foreground",
         className
       )}
     >
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
+      <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-center gap-2">
           {isCompleted ? (
-            <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+            <CheckCircle2
+              className="size-4 shrink-0 text-status-success"
+              aria-hidden="true"
+            />
           ) : isFailed ? (
-            <AlertTriangle className="size-4 text-rose-600 shrink-0" />
+            <AlertTriangle
+              className="size-4 shrink-0 text-status-danger"
+              aria-hidden="true"
+            />
           ) : (
-            <Loader2 className="size-4 text-[#0A3622] animate-spin shrink-0" />
+            <Loader2
+              className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none"
+              aria-hidden="true"
+            />
           )}
 
-          <span className="text-xs font-bold tracking-tight truncate">
+          <span className="truncate text-xs font-bold tracking-tight">
             {title ||
               (mode === "whatsapp_broadcast"
                 ? "Live Meta Broadcast Delivery Stream"
@@ -236,51 +280,77 @@ export function CampaignRealtimeStatus({
           <Badge
             variant="outline"
             className={cn(
-              "text-[9px] font-mono px-1.5 py-0 uppercase",
+              "px-1.5 py-0 text-[10px] font-semibold",
               tokenMode === "cloud"
-                ? "border-emerald-600/40 text-emerald-800 bg-emerald-500/10"
-                : "border-[#C5A059]/50 text-[#0A3622] bg-white/80"
+                ? "border-status-success-border bg-status-success-bg text-status-success"
+                : "border-gold-border bg-background text-primary"
             )}
           >
-            <Radio className="size-2.5 mr-1 inline-block" />
+            <Radio
+              className="mr-1 inline-block size-2.5"
+              aria-hidden="true"
+            />
             {tokenMode === "cloud" ? "Trigger Realtime" : "Local Sync"}
           </Badge>
         </div>
 
-        <div className="flex items-center gap-2 text-[11px] font-mono shrink-0">
+        <div className="flex shrink-0 items-center gap-2 text-[11px]">
           {mode === "social_post" && totalTargets > 0 && (
-            <span className="rounded bg-white/90 px-2 py-0.5 border border-border text-foreground font-semibold">
-              Targets: {completedTargets}/{totalTargets} Published
+            <span className="rounded border border-border bg-background px-2 py-0.5 font-semibold text-foreground">
+              Targets:{" "}
+              <span className="font-mono tabular-nums">
+                {completedTargets}/{totalTargets}
+              </span>{" "}
+              Published
               {failedTargets > 0 ? ` (${failedTargets} Failed)` : ""}
             </span>
           )}
 
           {mode === "whatsapp_broadcast" && totalRecipients > 0 && (
-            <span className="rounded bg-white/90 px-2 py-0.5 border border-border text-foreground font-semibold">
-              Sent: {sentCount}/{totalRecipients}
-              {failedCount > 0 ? ` • Failed: ${failedCount}` : ""}
+            <span className="inline-flex items-center gap-2 rounded border border-border bg-background px-2 py-0.5 font-semibold text-foreground">
+              <span>
+                Sent:{" "}
+                <span className="font-mono tabular-nums">
+                  {sentCount}/{totalRecipients}
+                </span>
+              </span>
+              {failedCount > 0 && (
+                <span className="text-status-danger">
+                  Failed:{" "}
+                  <span className="font-mono tabular-nums">{failedCount}</span>
+                </span>
+              )}
             </span>
           )}
 
-          <span className="font-bold text-[#0A3622]">{progressValue}%</span>
+          <span className="font-mono font-bold tabular-nums text-primary">
+            {progressValue}%
+          </span>
         </div>
       </div>
 
-      <Progress value={progressValue} className="h-2 bg-white/80" />
+      <Progress value={progressValue} className="h-2 bg-background" />
 
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span className="truncate font-medium text-foreground/85 flex items-center gap-1.5">
-          <Sparkles className="size-3 text-[#C5A059] shrink-0" />
+        <span className="flex items-center gap-1.5 truncate font-medium text-foreground/85">
+          <Sparkles
+            className="size-3 shrink-0 text-gold-text"
+            aria-hidden="true"
+          />
           <span>{stageLabel}</span>
         </span>
-        <span className="font-mono text-[10px] shrink-0">
-          Run: {runId.slice(0, 14)}
+        <span className="shrink-0 text-[11px]">
+          Run:{" "}
+          <span className="font-mono tabular-nums">{runId.slice(0, 14)}</span>
         </span>
       </div>
 
       {(tokenError || realtimeError) && (
-        <p className="text-[10px] text-amber-800 font-mono">
-          Stream notice: {tokenError || realtimeError?.message}
+        <p className="text-[11px] font-medium text-status-warning">
+          Stream notice:{" "}
+          <span className="font-mono">
+            {tokenError || realtimeError?.message}
+          </span>
         </p>
       )}
     </div>

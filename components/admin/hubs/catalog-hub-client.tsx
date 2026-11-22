@@ -32,13 +32,28 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { HotelsClient } from "@/components/admin/catalog/hotels-client"
-import { VisaClient, type VisaRateData } from "@/components/admin/catalog/visa-client"
-import { TransportClient, type TransportRateData } from "@/components/admin/catalog/transport-client"
+import {
+  VisaClient,
+  type VisaRateData,
+} from "@/components/admin/catalog/visa-client"
+import {
+  TransportClient,
+  type TransportRateData,
+} from "@/components/admin/catalog/transport-client"
 import { ZiyaratClient } from "@/components/admin/catalog/ziyarat-client"
 import { FlightsClient } from "@/components/admin/catalog/flights-client"
-import { ContentClient, type CmsSubTab } from "@/components/admin/catalog/content-client"
-import { HajjClient, type HajjPackageData } from "@/components/admin/catalog/hajj-client"
-import { MessagesClient, type ContactMessageData } from "@/components/admin/catalog/messages-client"
+import {
+  ContentClient,
+  type CmsSubTab,
+} from "@/components/admin/catalog/content-client"
+import {
+  HajjClient,
+  type HajjPackageData,
+} from "@/components/admin/catalog/hajj-client"
+import {
+  MessagesClient,
+  type ContactMessageData,
+} from "@/components/admin/catalog/messages-client"
 import type { HotelData } from "@/components/admin/catalog/hotel-dialog"
 import type { VehicleData } from "@/components/admin/catalog/vehicle-dialog"
 import type { SectorData } from "@/components/admin/catalog/sector-dialog"
@@ -152,55 +167,64 @@ const TAB_CONFIG: Array<{
     key: "hotels",
     label: "Hotels Catalog",
     icon: Building2,
-    description: "Makkah & Madinah hotel properties, distance bands, galleries & SAR tariffs",
+    description:
+      "Makkah & Madinah hotel properties, distance bands, galleries & SAR tariffs",
   },
   {
     key: "visa",
     label: "Visa Pricing",
     icon: FileCheck,
-    description: "Short-term & long-term Umrah visa tariffs, Masar fees, and SAR-PKR conversion",
+    description:
+      "Short-term & long-term Umrah visa tariffs, Masar fees, and SAR-PKR conversion",
   },
   {
     key: "transport",
     label: "Transport & Vehicles",
     icon: Car,
-    description: "Vehicle fleet capacities, inter-city ground transfer sectors & route matrices",
+    description:
+      "Vehicle fleet capacities, inter-city ground transfer sectors & route matrices",
   },
   {
     key: "ziyarat",
     label: "Ziyarat Places",
     icon: Compass,
-    description: "Holy ziyarat sites across Makkah & Madinah with Arabic descriptions",
+    description:
+      "Holy ziyarat sites across Makkah & Madinah with Arabic descriptions",
   },
   {
     key: "flights",
     label: "Airlines & Cities",
     icon: Plane,
-    description: "Authorized flight carriers, IATA codes, and Pakistan origin departure cities",
+    description:
+      "Authorized flight carriers, IATA codes, and Pakistan origin departure cities",
   },
   {
     key: "hajj",
     label: "Hajj 2027",
     icon: Sparkles,
-    description: "Indicative 2027 Pre-Registration Maktab tiers, hotel bands & regulatory disclaimers",
+    description:
+      "Indicative 2027 Pre-Registration Maktab tiers, hotel bands & regulatory disclaimers",
   },
   {
     key: "suppliers",
     label: "B2B Suppliers",
     icon: Coins,
-    description: "Wholesale flight & group inventory partners, commission margins & contact lines",
+    description:
+      "Wholesale flight & group inventory partners, commission margins & contact lines",
   },
   {
     key: "cms",
     label: "Website CMS",
     icon: Globe,
-    description: "Hero landing slides, pilgrim testimonials, FAQs, and property galleries",
+    description:
+      "Hero landing slides, pilgrim testimonials, FAQs, and property galleries",
   },
   {
     key: "messages",
     label: "Web Inquiries",
     icon: Inbox,
-    description: "Public contact-us inquiries, triage notes, and one-click E.164 WhatsApp replies",
+    description:
+      "Public contact-us inquiries, triage notes, and one-click E.164 WhatsApp replies",
   },
 ]
 
@@ -257,42 +281,68 @@ export function CatalogHubClient({
     hajj: hajjPackages.length,
     suppliers: initialSuppliers.length,
     cms: heroSlides.length + testimonials.length + faqs.length,
-    messages: unreadMessagesCount > 0 ? unreadMessagesCount : contactMessages.length,
+    messages:
+      unreadMessagesCount > 0 ? unreadMessagesCount : contactMessages.length,
   }
 
-  const activeMeta = TAB_CONFIG.find((t) => t.key === activeTab) || TAB_CONFIG[0]
+  const activeMeta =
+    TAB_CONFIG.find((t) => t.key === activeTab) || TAB_CONFIG[0]
 
   return (
     <div className="flex flex-col gap-6">
       {/* Hub Header */}
       <div className="flex flex-col gap-2 border-b border-border/80 pb-5">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gold-text">
-            Hub 4 • Operations &amp; Dynamic Inventory
-          </span>
-          <Badge
-            variant="outline"
-            className="text-[10px] font-mono border-primary/30 text-primary bg-primary/5"
-          >
-            {hotels.length} Hotels • {hajjPackages.length} Hajj Tiers • {initialSuppliers.length} Suppliers • {airlines.length} Airlines
-          </Badge>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
               Catalog &amp; Dynamic Inventory
             </h1>
-            <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-3xl">
-              Unified administrative workspace for master tariffs, vehicle fleets, holy ziyarat sites,
-              flight schedules, Indicative 2027 Hajj pre-registration tiers, B2B wholesale suppliers,
-              public CMS content, and web inquiries.
+            <p className="mt-1 max-w-3xl text-xs text-muted-foreground sm:text-sm">
+              Unified administrative workspace for master tariffs, vehicle
+              fleets, holy ziyarat sites, flight schedules, Indicative 2027 Hajj
+              pre-registration tiers, B2B wholesale suppliers, public CMS
+              content, and web inquiries.
             </p>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <Badge
+                variant="outline"
+                className="border-gold-border bg-accent/40 text-[11px] font-medium text-gold-text"
+              >
+                Hub 4: Operations &amp; Dynamic Inventory
+              </Badge>
+              <Badge
+                variant="outline"
+                className="border-primary/25 bg-primary/5 font-mono text-[11px] text-primary tabular-nums"
+              >
+                {hotels.length} Hotels
+              </Badge>
+              <Badge
+                variant="outline"
+                className="border-primary/25 bg-primary/5 font-mono text-[11px] text-primary tabular-nums"
+              >
+                {hajjPackages.length} Hajj Tiers
+              </Badge>
+              <Badge
+                variant="outline"
+                className="border-primary/25 bg-primary/5 font-mono text-[11px] text-primary tabular-nums"
+              >
+                {initialSuppliers.length} Suppliers
+              </Badge>
+              <Badge
+                variant="outline"
+                className="border-primary/25 bg-primary/5 font-mono text-[11px] text-primary tabular-nums"
+              >
+                {airlines.length} Airlines
+              </Badge>
+            </div>
           </div>
         </div>
 
         {/* Tab Navigation Pill Bar */}
-        <div className="mt-3 flex overflow-x-auto rounded-xl border border-border/80 bg-muted/40 p-1.5 gap-1.5 no-scrollbar">
+        <div
+          tabIndex={0}
+          className="mt-3 no-scrollbar flex gap-1.5 overflow-x-auto rounded-xl border border-border/80 bg-muted/40 p-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
           {TAB_CONFIG.map((tab) => {
             const Icon = tab.icon
             const isActive = activeTab === tab.key
@@ -304,26 +354,27 @@ export function CatalogHubClient({
                 type="button"
                 onClick={() => handleTabChange(tab.key)}
                 className={cn(
-                  "flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-all cursor-pointer select-none",
+                  "flex shrink-0 cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                   isActive
-                    ? "bg-card text-foreground shadow-xs border border-gold/40 text-primary"
+                    ? "border border-gold-border bg-card text-primary shadow-xs"
                     : "text-muted-foreground hover:bg-card/60 hover:text-foreground"
                 )}
               >
                 <Icon
                   className={cn(
-                    "size-4 shrink-0 transition-colors",
+                    "size-4 shrink-0 transition-colors motion-reduce:transition-none",
                     isActive ? "text-gold-text" : "text-muted-foreground"
                   )}
+                  aria-hidden="true"
                 />
                 <span>{tab.label}</span>
                 <span
                   className={cn(
-                    "ml-0.5 rounded-full px-1.5 py-0.2 font-mono text-[10px] font-bold",
+                    "ml-0.5 rounded-full px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums",
                     isActive
                       ? "bg-primary text-primary-foreground"
                       : tab.key === "messages" && unreadMessagesCount > 0
-                        ? "bg-gold text-foreground"
+                        ? "bg-gold text-gold-foreground"
                         : "bg-muted text-muted-foreground"
                   )}
                 >
@@ -338,12 +389,17 @@ export function CatalogHubClient({
       {/* Tab Context Banner */}
       <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card px-4 py-2.5 shadow-2xs">
         <div className="flex items-center gap-2 text-xs">
-          <span className="font-semibold text-foreground">{activeMeta.label}:</span>
-          <span className="text-muted-foreground hidden sm:inline">
+          <span className="font-semibold text-foreground">
+            {activeMeta.label}:
+          </span>
+          <span className="hidden text-muted-foreground sm:inline">
             {activeMeta.description}
           </span>
         </div>
-        <Badge variant="outline" className="text-[10px] font-mono text-muted-foreground">
+        <Badge
+          variant="outline"
+          className="font-mono text-[11px] text-muted-foreground"
+        >
           ?tab={activeTab}
         </Badge>
       </div>
@@ -378,9 +434,7 @@ export function CatalogHubClient({
           />
         )}
 
-        {activeTab === "hajj" && (
-          <HajjClient initialPackages={hajjPackages} />
-        )}
+        {activeTab === "hajj" && <HajjClient initialPackages={hajjPackages} />}
 
         {activeTab === "suppliers" && (
           <B2BSuppliersTab initialSuppliers={initialSuppliers} />
@@ -416,6 +470,12 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
   const router = useRouter()
   const [suppliersList, setSuppliersList] =
     React.useState<SupplierRecord[]>(initialSuppliers)
+  const [prevInitialSuppliers, setPrevInitialSuppliers] =
+    React.useState(initialSuppliers)
+  if (prevInitialSuppliers !== initialSuppliers) {
+    setPrevInitialSuppliers(initialSuppliers)
+    setSuppliersList(initialSuppliers)
+  }
   const [searchQuery, setSearchQuery] = React.useState("")
   const [categoryFilter, setCategoryFilter] = React.useState<string>("all")
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
@@ -443,14 +503,11 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [formError, setFormError] = React.useState<string | null>(null)
 
-  React.useEffect(() => {
-    setSuppliersList(initialSuppliers)
-  }, [initialSuppliers])
-
   const filteredSuppliers = React.useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
     return suppliersList.filter((s) => {
-      if (categoryFilter !== "all" && s.category !== categoryFilter) return false
+      if (categoryFilter !== "all" && s.category !== categoryFilter)
+        return false
       if (statusFilter === "active" && !s.isActive) return false
       if (statusFilter === "inactive" && s.isActive) return false
       if (!q) return true
@@ -568,7 +625,9 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
     const nextStatus = !s.isActive
     setBannerError(null)
     setSuppliersList((prev) =>
-      prev.map((item) => (item.id === s.id ? { ...item, isActive: nextStatus } : item))
+      prev.map((item) =>
+        item.id === s.id ? { ...item, isActive: nextStatus } : item
+      )
     )
 
     try {
@@ -588,7 +647,9 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
       })
       if (!res.success) {
         setSuppliersList((prev) =>
-          prev.map((item) => (item.id === s.id ? { ...item, isActive: s.isActive } : item))
+          prev.map((item) =>
+            item.id === s.id ? { ...item, isActive: s.isActive } : item
+          )
         )
         setBannerError(res.error || "Failed to update supplier status.")
         return
@@ -596,7 +657,9 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
       router.refresh()
     } catch (err: unknown) {
       setSuppliersList((prev) =>
-        prev.map((item) => (item.id === s.id ? { ...item, isActive: s.isActive } : item))
+        prev.map((item) =>
+          item.id === s.id ? { ...item, isActive: s.isActive } : item
+        )
       )
       setBannerError(
         err instanceof Error ? err.message : "Failed to update supplier status."
@@ -613,24 +676,27 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
       )}
 
       {/* Search & Actions Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-4 rounded-xl border border-border shadow-xs">
-        <div className="flex items-center gap-2 flex-1 max-w-md">
+      <div className="flex flex-col justify-between gap-3 rounded-xl border border-border bg-card p-4 shadow-xs sm:flex-row sm:items-center">
+        <div className="flex max-w-md flex-1 items-center gap-2">
           <div className="relative w-full">
-            <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Search
+              className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search suppliers by name, slug, prefix..."
-              className="pl-9 h-9 text-xs"
+              placeholder="Search suppliers by name, slug, prefix…"
+              className="h-9 pl-9 text-xs"
             />
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
+            className="h-9 cursor-pointer rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <option value="all">All Categories</option>
             <option value="group_packages">Group Packages</option>
@@ -641,7 +707,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
+            className="h-9 cursor-pointer rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <option value="all">All Status</option>
             <option value="active">Active Only</option>
@@ -650,30 +716,30 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
 
           <Button
             onClick={openAddDialog}
-            className="gap-1.5 h-9 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+            className="h-9 cursor-pointer gap-1.5 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <Plus className="size-4" />
+            <Plus className="size-4" aria-hidden="true" />
             <span>Add Supplier</span>
           </Button>
         </div>
       </div>
 
       {/* Supplier Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filteredSuppliers.map((s) => (
           <div
             key={s.id}
-            className="flex flex-col justify-between rounded-xl border border-border bg-card p-4 shadow-xs transition-all hover:border-gold/50 hover:shadow-sm"
+            className="flex flex-col justify-between rounded-xl border border-border bg-card p-4 shadow-xs transition-colors hover:border-gold-border hover:shadow-sm motion-reduce:transition-none"
           >
             <div>
               {/* Card Header */}
               <div className="flex items-start justify-between gap-2 border-b border-border/60 pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="flex size-9 items-center justify-center rounded-lg bg-gold/10 border border-gold/30 text-gold-text font-bold font-mono text-sm">
+                  <div className="flex size-9 items-center justify-center rounded-lg bg-accent/60 font-mono text-sm font-bold text-gold-text">
                     {s.codePrefix}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-sm text-foreground">
+                    <h3 className="text-sm font-semibold text-foreground">
                       {s.name}
                     </h3>
                     <p className="font-mono text-[11px] text-muted-foreground">
@@ -682,33 +748,38 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                   </div>
                 </div>
 
-                <Badge
-                  variant={s.isActive ? "default" : "secondary"}
-                  className={cn(
-                    "text-[10px] font-semibold cursor-pointer select-none",
-                    s.isActive
-                      ? "bg-emerald-800 text-white hover:bg-emerald-900"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  )}
+                <button
+                  type="button"
                   onClick={() => handleToggleActive(s)}
                   title="Click to toggle active status"
+                  className={cn(
+                    "cursor-pointer rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
+                    s.isActive
+                      ? "border-status-success-border bg-status-success-bg text-status-success hover:bg-status-success-bg/80"
+                      : "border-border bg-muted text-muted-foreground hover:bg-muted/80"
+                  )}
                 >
                   {s.isActive ? "Active" : "Inactive"}
-                </Badge>
+                </button>
               </div>
 
               {/* Commission & Details */}
               <div className="space-y-2 py-3 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Category:</span>
-                  <Badge variant="outline" className="text-[10px] font-medium capitalize">
+                  <Badge
+                    variant="outline"
+                    className="text-[11px] font-medium capitalize"
+                  >
                     {s.category.replace(/_/g, " ")}
                   </Badge>
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Commission Mode:</span>
-                  <span className="font-semibold text-foreground text-[11px]">
+                  <span className="text-muted-foreground">
+                    Commission Mode:
+                  </span>
+                  <span className="text-[11px] font-semibold text-foreground">
                     {s.defaultCommissionMode === "included_in_flyer"
                       ? "Included in Flyer"
                       : "Net + Fixed Markup"}
@@ -717,7 +788,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
 
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Default Margin:</span>
-                  <span className="font-mono font-bold text-gold-text text-xs">
+                  <span className="font-mono text-xs font-bold text-gold-text tabular-nums">
                     PKR {s.defaultCommissionPkr.toLocaleString()} / pax
                   </span>
                 </div>
@@ -725,7 +796,9 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                 {s.contactPerson && (
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Contact:</span>
-                    <span className="font-medium text-foreground">{s.contactPerson}</span>
+                    <span className="font-medium text-foreground">
+                      {s.contactPerson}
+                    </span>
                   </div>
                 )}
 
@@ -736,9 +809,12 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                       href={buildWhatsappUrl(s.whatsappNumber)}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-emerald-700 hover:underline"
+                      className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-status-success hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <MessageCircle className="size-3 text-emerald-600" />
+                      <MessageCircle
+                        className="size-3 text-status-success"
+                        aria-hidden="true"
+                      />
                       <span>{s.whatsappNumber}</span>
                     </a>
                   </div>
@@ -747,8 +823,8 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
             </div>
 
             {/* Card Footer Actions */}
-            <div className="flex items-center justify-between border-t border-border/60 pt-3 mt-2">
-              <span className="text-[10px] text-muted-foreground">
+            <div className="mt-2 flex items-center justify-between border-t border-border/60 pt-3">
+              <span className="text-[11px] text-muted-foreground tabular-nums">
                 Updated {new Date(s.updatedAt).toLocaleDateString()}
               </span>
 
@@ -756,9 +832,9 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                 variant="ghost"
                 size="sm"
                 onClick={() => openEditDialog(s)}
-                className="gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                className="cursor-pointer gap-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <Edit2 className="size-3.5" />
+                <Edit2 className="size-3.5" aria-hidden="true" />
                 <span>Edit</span>
               </Button>
             </div>
@@ -767,9 +843,12 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
 
         {filteredSuppliers.length === 0 && (
           <div className="col-span-full py-12 text-center text-sm text-muted-foreground">
-            <Coins className="size-8 mx-auto text-muted-foreground/50 mb-2" />
+            <Coins
+              className="mx-auto mb-2 size-8 text-muted-foreground/50"
+              aria-hidden="true"
+            />
             <p className="font-semibold text-foreground">No suppliers found</p>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="mt-1 text-xs text-muted-foreground">
               Try adjusting your search query or add a new wholesale supplier.
             </p>
           </div>
@@ -778,34 +857,34 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
 
       {/* Add / Edit Supplier Modal */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent
-          key={dialogOpen ? (editingSupplier?.id ?? "new") : "closed"}
-          className="sm:max-w-md bg-card border border-gold/40 shadow-xl rounded-2xl"
-        >
+        <DialogContent className="rounded-2xl border border-gold-border bg-card shadow-md sm:max-w-md">
           <form onSubmit={handleSaveSupplier}>
             <DialogHeader>
               <DialogTitle>
-                {editingSupplier ? `Edit ${editingSupplier.name}` : "Add New B2B Supplier"}
+                {editingSupplier
+                  ? `Edit ${editingSupplier.name}`
+                  : "Add New B2B Supplier"}
               </DialogTitle>
               <DialogDescription>
-                Configure wholesale inventory partner credentials, code prefix, and default margins.
+                Configure wholesale inventory partner credentials, code prefix,
+                and default margins.
               </DialogDescription>
             </DialogHeader>
 
             {formError && (
-              <div className="mt-3 rounded-md bg-destructive/10 border border-destructive/30 p-2.5 text-xs font-medium text-destructive">
+              <div className="mt-3 rounded-md border border-status-danger-border bg-status-danger-bg p-2.5 text-xs font-medium text-status-danger">
                 {formError}
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-4">
+            <div className="grid grid-cols-1 gap-3 py-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <Label className="text-xs font-semibold">Supplier Name *</Label>
                 <Input
                   value={name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g. Upsky Travels"
-                  className="h-8 text-xs mt-1"
+                  className="mt-1 h-8 text-xs"
                   required
                 />
               </div>
@@ -816,19 +895,21 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}
                   placeholder="upsky-travels"
-                  className="h-8 text-xs mt-1 font-mono"
+                  className="mt-1 h-8 font-mono text-xs"
                   required
                 />
               </div>
 
               <div>
-                <Label className="text-xs font-semibold">Code Prefix (1-8 chars) *</Label>
+                <Label className="text-xs font-semibold">
+                  Code Prefix (1-8 chars) *
+                </Label>
                 <Input
                   value={codePrefix}
                   onChange={(e) => setCodePrefix(e.target.value.toUpperCase())}
                   placeholder="UP"
                   maxLength={8}
-                  className="h-8 text-xs mt-1 font-mono font-bold"
+                  className="mt-1 h-8 font-mono text-xs font-bold"
                   required
                 />
               </div>
@@ -839,10 +920,11 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                   value={category}
                   onChange={(e) =>
                     setCategory(
-                      e.target.value as "group_packages" | "custom_packages" | "both"
+                      e.target.value as
+                        "group_packages" | "custom_packages" | "both"
                     )
                   }
-                  className="w-full h-8 rounded-lg border border-border bg-background px-2.5 text-xs mt-1"
+                  className="mt-1 h-8 w-full rounded-lg border border-border bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <option value="group_packages">Group Packages</option>
                   <option value="custom_packages">Custom Packages</option>
@@ -859,7 +941,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                       e.target.value as "included_in_flyer" | "net_plus_markup"
                     )
                   }
-                  className="w-full h-8 rounded-lg border border-border bg-background px-2.5 text-xs mt-1"
+                  className="mt-1 h-8 w-full rounded-lg border border-border bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <option value="included_in_flyer">Included in Flyer</option>
                   <option value="net_plus_markup">Net + Markup</option>
@@ -878,7 +960,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                   onChange={(e) =>
                     setDefaultCommissionPkr(parseInt(e.target.value, 10) || 0)
                   }
-                  className="h-8 text-xs mt-1 font-mono"
+                  className="mt-1 h-8 font-mono text-xs"
                 />
               </div>
 
@@ -888,7 +970,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                   value={contactPerson}
                   onChange={(e) => setContactPerson(e.target.value)}
                   placeholder="e.g. Sheikh Zahoor"
-                  className="h-8 text-xs mt-1"
+                  className="mt-1 h-8 text-xs"
                 />
               </div>
 
@@ -898,30 +980,36 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                   value={whatsappNumber}
                   onChange={(e) => setWhatsappNumber(e.target.value)}
                   placeholder="+923214567890"
-                  className="h-8 text-xs mt-1 font-mono"
+                  className="mt-1 h-8 font-mono text-xs"
                 />
               </div>
 
               <div className="sm:col-span-2">
-                <Label className="text-xs font-semibold">Notes / Office Address</Label>
+                <Label className="text-xs font-semibold">
+                  Notes / Office Address
+                </Label>
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Wholesale ticketing desk notes, payment terms, or bank accounts..."
-                  className="text-xs mt-1 min-h-[60px]"
+                  placeholder="Wholesale ticketing desk notes, payment terms, or bank accounts…"
+                  className="mt-1 min-h-[60px] text-xs"
                 />
               </div>
 
-              <div className="sm:col-span-2 flex items-center gap-2 pt-1">
+              <div className="flex items-center gap-2 pt-1 sm:col-span-2">
                 <input
                   type="checkbox"
                   id="supplier-active"
                   checked={isActive}
                   onChange={(e) => setIsActive(e.target.checked)}
-                  className="rounded border-border text-primary focus:ring-primary size-4 cursor-pointer"
+                  className="size-4 cursor-pointer rounded border-border text-primary accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 />
-                <Label htmlFor="supplier-active" className="text-xs font-medium cursor-pointer">
-                  Supplier is active and available for flyer extraction &amp; reverse lookups
+                <Label
+                  htmlFor="supplier-active"
+                  className="cursor-pointer text-xs font-medium"
+                >
+                  Supplier is active and available for flyer extraction &amp;
+                  reverse lookups
                 </Label>
               </div>
             </div>
@@ -933,7 +1021,7 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                 size="sm"
                 onClick={() => setDialogOpen(false)}
                 disabled={isSubmitting}
-                className="cursor-pointer text-xs"
+                className="cursor-pointer text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 Cancel
               </Button>
@@ -941,15 +1029,20 @@ function B2BSuppliersTab({ initialSuppliers }: B2BSuppliersTabProps) {
                 type="submit"
                 size="sm"
                 disabled={isSubmitting}
-                className="cursor-pointer gap-1.5 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
+                className="cursor-pointer gap-1.5 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="size-3.5 animate-spin" />
-                    <span>Saving...</span>
+                    <Loader2
+                      className="size-3.5 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                    <span>Saving…</span>
                   </>
                 ) : (
-                  <span>{editingSupplier ? "Update Supplier" : "Create Supplier"}</span>
+                  <span>
+                    {editingSupplier ? "Update Supplier" : "Create Supplier"}
+                  </span>
                 )}
               </Button>
             </DialogFooter>

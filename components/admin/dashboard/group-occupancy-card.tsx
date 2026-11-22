@@ -39,7 +39,7 @@ export function GroupOccupancyCard({
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 font-display text-base font-bold text-foreground">
-              <Boxes className="size-4 text-primary" />
+              <Boxes className="size-4 text-primary" aria-hidden="true" />
               <span>Group Departures Seat Allotment</span>
             </CardTitle>
             <CardDescription className="text-xs text-muted-foreground">
@@ -49,19 +49,19 @@ export function GroupOccupancyCard({
           <Button
             variant="outline"
             size="sm"
-            className="text-xs font-semibold hover:border-gold"
+            className="text-xs font-semibold hover:border-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             render={<Link href="/admin/catalog?tab=groups" />}
             nativeButton={false}
           >
             <span>All Batches</span>
-            <ArrowRight className="size-3.5" />
+            <ArrowRight className="size-3.5" aria-hidden="true" />
           </Button>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4 pt-4">
+      <CardContent className="flex flex-col gap-3 pt-4">
         {departures.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic text-center py-4">
+          <p className="py-4 text-center text-xs text-muted-foreground italic">
             No upcoming active group departure batches found.
           </p>
         ) : (
@@ -79,25 +79,25 @@ export function GroupOccupancyCard({
             return (
               <div
                 key={batch.id}
-                className="rounded-lg border border-border bg-secondary/20 p-3 text-xs"
+                className="rounded-lg bg-secondary/60 p-3 text-xs"
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold text-foreground">
                         {batch.package.title}
                       </span>
                       <Badge
                         variant="outline"
-                        className="font-mono text-[10px] border-border bg-card"
+                        className="border-border bg-background font-mono text-[11px] tabular-nums"
                       >
                         {batch.batchCode}
                       </Badge>
                     </div>
-                    <div className="mt-1 flex items-center gap-1.5 text-muted-foreground text-[11px]">
-                      <Calendar className="size-3" />
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground tabular-nums">
+                      <Calendar className="size-3" aria-hidden="true" />
                       <span>
-                        {batch.departureDate} → {batch.returnDate} (
+                        {batch.departureDate} to {batch.returnDate} (
                         {batch.package.durationDays}d)
                       </span>
                     </div>
@@ -105,12 +105,12 @@ export function GroupOccupancyCard({
 
                   <Badge
                     variant="outline"
-                    className={`text-[10px] font-semibold uppercase ${
+                    className={`text-[11px] font-semibold capitalize ${
                       batch.status === "sold_out" || batch.status === "closed"
-                        ? "border-red-300 bg-red-100 text-red-800"
+                        ? "border-status-danger-border bg-status-danger-bg text-status-danger"
                         : batch.status === "filling_fast"
-                          ? "border-amber-300 bg-amber-100 text-amber-800"
-                          : "border-emerald-300 bg-emerald-100 text-emerald-800"
+                          ? "border-status-warning-border bg-status-warning-bg text-status-warning"
+                          : "border-status-success-border bg-status-success-bg text-status-success"
                     }`}
                   >
                     {batch.status.replace(/_/g, " ")}
@@ -119,7 +119,7 @@ export function GroupOccupancyCard({
 
                 {/* Seat Progress Bar (`totalSeats === 0` guarded against NaN% / Infinity%) */}
                 <div className="mt-3">
-                  <div className="flex items-center justify-between text-[11px] mb-1">
+                  <div className="mb-1 flex items-center justify-between text-[11px]">
                     <span className="text-muted-foreground tabular-nums">
                       Booked: {safeBookedSeats} / {safeTotalSeats} Seats
                     </span>
@@ -129,12 +129,12 @@ export function GroupOccupancyCard({
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-border">
                     <div
-                      className={`h-full transition-all rounded-full ${
+                      className={`h-full rounded-full ${
                         percentFilled >= 100
-                          ? "bg-red-600"
+                          ? "bg-status-danger"
                           : percentFilled >= 75
-                            ? "bg-amber-500"
-                            : "bg-emerald-600"
+                            ? "bg-status-warning"
+                            : "bg-status-success"
                       }`}
                       style={{ width: `${percentFilled}%` }}
                     />

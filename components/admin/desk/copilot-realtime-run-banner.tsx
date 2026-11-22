@@ -205,36 +205,45 @@ export function CopilotRealtimeRunBanner({
       role="region"
       aria-label="Copilot Telemetry Banner"
       className={cn(
-        "relative rounded-xl border p-3.5 shadow-sm transition-all duration-300",
+        "relative rounded-xl border p-3.5 shadow-sm transition-colors duration-300 motion-reduce:transition-none",
         isCompleted
-          ? "border-[#C5A059]/80 bg-[#0A3622]/10 text-foreground"
+          ? "border-status-success-border bg-status-success-bg text-foreground"
           : isFailed
-            ? "border-red-500/40 bg-red-500/10 text-foreground"
-            : "border-[#C5A059]/40 bg-card text-foreground",
+            ? "border-status-danger-border bg-status-danger-bg text-foreground"
+            : "border-gold-border bg-background text-foreground",
         className
       )}
     >
-      <div className="flex items-center justify-between gap-3 mb-2">
+      <div className="mb-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {isCompleted ? (
-            <CheckCircle2 className="size-4 text-[#0A3622]" />
+            <CheckCircle2
+              className="size-4 text-status-success"
+              aria-hidden="true"
+            />
           ) : isFailed ? (
-            <AlertCircle className="size-4 text-red-600" />
+            <AlertCircle
+              className="size-4 text-status-danger"
+              aria-hidden="true"
+            />
           ) : (
-            <Loader2 className="size-4 animate-spin text-[#C5A059]" />
+            <Loader2
+              className="size-4 animate-spin text-gold-text motion-reduce:animate-none"
+              aria-hidden="true"
+            />
           )}
-          <span className="text-xs font-semibold tracking-tight text-foreground font-display">
+          <span className="font-display text-xs font-semibold tracking-tight text-foreground">
             {effectiveTitle}
           </span>
           <Badge
             variant="outline"
             className={cn(
-              "text-[10px] uppercase font-mono px-1.5 py-0",
+              "px-1.5 py-0 text-[11px] font-medium",
               isCompleted
-                ? "border-emerald-600/40 bg-emerald-50 text-emerald-800"
+                ? "border-status-success-border bg-status-success-bg text-status-success"
                 : isFailed
-                  ? "border-red-500/40 bg-red-50 text-red-700"
-                  : "border-[#C5A059]/60 bg-[#C5A059]/10 text-[#0A3622]"
+                  ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+                  : "border-gold-border bg-accent text-primary"
             )}
           >
             {isCompleted
@@ -246,7 +255,7 @@ export function CopilotRealtimeRunBanner({
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs font-mono font-bold text-[#0A3622]">
+          <span className="font-mono text-xs font-bold tabular-nums text-primary">
             {Math.round(currentProgress)}%
           </span>
           {onDismiss && (
@@ -255,32 +264,34 @@ export function CopilotRealtimeRunBanner({
               variant="ghost"
               size="xs"
               onClick={onDismiss}
-              className="size-6 p-0 text-muted-foreground hover:text-foreground"
+              className="size-6 p-0 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="Dismiss banner"
             >
-              <X className="size-3.5" />
+              <X className="size-3.5" aria-hidden="true" />
             </Button>
           )}
         </div>
       </div>
 
       {/* Progress Bar */}
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary mb-2.5">
+      <div className="mb-2.5 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
         <div
           className={cn(
-            "h-full transition-all duration-500 ease-out",
+            "h-full w-full origin-left transition-transform duration-500 ease-out motion-reduce:transition-none motion-reduce:transform-none",
             isCompleted
-              ? "bg-[#0A3622]"
+              ? "bg-status-success"
               : isFailed
-                ? "bg-red-500"
-                : "bg-[#C5A059]"
+                ? "bg-status-danger"
+                : "bg-gold"
           )}
-          style={{ width: `${Math.max(5, Math.min(100, currentProgress))}%` }}
+          style={{
+            transform: `scaleX(${Math.max(5, Math.min(100, currentProgress)) / 100})`,
+          }}
         />
       </div>
 
       {/* 4 Stage Pills */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
+      <div className="grid grid-cols-2 gap-1.5 text-[11px] sm:grid-cols-4">
         {COPILOT_STAGES.map((stg) => {
           const isStageActive = currentStageKey === stg.key
           const isStagePast = currentProgress >= stg.pct
@@ -288,12 +299,12 @@ export function CopilotRealtimeRunBanner({
             <div
               key={stg.key}
               className={cn(
-                "rounded-md px-2 py-1 text-center font-medium border transition-colors",
+                "rounded-md border px-2 py-1 text-center font-medium transition-colors motion-reduce:transition-none",
                 isStageActive
-                  ? "border-[#C5A059] bg-[#C5A059]/20 text-[#0A3622] font-semibold"
+                  ? "border-gold-border bg-accent font-semibold text-primary"
                   : isStagePast
-                    ? "border-emerald-600/30 bg-emerald-500/10 text-emerald-800"
-                    : "border-border/50 bg-secondary/30 text-muted-foreground"
+                    ? "border-status-success-border bg-status-success-bg text-status-success"
+                    : "border-border bg-secondary/50 text-muted-foreground"
               )}
             >
               <div className="truncate">{stg.label}</div>

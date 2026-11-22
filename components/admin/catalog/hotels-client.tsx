@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState, useTransition } from "react"
+import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { HotelData, HotelDialog } from "./hotel-dialog"
@@ -37,6 +37,12 @@ interface HotelsClientProps {
 export function HotelsClient({ initialHotels }: HotelsClientProps) {
   const router = useRouter()
   const [hotels, setHotels] = useState<HotelData[]>(initialHotels)
+  const [prevInitialHotels, setPrevInitialHotels] = useState(initialHotels)
+  if (prevInitialHotels !== initialHotels) {
+    setPrevInitialHotels(initialHotels)
+    setHotels(initialHotels)
+  }
+
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCity, setSelectedCity] = useState<
     "all" | "makkah" | "madinah"
@@ -47,10 +53,6 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
     text: string
   } | null>(null)
   const [, startTransition] = useTransition()
-
-  useEffect(() => {
-    setHotels(initialHotels)
-  }, [initialHotels])
 
   const filteredHotels = hotels.filter((h) => {
     const matchesCity = selectedCity === "all" || h.city === selectedCity
@@ -132,7 +134,7 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
           tone: "info",
           text:
             res.error ||
-            "Hotel is referenced by packages or applications — deactivated instead.",
+            "Hotel is referenced by packages or applications, so it was deactivated instead.",
         })
         router.refresh()
         return
@@ -169,8 +171,8 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
         <div
           className={`rounded-xl border p-3 text-xs font-medium ${
             notice.tone === "error"
-              ? "border-red-300 bg-red-50 text-red-800"
-              : "border-amber-300 bg-amber-50 text-amber-900"
+              ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+              : "border-status-warning-border bg-status-warning-bg text-status-warning"
           }`}
         >
           {notice.text}
@@ -183,9 +185,9 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
           <button
             type="button"
             onClick={() => setSelectedCity("all")}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+            className={`cursor-pointer rounded-md px-3 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
               selectedCity === "all"
-                ? "bg-card text-foreground shadow-xs font-semibold"
+                ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -194,45 +196,56 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
           <button
             type="button"
             onClick={() => setSelectedCity("makkah")}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+            className={`flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
               selectedCity === "makkah"
-                ? "bg-card text-emerald-800 shadow-xs font-semibold"
+                ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <span className="size-2 rounded-full bg-emerald-600" />
+            <span
+              className={`size-2 rounded-full ${
+                selectedCity === "makkah" ? "bg-gold" : "bg-status-success"
+              }`}
+            />
             Makkah ({hotels.filter((h) => h.city === "makkah").length})
           </button>
           <button
             type="button"
             onClick={() => setSelectedCity("madinah")}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+            className={`flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
               selectedCity === "madinah"
-                ? "bg-card text-amber-900 shadow-xs font-semibold"
+                ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <span className="size-2 rounded-full bg-amber-500" />
+            <span
+              className={`size-2 rounded-full ${
+                selectedCity === "madinah" ? "bg-gold" : "bg-status-warning"
+              }`}
+            />
             Madinah ({hotels.filter((h) => h.city === "madinah").length})
           </button>
         </div>
 
         <div className="flex items-center gap-2">
           <div className="relative w-full sm:w-60">
-            <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Search
+              className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
             <Input
               type="text"
-              placeholder="Search hotel or landmark..."
+              placeholder="Search hotel or landmark"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 text-xs h-9 bg-background"
+              className="h-9 bg-background pl-8 text-xs"
             />
           </div>
           <select
             aria-label="Filter hotels by star rating"
             value={selectedRating}
             onChange={(e) => setSelectedRating(e.target.value)}
-            className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-foreground shadow-xs"
+            className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-foreground shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <option value="all">All Stars</option>
             <option value="5">5 Stars</option>
@@ -247,11 +260,14 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
       {/* Grid of Hotels */}
       {filteredHotels.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-16 text-center">
-          <Building2 className="size-10 text-muted-foreground/60 mb-2" />
+          <Building2
+            className="mb-2 size-10 text-muted-foreground/60"
+            aria-hidden="true"
+          />
           <h3 className="text-base font-semibold text-foreground">
             No hotels found
           </h3>
-          <p className="text-xs text-muted-foreground max-w-sm mt-1">
+          <p className="mt-1 max-w-sm text-xs text-muted-foreground">
             Try adjusting your search criteria or add a new property to the
             inventory.
           </p>
@@ -263,9 +279,9 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
             return (
               <div
                 key={hotel.id}
-                className={`flex flex-col justify-between overflow-hidden rounded-xl border bg-card shadow-xs transition-all hover:shadow-md ${
+                className={`flex flex-col justify-between overflow-hidden rounded-xl border bg-card shadow-xs transition-shadow hover:shadow-md motion-reduce:transition-none ${
                   hotel.isActive
-                    ? "border-border hover:border-gold/60"
+                    ? "border-border hover:border-gold-border"
                     : "border-border/60 bg-muted/30"
                 }`}
               >
@@ -278,134 +294,153 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                       className="object-cover"
                       sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-primary/85 via-transparent to-primary/25" />
 
                     <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
                       <Badge
-                        className={`font-semibold capitalize text-[10px] ${
+                        className={`text-[10px] font-semibold capitalize ${
                           hotel.city === "makkah"
-                            ? "bg-emerald-900/90 text-emerald-100 border border-emerald-500/40"
-                            : "bg-amber-900/90 text-amber-100 border border-amber-500/40"
+                            ? "border border-gold-border bg-primary text-primary-foreground"
+                            : "border border-status-warning-border bg-status-warning-bg text-status-warning"
                         }`}
                       >
-                        <MapPin className="size-3 mr-1" />
+                        <MapPin className="mr-1 size-3" aria-hidden="true" />
                         {hotel.city}
                       </Badge>
                       {hotel.isFeatured && (
-                        <Badge className="bg-gold text-emerald-950 font-semibold text-[10px] border border-amber-300">
+                        <Badge className="border border-gold-border bg-gold text-[10px] font-semibold text-foreground">
                           Featured
                         </Badge>
                       )}
                       {hotel.galleryUrls && hotel.galleryUrls.length > 0 && (
-                        <Badge className="bg-black/70 text-white font-mono text-[10px]">
-                          <Images className="size-2.5 mr-1" />
+                        <Badge className="bg-primary font-mono text-[10px] text-primary-foreground tabular-nums">
+                          <Images
+                            className="mr-1 size-2.5"
+                            aria-hidden="true"
+                          />
                           {hotel.galleryUrls.length}
                         </Badge>
                       )}
                     </div>
 
-                    <div className="absolute top-2.5 right-2.5 flex items-center gap-0.5 rounded-full bg-black/60 px-2 py-0.5 backdrop-blur-xs">
+                    <div className="absolute top-2.5 right-2.5 flex items-center gap-0.5 rounded-full bg-primary/95 px-2 py-0.5">
                       {Array.from({ length: hotel.starRating }).map((_, i) => (
-                        <Star key={i} className="size-3 fill-gold text-gold" />
+                        <Star
+                          key={i}
+                          className="size-3 fill-gold text-gold"
+                          aria-hidden="true"
+                        />
                       ))}
                     </div>
 
-                    <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-white text-xs font-medium">
+                    <div className="absolute right-2.5 bottom-2.5 left-2.5 flex items-center justify-between text-xs font-medium text-primary-foreground">
                       <div className="flex items-center gap-1">
                         {hotel.accessType === "walking" ? (
-                          <Footprints className="size-3.5 text-emerald-400" />
+                          <Footprints
+                            className="size-3.5 text-gold"
+                            aria-hidden="true"
+                          />
                         ) : (
-                          <Bus className="size-3.5 text-amber-400" />
+                          <Bus
+                            className="size-3.5 text-gold"
+                            aria-hidden="true"
+                          />
                         )}
                         <span className="truncate">{hotel.distanceLabel}</span>
                       </div>
-                      <span className="shrink-0 font-mono text-[11px] text-white/90 tabular-nums">
+                      <span className="shrink-0 font-mono text-[11px] text-primary-foreground/90 tabular-nums">
                         {hotel.distanceMeters}m
                       </span>
                     </div>
                   </div>
 
-                  <div className="p-4 space-y-3">
+                  <div className="space-y-3 p-4">
                     <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-semibold text-base text-foreground leading-snug">
+                      <h3 className="text-base leading-snug font-semibold text-foreground">
                         {hotel.name}
                       </h3>
                     </div>
 
                     {hotel.locationNotes && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <MapPin className="size-3 text-gold shrink-0" />
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <MapPin
+                          className="size-3 shrink-0 text-gold-text"
+                          aria-hidden="true"
+                        />
                         <span className="truncate">{hotel.locationNotes}</span>
                       </p>
                     )}
 
                     <div className="flex flex-wrap gap-1.5 text-[11px]">
                       {hotel.allowsPrivateRooms && (
-                        <span className="rounded bg-muted px-2 py-0.5 text-muted-foreground font-medium">
+                        <span className="rounded bg-muted px-2 py-0.5 font-medium text-muted-foreground">
                           Private
                         </span>
                       )}
                       {hotel.allowsSharedRooms && (
-                        <span className="rounded bg-muted px-2 py-0.5 text-muted-foreground font-medium">
+                        <span className="rounded bg-muted px-2 py-0.5 font-medium text-muted-foreground">
                           Shared
                         </span>
                       )}
                       {hotel.availableRoomTypes.map((rt) => (
                         <span
                           key={rt}
-                          className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase text-foreground/80"
+                          className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-foreground/80 capitalize"
                         >
                           {rt}
                         </span>
                       ))}
                     </div>
 
-                    <div className="rounded-lg border border-border/80 bg-muted/20 p-2.5 text-xs space-y-1.5">
-                      <div className="flex items-center justify-between text-[11px] font-semibold text-foreground border-b border-border/50 pb-1">
+                    <div className="space-y-1.5 rounded-lg bg-secondary/45 p-2.5 text-xs">
+                      <div className="flex items-center justify-between border-b border-border/50 pb-1 text-[11px] font-semibold text-foreground">
                         <span className="flex items-center gap-1 text-gold-text">
-                          <Coins className="size-3" />
+                          <Coins className="size-3" aria-hidden="true" />
                           Rates (SAR / Night)
                         </span>
                         {hotel.roomPriceSar ? (
-                          <span className="font-mono text-muted-foreground tabular-nums">
-                            Room: SAR {hotel.roomPriceSar}
+                          <span className="text-muted-foreground">
+                            Room:{" "}
+                            <span className="font-mono tabular-nums">
+                              SAR {hotel.roomPriceSar}
+                            </span>
                           </span>
                         ) : null}
                       </div>
-                      <div className="grid grid-cols-4 gap-1 text-center font-mono text-[11px] tabular-nums">
-                        <div className="rounded bg-background p-1 border border-border/40">
-                          <span className="text-[9px] block text-muted-foreground uppercase font-sans">
+                      <div className="grid grid-cols-4 gap-1 text-center text-[11px]">
+                        <div className="rounded bg-background p-1">
+                          <span className="block font-sans text-[9px] text-muted-foreground">
                             Share
                           </span>
-                          <span className="font-bold text-foreground">
+                          <span className="font-mono font-bold text-foreground tabular-nums">
                             {hotel.sharingPriceSar
                               ? `${hotel.sharingPriceSar}`
                               : "-"}
                           </span>
                         </div>
-                        <div className="rounded bg-background p-1 border border-border/40">
-                          <span className="text-[9px] block text-muted-foreground uppercase font-sans">
+                        <div className="rounded bg-background p-1">
+                          <span className="block font-sans text-[9px] text-muted-foreground">
                             Quad
                           </span>
-                          <span className="font-bold text-foreground">
+                          <span className="font-mono font-bold text-foreground tabular-nums">
                             {hotel.quadPriceSar ? `${hotel.quadPriceSar}` : "-"}
                           </span>
                         </div>
-                        <div className="rounded bg-background p-1 border border-border/40">
-                          <span className="text-[9px] block text-muted-foreground uppercase font-sans">
+                        <div className="rounded bg-background p-1">
+                          <span className="block font-sans text-[9px] text-muted-foreground">
                             Triple
                           </span>
-                          <span className="font-bold text-foreground">
+                          <span className="font-mono font-bold text-foreground tabular-nums">
                             {hotel.triplePriceSar
                               ? `${hotel.triplePriceSar}`
                               : "-"}
                           </span>
                         </div>
-                        <div className="rounded bg-background p-1 border border-border/40">
-                          <span className="text-[9px] block text-muted-foreground uppercase font-sans">
+                        <div className="rounded bg-background p-1">
+                          <span className="block font-sans text-[9px] text-muted-foreground">
                             Double
                           </span>
-                          <span className="font-bold text-foreground">
+                          <span className="font-mono font-bold text-foreground tabular-nums">
                             {hotel.doublePriceSar
                               ? `${hotel.doublePriceSar}`
                               : "-"}
@@ -423,18 +458,24 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                     onClick={() =>
                       hotel.id && handleToggle(hotel.id, hotel.isActive)
                     }
-                    className="flex items-center gap-1.5 font-medium transition-colors hover:opacity-80 cursor-pointer"
+                    className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                   >
                     {hotel.isActive ? (
                       <>
-                        <CheckCircle2 className="size-4 text-emerald-600" />
-                        <span className="text-emerald-700 font-semibold">
+                        <CheckCircle2
+                          className="size-4 text-status-success"
+                          aria-hidden="true"
+                        />
+                        <span className="font-semibold text-status-success">
                           Active
                         </span>
                       </>
                     ) : (
                       <>
-                        <XCircle className="size-4 text-muted-foreground" />
+                        <XCircle
+                          className="size-4 text-muted-foreground"
+                          aria-hidden="true"
+                        />
                         <span className="text-muted-foreground">Hidden</span>
                       </>
                     )}
@@ -448,20 +489,20 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                           size="icon-xs"
                           disabled={globalIdx <= 0}
                           onClick={() => hotel.id && handleMove(hotel.id, -1)}
-                          className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                          className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           title="Move Earlier"
                         >
-                          <ArrowUp className="size-3.5" />
+                          <ArrowUp className="size-3.5" aria-hidden="true" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon-xs"
                           disabled={globalIdx >= hotels.length - 1}
                           onClick={() => hotel.id && handleMove(hotel.id, 1)}
-                          className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                          className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           title="Move Later"
                         >
-                          <ArrowDown className="size-3.5" />
+                          <ArrowDown className="size-3.5" aria-hidden="true" />
                         </Button>
                       </>
                     )}
@@ -471,10 +512,10 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                         <Button
                           variant="ghost"
                           size="icon-xs"
-                          className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                          className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           title="Edit Hotel"
                         >
-                          <Edit2 className="size-3.5" />
+                          <Edit2 className="size-3.5" aria-hidden="true" />
                         </Button>
                       }
                     />
@@ -484,10 +525,10 @@ export function HotelsClient({ initialHotels }: HotelsClientProps) {
                       onClick={() =>
                         hotel.id && handleDelete(hotel.id, hotel.name)
                       }
-                      className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                      className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       title="Delete Hotel"
                     >
-                      <Trash2 className="size-3.5" />
+                      <Trash2 className="size-3.5" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>

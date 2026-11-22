@@ -31,9 +31,6 @@ export default function AdminDashboardErrorBoundary({
         </div>
 
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-semibold tracking-widest text-gold-text uppercase">
-            Al Ramlah Travels · Executive Portal
-          </p>
           <h1 className="font-display text-2xl font-bold text-foreground">
             Unable to load this operational view
           </h1>
@@ -53,18 +50,19 @@ export default function AdminDashboardErrorBoundary({
           <Button
             type="button"
             onClick={() => reset()}
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <RotateCcw className="size-4" />
+            <RotateCcw className="size-4" aria-hidden="true" />
             <span>Retry View</span>
           </Button>
 
           <Button
             variant="outline"
             nativeButton={false}
+            className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             render={<Link href="/admin" />}
           >
-            <LayoutDashboard className="size-4" />
+            <LayoutDashboard className="size-4" aria-hidden="true" />
             <span>Back to Overview</span>
           </Button>
         </div>

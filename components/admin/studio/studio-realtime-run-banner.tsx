@@ -65,8 +65,7 @@ export const STUDIO_REALTIME_STAGES = [
 ] as const
 
 export type CanonicalStudioStageKey =
-  | (typeof STUDIO_REALTIME_STAGES)[number]["key"]
-  | "failed"
+  (typeof STUDIO_REALTIME_STAGES)[number]["key"] | "failed"
 
 /**
  * Normalizes any task stage variant (`normalizing_jpeg`, `saving_records`, `persisting_db`, etc.)
@@ -180,18 +179,20 @@ export function StudioRealtimeRunBanner({
 }: StudioRealtimeRunBannerProps) {
   const effectiveRunId = (runId ?? "").trim()
   const initialToken = publicAccessToken ?? accessToken ?? null
-  const initialMode = tokenMode ?? mode ?? (initialToken ? "cloud" : "local")
 
-  const [resolvedToken, setResolvedToken] = React.useState<string | null>(
-    initialToken
-  )
-  const [resolvedMode, setResolvedMode] = React.useState<
-    "cloud" | "local" | "inline"
-  >(initialMode)
-  const [polledSnapshot, setPolledSnapshot] =
-    React.useState<TaskProgressMetadata | null>(
-      initialSnapshot
-        ? {
+  const [mintedAuth, setMintedAuth] = React.useState<{
+    runId: string
+    token: string | null
+    mode: "cloud" | "local" | "inline"
+  } | null>(null)
+  const [polledState, setPolledState] = React.useState<{
+    runId: string
+    snapshot: TaskProgressMetadata
+  } | null>(() =>
+    initialSnapshot
+      ? {
+          runId: effectiveRunId,
+          snapshot: {
             stage: (initialSnapshot.stage as TaskRunStage) ?? "initializing",
             progress:
               typeof initialSnapshot.progress === "number"
@@ -205,27 +206,39 @@ export function StudioRealtimeRunBanner({
               initialSnapshot.detail ??
               initialSnapshot.label ??
               "Initializing studio task...",
-            updatedAt: initialSnapshot.updatedAt ?? new Date().toISOString(),
+            updatedAt: initialSnapshot.updatedAt ?? "pending",
             ...initialSnapshot,
-          }
-        : null
-    )
+          },
+        }
+      : null
+  )
+
+  const propToken =
+    publicAccessToken !== undefined || accessToken !== undefined
+      ? (publicAccessToken ?? accessToken ?? null)
+      : undefined
+  const propMode =
+    tokenMode !== undefined || mode !== undefined
+      ? (tokenMode ?? mode ?? "local")
+      : undefined
+
+  const activeMinted =
+    mintedAuth && mintedAuth.runId === effectiveRunId ? mintedAuth : null
+
+  const resolvedToken =
+    propToken !== undefined ? propToken : (activeMinted?.token ?? null)
+  const resolvedMode: "cloud" | "local" | "inline" =
+    propMode !== undefined
+      ? propMode
+      : (activeMinted?.mode ?? (resolvedToken ? "cloud" : "local"))
+
+  const polledSnapshot =
+    polledState && polledState.runId === effectiveRunId
+      ? polledState.snapshot
+      : null
 
   const completedRunRef = React.useRef<string | null>(null)
   const failedRunRef = React.useRef<string | null>(null)
-
-  // Keep state synced when explicit props change
-  React.useEffect(() => {
-    if (publicAccessToken !== undefined || accessToken !== undefined) {
-      setResolvedToken(publicAccessToken ?? accessToken ?? null)
-    }
-  }, [publicAccessToken, accessToken])
-
-  React.useEffect(() => {
-    if (tokenMode !== undefined || mode !== undefined) {
-      setResolvedMode(tokenMode ?? mode ?? "local")
-    }
-  }, [tokenMode, mode])
 
   // Mint scoped public token automatically when a runId is provided without a token
   React.useEffect(() => {
@@ -234,8 +247,6 @@ export function StudioRealtimeRunBanner({
     }
 
     if (initialToken && (tokenMode === "cloud" || mode === "cloud")) {
-      setResolvedToken(initialToken)
-      setResolvedMode("cloud")
       return
     }
 
@@ -246,21 +257,32 @@ export function StudioRealtimeRunBanner({
         const res = await mintRealtimeRunPublicTokenAction(effectiveRunId)
         if (cancelled || !res.success) return
 
-        if (
-          res.mode === "cloud" &&
-          (res.publicAccessToken || res.token)
-        ) {
-          setResolvedToken(res.publicAccessToken ?? res.token ?? null)
-          setResolvedMode("cloud")
+        if (res.mode === "cloud" && (res.publicAccessToken || res.token)) {
+          setMintedAuth({
+            runId: effectiveRunId,
+            token: res.publicAccessToken ?? res.token ?? null,
+            mode: "cloud",
+          })
         } else {
-          setResolvedMode("local")
+          setMintedAuth({
+            runId: effectiveRunId,
+            token: null,
+            mode: "local",
+          })
           if (res.snapshot) {
-            setPolledSnapshot(res.snapshot)
+            setPolledState({
+              runId: effectiveRunId,
+              snapshot: res.snapshot,
+            })
           }
         }
       } catch {
         if (!cancelled) {
-          setResolvedMode("local")
+          setMintedAuth({
+            runId: effectiveRunId,
+            token: null,
+            mode: "local",
+          })
         }
       }
     }
@@ -275,10 +297,10 @@ export function StudioRealtimeRunBanner({
   // Subscribe via @trigger.dev/react-hooks useRealtimeRun when tokenMode === "cloud"
   const isCloudSubscriptionEnabled = Boolean(
     effectiveRunId &&
-      resolvedToken &&
-      resolvedMode === "cloud" &&
-      !effectiveRunId.startsWith("inline_") &&
-      !effectiveRunId.startsWith("local_")
+    resolvedToken &&
+    resolvedMode === "cloud" &&
+    !effectiveRunId.startsWith("inline_") &&
+    !effectiveRunId.startsWith("local_")
   )
 
   const { run: realtimeRun, error: realtimeError } = useRealtimeRun<
@@ -292,10 +314,10 @@ export function StudioRealtimeRunBanner({
   // Fall back cleanly to local polling if cloud realtime stream errors or when tokenMode === "local"
   const shouldPollLocal = Boolean(
     effectiveRunId &&
-      (resolvedMode === "local" ||
-        resolvedMode === "inline" ||
-        Boolean(realtimeError) ||
-        !resolvedToken)
+    (resolvedMode === "local" ||
+      resolvedMode === "inline" ||
+      Boolean(realtimeError) ||
+      !resolvedToken)
   )
 
   React.useEffect(() => {
@@ -308,7 +330,10 @@ export function StudioRealtimeRunBanner({
       try {
         const res = await getTaskRunProgressAction(effectiveRunId)
         if (cancelled || !res.success || !res.snapshot) return
-        setPolledSnapshot(res.snapshot)
+        setPolledState({
+          runId: effectiveRunId,
+          snapshot: res.snapshot,
+        })
 
         if (
           res.snapshot.stage === "completed" ||
@@ -370,8 +395,7 @@ export function StudioRealtimeRunBanner({
               ? "Task completed"
               : `Running ${rawStage}...`
 
-      const label =
-        typeof meta.label === "string" ? meta.label : detail
+      const label = typeof meta.label === "string" ? meta.label : detail
 
       return {
         stage: rawStage,
@@ -379,9 +403,7 @@ export function StudioRealtimeRunBanner({
         label,
         detail,
         updatedAt:
-          typeof meta.updatedAt === "string"
-            ? meta.updatedAt
-            : new Date().toISOString(),
+          typeof meta.updatedAt === "string" ? meta.updatedAt : "pending",
         ...(typeof meta.extractedCount === "number"
           ? { extractedCount: meta.extractedCount }
           : {}),
@@ -422,7 +444,8 @@ export function StudioRealtimeRunBanner({
         progress: localPct,
         label: localProgress.label ?? detail,
         detail,
-        updatedAt: localProgress.updatedAt ?? new Date().toISOString(),
+        updatedAt:
+          localProgress.updatedAt ?? polledSnapshot?.updatedAt ?? "pending",
         extractedCount:
           localProgress.extractedCount ?? polledSnapshot?.extractedCount,
         pngUrl: localProgress.pngUrl ?? polledSnapshot?.pngUrl,
@@ -444,8 +467,9 @@ export function StudioRealtimeRunBanner({
         stage: "initializing",
         progress: 10,
         label: "Initializing studio pipeline...",
-        detail: "Preparing multimodal AI extraction & 4K Chromium asset pipeline...",
-        updatedAt: new Date().toISOString(),
+        detail:
+          "Preparing multimodal AI extraction & 4K Chromium asset pipeline...",
+        updatedAt: "pending",
       }
     }
 
@@ -493,7 +517,7 @@ export function StudioRealtimeRunBanner({
     progress: 10,
     label: "Initializing...",
     detail: "Preparing Trigger.dev v4 task run...",
-    updatedAt: new Date().toISOString(),
+    updatedAt: "pending",
   }
 
   const canonicalStage = normalizeStudioStage(currentSnapshot.stage)
@@ -519,45 +543,61 @@ export function StudioRealtimeRunBanner({
       data-stage={canonicalStage}
       data-mode={resolvedMode}
       className={cn(
-        "relative overflow-hidden rounded-2xl border p-4 shadow-sm transition-all",
+        "relative overflow-hidden rounded-2xl border p-4 shadow-sm transition-colors motion-reduce:transition-none",
         isFailed
-          ? "border-red-400/60 bg-red-950/95 text-white"
-          : "border-[#C5A059]/60 bg-gradient-to-r from-[#064E3B] via-[#0A3622] to-[#064E3B] text-[#FBF9F4]",
+          ? "border-destructive-foreground/30 bg-destructive text-destructive-foreground"
+          : "border-gold/60 bg-gradient-to-r from-sidebar via-primary to-sidebar text-primary-foreground",
         className
       )}
     >
       {/* Top Row: Title, Mode Badge, Stage Badge, Percentage, and Dismiss */}
       <div className="relative z-10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#C5A059]/50 bg-[#C5A059]/15 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[#C5A059]">
+          <div className="flex items-center gap-2">
             {isFailed ? (
-              <AlertCircle className="size-3.5 text-red-300" />
+              <AlertCircle
+                className="size-4 shrink-0 text-destructive-foreground"
+                aria-hidden="true"
+              />
             ) : isCompleted ? (
-              <CheckCircle2 className="size-3.5 text-[#C5A059]" />
+              <CheckCircle2
+                className="size-4 shrink-0 text-gold"
+                aria-hidden="true"
+              />
             ) : (
-              <Loader2 className="size-3.5 animate-spin text-[#C5A059]" />
+              <Loader2
+                className="size-4 shrink-0 animate-spin text-gold motion-reduce:animate-none"
+                aria-hidden="true"
+              />
             )}
-            <span>
-              {isCloudSubscriptionEnabled
-                ? "Trigger.dev Cloud Realtime"
-                : "Studio Live Telemetry"}
-            </span>
-          </span>
+            <h3 className="font-display text-sm font-bold tracking-tight text-primary-foreground">
+              {title || defaultTitle}
+            </h3>
+          </div>
 
-          <h3 className="font-display text-sm font-bold tracking-tight text-[#FBF9F4]">
-            {title || defaultTitle}
-          </h3>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
+              isFailed
+                ? "border-destructive-foreground/35 bg-destructive-foreground/15 text-destructive-foreground"
+                : "border-gold/50 bg-gold/15 text-gold"
+            )}
+          >
+            {isCloudSubscriptionEnabled
+              ? "Trigger.dev Cloud Realtime"
+              : "Studio Live Telemetry"}
+          </span>
 
           {/* Active Stage Badge */}
           <Badge
             variant="outline"
             className={cn(
-              "font-mono text-[11px] font-bold px-2.5 py-0.5 border",
+              "border px-2.5 py-0.5 font-mono text-[11px] font-bold",
               isFailed
-                ? "border-red-300/60 bg-red-900/50 text-red-100"
+                ? "border-destructive-foreground/40 bg-destructive-foreground/15 text-destructive-foreground"
                 : isCompleted
-                  ? "border-emerald-300/60 bg-emerald-900/60 text-emerald-100"
-                  : "border-[#C5A059] bg-[#C5A059]/20 text-[#FBF9F4]"
+                  ? "border-gold/60 bg-gold/20 text-primary-foreground"
+                  : "border-gold bg-gold/20 text-primary-foreground"
             )}
           >
             {canonicalStage}
@@ -565,15 +605,20 @@ export function StudioRealtimeRunBanner({
 
           {typeof currentSnapshot.extractedCount === "number" &&
             currentSnapshot.extractedCount > 0 && (
-              <Badge className="bg-[#C5A059] text-[#064E3B] font-mono text-[11px] font-bold">
-                <Sparkles className="size-3 mr-1" />
+              <Badge className="bg-gold text-[11px] font-bold text-gold-foreground tabular-nums">
+                <Sparkles className="mr-1 size-3" aria-hidden="true" />
                 {currentSnapshot.extractedCount} Cards Extracted
               </Badge>
             )}
         </div>
 
         <div className="flex items-center gap-3 self-end sm:self-auto">
-          <span className="font-mono text-sm font-bold text-[#C5A059] tabular-nums">
+          <span
+            className={cn(
+              "font-mono text-sm font-bold tabular-nums",
+              isFailed ? "text-destructive-foreground" : "text-gold"
+            )}
+          >
             {currentSnapshot.progress}%
           </span>
 
@@ -583,10 +628,10 @@ export function StudioRealtimeRunBanner({
               size="icon-sm"
               variant="ghost"
               onClick={onDismiss}
-              className="size-6 rounded-full text-[#FBF9F4]/70 hover:bg-white/10 hover:text-white cursor-pointer"
+              className="size-6 cursor-pointer rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
               title="Dismiss progress banner"
             >
-              <X className="size-3.5" />
+              <X className="size-3.5" aria-hidden="true" />
             </Button>
           )}
         </div>
@@ -596,14 +641,20 @@ export function StudioRealtimeRunBanner({
       <div className="relative z-10 mt-3">
         <Progress
           value={currentSnapshot.progress}
-          className="h-2.5 w-full rounded-full bg-black/30 overflow-hidden [&_[data-slot=progress-track]]:h-2.5 [&_[data-slot=progress-track]]:bg-white/15 [&_[data-slot=progress-indicator]]:bg-gradient-to-r [&_[data-slot=progress-indicator]]:from-[#C5A059] [&_[data-slot=progress-indicator]]:to-emerald-400"
+          className="h-2.5 w-full overflow-hidden rounded-full bg-sidebar/50 [&_[data-slot=progress-indicator]]:bg-gradient-to-r [&_[data-slot=progress-indicator]]:from-gold [&_[data-slot=progress-indicator]]:to-primary-foreground [&_[data-slot=progress-track]]:h-2.5 [&_[data-slot=progress-track]]:bg-primary-foreground/15"
         />
       </div>
 
       {/* Detail Message & Asset Quick Links */}
-      <div className="relative z-10 mt-2.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs">
-        <div className="flex items-center gap-2 text-[#FBF9F4]/90">
-          <Wand2 className="size-3.5 shrink-0 text-[#C5A059]" />
+      <div className="relative z-10 mt-2.5 flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 text-primary-foreground/90">
+          <Wand2
+            className={cn(
+              "size-3.5 shrink-0",
+              isFailed ? "text-destructive-foreground" : "text-gold"
+            )}
+            aria-hidden="true"
+          />
           <span className="font-medium">
             {currentSnapshot.error ||
               currentSnapshot.detail ||
@@ -621,11 +672,11 @@ export function StudioRealtimeRunBanner({
                 href={currentSnapshot.pngUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded-md border border-[#C5A059]/60 bg-[#C5A059]/20 px-2 py-0.5 text-[11px] font-bold text-[#FBF9F4] hover:bg-[#C5A059]/30"
+                className="inline-flex items-center gap-1 rounded-md border border-gold/60 bg-gold/20 px-2 py-0.5 text-[11px] font-bold text-primary-foreground transition-colors hover:bg-gold/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
               >
-                <ImageIcon className="size-3 text-[#C5A059]" />
+                <ImageIcon className="size-3 text-gold" aria-hidden="true" />
                 <span>4K PNG</span>
-                <ExternalLink className="size-2.5" />
+                <ExternalLink className="size-2.5" aria-hidden="true" />
               </a>
             )}
             {currentSnapshot.socialJpegUrl && (
@@ -633,10 +684,10 @@ export function StudioRealtimeRunBanner({
                 href={currentSnapshot.socialJpegUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded-md border border-emerald-400/50 bg-emerald-900/50 px-2 py-0.5 text-[11px] font-bold text-emerald-100 hover:bg-emerald-900/70"
+                className="inline-flex items-center gap-1 rounded-md border border-gold/50 bg-sidebar/60 px-2 py-0.5 text-[11px] font-bold text-primary-foreground transition-colors hover:bg-sidebar/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
               >
                 <span>1080p Social JPEG</span>
-                <ExternalLink className="size-2.5" />
+                <ExternalLink className="size-2.5" aria-hidden="true" />
               </a>
             )}
             {currentSnapshot.pdfUrl && (
@@ -644,11 +695,11 @@ export function StudioRealtimeRunBanner({
                 href={currentSnapshot.pdfUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded-md border border-white/30 bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-[#FBF9F4] hover:bg-white/20"
+                className="inline-flex items-center gap-1 rounded-md border border-primary-foreground/30 bg-primary-foreground/10 px-2 py-0.5 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
               >
-                <FileText className="size-3 text-[#C5A059]" />
+                <FileText className="size-3 text-gold" aria-hidden="true" />
                 <span>Vector PDF</span>
-                <ExternalLink className="size-2.5" />
+                <ExternalLink className="size-2.5" aria-hidden="true" />
               </a>
             )}
           </div>
@@ -669,29 +720,32 @@ export function StudioRealtimeRunBanner({
             <div
               key={stageItem.key}
               className={cn(
-                "flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-mono transition-all",
+                "flex items-center gap-1.5 rounded-lg border px-2 py-1 font-mono text-[11px] transition-colors motion-reduce:transition-none",
                 isStepDone
-                  ? "border-[#C5A059]/60 bg-[#C5A059]/20 text-[#FBF9F4] font-bold"
+                  ? "border-gold/60 bg-gold/20 font-bold text-primary-foreground"
                   : isStepCurrent
-                    ? "border-[#C5A059] bg-white/15 text-[#C5A059] font-bold shadow-xs"
-                    : "border-white/10 bg-black/20 text-[#FBF9F4]/55"
+                    ? "border-gold bg-primary-foreground/15 font-bold text-gold shadow-xs"
+                    : "border-primary-foreground/15 bg-sidebar/35 text-primary-foreground/65"
               )}
             >
               {isStepDone ? (
-                <CheckCircle2 className="size-3 shrink-0 text-[#C5A059]" />
+                <CheckCircle2
+                  className="size-3 shrink-0 text-gold"
+                  aria-hidden="true"
+                />
               ) : isStepCurrent ? (
-                <Loader2 className="size-3 shrink-0 animate-spin text-[#C5A059]" />
+                <Loader2
+                  className="size-3 shrink-0 animate-spin text-gold motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
               ) : (
-                <span className="size-1.5 shrink-0 rounded-full bg-white/30" />
+                <span className="size-1.5 shrink-0 rounded-full bg-primary-foreground/40" />
               )}
               <span className="truncate">{stageItem.shortLabel}</span>
             </div>
           )
         })}
       </div>
-
-      {/* Subtle Haramain Gold Glow */}
-      <div className="pointer-events-none absolute -right-8 -bottom-8 size-36 rounded-full bg-[#C5A059]/10 blur-2xl" />
     </div>
   )
 }

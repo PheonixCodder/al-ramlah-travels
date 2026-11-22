@@ -9,6 +9,7 @@ import {
   Globe,
   Upload,
   Image as ImageIcon,
+  Film,
   FileText,
   CheckCircle2,
   Loader2,
@@ -68,12 +69,166 @@ import {
 import { mintRealtimeRunPublicTokenAction } from "@/app/actions/trigger-realtime"
 import { StudioRealtimeRunBanner } from "@/components/admin/studio/studio-realtime-run-banner"
 import type { TaskProgressMetadata } from "@/trigger/metadata"
+import {
+  STUDIO_MODE_A_LABEL,
+  STUDIO_MODE_B_LABEL,
+} from "@/lib/constants/admin-labels"
 import { cn } from "@/lib/utils"
+
+function extractPreviewPathname(url: string): string {
+  return url.trim().split(/[?#]/)[0]?.trim().toLowerCase() ?? ""
+}
 
 function isPdfAssetPreviewUrl(url: string | null | undefined): boolean {
   if (!url) return false
-  const clean = url.split("?")[0]?.split("#")[0]?.trim().toLowerCase() ?? ""
-  return clean.endsWith(".pdf")
+  return extractPreviewPathname(url).endsWith(".pdf")
+}
+
+function isVideoAssetPreviewUrl(url: string | null | undefined): boolean {
+  if (!url) return false
+  const pathname = extractPreviewPathname(url)
+  return (
+    pathname.endsWith(".mp4") ||
+    pathname.endsWith(".mov") ||
+    pathname.endsWith(".webm") ||
+    pathname.endsWith(".m4v")
+  )
+}
+
+export function getRenderableStudioImageUrl(
+  url: string | null | undefined
+): string | null {
+  if (!url) return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+  if (isPdfAssetPreviewUrl(trimmed) || isVideoAssetPreviewUrl(trimmed)) {
+    return null
+  }
+  return trimmed
+}
+
+function isSafeVectorPdfPreviewHref(
+  url: string | null | undefined
+): url is string {
+  if (!url) return false
+  const trimmed = url.trim()
+  return trimmed.startsWith("https://") || trimmed.startsWith("/api/media/")
+}
+
+const VECTOR_PDF_TILE_STYLES = {
+  card: {
+    container: "gap-2 bg-secondary/70 p-6",
+    icon: "size-10",
+    title: "text-xs",
+    link: "text-[11px]",
+  },
+  compact: {
+    container: "gap-1 bg-secondary p-2",
+    icon: "size-6",
+    title: "text-[11px]",
+    link: "text-[11px]",
+  },
+  thumb: {
+    container: "gap-0.5 bg-secondary p-1",
+    icon: "size-4",
+    title: "text-[10px] leading-tight",
+    link: "text-[10px] leading-tight",
+  },
+} as const
+
+function VectorPdfPreviewTile({
+  url,
+  size = "card",
+}: {
+  url: string
+  size?: keyof typeof VECTOR_PDF_TILE_STYLES
+}) {
+  const safeHref = isSafeVectorPdfPreviewHref(url) ? url.trim() : null
+  const styles = VECTOR_PDF_TILE_STYLES[size]
+
+  return (
+    <div
+      className={cn(
+        "flex h-full w-full flex-col items-center justify-center text-center",
+        styles.container
+      )}
+    >
+      <FileText
+        className={cn("text-gold-text", styles.icon)}
+        aria-hidden="true"
+      />
+      <span className={cn("font-bold text-primary", styles.title)}>
+        Vector PDF Document
+      </span>
+      {safeHref && (
+        <a
+          href={safeHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            "font-semibold text-status-success underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            styles.link
+          )}
+        >
+          Open Vector PDF
+        </a>
+      )}
+    </div>
+  )
+}
+
+function StudioAssetPreviewMedia({
+  url,
+  alt,
+  size = "card",
+  imageClassName = "object-cover",
+}: {
+  url: string | null | undefined
+  alt: string
+  size?: keyof typeof VECTOR_PDF_TILE_STYLES
+  imageClassName?: string
+}) {
+  if (url && isPdfAssetPreviewUrl(url)) {
+    return <VectorPdfPreviewTile url={url} size={size} />
+  }
+
+  const renderableImg = getRenderableStudioImageUrl(url)
+  if (renderableImg) {
+    return (
+      <Image
+        src={renderableImg}
+        alt={alt}
+        fill
+        unoptimized
+        className={imageClassName}
+      />
+    )
+  }
+
+  const isVideo = isVideoAssetPreviewUrl(url)
+  const styles = VECTOR_PDF_TILE_STYLES[size]
+  const Icon = isVideo ? Film : ImageIcon
+
+  return (
+    <div
+      className={cn(
+        "flex h-full w-full flex-col items-center justify-center text-center",
+        styles.container,
+        "bg-secondary/60"
+      )}
+    >
+      <Icon
+        className={cn(
+          isVideo ? "text-gold-text" : "text-muted-foreground",
+          styles.icon
+        )}
+        aria-hidden="true"
+      />
+      <span className={cn("font-semibold text-muted-foreground", styles.title)}>
+        {isVideo ? "Video Asset" : "No Image"}
+      </span>
+    </div>
+  )
 }
 
 function formatStudioPkrTier(amount: number): string {
@@ -219,6 +374,12 @@ export interface StudioHubClientProps {
 
 export type StudioTabKey = "studio" | "vault" | "packages"
 
+const VALID_STUDIO_TABS: readonly StudioTabKey[] = [
+  "studio",
+  "vault",
+  "packages",
+]
+
 /**
  * Direct-to-R2 upload utility using presigned URLs to bypass Vercel 4.5MB serverless body limits.
  */
@@ -244,7 +405,8 @@ async function uploadFileDirectToR2(
       error?: string
     }
     throw new Error(
-      errorJson.error || `Upload authorization failed (HTTP ${presignRes.status})`
+      errorJson.error ||
+        `Upload authorization failed (HTTP ${presignRes.status})`
     )
   }
 
@@ -254,7 +416,10 @@ async function uploadFileDirectToR2(
     key: string
   }
 
-  onProgress?.(45, "Streaming file directly to Cloudflare R2 (zero 4.5MB limit)...")
+  onProgress?.(
+    45,
+    "Streaming file directly to Cloudflare R2 (zero 4.5MB limit)..."
+  )
 
   const putRes = await fetch(uploadUrl, {
     method: "PUT",
@@ -288,14 +453,12 @@ export function StudioHubClient({
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  const validTabs: StudioTabKey[] = ["studio", "vault", "packages"]
-
   const activeTab: StudioTabKey = React.useMemo(() => {
     const urlTab = searchParams.get("tab") as StudioTabKey | null
-    if (urlTab && validTabs.includes(urlTab)) {
+    if (urlTab && VALID_STUDIO_TABS.includes(urlTab)) {
       return urlTab
     }
-    if (initialTab && validTabs.includes(initialTab as StudioTabKey)) {
+    if (initialTab && VALID_STUDIO_TABS.includes(initialTab as StudioTabKey)) {
       return initialTab as StudioTabKey
     }
     return "studio"
@@ -317,17 +480,24 @@ export function StudioHubClient({
   const [assetsList, setAssetsList] =
     React.useState<PostAssetRecord[]>(initialAssets)
 
-  React.useEffect(() => {
+  const [prevInitialFlyers, setPrevInitialFlyers] =
+    React.useState(initialFlyers)
+  if (prevInitialFlyers !== initialFlyers) {
+    setPrevInitialFlyers(initialFlyers)
     setFlyersList(initialFlyers)
-  }, [initialFlyers])
-
-  React.useEffect(() => {
+  }
+  const [prevInitialAssets, setPrevInitialAssets] =
+    React.useState(initialAssets)
+  if (prevInitialAssets !== initialAssets) {
+    setPrevInitialAssets(initialAssets)
     setAssetsList(initialAssets)
-  }, [initialAssets])
-
-  React.useEffect(() => {
+  }
+  const [prevInitialSuppliers, setPrevInitialSuppliers] =
+    React.useState(initialSuppliers)
+  if (prevInitialSuppliers !== initialSuppliers) {
+    setPrevInitialSuppliers(initialSuppliers)
     setSuppliersList(initialSuppliers)
-  }, [initialSuppliers])
+  }
 
   const [notice, setNotice] = React.useState<{
     type: "success" | "error" | "info"
@@ -418,8 +588,10 @@ export function StudioHubClient({
 
       if (res.success && res.supplier) {
         const created = res.supplier as SupplierRecord
-        setSuppliersList((prev) => [...prev, created])
+        const nextSuppliers = [...suppliersList, created]
+        setSuppliersList(nextSuppliers)
         setSelectedSupplierId(created.id)
+        applySupplierDefaults(created.id, ingestionMode, nextSuppliers)
         setIsSupplierModalOpen(false)
         setNewSupName("")
         setNewSupCodePrefix("")
@@ -465,32 +637,35 @@ export function StudioHubClient({
     triple: 25000,
     double: 28000,
   })
-  const [departureCityCode, setDepartureCityCode] = React.useState<string>("LHE")
+  const [departureCityCode, setDepartureCityCode] =
+    React.useState<string>("LHE")
 
   const [posterFile, setPosterFile] = React.useState<File | null>(null)
   const [posterDirectUrl, setPosterDirectUrl] = React.useState<string>("")
   const [uploadProgress, setUploadProgress] = React.useState<number>(0)
   const [uploadStatus, setUploadStatus] = React.useState<string>("")
 
-  // Sync supplier default commission & mode when supplier or ingestionMode changes
-  React.useEffect(() => {
-    const s = suppliersList.find((sup) => sup.id === selectedSupplierId)
-    if (s) {
-      const defComm = s.defaultCommissionPkr || 22000
-      setCommissionPkr(defComm)
-      setPerTierMarkup({
-        sharing: defComm,
-        quad: defComm,
-        triple: defComm,
-        double: defComm,
-      })
-      if (ingestionMode === "raw_supplier_flyer") {
-        setCommissionMode(s.defaultCommissionMode || "net_plus_markup")
-      } else {
-        setCommissionMode("included_in_flyer")
-      }
+  const applySupplierDefaults = (
+    supplierId: string,
+    mode: "gemini_ultra_poster" | "raw_supplier_flyer",
+    list: SupplierRecord[] = suppliersList
+  ) => {
+    const s = list.find((sup) => sup.id === supplierId)
+    if (!s) return
+    const defComm = s.defaultCommissionPkr || 22000
+    setCommissionPkr(defComm)
+    setPerTierMarkup({
+      sharing: defComm,
+      quad: defComm,
+      triple: defComm,
+      double: defComm,
+    })
+    if (mode === "raw_supplier_flyer") {
+      setCommissionMode(s.defaultCommissionMode || "net_plus_markup")
+    } else {
+      setCommissionMode("included_in_flyer")
     }
-  }, [selectedSupplierId, suppliersList, ingestionMode])
+  }
 
   // ----------------------------------------------------------------------
   // HANDLERS: FINISHED 4K POSTER INGESTION & 4K GOTENBERG RENDERS
@@ -537,7 +712,10 @@ export function StudioHubClient({
                     ...prev,
                     localProgress: {
                       stage: pct < 45 ? "initializing" : "uploading_r2",
-                      progress: Math.min(35, Math.max(12, Math.round(pct * 0.35))),
+                      progress: Math.min(
+                        35,
+                        Math.max(12, Math.round(pct * 0.35))
+                      ),
                       detail: text,
                       updatedAt: new Date().toISOString(),
                     },
@@ -558,7 +736,9 @@ export function StudioHubClient({
         return
       }
 
-      setUploadStatus("Invoking Gemini Ultra Multimodal AI extraction & 1080p social optimizer...")
+      setUploadStatus(
+        "Invoking Gemini Ultra Multimodal AI extraction & 1080p social optimizer..."
+      )
       setActiveRealtimeRun((prev) =>
         prev
           ? {
@@ -592,8 +772,7 @@ export function StudioHubClient({
         departureCityCode,
       })
 
-      const returnedRunId =
-        (res as { runId?: string }).runId || syntheticRunId
+      const returnedRunId = (res as { runId?: string }).runId || syntheticRunId
       void syncRunTokenIfAvailable(returnedRunId)
 
       if (res.success) {
@@ -619,7 +798,7 @@ export function StudioHubClient({
         )
         setNotice({
           type: "success",
-          text: `✨ Successfully ingested 4K poster! Preserved 4K asset, generated 1080p social JPEG, and extracted ${res.packagesCount} package cards.`,
+          text: `Successfully ingested 4K poster! Preserved 4K asset, generated 1080p social JPEG, and extracted ${res.packagesCount} package cards.`,
         })
         setPosterFile(null)
         setPosterDirectUrl("")
@@ -699,8 +878,7 @@ export function StudioHubClient({
 
     try {
       const res = await generateMultiPackageSheetForFlyer(flyerId)
-      const returnedRunId =
-        (res as { runId?: string }).runId || syntheticRunId
+      const returnedRunId = (res as { runId?: string }).runId || syntheticRunId
       void syncRunTokenIfAvailable(returnedRunId)
 
       if (res.success && res.pngUrl) {
@@ -809,8 +987,7 @@ export function StudioHubClient({
 
     try {
       const res = await generateSingleSpotlightForCard(pkgId)
-      const returnedRunId =
-        (res as { runId?: string }).runId || syntheticRunId
+      const returnedRunId = (res as { runId?: string }).runId || syntheticRunId
       void syncRunTokenIfAvailable(returnedRunId)
 
       if (res.success && res.pngUrl) {
@@ -912,7 +1089,8 @@ export function StudioHubClient({
   const [copiedCode, setCopiedCode] = React.useState<string | null>(null)
 
   // Quick Edit Modal State
-  const [editingCard, setEditingCard] = React.useState<SupplierFlyerPackageRecord | null>(null)
+  const [editingCard, setEditingCard] =
+    React.useState<SupplierFlyerPackageRecord | null>(null)
   const [editForm, setEditForm] = React.useState<{
     makkahHotelName: string
     makkahNights: string
@@ -964,7 +1142,8 @@ export function StudioHubClient({
   })
 
   // Delete Flyer Batch State
-  const [deletingFlyer, setDeletingFlyer] = React.useState<SupplierFlyerRecord | null>(null)
+  const [deletingFlyer, setDeletingFlyer] =
+    React.useState<SupplierFlyerRecord | null>(null)
 
   // Dedicated Package Spotlight Image Modal State
   const [imageModalCard, setImageModalCard] = React.useState<{
@@ -975,10 +1154,13 @@ export function StudioHubClient({
   } | null>(null)
   const [imageModalUrlInput, setImageModalUrlInput] = React.useState("")
   const [imageModalUploading, setImageModalUploading] = React.useState(false)
-  const [imageModalProgress, setImageModalProgress] = React.useState<string | null>(null)
+  const [imageModalProgress, setImageModalProgress] = React.useState<
+    string | null
+  >(null)
   const imageModalFileInputRef = React.useRef<HTMLInputElement | null>(null)
 
-  const [editCardImageUploading, setEditCardImageUploading] = React.useState(false)
+  const [editCardImageUploading, setEditCardImageUploading] =
+    React.useState(false)
   const editCardFileInputRef = React.useRef<HTMLInputElement | null>(null)
 
   const copyToClipboard = (text: string, identifier: string) => {
@@ -1065,7 +1247,10 @@ export function StudioHubClient({
     } catch (err: unknown) {
       setNotice({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to update package image.",
+        text:
+          err instanceof Error
+            ? err.message
+            : "Failed to update package image.",
       })
     } finally {
       setImageModalUploading(false)
@@ -1089,7 +1274,10 @@ export function StudioHubClient({
     } catch (err) {
       setNotice({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to upload package image.",
+        text:
+          err instanceof Error
+            ? err.message
+            : "Failed to upload package image.",
       })
       setImageModalUploading(false)
     } finally {
@@ -1108,13 +1296,16 @@ export function StudioHubClient({
       const { publicUrl } = await uploadFileDirectToR2(
         file,
         "posters/spotlights",
-        (_percent, _statusText) => {}
+        () => {}
       )
       setEditForm((prev) => ({ ...prev, spotlightPosterUrl: publicUrl }))
     } catch (err) {
       setNotice({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to upload package image.",
+        text:
+          err instanceof Error
+            ? err.message
+            : "Failed to upload package image.",
       })
     } finally {
       setEditCardImageUploading(false)
@@ -1167,7 +1358,8 @@ export function StudioHubClient({
     } catch (err: unknown) {
       setNotice({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to update package card.",
+        text:
+          err instanceof Error ? err.message : "Failed to update package card.",
       })
     } finally {
       setBusyKey(null)
@@ -1193,7 +1385,9 @@ export function StudioHubClient({
           })
         } else {
           setFlyersList((prev) => prev.filter((f) => f.id !== deletingFlyer.id))
-          setAssetsList((prev) => prev.filter((a) => a.flyerId !== deletingFlyer.id))
+          setAssetsList((prev) =>
+            prev.filter((a) => a.flyerId !== deletingFlyer.id)
+          )
           setNotice({
             type: "success",
             text: `Flyer batch "${deletingFlyer.title}" and associated assets deleted successfully.`,
@@ -1210,7 +1404,8 @@ export function StudioHubClient({
     } catch (err: unknown) {
       setNotice({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to delete flyer batch.",
+        text:
+          err instanceof Error ? err.message : "Failed to delete flyer batch.",
       })
     } finally {
       setBusyKey(null)
@@ -1231,7 +1426,9 @@ export function StudioHubClient({
                 ? {
                     ...card,
                     publishedGroupPackageId:
-                      res.groupPackageId || card.publishedGroupPackageId || "optimistic-published",
+                      res.groupPackageId ||
+                      card.publishedGroupPackageId ||
+                      "optimistic-published",
                     publishedGroupDepartureId:
                       res.groupDepartureId || card.publishedGroupDepartureId,
                   }
@@ -1311,7 +1508,10 @@ export function StudioHubClient({
     }
   }
 
-  const handleApproveDraftFlyer = async (flyerId: string, flyerTitle: string) => {
+  const handleApproveDraftFlyer = async (
+    flyerId: string,
+    flyerTitle: string
+  ) => {
     setBusyKey(`approve-draft-${flyerId}`)
     setNotice(null)
     try {
@@ -1337,7 +1537,10 @@ export function StudioHubClient({
     }
   }
 
-  const handleUnpublishFromWebsite = async (pkgId: string, postCode: string) => {
+  const handleUnpublishFromWebsite = async (
+    pkgId: string,
+    postCode: string
+  ) => {
     setBusyKey(`unpub-${pkgId}`)
     setNotice(null)
     try {
@@ -1363,7 +1566,8 @@ export function StudioHubClient({
   const filteredFlyers = React.useMemo(() => {
     return flyersList.filter((flyer) => {
       const matchesSupplier =
-        vaultSupplierFilter === "all" || flyer.supplierId === vaultSupplierFilter
+        vaultSupplierFilter === "all" ||
+        flyer.supplierId === vaultSupplierFilter
 
       const q = vaultSearch.toLowerCase().trim()
       if (!q) return matchesSupplier
@@ -1389,7 +1593,8 @@ export function StudioHubClient({
   const filteredAssets = React.useMemo(() => {
     return assetsList.filter((asset) => {
       const matchesSupplier =
-        vaultSupplierFilter === "all" || asset.supplierId === vaultSupplierFilter
+        vaultSupplierFilter === "all" ||
+        asset.supplierId === vaultSupplierFilter
 
       const q = vaultSearch.toLowerCase().trim()
       if (!q) return matchesSupplier
@@ -1412,24 +1617,28 @@ export function StudioHubClient({
       {/* ==================================================================== */}
       {/* FLAGSHIP HARAMAIN LUXURY HEADER & TOP TABS                           */}
       {/* ==================================================================== */}
-      <div className="relative overflow-hidden rounded-2xl border border-gold/40 bg-gradient-to-r from-[#0A3622] via-[#0F4C31] to-[#0A3622] p-6 text-white shadow-md">
+      <div className="relative overflow-hidden rounded-2xl border border-gold/40 bg-gradient-to-r from-sidebar via-primary to-sidebar p-6 text-primary-foreground shadow-md">
         <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="inline-flex items-center gap-1 rounded-full border border-gold/50 bg-gold/15 px-3 py-0.5 text-[11px] font-bold uppercase tracking-wider text-gold">
-                <Sparkles className="size-3 text-gold" />
-                Multimodal AI &amp; 4K Poster Studio
+            <h1 className="font-display text-2xl font-bold tracking-tight text-primary-foreground sm:text-3xl">
+              4K Poster &amp; Package Studio
+            </h1>
+            <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-primary-foreground/85 sm:text-sm">
+              Drop your finished 4K Gemini Ultra posters or PDFs. Streams
+              directly to Cloudflare R2, auto-generates 1080×1520 social JPEGs,
+              extracts every package card &amp; ART code via AI, tracks
+              wholesale commission vs. supplier net cost, and publishes to your
+              website in 1 click.
+            </p>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full border border-gold/50 bg-gold/15 px-3 py-0.5 text-[11px] font-bold text-gold">
+                <Sparkles className="size-3 text-gold" aria-hidden="true" />
+                <span>Multimodal AI &amp; 4K Poster Studio</span>
               </span>
-              <span className="text-xs text-white/70">
+              <span className="font-mono text-xs text-primary-foreground/75">
                 /admin/studio
               </span>
             </div>
-            <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              4K Poster &amp; Package Studio
-            </h1>
-            <p className="mt-1.5 text-xs text-white/80 max-w-2xl leading-relaxed sm:text-sm">
-              Drop your finished 4K Gemini Ultra posters or PDFs. Streams directly to Cloudflare R2, auto-generates 1080×1520 social JPEGs, extracts every package card &amp; ART-... code via AI, tracks wholesale commission vs. supplier net cost, and publishes to your website in 1 click.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -1438,9 +1647,9 @@ export function StudioHubClient({
               variant="outline"
               size="sm"
               onClick={() => setIsSupplierModalOpen(true)}
-              className="border-gold/40 bg-white/10 text-white hover:bg-white/20 text-xs font-semibold gap-1.5 cursor-pointer backdrop-blur-xs"
+              className="cursor-pointer gap-1.5 border-gold/50 bg-primary-foreground/10 text-xs font-semibold text-primary-foreground hover:bg-primary-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
             >
-              <Building2 className="size-3.5 text-gold" />
+              <Building2 className="size-3.5 text-gold" aria-hidden="true" />
               <span>+ Add B2B Supplier</span>
             </Button>
 
@@ -1448,16 +1657,13 @@ export function StudioHubClient({
               type="button"
               size="sm"
               onClick={() => router.push("/admin/campaigns?tab=social")}
-              className="bg-gold hover:bg-gold/90 text-primary font-bold text-xs gap-1.5 cursor-pointer shadow-xs"
+              className="cursor-pointer gap-1.5 bg-gold text-xs font-bold text-gold-foreground shadow-xs hover:bg-gold/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
             >
-              <Share2 className="size-3.5" />
+              <Share2 className="size-3.5" aria-hidden="true" />
               <span>Go to Campaigns Hub</span>
             </Button>
           </div>
         </div>
-
-        {/* Subtle Decorative Elements */}
-        <div className="absolute -right-10 -bottom-10 size-48 rounded-full bg-gold/10 blur-2xl pointer-events-none" />
       </div>
 
       {/* ==================================================================== */}
@@ -1469,13 +1675,13 @@ export function StudioHubClient({
           variant={activeTab === "studio" ? "default" : "outline"}
           onClick={() => switchTab("studio")}
           className={cn(
-            "gap-2 text-xs font-semibold cursor-pointer transition-all",
+            "cursor-pointer gap-2 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
             activeTab === "studio"
-              ? "bg-[#0A3622] text-white hover:bg-[#0A3622]/90 shadow-xs"
+              ? "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
               : "border-border hover:border-gold"
           )}
         >
-          <Sparkles className="size-3.5 text-gold" />
+          <Sparkles className="size-3.5 text-gold" aria-hidden="true" />
           <span>Upload 4K Poster &amp; Extract</span>
         </Button>
 
@@ -1484,17 +1690,17 @@ export function StudioHubClient({
           variant={activeTab === "vault" ? "default" : "outline"}
           onClick={() => switchTab("vault")}
           className={cn(
-            "gap-2 text-xs font-semibold cursor-pointer transition-all",
+            "cursor-pointer gap-2 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
             activeTab === "vault"
-              ? "bg-[#0A3622] text-white hover:bg-[#0A3622]/90 shadow-xs"
+              ? "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
               : "border-border hover:border-gold"
           )}
         >
-          <Layers className="size-3.5 text-gold" />
+          <Layers className="size-3.5 text-gold" aria-hidden="true" />
           <span>4K Posters &amp; Extracted Cards Vault</span>
           <Badge
             variant="secondary"
-            className="ml-1 px-1.5 py-0 text-[10px] font-mono font-bold bg-white/20 text-inherit"
+            className="ml-1 bg-primary-foreground/20 px-1.5 py-0 font-mono text-[10px] font-bold text-inherit tabular-nums"
           >
             {flyersList.length} Posters · {assetsList.length} Assets
           </Badge>
@@ -1505,17 +1711,17 @@ export function StudioHubClient({
           variant={activeTab === "packages" ? "default" : "outline"}
           onClick={() => switchTab("packages")}
           className={cn(
-            "gap-2 text-xs font-semibold cursor-pointer transition-all",
+            "cursor-pointer gap-2 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
             activeTab === "packages"
-              ? "bg-[#0A3622] text-white hover:bg-[#0A3622]/90 shadow-xs"
+              ? "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
               : "border-border hover:border-gold"
           )}
         >
-          <Globe className="size-3.5 text-gold" />
+          <Globe className="size-3.5 text-gold" aria-hidden="true" />
           <span>Live Website Group Packages &amp; Batches</span>
           <Badge
             variant="secondary"
-            className="ml-1 px-1.5 py-0 text-[10px] font-mono font-bold bg-white/20 text-inherit"
+            className="ml-1 bg-primary-foreground/20 px-1.5 py-0 font-mono text-[10px] font-bold text-inherit tabular-nums"
           >
             {groupPackages.length} Packages
           </Badge>
@@ -1526,28 +1732,37 @@ export function StudioHubClient({
       {notice && (
         <div
           className={cn(
-            "flex items-center justify-between rounded-xl border p-3.5 text-xs font-medium shadow-xs transition-all",
+            "flex items-center justify-between rounded-xl border p-3.5 text-xs font-medium shadow-xs transition-colors motion-reduce:transition-none",
             notice.type === "error"
-              ? "border-red-300 bg-red-50 text-red-900"
+              ? "border-status-danger-border bg-status-danger-bg text-status-danger"
               : notice.type === "info"
-                ? "border-blue-300 bg-blue-50 text-blue-900"
-                : "border-emerald-300 bg-emerald-50 text-emerald-900"
+                ? "border-status-info-border bg-status-info-bg text-status-info"
+                : "border-status-success-border bg-status-success-bg text-status-success"
           )}
         >
           <div className="flex items-center gap-2">
             {notice.type === "error" ? (
-              <AlertCircle className="size-4 shrink-0 text-red-600" />
+              <AlertCircle
+                className="size-4 shrink-0 text-status-danger"
+                aria-hidden="true"
+              />
             ) : notice.type === "info" ? (
-              <AlertCircle className="size-4 shrink-0 text-blue-600" />
+              <AlertCircle
+                className="size-4 shrink-0 text-status-info"
+                aria-hidden="true"
+              />
             ) : (
-              <CheckCircle2 className="size-4 shrink-0 text-emerald-700" />
+              <CheckCircle2
+                className="size-4 shrink-0 text-status-success"
+                aria-hidden="true"
+              />
             )}
             <span>{notice.text}</span>
           </div>
           <button
             type="button"
             onClick={() => setNotice(null)}
-            className="text-[11px] underline ml-4 hover:opacity-75 cursor-pointer font-semibold"
+            className="ml-4 cursor-pointer text-[11px] font-semibold underline hover:opacity-75 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             Dismiss
           </button>
@@ -1576,19 +1791,29 @@ export function StudioHubClient({
       {/* ==================================================================== */}
       {activeTab === "studio" && (
         <div className="flex flex-col gap-6">
-          <Card className="border-border bg-card shadow-sm overflow-hidden">
-            <CardHeader className="bg-secondary/30 border-b border-border pb-4">
+          <Card className="overflow-hidden border-border bg-card shadow-sm">
+            <CardHeader className="border-b border-border bg-secondary/30 pb-4">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <CardTitle className="font-display text-lg font-bold text-foreground flex items-center gap-2">
-                    <Sparkles className="size-4 text-gold" />
-                    <span>Finished 4K Poster / Vector PDF Ingestion Studio</span>
+                  <CardTitle className="flex items-center gap-2 font-display text-lg font-bold text-foreground">
+                    <Sparkles
+                      className="size-4 text-gold-text"
+                      aria-hidden="true"
+                    />
+                    <span>
+                      Finished 4K Poster / Vector PDF Ingestion Studio
+                    </span>
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Zero re-rendering: Preserves your master 4K artwork byte-for-byte, generates progressive sRGB 1080p social preview, and indexes all package cards for reverse search.
+                    Zero re-rendering: Preserves your master 4K artwork
+                    byte-for-byte, generates progressive sRGB 1080p social
+                    preview, and indexes all package cards for reverse search.
                   </CardDescription>
                 </div>
-                <Badge variant="outline" className="border-gold/50 bg-gold/10 text-xs font-mono font-bold text-primary self-start sm:self-auto">
+                <Badge
+                  variant="outline"
+                  className="self-start border-gold-border bg-accent/40 text-xs font-medium text-primary sm:self-auto"
+                >
                   Direct-to-R2 Streaming Enabled
                 </Badge>
               </div>
@@ -1599,43 +1824,63 @@ export function StudioHubClient({
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => setIngestionMode("gemini_ultra_poster")}
+                  onClick={() => {
+                    setIngestionMode("gemini_ultra_poster")
+                    applySupplierDefaults(
+                      selectedSupplierId,
+                      "gemini_ultra_poster"
+                    )
+                  }}
                   className={cn(
-                    "flex flex-col items-start gap-1 rounded-xl border p-3.5 text-left transition-all cursor-pointer",
+                    "flex cursor-pointer flex-col items-start gap-1 rounded-xl border p-3.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                     ingestionMode === "gemini_ultra_poster"
-                      ? "border-[#0A3622] bg-[#0A3622]/5 ring-1 ring-[#0A3622]"
-                      : "border-border bg-background hover:border-gold/60"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-border bg-background hover:border-gold-border"
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <Sparkles className="size-4 text-gold" />
+                    <Sparkles
+                      className="size-4 shrink-0 text-gold-text"
+                      aria-hidden="true"
+                    />
                     <span className="text-xs font-bold text-foreground">
-                      Mode A — Finished Al Ramlah 4K Poster
+                      {STUDIO_MODE_A_LABEL}
                     </span>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Finished retail artwork: extracted rates are Retail PKR (Net = Retail − Commission).
+                    Finished retail artwork: extracted rates are Retail PKR (Net
+                    = Retail minus Commission).
                   </p>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setIngestionMode("raw_supplier_flyer")}
+                  onClick={() => {
+                    setIngestionMode("raw_supplier_flyer")
+                    applySupplierDefaults(
+                      selectedSupplierId,
+                      "raw_supplier_flyer"
+                    )
+                  }}
                   className={cn(
-                    "flex flex-col items-start gap-1 rounded-xl border p-3.5 text-left transition-all cursor-pointer",
+                    "flex cursor-pointer flex-col items-start gap-1 rounded-xl border p-3.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                     ingestionMode === "raw_supplier_flyer"
-                      ? "border-[#0A3622] bg-[#0A3622]/5 ring-1 ring-[#0A3622]"
-                      : "border-border bg-background hover:border-gold/60"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-border bg-background hover:border-gold-border"
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <Wand2 className="size-4 text-gold" />
+                    <Wand2
+                      className="size-4 shrink-0 text-gold-text"
+                      aria-hidden="true"
+                    />
                     <span className="text-xs font-bold text-foreground">
-                      Mode B — Raw B2B Supplier Wholesale Flyer
+                      {STUDIO_MODE_B_LABEL}
                     </span>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Stages in Draft Review: wraps wholesale net rates (+ flat or per-tier markup) into 4K Al Ramlah posters.
+                    Stages in Draft Review: wraps wholesale net rates (+ flat or
+                    per-tier markup) into 4K Al Ramlah posters.
                   </p>
                 </button>
               </div>
@@ -1643,12 +1888,21 @@ export function StudioHubClient({
               {/* Configuration Row: Supplier & Commission & City */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">1. Wholesale Supplier</Label>
+                  <Label
+                    htmlFor="studio-wholesale-supplier"
+                    className="text-xs font-semibold"
+                  >
+                    1. Wholesale Supplier
+                  </Label>
                   <div className="flex items-center gap-1.5">
                     <select
+                      id="studio-wholesale-supplier"
                       value={selectedSupplierId}
-                      onChange={(e) => setSelectedSupplierId(e.target.value)}
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs"
+                      onChange={(e) => {
+                        setSelectedSupplierId(e.target.value)
+                        applySupplierDefaults(e.target.value, ingestionMode)
+                      }}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       {suppliersList.map((s) => (
                         <option key={s.id} value={s.id}>
@@ -1662,51 +1916,65 @@ export function StudioHubClient({
                       variant="outline"
                       onClick={() => setIsSupplierModalOpen(true)}
                       title="Add New Supplier"
-                      className="shrink-0"
+                      aria-label="Add New Supplier"
+                      className="shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <Plus className="size-3.5" />
+                      <Plus className="size-3.5" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold">
-                      2. {ingestionMode === "raw_supplier_flyer" && commissionMode === "net_plus_markup"
+                    <Label
+                      htmlFor="studio-commission-pkr"
+                      className="text-xs font-semibold"
+                    >
+                      2.{" "}
+                      {ingestionMode === "raw_supplier_flyer" &&
+                      commissionMode === "net_plus_markup"
                         ? "Markup per Seat (PKR)"
                         : "Commission Margin per Seat (PKR)"}
                     </Label>
                     {ingestionMode === "raw_supplier_flyer" && (
                       <select
+                        id="studio-commission-mode"
+                        aria-label="Commission Strategy Mode"
                         value={commissionMode}
                         onChange={(e) =>
                           setCommissionMode(
-                            e.target.value as "included_in_flyer" | "net_plus_markup"
+                            e.target.value as
+                              "included_in_flyer" | "net_plus_markup"
                           )
                         }
-                        className="rounded border border-gold/50 bg-gold/10 px-1.5 py-0.5 text-[10px] font-bold text-primary"
+                        className="rounded border border-gold-border bg-accent/40 px-1.5 py-0.5 text-[11px] font-bold text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
                         <option value="net_plus_markup">Net + Markup</option>
-                        <option value="included_in_flyer">Comm. Included</option>
+                        <option value="included_in_flyer">
+                          Comm. Included
+                        </option>
                       </select>
                     )}
                   </div>
                   <div className="relative">
                     <Input
+                      id="studio-commission-pkr"
                       type="number"
                       min={0}
                       value={commissionPkr}
-                      onChange={(e) => setCommissionPkr(Number(e.target.value) || 0)}
-                      className="text-xs font-mono font-bold h-9"
+                      onChange={(e) =>
+                        setCommissionPkr(Number(e.target.value) || 0)
+                      }
+                      className="h-9 font-mono text-xs font-bold"
                     />
-                    <span className="absolute right-3 top-2 text-[10px] text-muted-foreground uppercase font-bold">
+                    <span className="absolute top-2 right-3 text-[11px] font-semibold text-muted-foreground">
                       {ingestionMode === "raw_supplier_flyer" &&
                       commissionMode === "net_plus_markup"
                         ? "Mode B: +Markup"
                         : "Mode A: Included"}
                     </span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground">
                     {ingestionMode === "raw_supplier_flyer" &&
                     commissionMode === "net_plus_markup"
                       ? "Added onto non-zero wholesale net tiers (0 stays On Request)."
@@ -1715,11 +1983,17 @@ export function StudioHubClient({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">3. Origin Departure City</Label>
+                  <Label
+                    htmlFor="studio-departure-city"
+                    className="text-xs font-semibold"
+                  >
+                    3. Origin Departure City
+                  </Label>
                   <select
+                    id="studio-departure-city"
                     value={departureCityCode}
                     onChange={(e) => setDepartureCityCode(e.target.value)}
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs"
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     {departureCities.map((c) => (
                       <option key={c.id} value={c.airportCode}>
@@ -1733,16 +2007,24 @@ export function StudioHubClient({
               {/* Optional Per-Tier Markup Editor for Mode B (`T-026` / `OD-09b`) */}
               {ingestionMode === "raw_supplier_flyer" &&
                 commissionMode === "net_plus_markup" && (
-                  <div className="rounded-xl border border-gold/40 bg-gold/5 p-3.5 space-y-2.5">
+                  <div className="space-y-2.5 rounded-xl bg-accent/25 p-3.5">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-primary">
-                        Mode B Markup Strategy (0 PKR tiers remain &ldquo;On Request&rdquo;)
+                        Mode B Markup Strategy (0 PKR tiers remain &ldquo;On
+                        Request&rdquo;)
                       </span>
-                      <label className="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer">
+                      <label
+                        htmlFor="studio-use-per-tier-markup"
+                        className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold"
+                      >
                         <input
+                          id="studio-use-per-tier-markup"
                           type="checkbox"
                           checked={usePerTierMarkup}
-                          onChange={(e) => setUsePerTierMarkup(e.target.checked)}
+                          onChange={(e) =>
+                            setUsePerTierMarkup(e.target.checked)
+                          }
+                          className="accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         />
                         <span>Customize per-room-tier markup</span>
                       </label>
@@ -1752,10 +2034,14 @@ export function StudioHubClient({
                         {(["sharing", "quad", "triple", "double"] as const).map(
                           (tierKey) => (
                             <div key={tierKey} className="space-y-1">
-                              <Label className="text-[11px] font-semibold capitalize">
+                              <Label
+                                htmlFor={`studio-tier-markup-${tierKey}`}
+                                className="text-[11px] font-semibold capitalize"
+                              >
                                 +{tierKey} Markup (PKR)
                               </Label>
                               <Input
+                                id={`studio-tier-markup-${tierKey}`}
                                 type="number"
                                 min={0}
                                 value={perTierMarkup[tierKey]}
@@ -1765,7 +2051,7 @@ export function StudioHubClient({
                                     [tierKey]: Number(e.target.value) || 0,
                                   }))
                                 }
-                                className="h-8 text-xs font-mono font-bold"
+                                className="h-8 font-mono text-xs font-bold"
                               />
                             </div>
                           )
@@ -1777,61 +2063,81 @@ export function StudioHubClient({
 
               {/* Multimodal Dropzone for 4K Poster */}
               <div className="space-y-2">
-                <Label className="text-xs font-semibold">
+                <p className="text-xs leading-none font-semibold">
                   4. Master 4K Poster File (PNG, JPEG, WebP, or Vector PDF)
-                </Label>
-                <div className="rounded-xl border-2 border-dashed border-gold/40 bg-gold/5 p-6 text-center hover:bg-gold/10 transition-colors">
-                  <Upload className="mx-auto size-8 text-gold mb-2" />
+                </p>
+                <div className="rounded-xl border-2 border-dashed border-gold-border bg-accent/20 p-6 text-center transition-colors hover:bg-accent/35 motion-reduce:transition-none">
+                  <Upload
+                    className="mx-auto mb-2 size-8 text-gold-text"
+                    aria-hidden="true"
+                  />
                   <div className="text-xs font-semibold text-foreground">
                     {posterFile ? (
-                      <span className="font-mono text-emerald-800 font-bold">
-                        Selected: {posterFile.name} ({(posterFile.size / (1024 * 1024)).toFixed(2)} MB)
+                      <span className="font-mono font-bold text-status-success">
+                        Selected: {posterFile.name} (
+                        {(posterFile.size / (1024 * 1024)).toFixed(2)} MB)
                       </span>
                     ) : (
-                      <span>Drag and drop your 4K Ultra Poster, or click to browse</span>
+                      <span>
+                        Drag and drop your 4K Ultra Poster, or click to browse
+                      </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-1 mb-3">
-                    Supports direct-to-R2 upload up to 50MB. Recommended resolution: 3240×4560 px.
+                  <p className="mt-1 mb-3 text-[11px] text-muted-foreground">
+                    Supports direct-to-R2 upload up to 50MB. Recommended
+                    resolution: 3240×4560 px.
                   </p>
-                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#0A3622] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0A3622]/90 shadow-xs">
-                    <FileUp className="size-3.5 text-gold" />
-                    <span>{posterFile ? "Change File" : "Select 4K Poster / PDF"}</span>
+                  <label
+                    htmlFor="studio-poster-file"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-xs focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary hover:bg-primary/90"
+                  >
+                    <FileUp className="size-3.5 text-gold" aria-hidden="true" />
+                    <span>
+                      {posterFile ? "Change File" : "Select 4K Poster / PDF"}
+                    </span>
                     <input
+                      id="studio-poster-file"
                       type="file"
                       accept="image/png,image/jpeg,image/webp,application/pdf"
                       onChange={(e) => {
                         const f = e.target.files?.[0]
                         if (f) setPosterFile(f)
                       }}
-                      className="hidden"
+                      className="sr-only"
                     />
                   </label>
                 </div>
 
                 {/* Or Enter Direct URL */}
                 <div className="flex items-center gap-2 pt-2">
-                  <span className="text-[11px] font-semibold text-muted-foreground uppercase">
+                  <Label
+                    htmlFor="studio-poster-direct-url"
+                    className="shrink-0 text-[11px] font-semibold text-muted-foreground"
+                  >
                     Or Direct Media URL:
-                  </span>
+                  </Label>
                   <Input
+                    id="studio-poster-direct-url"
                     placeholder="https://pub-....r2.dev/posters/finished/..."
                     value={posterDirectUrl}
                     onChange={(e) => setPosterDirectUrl(e.target.value)}
-                    className="text-xs font-mono h-8"
+                    className="h-8 font-mono text-xs"
                   />
                 </div>
               </div>
 
               {/* Upload Progress Bar */}
               {uploadProgress > 0 && (
-                <div className="space-y-1 rounded-lg border border-border bg-secondary/30 p-3">
+                <div className="space-y-1 rounded-lg bg-secondary/50 p-3">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-foreground flex items-center gap-1.5">
-                      <Loader2 className="size-3.5 animate-spin text-gold" />
+                    <span className="flex items-center gap-1.5 font-semibold text-foreground">
+                      <Loader2
+                        className="size-3.5 animate-spin text-gold-text motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
                       {uploadStatus}
                     </span>
-                    <span className="font-mono font-bold text-primary">
+                    <span className="font-mono font-bold text-primary tabular-nums">
                       {uploadProgress}%
                     </span>
                   </div>
@@ -1844,17 +2150,23 @@ export function StudioHubClient({
                 <Button
                   type="button"
                   disabled={
-                    busyKey === "ingest_poster" || (!posterFile && !posterDirectUrl.trim())
+                    busyKey === "ingest_poster" ||
+                    (!posterFile && !posterDirectUrl.trim())
                   }
                   onClick={handleIngestPoster}
-                  className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-bold text-xs gap-2 px-6 h-10 cursor-pointer shadow-sm"
+                  className="h-10 cursor-pointer gap-2 bg-primary px-6 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {busyKey === "ingest_poster" ? (
-                    <Loader2 className="size-4 animate-spin text-gold" />
+                    <Loader2
+                      className="size-4 animate-spin text-gold motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Sparkles className="size-4 text-gold" />
+                    <Sparkles className="size-4 text-gold" aria-hidden="true" />
                   )}
-                  <span>Ingest 4K Poster &amp; Run AI Multimodal Extraction</span>
+                  <span>
+                    Ingest 4K Poster &amp; Run AI Multimodal Extraction
+                  </span>
                 </Button>
               </div>
             </CardContent>
@@ -1869,59 +2181,68 @@ export function StudioHubClient({
         <div className="flex flex-col gap-6">
           {/* Vault Top Metrics Strip */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Card className="p-4 border-border bg-card shadow-xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <Card className="border-border bg-card p-4 shadow-xs">
+              <span className="text-[11px] font-semibold text-muted-foreground">
                 Total Ingested Posters
               </span>
-              <div className="text-xl font-bold font-mono text-primary mt-1">
+              <div className="mt-1 font-mono text-xl font-bold text-primary tabular-nums">
                 {flyersList.length}
               </div>
             </Card>
-            <Card className="p-4 border-border bg-card shadow-xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <Card className="border-border bg-card p-4 shadow-xs">
+              <span className="text-[11px] font-semibold text-muted-foreground">
                 Extracted Package Cards
               </span>
-              <div className="text-xl font-bold font-mono text-foreground mt-1">
+              <div className="mt-1 font-mono text-xl font-bold text-foreground tabular-nums">
                 {totalCardsCount}
               </div>
             </Card>
-            <Card className="p-4 border-border bg-card shadow-xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <Card className="border-border bg-card p-4 shadow-xs">
+              <span className="text-[11px] font-semibold text-muted-foreground">
                 4K Posters &amp; Assets Vault
               </span>
-              <div className="text-xl font-bold font-mono text-gold-text mt-1">
+              <div className="mt-1 font-mono text-xl font-bold text-gold-text tabular-nums">
                 {assetsList.length}
               </div>
             </Card>
-            <Card className="p-4 border-border bg-card shadow-xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <Card className="border-border bg-card p-4 shadow-xs">
+              <span className="text-[11px] font-semibold text-muted-foreground">
                 Live Website Packages
               </span>
-              <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
+              <div className="mt-1 font-mono text-xl font-bold text-status-success tabular-nums">
                 {groupPackages.length}
               </div>
             </Card>
           </div>
 
           {/* Search, Filter & View Mode Controls */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
-            <div className="flex flex-wrap items-center gap-2 flex-1">
-              <div className="relative min-w-[240px] max-w-sm flex-1">
-                <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+          <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-1 flex-wrap items-center gap-2">
+              <div className="relative max-w-sm min-w-[240px] flex-1">
+                <Search
+                  className="absolute top-2.5 left-2.5 size-3.5 text-muted-foreground"
+                  aria-hidden="true"
+                />
                 <Input
-                  placeholder="Filter by Post Ref (ART-...), Hotel, Airline, Date..."
+                  id="studio-vault-search"
+                  aria-label="Filter by Post Ref, Hotel, Airline, or Date"
+                  placeholder="Filter by Post Ref (ART-…), Hotel, Airline, Date…"
                   value={vaultSearch}
                   onChange={(e) => setVaultSearch(e.target.value)}
-                  className="pl-8 text-xs h-9"
+                  className="h-9 pl-8 text-xs"
                 />
               </div>
 
               <select
+                id="studio-vault-supplier-filter"
+                aria-label="Filter by Wholesale Supplier"
                 value={vaultSupplierFilter}
                 onChange={(e) => setVaultSupplierFilter(e.target.value)}
-                className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs"
+                className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <option value="all">All Suppliers ({suppliersList.length})</option>
+                <option value="all">
+                  All Suppliers ({suppliersList.length})
+                </option>
                 {suppliersList.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name} ({s.codePrefix})
@@ -1934,22 +2255,26 @@ export function StudioHubClient({
               <Button
                 type="button"
                 size="sm"
-                variant={vaultViewMode === "flyers_cards" ? "default" : "outline"}
+                variant={
+                  vaultViewMode === "flyers_cards" ? "default" : "outline"
+                }
                 onClick={() => setVaultViewMode("flyers_cards")}
-                className="text-xs font-semibold gap-1.5 cursor-pointer"
+                className="cursor-pointer gap-1.5 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <Layers className="size-3.5" />
+                <Layers className="size-3.5" aria-hidden="true" />
                 <span>Poster Batches &amp; Cards</span>
               </Button>
 
               <Button
                 type="button"
                 size="sm"
-                variant={vaultViewMode === "assets_gallery" ? "default" : "outline"}
+                variant={
+                  vaultViewMode === "assets_gallery" ? "default" : "outline"
+                }
                 onClick={() => setVaultViewMode("assets_gallery")}
-                className="text-xs font-semibold gap-1.5 cursor-pointer"
+                className="cursor-pointer gap-1.5 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <ImageIcon className="size-3.5" />
+                <ImageIcon className="size-3.5" aria-hidden="true" />
                 <span>4K Social Gallery ({assetsList.length})</span>
               </Button>
             </div>
@@ -1961,11 +2286,14 @@ export function StudioHubClient({
               {filteredFlyers.length === 0 ? (
                 <Card className="border-dashed">
                   <CardContent className="p-12 text-center">
-                    <Sparkles className="mx-auto size-8 text-gold mb-2" />
+                    <Sparkles
+                      className="mx-auto mb-2 size-8 text-gold-text"
+                      aria-hidden="true"
+                    />
                     <h3 className="font-display text-base font-bold text-foreground">
                       No Poster Batches Found
                     </h3>
-                    <p className="text-xs text-muted-foreground mt-1 mb-4">
+                    <p className="mt-1 mb-4 text-xs text-muted-foreground">
                       {vaultSearch || vaultSupplierFilter !== "all"
                         ? "Try clearing your search query or supplier filter."
                         : "No 4K posters ingested yet. Switch to Tab 1 to drop your first 4K poster or PDF."}
@@ -1973,9 +2301,9 @@ export function StudioHubClient({
                     <Button
                       type="button"
                       onClick={() => switchTab("studio")}
-                      className="gap-2 text-xs font-semibold cursor-pointer"
+                      className="cursor-pointer gap-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <Plus className="size-3.5" />
+                      <Plus className="size-3.5" aria-hidden="true" />
                       <span>Upload First 4K Poster</span>
                     </Button>
                   </CardContent>
@@ -1983,12 +2311,14 @@ export function StudioHubClient({
               ) : (
                 filteredFlyers.map((flyer) => {
                   const sheetAsset = assetsList.find(
-                    (a) => a.flyerId === flyer.id && a.kind === "multi_package_sheet"
+                    (a) =>
+                      a.flyerId === flyer.id && a.kind === "multi_package_sheet"
                   )
                   const totalFlyerCards = flyer.packages?.length || 0
                   const publishedFlyerCardsCount =
-                    flyer.packages?.filter((p) => Boolean(p.publishedGroupPackageId))
-                      .length || 0
+                    flyer.packages?.filter((p) =>
+                      Boolean(p.publishedGroupPackageId)
+                    ).length || 0
                   const allCardsPublished =
                     totalFlyerCards > 0 &&
                     publishedFlyerCardsCount === totalFlyerCards
@@ -1996,44 +2326,46 @@ export function StudioHubClient({
                   return (
                     <Card
                       key={flyer.id}
-                      className="border-border bg-card shadow-sm overflow-hidden"
+                      className="overflow-hidden border-border bg-card shadow-sm"
                     >
                       {/* Flyer Card Header */}
-                      <CardHeader className="bg-secondary/30 border-b border-border pb-4">
+                      <CardHeader className="border-b border-border bg-secondary/30 pb-4">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                           <div>
-                            <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                              <Badge className="bg-[#0A3622] text-gold font-bold text-[10px] uppercase">
-                                Supplier: {flyer.supplier?.name} ({flyer.supplier?.codePrefix})
+                            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                              <Badge className="bg-primary text-[11px] font-bold text-gold">
+                                Supplier: {flyer.supplier?.name} (
+                                {flyer.supplier?.codePrefix})
                               </Badge>
                               <Badge
                                 variant="outline"
-                                className="border-gold/50 bg-gold/10 text-xs font-mono font-bold text-foreground"
+                                className="border-gold-border bg-accent/40 font-mono text-xs font-bold text-foreground"
                               >
-                                {flyer.airlineName} · {flyer.daysTitle} ({flyer.routePill})
+                                {flyer.airlineName} · {flyer.daysTitle} (
+                                {flyer.routePill})
                               </Badge>
                               <Badge
                                 variant="outline"
-                                className="border-emerald-600/30 bg-emerald-50 text-emerald-800 text-[11px] font-semibold"
+                                className="border-status-success-border bg-status-success-bg text-[11px] font-semibold text-status-success"
                               >
                                 {flyer.commissionMode === "net_plus_markup"
                                   ? `Mode B: Net + Markup (PKR ${flyer.commissionPkr.toLocaleString()})`
                                   : `Mode A: Comm Included (PKR ${flyer.commissionPkr.toLocaleString()})`}
                               </Badge>
                               {flyer.status === "draft_extracted" && (
-                                <Badge className="bg-amber-100 text-amber-950 border border-amber-400 text-[10px] uppercase font-bold">
+                                <Badge className="border border-status-warning-border bg-status-warning-bg text-[11px] font-bold text-status-warning">
                                   Draft Review Required
                                 </Badge>
                               )}
                               {flyer.status === "archived" && (
-                                <Badge className="bg-stone-200 text-stone-800 border border-stone-400 text-[10px] uppercase font-bold">
+                                <Badge className="border border-border bg-muted text-[11px] font-bold text-muted-foreground">
                                   Archived (Bookings Protected)
                                 </Badge>
                               )}
                               {flyer.ingestionSource && (
                                 <Badge
                                   variant="secondary"
-                                  className="text-[10px] uppercase font-mono"
+                                  className="font-mono text-[11px] capitalize"
                                 >
                                   {flyer.ingestionSource.replace(/_/g, " ")}
                                 </Badge>
@@ -2042,9 +2374,16 @@ export function StudioHubClient({
                             <CardTitle className="font-display text-lg font-bold text-foreground">
                               {flyer.title}
                             </CardTitle>
-                            <CardDescription className="text-xs">
-                              Received: {flyer.receivedDate} · {flyer.packages?.length || 0} Package Cards · Baggage: {flyer.outboundBaggage || "Unstated"} Out / {flyer.inboundBaggage || "Unstated"} In
-                            </CardDescription>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground tabular-nums">
+                              <span>Received: {flyer.receivedDate}</span>
+                              <span>
+                                {flyer.packages?.length || 0} Package Cards
+                              </span>
+                              <span>
+                                Baggage: {flyer.outboundBaggage || "Unstated"}{" "}
+                                Out / {flyer.inboundBaggage || "Unstated"} In
+                              </span>
+                            </div>
                           </div>
 
                           {/* Master Assets & Batch Actions */}
@@ -2053,66 +2392,93 @@ export function StudioHubClient({
                               <Button
                                 type="button"
                                 size="sm"
-                                disabled={busyKey === `approve-draft-${flyer.id}`}
+                                disabled={
+                                  busyKey === `approve-draft-${flyer.id}`
+                                }
                                 onClick={() =>
                                   handleApproveDraftFlyer(flyer.id, flyer.title)
                                 }
-                                className="bg-amber-700 text-white hover:bg-amber-800 text-xs font-bold gap-1.5 cursor-pointer shadow-xs"
+                                className="cursor-pointer gap-1.5 bg-gold text-xs font-bold text-gold-foreground shadow-xs hover:bg-gold/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               >
                                 {busyKey === `approve-draft-${flyer.id}` ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
+                                  <Loader2
+                                    className="size-3.5 animate-spin motion-reduce:animate-none"
+                                    aria-hidden="true"
+                                  />
                                 ) : (
-                                  <CheckCircle2 className="size-3.5 text-gold" />
+                                  <CheckCircle2
+                                    className="size-3.5 text-primary"
+                                    aria-hidden="true"
+                                  />
                                 )}
                                 <span>Approve Draft</span>
                               </Button>
                             )}
 
                             {/* 1-Click Bulk Publish All Cards to Website */}
-                            {totalFlyerCards > 0 && flyer.status !== "archived" && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={
-                                  busyKey === `pub-all-${flyer.id}` ||
-                                  flyer.status === "draft_extracted"
-                                }
-                                onClick={() =>
-                                  handlePublishAllToWebsite(flyer.id, flyer.title)
-                                }
-                                className={cn(
-                                  "text-xs font-bold gap-1.5 cursor-pointer shadow-xs",
-                                  allCardsPublished
-                                    ? "border-emerald-600/40 bg-emerald-50 text-emerald-950 hover:bg-emerald-100 border"
-                                    : "bg-emerald-800 text-white hover:bg-emerald-900 border border-emerald-700"
-                                )}
-                              >
-                                {busyKey === `pub-all-${flyer.id}` ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : allCardsPublished ? (
-                                  <CheckCircle2 className="size-3.5 text-emerald-700" />
-                                ) : (
-                                  <Globe className="size-3.5 text-gold" />
-                                )}
-                                <span>
-                                  {busyKey === `pub-all-${flyer.id}`
-                                    ? "Syncing All Cards..."
-                                    : allCardsPublished
-                                      ? `All ${totalFlyerCards} Synced to Web`
-                                      : publishedFlyerCardsCount > 0
-                                        ? `Publish Remaining ${totalFlyerCards - publishedFlyerCardsCount} Cards to Web`
-                                        : `Publish All ${totalFlyerCards} Cards to Web`}
-                                </span>
-                              </Button>
-                            )}
+                            {totalFlyerCards > 0 &&
+                              flyer.status !== "archived" && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  disabled={
+                                    busyKey === `pub-all-${flyer.id}` ||
+                                    flyer.status === "draft_extracted"
+                                  }
+                                  onClick={() =>
+                                    handlePublishAllToWebsite(
+                                      flyer.id,
+                                      flyer.title
+                                    )
+                                  }
+                                  className={cn(
+                                    "cursor-pointer gap-1.5 text-xs font-bold shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                                    allCardsPublished
+                                      ? "border border-status-success-border bg-status-success-bg text-status-success hover:bg-status-success-bg/80"
+                                      : "border border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+                                  )}
+                                >
+                                  {busyKey === `pub-all-${flyer.id}` ? (
+                                    <Loader2
+                                      className="size-3.5 animate-spin motion-reduce:animate-none"
+                                      aria-hidden="true"
+                                    />
+                                  ) : allCardsPublished ? (
+                                    <CheckCircle2
+                                      className="size-3.5 text-status-success"
+                                      aria-hidden="true"
+                                    />
+                                  ) : (
+                                    <Globe
+                                      className="size-3.5 text-gold"
+                                      aria-hidden="true"
+                                    />
+                                  )}
+                                  <span>
+                                    {busyKey === `pub-all-${flyer.id}`
+                                      ? "Syncing All Cards…"
+                                      : allCardsPublished
+                                        ? `All ${totalFlyerCards} Synced to Web`
+                                        : publishedFlyerCardsCount > 0
+                                          ? `Publish Remaining ${totalFlyerCards - publishedFlyerCardsCount} Cards to Web`
+                                          : `Publish All ${totalFlyerCards} Cards to Web`}
+                                  </span>
+                                </Button>
+                              )}
 
                             <a
-                              href={flyer.multiSheetImageUrl || flyer.rawFlyerImageUrl}
+                              href={
+                                flyer.multiSheetImageUrl ||
+                                flyer.rawFlyerImageUrl
+                              }
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             >
-                              <ImageIcon className="size-3.5 text-muted-foreground" />
+                              <ImageIcon
+                                className="size-3.5 text-muted-foreground"
+                                aria-hidden="true"
+                              />
                               <span>View 4K Poster</span>
                             </a>
 
@@ -2121,10 +2487,13 @@ export function StudioHubClient({
                                 href={flyer.socialReadySheetJpegUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-lg border border-emerald-600/40 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-900 hover:bg-emerald-100"
+                                className="inline-flex items-center gap-1 rounded-lg border border-status-success-border bg-status-success-bg px-2.5 py-1.5 text-xs font-bold text-status-success hover:bg-status-success-bg/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               >
                                 <span>1080p Social JPEG</span>
-                                <ExternalLink className="size-3" />
+                                <ExternalLink
+                                  className="size-3"
+                                  aria-hidden="true"
+                                />
                               </a>
                             )}
 
@@ -2133,9 +2502,12 @@ export function StudioHubClient({
                                 href={flyer.multiSheetPdfUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-lg border border-border bg-white px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-secondary"
+                                className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               >
-                                <FileText className="size-3.5 text-gold" />
+                                <FileText
+                                  className="size-3.5 text-gold-text"
+                                  aria-hidden="true"
+                                />
                                 <span>Vector PDF</span>
                               </a>
                             )}
@@ -2150,9 +2522,12 @@ export function StudioHubClient({
                                     `/admin/campaigns?tab=social&assetId=${sheetAsset.id}`
                                   )
                                 }
-                                className="border-gold text-foreground hover:bg-gold/15 text-xs font-semibold gap-1 cursor-pointer"
+                                className="cursor-pointer gap-1 border-gold-border text-xs font-semibold text-foreground hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               >
-                                <Share2 className="size-3.5 text-gold" />
+                                <Share2
+                                  className="size-3.5 text-gold-text"
+                                  aria-hidden="true"
+                                />
                                 <span>Schedule</span>
                               </Button>
                             )}
@@ -2165,13 +2540,19 @@ export function StudioHubClient({
                               onClick={() =>
                                 handleGenerateMultiSheet(flyer.id, flyer.title)
                               }
-                              className="border-gold/50 bg-[#FBF9F4] text-[#064E3B] hover:bg-gold/15 text-xs font-semibold gap-1.5 cursor-pointer"
+                              className="cursor-pointer gap-1.5 border-gold-border bg-secondary text-xs font-semibold text-primary hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               title="Render 4K Multi-Package Sheet & Vector PDF via Gotenberg queue"
                             >
                               {busyKey === `render-sheet-${flyer.id}` ? (
-                                <Loader2 className="size-3.5 animate-spin text-gold" />
+                                <Loader2
+                                  className="size-3.5 animate-spin text-gold-text motion-reduce:animate-none"
+                                  aria-hidden="true"
+                                />
                               ) : (
-                                <Sparkles className="size-3.5 text-gold" />
+                                <Sparkles
+                                  className="size-3.5 text-gold-text"
+                                  aria-hidden="true"
+                                />
                               )}
                               <span>Render 4K Sheet</span>
                             </Button>
@@ -2181,9 +2562,12 @@ export function StudioHubClient({
                               size="sm"
                               variant="outline"
                               onClick={() => setDeletingFlyer(flyer)}
-                              className="border-red-300 text-red-700 hover:bg-red-50 hover:border-red-400 text-xs font-semibold gap-1.5 cursor-pointer ml-auto"
+                              className="ml-auto cursor-pointer gap-1.5 border-status-danger-border text-xs font-semibold text-status-danger hover:bg-status-danger-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             >
-                              <Trash2 className="size-3.5 text-red-600" />
+                              <Trash2
+                                className="size-3.5 text-status-danger"
+                                aria-hidden="true"
+                              />
                               <span>Delete Poster Batch</span>
                             </Button>
                           </div>
@@ -2192,13 +2576,18 @@ export function StudioHubClient({
 
                       {/* Package Cards Table */}
                       <CardContent className="p-4">
-                        <div className="overflow-x-auto">
+                        <div
+                          tabIndex={0}
+                          className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        >
                           <table className="w-full text-xs">
                             <thead>
-                              <tr className="border-b border-border text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                              <tr className="border-b border-border text-left text-xs font-bold text-muted-foreground">
                                 <th className="py-2.5 pr-3">Post Ref Code</th>
                                 <th className="py-2.5 pr-3">Flight Schedule</th>
-                                <th className="py-2.5 pr-3">Makkah &amp; Madinah Hotels</th>
+                                <th className="py-2.5 pr-3">
+                                  Makkah &amp; Madinah Hotels
+                                </th>
                                 <th className="py-2.5 pr-3 text-right">
                                   Supplier Net (Sharing)
                                 </th>
@@ -2221,30 +2610,40 @@ export function StudioHubClient({
                                 return (
                                   <tr
                                     key={pkg.id}
-                                    className="hover:bg-secondary/20 transition-colors"
+                                    className="transition-colors hover:bg-secondary/20 motion-reduce:transition-none"
                                   >
                                     {/* Post Code & Identifier */}
                                     <td className="py-3 pr-3 align-top">
                                       <div className="flex items-center gap-1.5">
-                                        <span className="inline-flex items-center gap-1 rounded-md bg-[#0A3622] px-2.5 py-1 font-mono text-xs font-bold text-gold">
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 font-mono text-xs font-bold text-gold">
                                           {pkg.postCode}
                                         </span>
                                         <button
                                           type="button"
                                           onClick={() =>
-                                            copyToClipboard(pkg.postCode, pkg.id)
+                                            copyToClipboard(
+                                              pkg.postCode,
+                                              pkg.id
+                                            )
                                           }
-                                          className="text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
+                                          className="cursor-pointer p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                           title="Copy Post Code"
+                                          aria-label={`Copy Post Code ${pkg.postCode}`}
                                         >
                                           {copiedCode === pkg.id ? (
-                                            <Check className="size-3 text-emerald-600" />
+                                            <Check
+                                              className="size-3 text-status-success"
+                                              aria-hidden="true"
+                                            />
                                           ) : (
-                                            <Copy className="size-3" />
+                                            <Copy
+                                              className="size-3"
+                                              aria-hidden="true"
+                                            />
                                           )}
                                         </button>
                                       </div>
-                                      <div className="text-[10px] text-muted-foreground mt-1">
+                                      <div className="mt-1 text-[11px] text-muted-foreground tabular-nums">
                                         Card #{pkg.cardNumber} · Margin: PKR{" "}
                                         {pkg.commissionPkr.toLocaleString()}
                                       </div>
@@ -2253,13 +2652,17 @@ export function StudioHubClient({
                                     {/* Flight Schedule */}
                                     <td className="py-3 pr-3 align-top">
                                       <div className="font-mono font-bold text-foreground">
-                                        {pkg.outboundFlightNo} ({pkg.outboundDateLabel})
+                                        {pkg.outboundFlightNo} (
+                                        {pkg.outboundDateLabel})
                                       </div>
                                       <div className="text-[11px] text-muted-foreground">
-                                        {pkg.outboundRoute} · {pkg.outboundDepTime}-{pkg.outboundArrTime}
+                                        {pkg.outboundRoute} ·{" "}
+                                        {pkg.outboundDepTime}-
+                                        {pkg.outboundArrTime}
                                       </div>
-                                      <div className="font-mono font-semibold text-foreground mt-1">
-                                        {pkg.returnFlightNo} ({pkg.returnDateLabel})
+                                      <div className="mt-1 font-mono font-semibold text-foreground">
+                                        {pkg.returnFlightNo} (
+                                        {pkg.returnDateLabel})
                                       </div>
                                     </td>
 
@@ -2277,7 +2680,7 @@ export function StudioHubClient({
                                         </span>
                                       </div>
                                       <div className="mt-0.5">
-                                        <span className="font-bold text-emerald-800">
+                                        <span className="font-bold text-status-success">
                                           Madinah ({pkg.madinahNights}):
                                         </span>{" "}
                                         <span className="font-semibold">
@@ -2290,7 +2693,7 @@ export function StudioHubClient({
                                       <div className="mt-1">
                                         <Badge
                                           variant="outline"
-                                          className="text-[10px] px-1.5 py-0 border-gold/40 text-muted-foreground"
+                                          className="border-gold-border px-1.5 py-0 text-[11px] text-muted-foreground"
                                         >
                                           {pkg.mealPlanLabel || "Room Only"}
                                         </Badge>
@@ -2298,26 +2701,38 @@ export function StudioHubClient({
                                     </td>
 
                                     {/* Supplier Net Price */}
-                                    <td className="py-3 pr-3 text-right align-top font-mono">
+                                    <td className="py-3 pr-3 text-right align-top font-mono tabular-nums">
                                       <div className="text-muted-foreground">
                                         PKR {pkg.netSharingPkr.toLocaleString()}
                                       </div>
-                                      <div className="text-[10px] text-emerald-700 font-semibold">
-                                        +PKR {pkg.commissionPkr.toLocaleString()} Comm.
+                                      <div className="text-[11px] font-semibold text-status-success">
+                                        +PKR{" "}
+                                        {pkg.commissionPkr.toLocaleString()}{" "}
+                                        Comm.
                                       </div>
                                     </td>
 
                                     {/* Al Ramlah Retail Price */}
-                                    <td className="py-3 pr-3 text-right align-top font-mono">
-                                      <div className="font-bold text-primary text-sm">
-                                        S: {formatStudioPkrTier(pkg.retailSharingPkr)}
+                                    <td className="py-3 pr-3 text-right align-top font-mono tabular-nums">
+                                      <div className="text-sm font-bold text-primary">
+                                        S:{" "}
+                                        {formatStudioPkrTier(
+                                          pkg.retailSharingPkr
+                                        )}
                                       </div>
                                       <div className="text-[11px] text-foreground">
-                                        Q: {formatStudioPkrTier(pkg.retailQuadPkr)} · T:{" "}
-                                        {formatStudioPkrTier(pkg.retailTriplePkr)}
+                                        Q:{" "}
+                                        {formatStudioPkrTier(pkg.retailQuadPkr)}{" "}
+                                        · T:{" "}
+                                        {formatStudioPkrTier(
+                                          pkg.retailTriplePkr
+                                        )}
                                       </div>
                                       <div className="text-[11px] text-muted-foreground">
-                                        D: {formatStudioPkrTier(pkg.retailDoublePkr)}
+                                        D:{" "}
+                                        {formatStudioPkrTier(
+                                          pkg.retailDoublePkr
+                                        )}
                                       </div>
                                     </td>
 
@@ -2329,11 +2744,16 @@ export function StudioHubClient({
                                           type="button"
                                           size="sm"
                                           variant="outline"
-                                          onClick={() => openEditCardDialog(pkg)}
-                                          className="h-7 px-2 text-[11px] font-semibold border-border hover:border-gold hover:bg-gold/10 cursor-pointer gap-1"
+                                          onClick={() =>
+                                            openEditCardDialog(pkg)
+                                          }
+                                          className="h-7 cursor-pointer gap-1 border-border px-2 text-[11px] font-semibold hover:border-gold hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                           title="Quick Edit Card details, hotels or prices"
                                         >
-                                          <Pencil className="size-3 text-gold" />
+                                          <Pencil
+                                            className="size-3 text-gold-text"
+                                            aria-hidden="true"
+                                          />
                                           <span>Edit Card</span>
                                         </Button>
 
@@ -2342,31 +2762,52 @@ export function StudioHubClient({
                                           type="button"
                                           size="sm"
                                           variant="outline"
-                                          disabled={busyKey === `render-spot-${pkg.id}`}
-                                          onClick={() =>
-                                            handleGenerateSpotlight(pkg.id, pkg.postCode)
+                                          disabled={
+                                            busyKey === `render-spot-${pkg.id}`
                                           }
-                                          className="h-7 px-2 text-[11px] font-semibold border-gold/50 bg-[#FBF9F4] text-[#064E3B] hover:bg-gold/15 cursor-pointer gap-1"
+                                          onClick={() =>
+                                            handleGenerateSpotlight(
+                                              pkg.id,
+                                              pkg.postCode
+                                            )
+                                          }
+                                          className="h-7 cursor-pointer gap-1 border-gold-border bg-secondary px-2 text-[11px] font-semibold text-primary hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                           title="Render 4K Single-Package Spotlight Poster via Gotenberg queue"
                                         >
-                                          {busyKey === `render-spot-${pkg.id}` ? (
-                                            <Loader2 className="size-3 animate-spin text-gold" />
+                                          {busyKey ===
+                                          `render-spot-${pkg.id}` ? (
+                                            <Loader2
+                                              className="size-3 animate-spin text-gold-text motion-reduce:animate-none"
+                                              aria-hidden="true"
+                                            />
                                           ) : (
-                                            <Sparkles className="size-3 text-gold" />
+                                            <Sparkles
+                                              className="size-3 text-gold-text"
+                                              aria-hidden="true"
+                                            />
                                           )}
                                           <span>Render 4K</span>
                                         </Button>
 
                                         {/* Preview Poster */}
-                                        {(pkg.spotlightPosterUrl || flyer.multiSheetImageUrl || flyer.rawFlyerImageUrl) && (
+                                        {(pkg.spotlightPosterUrl ||
+                                          flyer.multiSheetImageUrl ||
+                                          flyer.rawFlyerImageUrl) && (
                                           <a
-                                            href={pkg.spotlightPosterUrl || flyer.multiSheetImageUrl || flyer.rawFlyerImageUrl}
+                                            href={
+                                              pkg.spotlightPosterUrl ||
+                                              flyer.multiSheetImageUrl ||
+                                              flyer.rawFlyerImageUrl
+                                            }
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-1 rounded-md bg-[#0A3622] px-2 py-1 text-[11px] font-bold text-gold hover:bg-[#0A3622]/90"
+                                            className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-bold text-gold hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                           >
                                             <span>4K Poster</span>
-                                            <ExternalLink className="size-2.5" />
+                                            <ExternalLink
+                                              className="size-2.5"
+                                              aria-hidden="true"
+                                            />
                                           </a>
                                         )}
 
@@ -2377,21 +2818,33 @@ export function StudioHubClient({
                                           variant="outline"
                                           disabled={busyKey === `pub-${pkg.id}`}
                                           onClick={() =>
-                                            handlePublishToWebsite(pkg.id, pkg.postCode)
+                                            handlePublishToWebsite(
+                                              pkg.id,
+                                              pkg.postCode
+                                            )
                                           }
                                           className={cn(
-                                            "h-7 px-2 text-[11px] font-semibold cursor-pointer",
+                                            "h-7 cursor-pointer px-2 text-[11px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                                             pkg.publishedGroupPackageId
-                                              ? "border-emerald-300 bg-emerald-50 text-emerald-900"
-                                              : "border-gold/50 bg-gold/10 text-foreground hover:bg-gold/20"
+                                              ? "border-status-success-border bg-status-success-bg text-status-success"
+                                              : "border-gold-border bg-accent/40 text-foreground hover:bg-accent/60"
                                           )}
                                         >
                                           {busyKey === `pub-${pkg.id}` ? (
-                                            <Loader2 className="size-3 animate-spin" />
+                                            <Loader2
+                                              className="size-3 animate-spin motion-reduce:animate-none"
+                                              aria-hidden="true"
+                                            />
                                           ) : pkg.publishedGroupPackageId ? (
-                                            <CheckCircle2 className="size-3 text-emerald-700" />
+                                            <CheckCircle2
+                                              className="size-3 text-status-success"
+                                              aria-hidden="true"
+                                            />
                                           ) : (
-                                            <Globe className="size-3 text-gold" />
+                                            <Globe
+                                              className="size-3 text-gold-text"
+                                              aria-hidden="true"
+                                            />
                                           )}
                                           <span>
                                             {pkg.publishedGroupPackageId
@@ -2405,14 +2858,16 @@ export function StudioHubClient({
                                             type="button"
                                             size="sm"
                                             variant="ghost"
-                                            disabled={busyKey === `unpub-${pkg.id}`}
+                                            disabled={
+                                              busyKey === `unpub-${pkg.id}`
+                                            }
                                             onClick={() =>
                                               handleUnpublishFromWebsite(
                                                 pkg.id,
                                                 pkg.postCode
                                               )
                                             }
-                                            className="h-7 px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-50 cursor-pointer"
+                                            className="h-7 cursor-pointer px-2 text-[11px] font-semibold text-status-warning hover:bg-status-warning-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                             title="Unpublish from live website without breaking bookings"
                                           >
                                             <span>Unpublish</span>
@@ -2430,10 +2885,13 @@ export function StudioHubClient({
                                                 `/admin/campaigns?tab=social&assetId=${matchingAsset.id}`
                                               )
                                             }
-                                            className="h-7 px-2 text-[11px] font-semibold text-primary hover:bg-gold/15 cursor-pointer gap-1"
+                                            className="h-7 cursor-pointer gap-1 px-2 text-[11px] font-semibold text-primary hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                             title="Schedule in Campaigns Studio"
                                           >
-                                            <Share2 className="size-3 text-gold" />
+                                            <Share2
+                                              className="size-3 text-gold-text"
+                                              aria-hidden="true"
+                                            />
                                             <span>Schedule</span>
                                           </Button>
                                         )}
@@ -2459,19 +2917,23 @@ export function StudioHubClient({
               {filteredAssets.length === 0 ? (
                 <Card className="border-dashed">
                   <CardContent className="p-12 text-center">
-                    <ImageIcon className="mx-auto size-8 text-gold mb-2" />
+                    <ImageIcon
+                      className="mx-auto mb-2 size-8 text-gold-text"
+                      aria-hidden="true"
+                    />
                     <h3 className="font-display text-base font-bold text-foreground">
                       No 4K Posters or Assets in Vault
                     </h3>
-                    <p className="text-xs text-muted-foreground mt-1 mb-4">
-                      Ingest finished 4K posters from Tab 1 to populate this vault.
+                    <p className="mt-1 mb-4 text-xs text-muted-foreground">
+                      Ingest finished 4K posters from Tab 1 to populate this
+                      vault.
                     </p>
                     <Button
                       type="button"
                       onClick={() => setVaultViewMode("flyers_cards")}
-                      className="text-xs font-semibold gap-1.5 cursor-pointer"
+                      className="cursor-pointer gap-1.5 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <Layers className="size-3.5" />
+                      <Layers className="size-3.5" aria-hidden="true" />
                       <span>Back to Poster Batches</span>
                     </Button>
                   </CardContent>
@@ -2490,48 +2952,23 @@ export function StudioHubClient({
                     return (
                       <Card
                         key={asset.id}
-                        className="border-border bg-card shadow-sm overflow-hidden flex flex-col justify-between hover:border-gold/60 transition-all"
+                        className="flex flex-col justify-between overflow-hidden border-border bg-card shadow-sm transition-colors hover:border-gold-border motion-reduce:transition-none"
                       >
                         <div>
                           {/* Thumbnail Container */}
-                          <div className="relative aspect-[3/4] w-full bg-secondary/50 overflow-hidden border-b border-border">
-                            {isPdfAssetPreviewUrl(asset.imageUrl) ? (
-                              <object
-                                data={asset.imageUrl}
-                                type="application/pdf"
-                                className="w-full h-full"
-                              >
-                                <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center bg-[#FBF9F4]">
-                                  <FileText className="size-10 text-gold" />
-                                  <span className="text-xs font-bold text-primary">
-                                    Vector PDF Poster
-                                  </span>
-                                  <a
-                                    href={asset.imageUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[11px] font-semibold underline text-emerald-800"
-                                  >
-                                    Open Vector PDF
-                                  </a>
-                                </div>
-                              </object>
-                            ) : (
-                              <Image
-                                src={asset.imageUrl}
-                                alt={asset.title}
-                                fill
-                                unoptimized
-                                className="object-cover transition-transform duration-300 hover:scale-105"
-                              />
-                            )}
+                          <div className="relative aspect-[3/4] w-full overflow-hidden border-b border-border bg-secondary/50">
+                            <StudioAssetPreviewMedia
+                              url={asset.imageUrl}
+                              alt={asset.title}
+                              size="card"
+                            />
                             <div className="absolute top-2 left-2 flex items-center gap-1.5">
-                              <span className="rounded-md bg-[#0A3622] px-2 py-0.5 font-mono text-[11px] font-bold text-gold shadow-sm">
+                              <span className="rounded-md bg-primary px-2 py-0.5 font-mono text-[11px] font-bold text-gold shadow-sm">
                                 {asset.postCode}
                               </span>
                               <Badge
                                 variant="secondary"
-                                className="text-[9px] uppercase font-bold bg-white/90 text-foreground backdrop-blur-xs"
+                                className="bg-card text-[10px] font-bold text-foreground"
                               >
                                 {asset.kind === "multi_package_sheet"
                                   ? "Master Poster"
@@ -2557,10 +2994,13 @@ export function StudioHubClient({
                                       linkedCard.spotlightPosterUrl || ""
                                     )
                                   }}
-                                  className="h-6 px-2 text-[10px] font-bold bg-black/75 text-white hover:bg-black/90 border border-white/20 shadow-xs gap-1 cursor-pointer backdrop-blur-xs"
+                                  className="h-6 cursor-pointer gap-1 border border-gold/40 bg-primary px-2 text-[11px] font-bold text-primary-foreground shadow-xs hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
                                   title="Change dedicated image for this package"
                                 >
-                                  <Camera className="size-3 text-gold" />
+                                  <Camera
+                                    className="size-3 text-gold"
+                                    aria-hidden="true"
+                                  />
                                   <span>Change Image</span>
                                 </Button>
                               </div>
@@ -2568,28 +3008,35 @@ export function StudioHubClient({
                           </div>
 
                           {/* Details */}
-                          <div className="p-4 space-y-2">
-                            <h4 className="font-display text-sm font-bold text-foreground line-clamp-1">
+                          <div className="space-y-2 p-4">
+                            <h4 className="line-clamp-1 font-display text-sm font-bold text-foreground">
                               {asset.title}
                             </h4>
                             <p className="text-[11px] text-muted-foreground">
-                              Supplier: {asset.supplier?.name || "B2B Wholesale"} · Created:{" "}
-                              {asset.createdAt ? new Date(asset.createdAt).toLocaleDateString() : "Active"}
+                              Supplier:{" "}
+                              {asset.supplier?.name || "B2B Wholesale"} ·
+                              Created:{" "}
+                              {asset.createdAt
+                                ? new Date(asset.createdAt).toLocaleDateString()
+                                : "Active"}
                             </p>
                           </div>
                         </div>
 
                         {/* Action Pills Footer */}
-                        <div className="p-4 pt-0 border-t border-border/60 bg-secondary/15 flex flex-wrap items-center justify-between gap-2 mt-2">
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 bg-secondary/15 p-4 pt-3">
                           <div className="flex items-center gap-1.5">
                             <a
                               href={asset.imageUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 rounded-md bg-[#0A3622] px-2 py-1 text-[11px] font-bold text-gold hover:bg-[#0A3622]/90"
+                              className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-bold text-gold hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             >
                               <span>4K PNG</span>
-                              <ExternalLink className="size-2.5" />
+                              <ExternalLink
+                                className="size-2.5"
+                                aria-hidden="true"
+                              />
                             </a>
 
                             {asset.pdfUrl && (
@@ -2597,9 +3044,12 @@ export function StudioHubClient({
                                 href={asset.pdfUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-secondary"
+                                className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               >
-                                <FileText className="size-2.5 text-gold" />
+                                <FileText
+                                  className="size-2.5 text-gold-text"
+                                  aria-hidden="true"
+                                />
                                 <span>PDF</span>
                               </a>
                             )}
@@ -2620,54 +3070,63 @@ export function StudioHubClient({
                                     linkedCard.spotlightPosterUrl || ""
                                   )
                                 }}
-                                className="h-7 px-2 text-[11px] font-semibold gap-1 cursor-pointer border-border hover:border-gold hover:bg-gold/10"
+                                className="h-7 cursor-pointer gap-1 border-border px-2 text-[11px] font-semibold hover:border-gold hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                 title="Change dedicated package image"
                               >
-                                <Camera className="size-3 text-gold" />
+                                <Camera
+                                  className="size-3 text-gold-text"
+                                  aria-hidden="true"
+                                />
                                 <span>Edit Image</span>
                               </Button>
                             )}
                           </div>
 
                           <div className="flex items-center gap-1.5">
-                          {asset.captionWhatsapp && (
+                            {asset.captionWhatsapp && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  copyToClipboard(
+                                    asset.captionWhatsapp || "",
+                                    asset.id
+                                  )
+                                }
+                                className="h-7 cursor-pointer gap-1 px-2 text-[11px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                                title="Copy WhatsApp Caption"
+                              >
+                                {copiedCode === asset.id ? (
+                                  <Check
+                                    className="size-3 text-status-success"
+                                    aria-hidden="true"
+                                  />
+                                ) : (
+                                  <Copy className="size-3" aria-hidden="true" />
+                                )}
+                                <span>Caption</span>
+                              </Button>
+                            )}
+
                             <Button
                               type="button"
                               size="sm"
-                              variant="outline"
                               onClick={() =>
-                                copyToClipboard(asset.captionWhatsapp || "", asset.id)
+                                router.push(
+                                  `/admin/campaigns?tab=social&assetId=${asset.id}`
+                                )
                               }
-                              className="h-7 px-2 text-[11px] gap-1 cursor-pointer"
-                              title="Copy WhatsApp Caption"
+                              className="h-7 cursor-pointer gap-1 bg-gold px-2.5 text-[11px] font-bold text-gold-foreground shadow-xs hover:bg-gold/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             >
-                              {copiedCode === asset.id ? (
-                                <Check className="size-3 text-emerald-600" />
-                              ) : (
-                                <Copy className="size-3" />
-                              )}
-                              <span>Caption</span>
+                              <Share2 className="size-3" aria-hidden="true" />
+                              <span>Schedule</span>
                             </Button>
-                          )}
-
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() =>
-                              router.push(
-                                `/admin/campaigns?tab=social&assetId=${asset.id}`
-                              )
-                            }
-                            className="h-7 px-2.5 text-[11px] font-bold bg-gold text-primary hover:bg-gold/90 gap-1 cursor-pointer shadow-xs"
-                          >
-                            <Share2 className="size-3" />
-                            <span>Schedule</span>
-                          </Button>
+                          </div>
                         </div>
-                      </div>
-                    </Card>
-                  )
-                })}
+                      </Card>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -2680,14 +3139,21 @@ export function StudioHubClient({
       {/* ==================================================================== */}
       {activeTab === "packages" && (
         <div className="flex flex-col gap-6">
-          <div className="rounded-xl border border-emerald-300 bg-emerald-50/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col justify-between gap-3 rounded-xl border border-status-success-border bg-status-success-bg/70 p-4 sm:flex-row sm:items-center">
             <div>
-              <h3 className="font-display text-sm font-bold text-emerald-950 flex items-center gap-1.5">
-                <Globe className="size-4 text-emerald-700" />
-                <span>Live Website Group Packages &amp; Departure Batches Desk</span>
+              <h3 className="flex items-center gap-1.5 font-display text-sm font-bold text-status-success">
+                <Globe
+                  className="size-4 text-status-success"
+                  aria-hidden="true"
+                />
+                <span>
+                  Live Website Group Packages &amp; Departure Batches Desk
+                </span>
               </h3>
-              <p className="text-xs text-emerald-900/80 mt-0.5">
-                Manage all public group packages published on the homepage, track real-time seat occupancy meters, and configure seasonal flight batches.
+              <p className="mt-0.5 text-xs text-foreground/80">
+                Manage all public group packages published on the homepage,
+                track real-time seat occupancy meters, and configure seasonal
+                flight batches.
               </p>
             </div>
             <Button
@@ -2695,9 +3161,12 @@ export function StudioHubClient({
               size="sm"
               variant="outline"
               onClick={() => switchTab("vault")}
-              className="border-emerald-700 text-emerald-900 hover:bg-emerald-100 text-xs font-semibold gap-1.5 cursor-pointer self-start sm:self-auto"
+              className="cursor-pointer gap-1.5 self-start border-primary text-xs font-semibold text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:self-auto"
             >
-              <Sparkles className="size-3.5 text-gold" />
+              <Sparkles
+                className="size-3.5 text-gold-text"
+                aria-hidden="true"
+              />
               <span>Publish More from Vault</span>
             </Button>
           </div>
@@ -2718,19 +3187,30 @@ export function StudioHubClient({
         <DialogContent className="sm:max-w-lg">
           <form onSubmit={handleCreateSupplier}>
             <DialogHeader>
-              <DialogTitle className="font-display text-lg font-bold text-foreground flex items-center gap-2">
-                <Building2 className="size-4 text-gold" />
+              <DialogTitle className="flex items-center gap-2 font-display text-lg font-bold text-foreground">
+                <Building2
+                  className="size-4 text-gold-text"
+                  aria-hidden="true"
+                />
                 <span>Register New Wholesale Supplier</span>
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Add an authorized B2B wholesale partner (e.g. Ammaar, Upsky Travels, Zahoor Travels) for automated flyer wrapping and deterministic Post Codes.
+                Add an authorized B2B wholesale partner (e.g. Ammaar, Upsky
+                Travels, Zahoor Travels) for automated flyer wrapping and
+                deterministic Post Codes.
               </DialogDescription>
             </DialogHeader>
 
             <div className="grid grid-cols-1 gap-4 py-4 sm:grid-cols-2">
               <div className="space-y-1 sm:col-span-2">
-                <Label className="text-xs font-semibold">Supplier Name *</Label>
+                <Label
+                  htmlFor="studio-new-sup-name"
+                  className="text-xs font-semibold"
+                >
+                  Supplier Name *
+                </Label>
                 <Input
+                  id="studio-new-sup-name"
                   required
                   placeholder="e.g. Zahoor Travels"
                   value={newSupName}
@@ -2746,37 +3226,50 @@ export function StudioHubClient({
                       setNewSupCodePrefix(code)
                     }
                   }}
-                  className="text-xs h-9"
+                  className="h-9 text-xs"
                 />
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">
+                <Label
+                  htmlFor="studio-new-sup-prefix"
+                  className="text-xs font-semibold"
+                >
                   Prefix Code (2-4 Chars) *
                 </Label>
                 <Input
+                  id="studio-new-sup-prefix"
                   required
                   maxLength={4}
                   placeholder="e.g. ZH"
                   value={newSupCodePrefix}
-                  onChange={(e) => setNewSupCodePrefix(e.target.value.toUpperCase())}
-                  className="text-xs font-mono font-bold h-9 uppercase"
+                  onChange={(e) =>
+                    setNewSupCodePrefix(e.target.value.toUpperCase())
+                  }
+                  className="h-9 font-mono text-xs font-bold"
                 />
-                <p className="text-[10px] text-muted-foreground">
-                  Used in ART-&#123;PREFIX&#125;-... post codes.
+                <p className="text-[11px] text-muted-foreground">
+                  Used in ART-&#123;PREFIX&#125; post codes.
                 </p>
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">Inventory Category</Label>
+                <Label
+                  htmlFor="studio-new-sup-category"
+                  className="text-xs font-semibold"
+                >
+                  Inventory Category
+                </Label>
                 <select
+                  id="studio-new-sup-category"
                   value={newSupCategory}
                   onChange={(e) =>
                     setNewSupCategory(
-                      e.target.value as "group_packages" | "custom_packages" | "both"
+                      e.target.value as
+                        "group_packages" | "custom_packages" | "both"
                     )
                   }
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <option value="group_packages">Group Packages</option>
                   <option value="custom_packages">Custom Packages</option>
@@ -2785,15 +3278,21 @@ export function StudioHubClient({
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">Default Commission Mode</Label>
+                <Label
+                  htmlFor="studio-new-sup-comm-mode"
+                  className="text-xs font-semibold"
+                >
+                  Default Commission Mode
+                </Label>
                 <select
+                  id="studio-new-sup-comm-mode"
                   value={newSupCommMode}
                   onChange={(e) =>
                     setNewSupCommMode(
                       e.target.value as "included_in_flyer" | "net_plus_markup"
                     )
                   }
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <option value="included_in_flyer">
                     Mode A: Included in Flyer
@@ -2803,34 +3302,52 @@ export function StudioHubClient({
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">
+                <Label
+                  htmlFor="studio-new-sup-comm-pkr"
+                  className="text-xs font-semibold"
+                >
                   Default Commission (PKR)
                 </Label>
                 <Input
+                  id="studio-new-sup-comm-pkr"
                   type="number"
                   value={newSupCommPkr}
-                  onChange={(e) => setNewSupCommPkr(Number(e.target.value) || 0)}
-                  className="text-xs font-mono font-bold h-9"
+                  onChange={(e) =>
+                    setNewSupCommPkr(Number(e.target.value) || 0)
+                  }
+                  className="h-9 font-mono text-xs font-bold"
                 />
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">WhatsApp Desk Number</Label>
+                <Label
+                  htmlFor="studio-new-sup-whatsapp"
+                  className="text-xs font-semibold"
+                >
+                  WhatsApp Desk Number
+                </Label>
                 <Input
+                  id="studio-new-sup-whatsapp"
                   placeholder="+923001234567"
                   value={newSupWhatsapp}
                   onChange={(e) => setNewSupWhatsapp(e.target.value)}
-                  className="text-xs font-mono h-9"
+                  className="h-9 font-mono text-xs"
                 />
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">Contact Person</Label>
+                <Label
+                  htmlFor="studio-new-sup-contact"
+                  className="text-xs font-semibold"
+                >
+                  Contact Person
+                </Label>
                 <Input
+                  id="studio-new-sup-contact"
                   placeholder="e.g. Tariq Mehmood"
                   value={newSupContact}
                   onChange={(e) => setNewSupContact(e.target.value)}
-                  className="text-xs h-9"
+                  className="h-9 text-xs"
                 />
               </div>
             </div>
@@ -2841,7 +3358,7 @@ export function StudioHubClient({
                 variant="outline"
                 size="sm"
                 onClick={() => setIsSupplierModalOpen(false)}
-                className="cursor-pointer text-xs"
+                className="cursor-pointer text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 Cancel
               </Button>
@@ -2849,12 +3366,15 @@ export function StudioHubClient({
                 type="submit"
                 size="sm"
                 disabled={newSupSaving}
-                className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-bold text-xs gap-1.5 cursor-pointer shadow-xs"
+                className="cursor-pointer gap-1.5 bg-primary text-xs font-bold text-primary-foreground shadow-xs hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 {newSupSaving ? (
-                  <Loader2 className="size-3.5 animate-spin text-gold" />
+                  <Loader2
+                    className="size-3.5 animate-spin text-gold motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Check className="size-3.5 text-gold" />
+                  <Check className="size-3.5 text-gold" aria-hidden="true" />
                 )}
                 <span>Register Supplier</span>
               </Button>
@@ -2866,13 +3386,16 @@ export function StudioHubClient({
       {/* ==================================================================== */}
       {/* MODAL: QUICK EDIT EXTRACTED PACKAGE CARD                             */}
       {/* ==================================================================== */}
-      <Dialog open={!!editingCard} onOpenChange={(open) => !open && setEditingCard(null)}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+      <Dialog
+        open={!!editingCard}
+        onOpenChange={(open) => !open && setEditingCard(null)}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           {editingCard && (
             <form onSubmit={handleSaveCardEdit} className="space-y-5">
               <DialogHeader>
                 <div className="flex items-center gap-2">
-                  <span className="rounded-md bg-[#0A3622] px-2.5 py-1 font-mono text-xs font-bold text-gold">
+                  <span className="rounded-md bg-primary px-2.5 py-1 font-mono text-xs font-bold text-gold">
                     {editingCard.postCode}
                   </span>
                   <DialogTitle className="font-display text-lg font-bold text-foreground">
@@ -2880,44 +3403,73 @@ export function StudioHubClient({
                   </DialogTitle>
                 </div>
                 <DialogDescription className="text-xs">
-                  Update hotel names, room sharing tariffs, flight details, or wholesale commission. Supplier Net is automatically recalculated.
+                  Update hotel names, room sharing tariffs, flight details, or
+                  wholesale commission. Supplier Net is automatically
+                  recalculated.
                 </DialogDescription>
               </DialogHeader>
 
               {/* SECTION: ACCOMMODATIONS */}
-              <div className="space-y-3 rounded-xl border border-border bg-secondary/15 p-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
-                  <Building2 className="size-3.5 text-gold" />
+              <div className="space-y-3 rounded-xl bg-secondary/45 p-4">
+                <h4 className="flex items-center gap-1.5 text-xs font-bold text-primary">
+                  <Building2
+                    className="size-3.5 text-gold-text"
+                    aria-hidden="true"
+                  />
                   <span>Hotel Accommodations &amp; Nights</span>
                 </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div className="space-y-1 sm:col-span-2">
-                    <Label className="text-[11px] font-semibold">Makkah Hotel Name *</Label>
+                    <Label
+                      htmlFor="studio-edit-makkah-hotel"
+                      className="text-[11px] font-semibold"
+                    >
+                      Makkah Hotel Name *
+                    </Label>
                     <Input
+                      id="studio-edit-makkah-hotel"
                       required
                       value={editForm.makkahHotelName}
                       onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, makkahHotelName: e.target.value }))
+                        setEditForm((prev) => ({
+                          ...prev,
+                          makkahHotelName: e.target.value,
+                        }))
                       }
-                      className="text-xs h-8"
+                      className="h-8 text-xs"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <Label className="text-[11px] font-semibold">Nights</Label>
+                      <Label
+                        htmlFor="studio-edit-makkah-nights"
+                        className="text-[11px] font-semibold"
+                      >
+                        Nights
+                      </Label>
                       <Input
+                        id="studio-edit-makkah-nights"
                         required
                         value={editForm.makkahNights}
                         onChange={(e) =>
-                          setEditForm((prev) => ({ ...prev, makkahNights: e.target.value }))
+                          setEditForm((prev) => ({
+                            ...prev,
+                            makkahNights: e.target.value,
+                          }))
                         }
-                        className="text-xs font-mono h-8"
+                        className="h-8 font-mono text-xs"
                         placeholder="15N"
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-[11px] font-semibold">Distance</Label>
+                      <Label
+                        htmlFor="studio-edit-makkah-distance"
+                        className="text-[11px] font-semibold"
+                      >
+                        Distance
+                      </Label>
                       <Input
+                        id="studio-edit-makkah-distance"
                         required
                         value={editForm.makkahDistanceLabel}
                         onChange={(e) =>
@@ -2926,41 +3478,65 @@ export function StudioHubClient({
                             makkahDistanceLabel: e.target.value,
                           }))
                         }
-                        className="text-xs h-8"
+                        className="h-8 text-xs"
                         placeholder="(600M)"
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div className="space-y-1 sm:col-span-2">
-                    <Label className="text-[11px] font-semibold">Madinah Hotel Name *</Label>
+                    <Label
+                      htmlFor="studio-edit-madinah-hotel"
+                      className="text-[11px] font-semibold"
+                    >
+                      Madinah Hotel Name *
+                    </Label>
                     <Input
+                      id="studio-edit-madinah-hotel"
                       required
                       value={editForm.madinahHotelName}
                       onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, madinahHotelName: e.target.value }))
+                        setEditForm((prev) => ({
+                          ...prev,
+                          madinahHotelName: e.target.value,
+                        }))
                       }
-                      className="text-xs h-8"
+                      className="h-8 text-xs"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <Label className="text-[11px] font-semibold">Nights</Label>
+                      <Label
+                        htmlFor="studio-edit-madinah-nights"
+                        className="text-[11px] font-semibold"
+                      >
+                        Nights
+                      </Label>
                       <Input
+                        id="studio-edit-madinah-nights"
                         required
                         value={editForm.madinahNights}
                         onChange={(e) =>
-                          setEditForm((prev) => ({ ...prev, madinahNights: e.target.value }))
+                          setEditForm((prev) => ({
+                            ...prev,
+                            madinahNights: e.target.value,
+                          }))
                         }
-                        className="text-xs font-mono h-8"
+                        className="h-8 font-mono text-xs"
                         placeholder="05N"
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-[11px] font-semibold">Distance</Label>
+                      <Label
+                        htmlFor="studio-edit-madinah-distance"
+                        className="text-[11px] font-semibold"
+                      >
+                        Distance
+                      </Label>
                       <Input
+                        id="studio-edit-madinah-distance"
                         required
                         value={editForm.madinahDistanceLabel}
                         onChange={(e) =>
@@ -2969,7 +3545,7 @@ export function StudioHubClient({
                             madinahDistanceLabel: e.target.value,
                           }))
                         }
-                        className="text-xs h-8"
+                        className="h-8 text-xs"
                         placeholder="(400M)"
                       />
                     </div>
@@ -2977,143 +3553,245 @@ export function StudioHubClient({
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold">Meal Plan</Label>
+                  <Label
+                    htmlFor="studio-edit-meal-plan"
+                    className="text-[11px] font-semibold"
+                  >
+                    Meal Plan
+                  </Label>
                   <Input
+                    id="studio-edit-meal-plan"
                     value={editForm.mealPlanLabel}
                     onChange={(e) =>
-                      setEditForm((prev) => ({ ...prev, mealPlanLabel: e.target.value }))
+                      setEditForm((prev) => ({
+                        ...prev,
+                        mealPlanLabel: e.target.value,
+                      }))
                     }
-                    className="text-xs h-8"
+                    className="h-8 text-xs"
                     placeholder="Room Only / Breakfast"
                   />
                 </div>
               </div>
 
               {/* SECTION: FLIGHT SCHEDULE */}
-              <div className="space-y-3 rounded-xl border border-border bg-secondary/15 p-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
-                  <Plane className="size-3.5 text-gold" />
+              <div className="space-y-3 rounded-xl bg-secondary/45 p-4">
+                <h4 className="flex items-center gap-1.5 text-xs font-bold text-primary">
+                  <Plane
+                    className="size-3.5 text-gold-text"
+                    aria-hidden="true"
+                  />
                   <span>Flight Schedule</span>
                 </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                   <div className="space-y-1 sm:col-span-1">
-                    <Label className="text-[10px] font-semibold">Out Flight No</Label>
+                    <Label
+                      htmlFor="studio-edit-out-flight"
+                      className="text-[11px] font-semibold"
+                    >
+                      Out Flight No
+                    </Label>
                     <Input
+                      id="studio-edit-out-flight"
                       required
                       value={editForm.outboundFlightNo}
                       onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, outboundFlightNo: e.target.value }))
+                        setEditForm((prev) => ({
+                          ...prev,
+                          outboundFlightNo: e.target.value,
+                        }))
                       }
-                      className="text-xs font-mono h-8"
+                      className="h-8 font-mono text-xs"
                     />
                   </div>
                   <div className="space-y-1 sm:col-span-1">
-                    <Label className="text-[10px] font-semibold">Out Date Label</Label>
+                    <Label
+                      htmlFor="studio-edit-out-date"
+                      className="text-[11px] font-semibold"
+                    >
+                      Out Date Label
+                    </Label>
                     <Input
+                      id="studio-edit-out-date"
                       required
                       value={editForm.outboundDateLabel}
                       onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, outboundDateLabel: e.target.value }))
+                        setEditForm((prev) => ({
+                          ...prev,
+                          outboundDateLabel: e.target.value,
+                        }))
                       }
-                      className="text-xs font-mono h-8"
+                      className="h-8 font-mono text-xs"
                       placeholder="10 NOV"
                     />
                   </div>
                   <div className="space-y-1 sm:col-span-1">
-                    <Label className="text-[10px] font-semibold">Out Route</Label>
+                    <Label
+                      htmlFor="studio-edit-out-route"
+                      className="text-[11px] font-semibold"
+                    >
+                      Out Route
+                    </Label>
                     <Input
+                      id="studio-edit-out-route"
                       required
                       value={editForm.outboundRoute}
                       onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, outboundRoute: e.target.value }))
+                        setEditForm((prev) => ({
+                          ...prev,
+                          outboundRoute: e.target.value,
+                        }))
                       }
-                      className="text-xs font-mono h-8"
+                      className="h-8 font-mono text-xs"
                       placeholder="LHE - JED"
                     />
                   </div>
                   <div className="space-y-1 sm:col-span-1">
-                    <Label className="text-[10px] font-semibold">Dep Time</Label>
+                    <Label
+                      htmlFor="studio-edit-out-dep-time"
+                      className="text-[11px] font-semibold"
+                    >
+                      Dep Time
+                    </Label>
                     <Input
+                      id="studio-edit-out-dep-time"
                       required
                       value={editForm.outboundDepTime}
                       onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, outboundDepTime: e.target.value }))
+                        setEditForm((prev) => ({
+                          ...prev,
+                          outboundDepTime: e.target.value,
+                        }))
                       }
-                      className="text-xs font-mono h-8"
+                      className="h-8 font-mono text-xs"
                       placeholder="06:35"
                     />
                   </div>
                   <div className="space-y-1 sm:col-span-1">
-                    <Label className="text-[10px] font-semibold">Arr Time</Label>
+                    <Label
+                      htmlFor="studio-edit-out-arr-time"
+                      className="text-[11px] font-semibold"
+                    >
+                      Arr Time
+                    </Label>
                     <Input
+                      id="studio-edit-out-arr-time"
                       required
                       value={editForm.outboundArrTime}
                       onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, outboundArrTime: e.target.value }))
+                        setEditForm((prev) => ({
+                          ...prev,
+                          outboundArrTime: e.target.value,
+                        }))
                       }
-                      className="text-xs font-mono h-8"
+                      className="h-8 font-mono text-xs"
                       placeholder="10:35"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                   <div className="space-y-1 sm:col-span-1">
-                    <Label className="text-[10px] font-semibold">Return Flight No</Label>
+                    <Label
+                      htmlFor="studio-edit-ret-flight"
+                      className="text-[11px] font-semibold"
+                    >
+                      Return Flight No
+                    </Label>
                     <Input
+                      id="studio-edit-ret-flight"
                       required
                       value={editForm.returnFlightNo}
                       onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, returnFlightNo: e.target.value }))
+                        setEditForm((prev) => ({
+                          ...prev,
+                          returnFlightNo: e.target.value,
+                        }))
                       }
-                      className="text-xs font-mono h-8"
+                      className="h-8 font-mono text-xs"
                     />
                   </div>
                   <div className="space-y-1 sm:col-span-1">
-                    <Label className="text-[10px] font-semibold">Return Date</Label>
+                    <Label
+                      htmlFor="studio-edit-ret-date"
+                      className="text-[11px] font-semibold"
+                    >
+                      Return Date
+                    </Label>
                     <Input
+                      id="studio-edit-ret-date"
                       required
                       value={editForm.returnDateLabel}
                       onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, returnDateLabel: e.target.value }))
+                        setEditForm((prev) => ({
+                          ...prev,
+                          returnDateLabel: e.target.value,
+                        }))
                       }
-                      className="text-xs font-mono h-8"
+                      className="h-8 font-mono text-xs"
                       placeholder="01 DEC"
                     />
                   </div>
                   <div className="space-y-1 sm:col-span-1">
-                    <Label className="text-[10px] font-semibold">Return Route</Label>
+                    <Label
+                      htmlFor="studio-edit-ret-route"
+                      className="text-[11px] font-semibold"
+                    >
+                      Return Route
+                    </Label>
                     <Input
+                      id="studio-edit-ret-route"
                       required
                       value={editForm.returnRoute}
                       onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, returnRoute: e.target.value }))
+                        setEditForm((prev) => ({
+                          ...prev,
+                          returnRoute: e.target.value,
+                        }))
                       }
-                      className="text-xs font-mono h-8"
+                      className="h-8 font-mono text-xs"
                       placeholder="JED - LHE"
                     />
                   </div>
                   <div className="space-y-1 sm:col-span-1">
-                    <Label className="text-[10px] font-semibold">Dep Time</Label>
+                    <Label
+                      htmlFor="studio-edit-ret-dep-time"
+                      className="text-[11px] font-semibold"
+                    >
+                      Dep Time
+                    </Label>
                     <Input
+                      id="studio-edit-ret-dep-time"
                       required
                       value={editForm.returnDepTime}
                       onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, returnDepTime: e.target.value }))
+                        setEditForm((prev) => ({
+                          ...prev,
+                          returnDepTime: e.target.value,
+                        }))
                       }
-                      className="text-xs font-mono h-8"
+                      className="h-8 font-mono text-xs"
                       placeholder="11:35"
                     />
                   </div>
                   <div className="space-y-1 sm:col-span-1">
-                    <Label className="text-[10px] font-semibold">Arr Time</Label>
+                    <Label
+                      htmlFor="studio-edit-ret-arr-time"
+                      className="text-[11px] font-semibold"
+                    >
+                      Arr Time
+                    </Label>
                     <Input
+                      id="studio-edit-ret-arr-time"
                       required
                       value={editForm.returnArrTime}
                       onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, returnArrTime: e.target.value }))
+                        setEditForm((prev) => ({
+                          ...prev,
+                          returnArrTime: e.target.value,
+                        }))
                       }
-                      className="text-xs font-mono h-8"
+                      className="h-8 font-mono text-xs"
                       placeholder="18:20"
                     />
                   </div>
@@ -3121,21 +3799,33 @@ export function StudioHubClient({
               </div>
 
               {/* SECTION: PRICING & COMMISSION */}
-              <div className="space-y-3 rounded-xl border border-gold/40 bg-gold/5 p-4">
+              <div className="space-y-3 rounded-xl bg-accent/25 p-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
-                    <Coins className="size-3.5 text-gold" />
+                  <h4 className="flex items-center gap-1.5 text-xs font-bold text-primary">
+                    <Coins
+                      className="size-3.5 text-gold-text"
+                      aria-hidden="true"
+                    />
                     <span>Pricing &amp; Wholesale Commission</span>
                   </h4>
-                  <Badge variant="outline" className="border-gold/60 bg-gold/15 text-[10px] font-mono font-bold text-primary">
-                    Net = Retail - Commission
+                  <Badge
+                    variant="outline"
+                    className="border-gold-border bg-accent/50 font-mono text-[11px] font-bold text-primary"
+                  >
+                    Net = Retail minus Commission
                   </Badge>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                   <div className="space-y-1">
-                    <Label className="text-[11px] font-semibold">Sharing (PKR) *</Label>
+                    <Label
+                      htmlFor="studio-edit-sharing-pkr"
+                      className="text-[11px] font-semibold"
+                    >
+                      Sharing (PKR) *
+                    </Label>
                     <Input
+                      id="studio-edit-sharing-pkr"
                       type="number"
                       required
                       value={editForm.rawSharingPkr}
@@ -3145,12 +3835,18 @@ export function StudioHubClient({
                           rawSharingPkr: Number(e.target.value) || 0,
                         }))
                       }
-                      className="text-xs font-mono font-bold h-8"
+                      className="h-8 font-mono text-xs font-bold"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[11px] font-semibold">Quad (PKR) *</Label>
+                    <Label
+                      htmlFor="studio-edit-quad-pkr"
+                      className="text-[11px] font-semibold"
+                    >
+                      Quad (PKR) *
+                    </Label>
                     <Input
+                      id="studio-edit-quad-pkr"
                       type="number"
                       required
                       value={editForm.rawQuadPkr}
@@ -3160,12 +3856,18 @@ export function StudioHubClient({
                           rawQuadPkr: Number(e.target.value) || 0,
                         }))
                       }
-                      className="text-xs font-mono font-bold h-8"
+                      className="h-8 font-mono text-xs font-bold"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[11px] font-semibold">Triple (PKR) *</Label>
+                    <Label
+                      htmlFor="studio-edit-triple-pkr"
+                      className="text-[11px] font-semibold"
+                    >
+                      Triple (PKR) *
+                    </Label>
                     <Input
+                      id="studio-edit-triple-pkr"
                       type="number"
                       required
                       value={editForm.rawTriplePkr}
@@ -3175,12 +3877,18 @@ export function StudioHubClient({
                           rawTriplePkr: Number(e.target.value) || 0,
                         }))
                       }
-                      className="text-xs font-mono font-bold h-8"
+                      className="h-8 font-mono text-xs font-bold"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[11px] font-semibold">Double (PKR) *</Label>
+                    <Label
+                      htmlFor="studio-edit-double-pkr"
+                      className="text-[11px] font-semibold"
+                    >
+                      Double (PKR) *
+                    </Label>
                     <Input
+                      id="studio-edit-double-pkr"
                       type="number"
                       required
                       value={editForm.rawDoublePkr}
@@ -3190,14 +3898,18 @@ export function StudioHubClient({
                           rawDoublePkr: Number(e.target.value) || 0,
                         }))
                       }
-                      className="text-xs font-mono font-bold h-8"
+                      className="h-8 font-mono text-xs font-bold"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[11px] font-semibold text-emerald-800">
+                    <Label
+                      htmlFor="studio-edit-commission-pkr"
+                      className="text-[11px] font-semibold text-status-success"
+                    >
                       Commission (PKR) *
                     </Label>
                     <Input
+                      id="studio-edit-commission-pkr"
                       type="number"
                       required
                       value={editForm.commissionPkr}
@@ -3207,47 +3919,63 @@ export function StudioHubClient({
                           commissionPkr: Number(e.target.value) || 0,
                         }))
                       }
-                      className="text-xs font-mono font-bold h-8 border-emerald-600/40 bg-emerald-50/50"
+                      className="h-8 border-status-success-border bg-status-success-bg/60 font-mono text-xs font-bold"
                     />
                   </div>
                 </div>
 
                 {/* Calculation Preview Strip */}
-                <div className="flex flex-wrap items-center justify-between rounded-lg bg-white/80 p-2.5 text-xs border border-gold/30">
+                <div className="flex flex-wrap items-center justify-between rounded-lg bg-card/90 p-2.5 text-xs">
                   <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Retail Sharing:</span>
-                    <span className="font-mono font-bold text-primary">
+                    <span className="text-muted-foreground">
+                      Retail Sharing:
+                    </span>
+                    <span className="font-mono font-bold text-primary tabular-nums">
                       PKR {editForm.rawSharingPkr.toLocaleString()}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Commission Margin:</span>
-                    <span className="font-mono font-bold text-emerald-700">
+                    <span className="text-muted-foreground">
+                      Commission Margin:
+                    </span>
+                    <span className="font-mono font-bold text-status-success tabular-nums">
                       +PKR {editForm.commissionPkr.toLocaleString()}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Net Supplier Payable:</span>
-                    <span className="font-mono font-bold text-foreground">
-                      PKR {Math.max(0, editForm.rawSharingPkr - editForm.commissionPkr).toLocaleString()}
+                    <span className="text-muted-foreground">
+                      Net Supplier Payable:
+                    </span>
+                    <span className="font-mono font-bold text-foreground tabular-nums">
+                      PKR{" "}
+                      {Math.max(
+                        0,
+                        editForm.rawSharingPkr - editForm.commissionPkr
+                      ).toLocaleString()}
                     </span>
                   </div>
                 </div>
               </div>
 
               {/* SECTION: PACKAGE SPOTLIGHT / DEDICATED IMAGE */}
-              <div className="space-y-3 rounded-xl border border-border bg-secondary/15 p-4">
+              <div className="space-y-3 rounded-xl bg-secondary/45 p-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
-                    <Camera className="size-3.5 text-gold" />
+                  <h4 className="flex items-center gap-1.5 text-xs font-bold text-primary">
+                    <Camera
+                      className="size-3.5 text-gold-text"
+                      aria-hidden="true"
+                    />
                     <span>Package Spotlight / Dedicated Image</span>
                   </h4>
                   <div className="flex items-center gap-2">
                     <input
+                      id="studio-edit-card-image-file"
                       ref={editCardFileInputRef}
                       type="file"
                       accept="image/*"
-                      className="hidden"
+                      aria-label="Upload dedicated package spotlight image from disk"
+                      tabIndex={-1}
+                      className="sr-only"
                       onChange={handleEditCardImageUpload}
                       disabled={editCardImageUploading}
                     />
@@ -3257,16 +3985,22 @@ export function StudioHubClient({
                       size="sm"
                       disabled={editCardImageUploading}
                       onClick={() => editCardFileInputRef.current?.click()}
-                      className="h-7 px-2.5 text-xs font-semibold gap-1.5 cursor-pointer border-gold/40 hover:bg-gold/10"
+                      className="h-7 cursor-pointer gap-1.5 border-gold-border px-2.5 text-xs font-semibold hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       {editCardImageUploading ? (
-                        <Loader2 className="size-3 animate-spin text-gold" />
+                        <Loader2
+                          className="size-3 animate-spin text-gold-text motion-reduce:animate-none"
+                          aria-hidden="true"
+                        />
                       ) : (
-                        <Upload className="size-3 text-gold" />
+                        <Upload
+                          className="size-3 text-gold-text"
+                          aria-hidden="true"
+                        />
                       )}
                       <span>
                         {editCardImageUploading
-                          ? "Uploading to R2..."
+                          ? "Uploading to R2…"
                           : "Upload from Disk"}
                       </span>
                     </Button>
@@ -3274,10 +4008,14 @@ export function StudioHubClient({
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold">
+                  <Label
+                    htmlFor="studio-edit-spotlight-url"
+                    className="text-[11px] font-semibold"
+                  >
                     Image URL (Cloudflare R2 or direct link)
                   </Label>
                   <Input
+                    id="studio-edit-spotlight-url"
                     value={editForm.spotlightPosterUrl}
                     onChange={(e) =>
                       setEditForm((prev) => ({
@@ -3285,33 +4023,25 @@ export function StudioHubClient({
                         spotlightPosterUrl: e.target.value,
                       }))
                     }
-                    className="text-xs font-mono h-8"
-                    placeholder="https://pub-....r2.dev/posters/spotlights/..."
+                    className="h-8 font-mono text-xs"
+                    placeholder="https://pub-….r2.dev/posters/spotlights/…"
                   />
-                  <p className="text-[10px] text-muted-foreground">
-                    If left blank, falls back to the master poster image. Uploading or pasting a dedicated image updates this package in 4K Social Gallery, Campaigns, and the Website.
+                  <p className="text-[11px] text-muted-foreground">
+                    If left blank, falls back to the master poster image.
+                    Uploading or pasting a dedicated image updates this package
+                    in 4K Social Gallery, Campaigns, and the Website.
                   </p>
                 </div>
 
-                {editForm.spotlightPosterUrl && (
-                  <div className="relative h-32 w-48 rounded-lg overflow-hidden border border-border bg-secondary/40">
-                    {isPdfAssetPreviewUrl(editForm.spotlightPosterUrl) ? (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-[#FBF9F4] p-2 text-center">
-                        <FileText className="size-6 text-gold" />
-                        <span className="text-[10px] font-bold text-primary">
-                          Vector PDF Selected
-                        </span>
-                      </div>
-                    ) : (
-                      <Image
-                        src={editForm.spotlightPosterUrl}
-                        alt="Dedicated Package Spotlight Preview"
-                        fill
-                        unoptimized
-                        className="object-cover object-top"
-                      />
-                    )}
-                    <span className="absolute bottom-1 right-2 rounded bg-black/75 px-1.5 py-0.5 text-[9px] text-white">
+                {editForm.spotlightPosterUrl.trim() && (
+                  <div className="relative h-32 w-48 overflow-hidden rounded-lg bg-secondary/70">
+                    <StudioAssetPreviewMedia
+                      url={editForm.spotlightPosterUrl}
+                      alt="Dedicated Package Spotlight Preview"
+                      size="compact"
+                      imageClassName="object-cover object-top"
+                    />
+                    <span className="absolute right-2 bottom-1 rounded bg-primary/90 px-1.5 py-0.5 text-[10px] text-primary-foreground">
                       Spotlight Preview
                     </span>
                   </div>
@@ -3324,7 +4054,7 @@ export function StudioHubClient({
                   variant="outline"
                   size="sm"
                   onClick={() => setEditingCard(null)}
-                  className="cursor-pointer text-xs"
+                  className="cursor-pointer text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   Cancel
                 </Button>
@@ -3332,12 +4062,15 @@ export function StudioHubClient({
                   type="submit"
                   size="sm"
                   disabled={busyKey === "saving_edit_card"}
-                  className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-bold text-xs gap-1.5 cursor-pointer shadow-xs"
+                  className="cursor-pointer gap-1.5 bg-primary text-xs font-bold text-primary-foreground shadow-xs hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {busyKey === "saving_edit_card" ? (
-                    <Loader2 className="size-3.5 animate-spin text-gold" />
+                    <Loader2
+                      className="size-3.5 animate-spin text-gold motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Check className="size-3.5 text-gold" />
+                    <Check className="size-3.5 text-gold" aria-hidden="true" />
                   )}
                   <span>Save Card Changes</span>
                 </Button>
@@ -3346,8 +4079,6 @@ export function StudioHubClient({
           )}
         </DialogContent>
       </Dialog>
-
-
 
       {/* ==================================================================== */}
       {/* MODAL: CHANGE PACKAGE DEDICATED SPOTLIGHT IMAGE                      */}
@@ -3367,7 +4098,7 @@ export function StudioHubClient({
             <div className="space-y-4">
               <DialogHeader>
                 <div className="flex items-center gap-2">
-                  <span className="rounded-md bg-[#0A3622] px-2.5 py-1 font-mono text-xs font-bold text-gold">
+                  <span className="rounded-md bg-primary px-2.5 py-1 font-mono text-xs font-bold text-gold">
                     {imageModalCard.postCode}
                   </span>
                   <DialogTitle className="font-display text-base font-bold text-foreground">
@@ -3375,38 +4106,36 @@ export function StudioHubClient({
                   </DialogTitle>
                 </div>
                 <DialogDescription className="text-xs">
-                  Upload a dedicated 4K image for {imageModalCard.title}. This will immediately update the 4K Social Gallery, Campaigns Social Scheduler, and the live Website package card!
+                  Upload a dedicated 4K image for {imageModalCard.title}. This
+                  will immediately update the 4K Social Gallery, Campaigns
+                  Social Scheduler, and the live Website package card!
                 </DialogDescription>
               </DialogHeader>
 
               {/* Current Thumbnail Preview */}
-              <div className="flex items-center gap-4 p-3 rounded-xl border border-border bg-secondary/30">
-                <div className="relative h-24 w-18 shrink-0 rounded-lg overflow-hidden border border-border bg-black/20">
-                  {isPdfAssetPreviewUrl(
-                    imageModalUrlInput || imageModalCard.currentImageUrl
-                  ) ? (
-                    <div className="flex h-full w-full items-center justify-center bg-[#FBF9F4]">
-                      <FileText className="size-6 text-gold" />
-                    </div>
-                  ) : (
-                    <Image
-                      src={imageModalUrlInput || imageModalCard.currentImageUrl}
-                      alt={imageModalCard.title}
-                      fill
-                      unoptimized
-                      className="object-cover object-top"
-                    />
-                  )}
+              <div className="flex items-center gap-4 rounded-xl bg-secondary/50 p-3">
+                <div className="relative h-24 w-18 shrink-0 overflow-hidden rounded-lg bg-secondary">
+                  <StudioAssetPreviewMedia
+                    url={
+                      imageModalUrlInput.trim() ||
+                      imageModalCard.currentImageUrl
+                    }
+                    alt={imageModalCard.title}
+                    size="thumb"
+                    imageClassName="object-cover object-top"
+                  />
                 </div>
                 <div className="space-y-1 text-xs">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <span className="text-[11px] font-bold text-muted-foreground">
                     Live Preview
                   </span>
-                  <p className="font-semibold text-foreground line-clamp-1">
+                  <p className="line-clamp-1 font-semibold text-foreground">
                     {imageModalCard.title}
                   </p>
-                  <p className="text-[11px] text-emerald-800 font-medium">
-                    {imageModalUrlInput ? "New image selected!" : "Currently using current/flyer image"}
+                  <p className="text-[11px] font-medium text-status-success">
+                    {imageModalUrlInput.trim()
+                      ? "New image selected!"
+                      : "Currently using current/flyer image"}
                   </p>
                 </div>
               </div>
@@ -3414,12 +4143,20 @@ export function StudioHubClient({
               {/* Upload or URL Inputs */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs font-semibold">Upload Image File</Label>
+                  <Label
+                    htmlFor="studio-image-modal-file"
+                    className="text-xs font-semibold"
+                  >
+                    Upload Image File
+                  </Label>
                   <input
+                    id="studio-image-modal-file"
                     ref={imageModalFileInputRef}
                     type="file"
                     accept="image/*"
-                    className="hidden"
+                    aria-label="Upload Image File"
+                    tabIndex={-1}
+                    className="sr-only"
                     onChange={handleImageModalFileUpload}
                     disabled={imageModalUploading}
                   />
@@ -3429,30 +4166,46 @@ export function StudioHubClient({
                     size="sm"
                     disabled={imageModalUploading}
                     onClick={() => imageModalFileInputRef.current?.click()}
-                    className="h-8 px-3 text-xs font-semibold gap-1.5 cursor-pointer border-gold/50 bg-gold/10 hover:bg-gold/20"
+                    className="h-8 cursor-pointer gap-1.5 border-gold-border bg-accent/35 px-3 text-xs font-semibold hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     {imageModalUploading ? (
-                      <Loader2 className="size-3.5 animate-spin text-gold" />
+                      <Loader2
+                        className="size-3.5 animate-spin text-gold-text motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
                     ) : (
-                      <Upload className="size-3.5 text-gold" />
+                      <Upload
+                        className="size-3.5 text-gold-text"
+                        aria-hidden="true"
+                      />
                     )}
-                    <span>{imageModalUploading ? "Uploading to R2..." : "Direct Upload to R2"}</span>
+                    <span>
+                      {imageModalUploading
+                        ? "Uploading to R2…"
+                        : "Direct Upload to R2"}
+                    </span>
                   </Button>
                 </div>
 
                 {imageModalProgress && (
-                  <p className="text-[11px] text-amber-700 animate-pulse font-medium">
+                  <p className="animate-pulse text-[11px] font-medium text-status-warning motion-reduce:animate-none">
                     {imageModalProgress}
                   </p>
                 )}
 
                 <div className="space-y-1">
-                  <Label className="text-xs font-semibold">Or Paste Image URL</Label>
+                  <Label
+                    htmlFor="studio-image-modal-url"
+                    className="text-xs font-semibold"
+                  >
+                    Or Paste Image URL
+                  </Label>
                   <Input
+                    id="studio-image-modal-url"
                     value={imageModalUrlInput}
                     onChange={(e) => setImageModalUrlInput(e.target.value)}
-                    placeholder="https://pub-....r2.dev/posters/spotlights/..."
-                    className="text-xs font-mono h-8"
+                    placeholder="https://pub-….r2.dev/posters/spotlights/…"
+                    className="h-8 font-mono text-xs"
                   />
                 </div>
               </div>
@@ -3468,7 +4221,7 @@ export function StudioHubClient({
                     setImageModalUrlInput("")
                     setImageModalProgress(null)
                   }}
-                  className="cursor-pointer text-xs"
+                  className="cursor-pointer text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   Cancel
                 </Button>
@@ -3482,12 +4235,18 @@ export function StudioHubClient({
                       imageModalUrlInput
                     )
                   }
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold cursor-pointer gap-1.5"
+                  className="cursor-pointer gap-1.5 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {imageModalUploading ? (
-                    <Loader2 className="size-3 animate-spin" />
+                    <Loader2
+                      className="size-3 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <CheckCircle2 className="size-3 text-gold" />
+                    <CheckCircle2
+                      className="size-3 text-gold"
+                      aria-hidden="true"
+                    />
                   )}
                   <span>Save &amp; Sync Image</span>
                 </Button>
@@ -3500,20 +4259,32 @@ export function StudioHubClient({
       {/* ==================================================================== */}
       {/* MODAL: CONFIRM DELETE FLYER BATCH                                    */}
       {/* ==================================================================== */}
-      <Dialog open={!!deletingFlyer} onOpenChange={(open) => !open && setDeletingFlyer(null)}>
+      <Dialog
+        open={!!deletingFlyer}
+        onOpenChange={(open) => !open && setDeletingFlyer(null)}
+      >
         <DialogContent className="sm:max-w-md">
           {deletingFlyer && (
             <div>
               <DialogHeader>
-                <DialogTitle className="font-display text-lg font-bold text-red-600 flex items-center gap-2">
-                  <Trash2 className="size-4 text-red-600" />
+                <DialogTitle className="flex items-center gap-2 font-display text-lg font-bold text-status-danger">
+                  <Trash2
+                    className="size-4 text-status-danger"
+                    aria-hidden="true"
+                  />
                   <span>Delete Poster Batch</span>
                 </DialogTitle>
-                <DialogDescription className="text-xs pt-1 leading-relaxed">
+                <DialogDescription className="pt-1 text-xs leading-relaxed">
                   Are you sure you want to permanently delete flyer batch{" "}
-                  <strong className="text-foreground">&ldquo;{deletingFlyer.title}&rdquo;</strong> and all{" "}
-                  <strong className="text-foreground">{deletingFlyer.packages?.length || 0} package cards</strong>?
-                  This action will permanently remove all associated 4K social assets and unpublish any linked website group departures.
+                  <strong className="text-foreground">
+                    &ldquo;{deletingFlyer.title}&rdquo;
+                  </strong>{" "}
+                  and all{" "}
+                  <strong className="text-foreground">
+                    {deletingFlyer.packages?.length || 0} package cards
+                  </strong>
+                  ? This action will permanently remove all associated 4K social
+                  assets and unpublish any linked website group departures.
                 </DialogDescription>
               </DialogHeader>
 
@@ -3523,7 +4294,7 @@ export function StudioHubClient({
                   variant="outline"
                   size="sm"
                   onClick={() => setDeletingFlyer(null)}
-                  className="cursor-pointer text-xs"
+                  className="cursor-pointer text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   Cancel
                 </Button>
@@ -3532,12 +4303,18 @@ export function StudioHubClient({
                   size="sm"
                   disabled={busyKey === `del-flyer-${deletingFlyer.id}`}
                   onClick={handleDeleteFlyerBatch}
-                  className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs gap-1.5 cursor-pointer shadow-xs"
+                  className="cursor-pointer gap-1.5 bg-destructive text-xs font-bold text-destructive-foreground shadow-xs hover:bg-destructive/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {busyKey === `del-flyer-${deletingFlyer.id}` ? (
-                    <Loader2 className="size-3.5 animate-spin text-white" />
+                    <Loader2
+                      className="size-3.5 animate-spin text-destructive-foreground motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Trash2 className="size-3.5 text-white" />
+                    <Trash2
+                      className="size-3.5 text-destructive-foreground"
+                      aria-hidden="true"
+                    />
                   )}
                   <span>Permanently Delete Batch</span>
                 </Button>
@@ -3546,8 +4323,6 @@ export function StudioHubClient({
           )}
         </DialogContent>
       </Dialog>
-
-
     </div>
   )
 }

@@ -46,6 +46,19 @@
   --color-gold-foreground: var(--gold-foreground);
   --color-gold-border: var(--gold-border);
 
+  --color-status-success: var(--status-success);
+  --color-status-success-bg: var(--status-success-bg);
+  --color-status-success-border: var(--status-success-border);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-bg: var(--status-warning-bg);
+  --color-status-warning-border: var(--status-warning-border);
+  --color-status-danger: var(--status-danger);
+  --color-status-danger-bg: var(--status-danger-bg);
+  --color-status-danger-border: var(--status-danger-border);
+  --color-status-info: var(--status-info);
+  --color-status-info-bg: var(--status-info-bg);
+  --color-status-info-border: var(--status-info-border);
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -107,6 +120,23 @@
 
   --destructive: oklch(0.48 0.20 27);
   --destructive-foreground: oklch(0.98 0 0);
+
+  /* Semantic Operational Status Palette (Spec 0028 — >= 6.4:1 AA text contrast on light status fills) */
+  --status-success: oklch(0.32 0.09 155);
+  --status-success-bg: oklch(0.95 0.025 155);
+  --status-success-border: oklch(0.80 0.05 155);
+
+  --status-warning: oklch(0.42 0.11 78);
+  --status-warning-bg: oklch(0.95 0.035 85);
+  --status-warning-border: oklch(0.80 0.08 82);
+
+  --status-danger: oklch(0.44 0.18 27);
+  --status-danger-bg: oklch(0.95 0.025 25);
+  --status-danger-border: oklch(0.80 0.07 25);
+
+  --status-info: oklch(0.36 0.09 235);
+  --status-info-bg: oklch(0.95 0.02 235);
+  --status-info-border: oklch(0.80 0.05 235);
 
   /* Form boundaries calibrated to >= 3.3:1 UI component contrast (WCAG 1.4.11 AA) */
   --border: oklch(0.84 0.022 85);

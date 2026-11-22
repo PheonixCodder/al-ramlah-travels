@@ -185,24 +185,24 @@ export default async function ApplicationDetailPage({
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Link
             href="/admin"
-            className="hover:text-foreground inline-flex items-center gap-1 transition-colors"
+            className="inline-flex items-center gap-1 rounded transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             Overview
           </Link>
-          <ChevronRight className="size-3 text-muted-foreground/60" />
+          <ChevronRight className="size-3 text-muted-foreground/60" aria-hidden="true" />
           <Link
             href="/admin/applications"
-            className="hover:text-foreground inline-flex items-center gap-1 transition-colors"
+            className="inline-flex items-center gap-1 rounded transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <ArrowLeft className="size-3.5" />
+            <ArrowLeft className="size-3.5" aria-hidden="true" />
             <span>Applications</span>
           </Link>
-          <ChevronRight className="size-3 text-muted-foreground/60" />
-          <span className="font-mono font-semibold text-foreground">
+          <ChevronRight className="size-3 text-muted-foreground/60" aria-hidden="true" />
+          <span className="font-mono font-semibold text-foreground tabular-nums">
             {application.referenceNumber}
           </span>
-          <ChevronRight className="size-3 text-muted-foreground/60" />
-          <span className="text-primary font-medium">Quote Worksheet</span>
+          <ChevronRight className="size-3 text-muted-foreground/60" aria-hidden="true" />
+          <span className="font-medium text-primary">Quote Worksheet</span>
         </div>
       </div>
 

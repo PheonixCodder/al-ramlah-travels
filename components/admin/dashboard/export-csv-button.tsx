@@ -130,17 +130,17 @@ export function ExportCsvButton({
         size="sm"
         disabled={isExporting}
         onClick={handleDownloadCsv}
-        className="border-border bg-card text-xs font-semibold hover:border-gold gap-1.5"
+        className="gap-1.5 border-border bg-card text-xs font-semibold hover:border-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         {isExporting ? (
-          <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+          <Loader2 className="size-3.5 animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" />
         ) : (
-          <Download className="size-3.5 text-muted-foreground" />
+          <Download className="size-3.5 text-muted-foreground" aria-hidden="true" />
         )}
-        <span>{isExporting ? "Exporting..." : "Export CSV Report"}</span>
+        <span>{isExporting ? "Exporting…" : "Export CSV Report"}</span>
       </Button>
       {exportError && (
-        <span role="alert" className="text-[11px] font-medium text-red-700">
+        <span role="alert" className="text-[11px] font-medium text-status-danger">
           {exportError}
         </span>
       )}

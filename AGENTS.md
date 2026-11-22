@@ -98,4 +98,4 @@ npm run db:generate && npm run db:migrate && npm run db:seed && npm run db:backu
 - [lib/social/AGENTS.md](lib/social/AGENTS.md): Core 5 Social OAuth, PKCE/HKDF state, `OD-11` vendor audit gates & live-only analytics
 - [trigger/AGENTS.md](trigger/AGENTS.md): Trigger.dev Cloud v4 `schemaTask`s, `9` bounded queues, `6` PKT crons & realtime hooks
 
-_Synchronized after Slice 47 (Secondary Public Hubs, Spokes and Shell Editorial Alignment)._
+_Synchronized after Slice 48 (Admin 4 Hub Operate Surface and Shell Alignment)._

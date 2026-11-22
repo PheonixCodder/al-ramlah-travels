@@ -12,6 +12,7 @@ import {
   Loader2,
   MessageSquare,
   Globe,
+  ArrowRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -52,7 +53,8 @@ export interface ChannelItem {
 export interface PostAssetItem {
   id: string
   postCode: string
-  kind: "multi_package_sheet" | "single_package_spotlight" | "custom_quotation_pdf"
+  kind:
+    "multi_package_sheet" | "single_package_spotlight" | "custom_quotation_pdf"
   title: string
   imageUrl: string
   pdfUrl?: string | null
@@ -137,8 +139,7 @@ export function DistributionClient({
   }, [initialChannels, areaFilter])
 
   const dateDistributions = React.useMemo(
-    () =>
-      initialDistributions.filter((d) => d.scheduledDate === selectedDate),
+    () => initialDistributions.filter((d) => d.scheduledDate === selectedDate),
     [initialDistributions, selectedDate]
   )
 
@@ -207,12 +208,12 @@ export function DistributionClient({
   return (
     <div className="flex flex-col gap-6">
       {notice && (
-        <div className="rounded-xl border border-emerald-400 bg-emerald-50 p-3.5 text-xs font-semibold text-emerald-950 flex items-center justify-between">
+        <div className="flex items-center justify-between rounded-xl border border-status-success-border bg-status-success-bg p-3.5 text-xs font-semibold text-status-success">
           <span>{notice}</span>
           <button
             type="button"
             onClick={() => setNotice(null)}
-            className="underline"
+            className="cursor-pointer underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             Dismiss
           </button>
@@ -220,31 +221,35 @@ export function DistributionClient({
       )}
 
       {/* 1. 2-Step Campaign Composer Card */}
-      <Card className="border-gold/40 bg-card shadow-sm">
-        <CardHeader className="bg-secondary/30 border-b border-border pb-4">
+      <Card className="border-gold-border bg-card shadow-sm">
+        <CardHeader className="border-b border-border bg-secondary/30 pb-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="font-display text-lg font-bold flex items-center gap-2">
-                <Sparkles className="size-4 text-gold" />
+              <CardTitle className="flex items-center gap-2 font-display text-lg font-bold">
+                <Sparkles
+                  className="size-4 text-gold-text"
+                  aria-hidden="true"
+                />
                 <span>2-Step Attention-Grabber Campaign Composer</span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Step 1: Hook the group with a Dedicated Single-Package Spotlight Poster → Step 2: Follow up with the All-Packages Sheet.
+                Step 1: Hook the group with a Dedicated Single-Package Spotlight
+                Poster, then Step 2: Follow up with the All-Packages Sheet.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Calendar className="size-4 text-gold" />
+              <Calendar className="size-4 text-gold-text" aria-hidden="true" />
               <Input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="h-8 w-36 font-mono text-xs bg-white"
+                className="h-8 w-36 bg-background font-mono text-xs"
               />
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="p-4 space-y-4">
+        <CardContent className="space-y-4 p-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {/* Step 1 Asset */}
             <div className="space-y-1.5">
@@ -261,7 +266,7 @@ export function DistributionClient({
                     setCaption(found.captionWhatsapp)
                   }
                 }}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs font-mono"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 font-mono text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 {postAssets.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -273,13 +278,13 @@ export function DistributionClient({
 
             {/* Step 2 Paired Sheet */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-emerald-800">
+              <Label className="text-xs font-bold text-status-success">
                 2. Paired Step-2 Follow-Up All-Packages Sheet
               </Label>
               <select
                 value={step2AssetId}
                 onChange={(e) => setStep2AssetId(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs font-mono"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 font-mono text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 <option value="">None (Standalone Post)</option>
                 {sheetAssets.map((a) => (
@@ -306,7 +311,7 @@ export function DistributionClient({
                         | "standalone"
                     )
                   }
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <option value="step_1_spotlight_hook">
                     Step 1: Spotlight Hook
@@ -324,7 +329,7 @@ export function DistributionClient({
                       e.target.value as "auto_bridge" | "manual_log"
                     )
                   }
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <option value="auto_bridge">
                     WACRM &amp; Postiz Auto-Queue
@@ -343,34 +348,39 @@ export function DistributionClient({
               rows={3}
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
-              className="text-xs font-mono"
+              className="font-mono text-xs"
             />
           </div>
 
           {/* Quick Selection Pills */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] font-bold text-muted-foreground mr-1">
+              <span className="mr-1 text-[11px] font-bold text-muted-foreground">
                 Quick Select Target Groups:
               </span>
-              {["Askari 10", "DHA", "Lahore", "Other Cities", "Status", "Social"].map(
-                (tag) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => selectByArea(tag)}
-                    className="rounded-lg border border-border bg-secondary/50 px-2.5 py-1 text-[11px] font-semibold hover:border-gold hover:bg-white transition-colors"
-                  >
-                    Select {tag}
-                  </button>
-                )
-              )}
+              {[
+                "Askari 10",
+                "DHA",
+                "Lahore",
+                "Other Cities",
+                "Status",
+                "Social",
+              ].map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => selectByArea(tag)}
+                  className="cursor-pointer rounded-lg border border-border bg-secondary/50 px-2.5 py-1 text-[11px] font-semibold transition-colors hover:border-gold hover:bg-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
+                >
+                  Select {tag}
+                </button>
+              ))}
               <button
                 type="button"
                 onClick={() =>
                   setSelectedChannelIds(initialChannels.map((c) => c.id))
                 }
-                className="rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary"
+                className="cursor-pointer rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 Select All ({initialChannels.length})
               </button>
@@ -378,14 +388,19 @@ export function DistributionClient({
 
             <Button
               type="button"
-              disabled={isBusy || selectedChannelIds.length === 0 || !step1AssetId}
+              disabled={
+                isBusy || selectedChannelIds.length === 0 || !step1AssetId
+              }
               onClick={handleDispatchCampaign}
-              className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 gap-2 text-xs font-bold cursor-pointer"
+              className="cursor-pointer gap-2 bg-primary text-xs font-bold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               {isBusy ? (
-                <Loader2 className="size-4 animate-spin text-gold" />
+                <Loader2
+                  className="size-4 animate-spin text-gold motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
               ) : (
-                <Send className="size-4 text-gold" />
+                <Send className="size-4 text-gold" aria-hidden="true" />
               )}
               <span>
                 {dispatchMode === "auto_bridge"
@@ -399,18 +414,19 @@ export function DistributionClient({
 
       {/* 2. Daily Channel Matrix & Checklist (30+ WA Groups, 2 Statuses, Social Accounts) */}
       <Card className="border-border bg-card shadow-xs">
-        <CardHeader className="pb-3 border-b border-border">
+        <CardHeader className="border-b border-border pb-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="font-display text-base font-bold flex items-center gap-2">
-                <Share2 className="size-4 text-primary" />
+              <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
+                <Share2 className="size-4 text-primary" aria-hidden="true" />
                 <span>
-                  Daily Channel Distribution Matrix ({selectedDate}) —{" "}
+                  Daily Channel Distribution Matrix ({selectedDate}):{" "}
                   {dateDistributions.length} Dispatches Logged
                 </span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Click any group, status, or social channel to include/exclude it in your batch dispatch, or add new communities.
+                Click any group, status, or social channel to include/exclude it
+                in your batch dispatch, or add new communities.
               </CardDescription>
             </div>
 
@@ -418,13 +434,13 @@ export function DistributionClient({
               <select
                 value={areaFilter}
                 onChange={(e) => setAreaFilter(e.target.value)}
-                className="flex h-8 rounded-md border border-input bg-background px-2.5 text-xs"
+                className="flex h-8 rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 <option value="all">
                   All Areas ({initialChannels.length} Channels)
                 </option>
                 <option value="Askari 10">Askari 10 Communities</option>
-                <option value="DHA">DHA Phases 1–8</option>
+                <option value="DHA">DHA Phases 1 to 8</option>
                 <option value="Lahore">Lahore Cantt / Johar / Bahria</option>
                 <option value="Other Cities">Other Cities</option>
                 <option value="Status">2 WhatsApp Status Lines</option>
@@ -436,9 +452,9 @@ export function DistributionClient({
                 size="sm"
                 variant="outline"
                 onClick={() => setShowAddChannel(!showAddChannel)}
-                className="h-8 text-xs gap-1 cursor-pointer"
+                className="h-8 cursor-pointer gap-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <Plus className="size-3.5" />
+                <Plus className="size-3.5" aria-hidden="true" />
                 <span>Add Group / Channel</span>
               </Button>
             </div>
@@ -447,7 +463,7 @@ export function DistributionClient({
           {showAddChannel && (
             <form
               onSubmit={handleAddChannel}
-              className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-6 items-end rounded-xl border border-gold/40 bg-gold/5 p-3"
+              className="mt-4 grid grid-cols-1 items-end gap-2.5 rounded-xl bg-accent/25 p-3 sm:grid-cols-6"
             >
               <div className="sm:col-span-2">
                 <Label className="text-[11px]">Group / Account Name *</Label>
@@ -456,7 +472,7 @@ export function DistributionClient({
                   value={chName}
                   onChange={(e) => setChName(e.target.value)}
                   placeholder="e.g. Askari 10 Sector F Residents"
-                  className="h-8 text-xs bg-white mt-1"
+                  className="mt-1 h-8 bg-background text-xs"
                 />
               </div>
               <div>
@@ -466,7 +482,7 @@ export function DistributionClient({
                   onChange={(e) =>
                     setChPlatform(e.target.value as ChannelItem["platform"])
                   }
-                  className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 text-xs"
+                  className="mt-1 flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <option value="whatsapp_group">WhatsApp Group</option>
                   <option value="whatsapp_community">WhatsApp Community</option>
@@ -482,16 +498,16 @@ export function DistributionClient({
                 <Input
                   value={chArea}
                   onChange={(e) => setChArea(e.target.value)}
-                  className="h-8 text-xs bg-white mt-1"
+                  className="mt-1 h-8 bg-background text-xs"
                 />
               </div>
               <div>
                 <Label className="text-[11px]">Sender Line &amp; Members</Label>
-                <div className="flex gap-1 mt-1">
+                <div className="mt-1 flex gap-1">
                   <select
                     value={chSender}
                     onChange={(e) => setChSender(e.target.value)}
-                    className="flex h-8 w-full rounded-md border border-input bg-white px-1.5 text-[11px] font-mono"
+                    className="flex h-8 w-full rounded-md border border-input bg-background px-1.5 font-mono text-[11px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     <option value="03274029701">03274029701</option>
                     <option value="03190462638">03190462638</option>
@@ -500,7 +516,7 @@ export function DistributionClient({
                     type="number"
                     value={chMembers}
                     onChange={(e) => setChMembers(Number(e.target.value) || 0)}
-                    className="h-8 w-16 text-xs bg-white font-mono"
+                    className="h-8 w-16 bg-background font-mono text-xs"
                   />
                 </div>
               </div>
@@ -508,7 +524,7 @@ export function DistributionClient({
                 <Button
                   type="submit"
                   size="sm"
-                  className="h-8 w-full text-xs font-bold cursor-pointer"
+                  className="h-8 w-full cursor-pointer text-xs font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   Save Channel
                 </Button>
@@ -526,74 +542,91 @@ export function DistributionClient({
               )
 
               return (
-                <div
+                <button
                   key={ch.id}
+                  type="button"
+                  aria-pressed={isSelected}
                   onClick={() => toggleChannel(ch.id)}
-                  className={`cursor-pointer rounded-xl border p-3 transition-all ${
+                  className={`w-full cursor-pointer rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
                     isSelected
                       ? "border-primary bg-primary/5 ring-1 ring-primary"
-                      : "border-border bg-white hover:border-gold"
+                      : "border-border bg-card hover:border-gold"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <Badge
                           variant="outline"
-                          className="text-[9px] px-1.5 py-0 border-gold/50 text-gold-foreground uppercase font-bold"
+                          className="border-gold-border px-1.5 py-0 text-[10px] font-semibold text-gold-text"
                         >
                           {ch.areaTag}
                         </Badge>
                         {ch.senderWhatsappNumber && (
-                          <span className="font-mono text-[10px] text-muted-foreground">
+                          <span className="font-mono text-[11px] text-muted-foreground">
                             Line: {ch.senderWhatsappNumber}
                           </span>
                         )}
                       </div>
-                      <h4 className="text-xs font-bold text-foreground mt-1 truncate">
+                      <h4 className="mt-1 truncate text-xs font-bold text-foreground">
                         {ch.name}
                       </h4>
-                      <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
                         {ch.platform.startsWith("whatsapp") ? (
-                          <MessageSquare className="size-3 text-emerald-600" />
+                          <MessageSquare
+                            className="size-3 text-status-success"
+                            aria-hidden="true"
+                          />
                         ) : (
-                          <Globe className="size-3 text-sky-600" />
+                          <Globe
+                            className="size-3 text-status-info"
+                            aria-hidden="true"
+                          />
                         )}
                         <span className="capitalize">
                           {ch.platform.replace(/_/g, " ")}
                         </span>
-                        {ch.memberCount ? ` · ${ch.memberCount} members` : ""}
+                        {ch.memberCount ? ` (${ch.memberCount} members)` : ""}
                       </p>
                     </div>
 
                     {logsToday.length > 0 ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-800 shrink-0">
-                        <CheckCircle2 className="size-3 text-emerald-600" />
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-status-success-border bg-status-success-bg px-2 py-0.5 text-[11px] font-bold text-status-success">
+                        <CheckCircle2
+                          className="size-3 text-status-success"
+                          aria-hidden="true"
+                        />
                         <span>Posted ({logsToday.length})</span>
                       </span>
                     ) : (
-                      <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground shrink-0">
+                      <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                         Pending Today
                       </span>
                     )}
                   </div>
 
                   {logsToday.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-border/60 flex flex-wrap gap-1">
+                    <div className="mt-2 flex flex-wrap gap-1 border-t border-border/60 pt-2">
                       {logsToday.map((log) => (
                         <span
                           key={log.id}
-                          className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-primary"
+                          className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] font-bold text-primary"
                         >
-                          {log.postAsset.postCode}
-                          {log.pairedFollowUpAsset
-                            ? ` → ${log.pairedFollowUpAsset.postCode}`
-                            : ""}
+                          <span>{log.postAsset.postCode}</span>
+                          {log.pairedFollowUpAsset && (
+                            <>
+                              <ArrowRight
+                                className="size-2.5"
+                                aria-hidden="true"
+                              />
+                              <span>{log.pairedFollowUpAsset.postCode}</span>
+                            </>
+                          )}
                         </span>
                       ))}
                     </div>
                   )}
-                </div>
+                </button>
               )
             })}
           </div>

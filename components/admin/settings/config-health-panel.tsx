@@ -91,23 +91,30 @@ export function ConfigHealthPanel({ initialSnapshot }: ConfigHealthPanelProps) {
       <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 shadow-xs sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2.5">
-            <Activity className="size-5 text-emerald-700" />
+            <Activity
+              className="size-5 text-status-success"
+              aria-hidden="true"
+            />
             <h2 className="font-display text-xl font-bold tracking-tight text-foreground">
-              Cloud & Security Configuration Readiness
+              Cloud &amp; Security Configuration Readiness
             </h2>
             <Badge
               className={cn(
                 "text-xs font-semibold",
                 snapshot.overallReady
-                  ? "bg-emerald-100 text-emerald-950 border-emerald-300"
-                  : "bg-amber-100 text-amber-950 border-amber-300"
+                  ? "border-status-success-border bg-status-success-bg text-status-success"
+                  : "border-status-warning-border bg-status-warning-bg text-status-warning"
               )}
             >
-              {snapshot.readyCount} / {snapshot.totalSubsystems} Subsystems Ready
+              {snapshot.readyCount} / {snapshot.totalSubsystems} Subsystems
+              Ready
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            Zero-secret readiness audit across PostgreSQL, AES-256-GCM Token Vault, Cloudflare R2, Oracle Gotenberg, Resend, Meta WABA, Core 5 Social OAuth, Trigger.dev, and Multimodal AI. Secret values are never transmitted to the browser.
+            Zero-secret readiness audit across PostgreSQL, AES-256-GCM Token
+            Vault, Cloudflare R2, Oracle Gotenberg, Resend, Meta WABA, Core 5
+            Social OAuth, Trigger.dev, and Multimodal AI. Secret values are
+            never transmitted to the browser.
           </p>
         </div>
 
@@ -116,17 +123,21 @@ export function ConfigHealthPanel({ initialSnapshot }: ConfigHealthPanelProps) {
           variant="outline"
           onClick={handleRefresh}
           disabled={isRefreshing}
-          className="gap-2 shrink-0 cursor-pointer"
+          className="shrink-0 cursor-pointer gap-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           <RefreshCw
-            className={cn("size-4", isRefreshing && "animate-spin")}
+            className={cn(
+              "size-4 motion-reduce:animate-none",
+              isRefreshing && "animate-spin"
+            )}
+            aria-hidden="true"
           />
           <span>Re-Check Readiness</span>
         </Button>
       </div>
 
       {refreshError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
+        <div className="rounded-xl border border-status-danger-border bg-status-danger-bg px-4 py-3 text-xs text-status-danger">
           {refreshError}
         </div>
       )}
@@ -139,12 +150,12 @@ export function ConfigHealthPanel({ initialSnapshot }: ConfigHealthPanelProps) {
             <Card
               key={sub.id}
               className={cn(
-                "border shadow-xs transition-colors",
+                "border shadow-xs transition-colors motion-reduce:transition-none",
                 sub.status === "ready"
-                  ? "border-emerald-200/80 bg-card"
+                  ? "border-status-success-border bg-card"
                   : sub.status === "partial"
-                  ? "border-amber-200/90 bg-card"
-                  : "border-rose-200/90 bg-card"
+                    ? "border-status-warning-border bg-card"
+                    : "border-status-danger-border bg-card"
               )}
             >
               <CardHeader className="pb-3">
@@ -152,21 +163,21 @@ export function ConfigHealthPanel({ initialSnapshot }: ConfigHealthPanelProps) {
                   <div className="flex items-center gap-2.5">
                     <div
                       className={cn(
-                        "flex size-9 items-center justify-center rounded-lg border",
+                        "flex size-9 items-center justify-center rounded-lg",
                         sub.status === "ready"
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                          ? "bg-status-success-bg text-status-success"
                           : sub.status === "partial"
-                          ? "border-amber-200 bg-amber-50 text-amber-800"
-                          : "border-rose-200 bg-rose-50 text-rose-800"
+                            ? "bg-status-warning-bg text-status-warning"
+                            : "bg-status-danger-bg text-status-danger"
                       )}
                     >
-                      <Icon className="size-4" />
+                      <Icon className="size-4" aria-hidden="true" />
                     </div>
                     <div>
                       <CardTitle className="text-sm font-semibold text-foreground">
                         {sub.title}
                       </CardTitle>
-                      <CardDescription className="text-[11px] leading-snug mt-0.5">
+                      <CardDescription className="mt-0.5 text-[11px] leading-snug">
                         {sub.description}
                       </CardDescription>
                     </div>
@@ -175,53 +186,62 @@ export function ConfigHealthPanel({ initialSnapshot }: ConfigHealthPanelProps) {
                   <Badge
                     variant="outline"
                     className={cn(
-                      "shrink-0 text-[10px] font-semibold uppercase tracking-wider",
+                      "shrink-0 text-[11px] font-semibold",
                       sub.status === "ready"
-                        ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                        ? "border-status-success-border bg-status-success-bg text-status-success"
                         : sub.status === "partial"
-                        ? "border-amber-300 bg-amber-50 text-amber-900"
-                        : "border-rose-300 bg-rose-50 text-rose-900"
+                          ? "border-status-warning-border bg-status-warning-bg text-status-warning"
+                          : "border-status-danger-border bg-status-danger-bg text-status-danger"
                     )}
                   >
                     {sub.status === "ready"
                       ? "Ready"
                       : sub.status === "partial"
-                      ? "Partial"
-                      : "Missing"}
+                        ? "Partial"
+                        : "Missing"}
                   </Badge>
                 </div>
               </CardHeader>
 
               <CardContent className="space-y-3 pt-0">
-                <div className="divide-y divide-border/60 rounded-lg border border-border/70 bg-muted/20 px-3 py-1">
+                <div className="divide-y divide-border/60 rounded-lg bg-secondary/60 px-3 py-1">
                   {sub.checks.map((chk) => (
                     <div
                       key={chk.key}
                       className="flex items-center justify-between gap-2 py-1.5 text-xs"
                     >
                       <div className="min-w-0">
-                        <span className="font-medium text-foreground block truncate">
+                        <span className="block truncate font-medium text-foreground">
                           {chk.label}
                         </span>
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          {chk.key}
-                          {chk.requiredInProd ? " · required" : " · optional"}
+                        <span className="text-[11px] text-muted-foreground">
+                          <code className="font-mono">{chk.key}</code>
+                          {chk.requiredInProd ? " (required)" : " (optional)"}
                         </span>
                       </div>
 
                       {chk.configured ? (
-                        <span className="inline-flex items-center gap-1 font-medium text-emerald-700 shrink-0">
-                          <CheckCircle2 className="size-3.5 text-emerald-600" />
+                        <span className="inline-flex shrink-0 items-center gap-1 font-medium text-status-success">
+                          <CheckCircle2
+                            className="size-3.5 text-status-success"
+                            aria-hidden="true"
+                          />
                           <span>Set</span>
                         </span>
                       ) : chk.requiredInProd ? (
-                        <span className="inline-flex items-center gap-1 font-medium text-rose-700 shrink-0">
-                          <XCircle className="size-3.5 text-rose-600" />
+                        <span className="inline-flex shrink-0 items-center gap-1 font-medium text-status-danger">
+                          <XCircle
+                            className="size-3.5 text-status-danger"
+                            aria-hidden="true"
+                          />
                           <span>Unset</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 font-medium text-amber-700 shrink-0">
-                          <AlertTriangle className="size-3.5 text-amber-600" />
+                        <span className="inline-flex shrink-0 items-center gap-1 font-medium text-status-warning">
+                          <AlertTriangle
+                            className="size-3.5 text-status-warning"
+                            aria-hidden="true"
+                          />
                           <span>Unset</span>
                         </span>
                       )}
@@ -229,7 +249,7 @@ export function ConfigHealthPanel({ initialSnapshot }: ConfigHealthPanelProps) {
                   ))}
                 </div>
 
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
                   {sub.summaryNote}
                 </p>
               </CardContent>

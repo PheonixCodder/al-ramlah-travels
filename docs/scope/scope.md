@@ -65,7 +65,7 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 49 | Unified CDD, Design System (`DESIGN.md` + `PRODUCT.md`) & Spec-Driven Engineering | Slice 45 | done |
 | 50 | Spec 0026 — Home Page Editorial Redesign & Public Motion Architecture (`Lenis` + `GSAP` + `Motion`) | Slice 46 | done |
 | 51 | Spec 0027 — Secondary public hubs, spokes & shell editorial alignment | Slice 47 | done |
-| 52 | Admin 4 Hub Operate Surface and Shell Alignment | Slice 48 | planned |
+| 52 | Spec 0028 · Admin 4 Hub Operate Surface and Shell Alignment | Slice 48 | done |
 
 ## Foundations
 
@@ -764,12 +764,20 @@ spec [0027](docs/specs/0027-public-storefront-editorial-alignment/index.md) · c
 
 ## Slice 48: Admin 4 Hub Operate Surface and Shell Alignment
 
-### 52. Slice 48 · Admin 4 Hub Operate Surface and Shell Alignment · Beta · needs a decision · planned
+### 52. Slice 48 · Admin 4 Hub Operate Surface and Shell Alignment · Beta · done
 
 Bring the Admin `Operate` surface (`/admin`, `/admin/studio`, `/admin/campaigns`, `/admin/desk`, `/admin/catalog`, `/admin/settings`, `/admin/login`), shared admin shell (`admin-sidebar.tsx`, `admin-topbar.tsx`, `command-palette.tsx`), and admin feature views up to the semantic Haramain design system, keyboard focus floor, and clean React hook rules.
 **Done when:** every admin route, shell component, and admin hub view uses semantic Haramain light tokens with zero `ui:lint` failures across `app/admin` and `components/admin` plus `components/layout/{admin-sidebar,admin-topbar,command-palette}.tsx`, clears React hook `setState` effect warnings on touched admin components, preserves all role guards, wholesale cost redaction for staff, Kanban drag interactions, and existing admin test contracts, and passes accessibility and automated checks.
+spec [0028](docs/specs/0028-admin-operate-surface-alignment/index.md) · code in `app/globals.css`, `lib/constants/admin-labels.ts`, `app/admin/`, `components/admin/`, `components/layout/`
 
-- [ ] Design it (spec): `/architect Admin 4 Hub Operate Surface and Shell Alignment`
+- [x] Design it (spec): `/architect Admin 4 Hub Operate Surface and Shell Alignment` ([0028](docs/specs/0028-admin-operate-surface-alignment/index.md))
+- [x] Build it: `/develop Admin 4 Hub Operate Surface and Shell Alignment`
+  - [x] Milestone 1 (`M1` Status Tokens, Labels, Shell, Overview & Dossiers): Land `--status-*` / `--color-status-*` tokens in `app/globals.css` and `lib/constants/admin-labels.ts`, then align `admin-sidebar.tsx`, `admin-topbar.tsx`, `command-palette.tsx`, `status-badge.tsx`, `/admin/login`, `/admin`, and non voucher `applications/*` (`AC-1`..`AC-4`, `AC-8`..`AC-10`)
+  - [x] Milestone 2 (`M2` Desk Hub, Kanban Board & WhatsApp Modals): Align `/admin/desk`, `desk-hub-client.tsx`, `applications-kanban-board.tsx`, `copilot-realtime-run-banner.tsx`, `meta-template-builder-modal.tsx`, `whatsapp-auto-reply-studio.tsx`, and `whatsapp-linked-device-card.tsx` (`AC-1`, `AC-5`, `AC-8`..`AC-10`)
+  - [x] Milestone 3 (`M3` Campaigns Hub, Social Calendar, Previewer & Broadcasts): Align `/admin/campaigns`, `campaigns-hub-client.tsx`, and `components/admin/campaigns/*` (`AC-1`, `AC-6`, `AC-8`..`AC-10`)
+  - [x] Milestone 4 (`M4` Studio, Marketing Ops, Catalog & Settings Hubs): Align `/admin/studio`, `/admin/catalog`, `/admin/settings`, `studio-hub-client.tsx`, `catalog-hub-client.tsx`, `connections-settings-client.tsx`, `studio-realtime-run-banner.tsx`, `components/admin/marketing/*`, `components/admin/catalog/*`, and `components/admin/settings/*` (`AC-1`, `AC-2`, `AC-7`..`AC-10`)
+- [x] Verify it: `/check verify Admin 4 Hub Operate Surface and Shell Alignment` ([verify.md](docs/specs/0028-admin-operate-surface-alignment/verify.md) · [2026-11-22-main.md](docs/reviews/2026-11-22-main.md))
+- [x] Test it: `/test Admin 4 Hub Operate Surface and Shell Alignment` ([admin-operate-alignment.test.ts](tests/unit/admin-operate-alignment.test.ts) · [j06-j12-admin-desk-quote-studio.spec.ts](tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts))
 
 ## Deferred
 

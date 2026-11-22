@@ -50,6 +50,10 @@ function escapeIlike(raw: string): string {
   return raw.replace(/[\\%_]/g, "\\$&")
 }
 
+function computeSlaOverdueCutoff(slaOverdueHours: number): Date {
+  return new Date(Date.now() - slaOverdueHours * 60 * 60 * 1000)
+}
+
 function buildQueuePageHref(params: {
   q?: string
   status?: string
@@ -98,9 +102,7 @@ export default async function ApplicationsQueuePage({
     1,
     Number(settingsRow?.slaOverdueHours) || 24
   )
-  const overdueCutoff = new Date(
-    Date.now() - slaOverdueHours * 60 * 60 * 1000
-  )
+  const overdueCutoff = computeSlaOverdueCutoff(slaOverdueHours)
 
   // Build SQL WHERE conditions preserving URL filters
   const conditions = []
@@ -245,11 +247,11 @@ export default async function ApplicationsQueuePage({
         <Button
           variant="outline"
           size="sm"
-          className="text-xs font-semibold gap-1.5"
+          className="gap-1.5 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           render={<Link href={`/admin/desk?${deskSp.toString()}`} />}
           nativeButton={false}
         >
-          <Kanban className="size-3.5 text-primary" />
+          <Kanban className="size-3.5 text-primary" aria-hidden="true" />
           <span>Open Kanban &amp; WhatsApp Desk</span>
         </Button>
       </div>
@@ -273,15 +275,15 @@ export default async function ApplicationsQueuePage({
       <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between">
         <span className="text-muted-foreground">
           Showing{" "}
-          <strong className="font-mono text-foreground">
+          <strong className="font-mono text-foreground tabular-nums">
             {totalFiltered === 0 ? 0 : offset + 1}
-          </strong>
-          –
-          <strong className="font-mono text-foreground">
+          </strong>{" "}
+          to{" "}
+          <strong className="font-mono text-foreground tabular-nums">
             {Math.min(offset + PAGE_SIZE, totalFiltered)}
           </strong>{" "}
           of{" "}
-          <strong className="font-mono text-foreground">{totalFiltered}</strong>{" "}
+          <strong className="font-mono text-foreground tabular-nums">{totalFiltered}</strong>{" "}
           matching applications (Page {currentPage} of {totalPages})
         </span>
 
@@ -290,7 +292,7 @@ export default async function ApplicationsQueuePage({
             <Button
               variant="outline"
               size="sm"
-              className="text-xs gap-1"
+              className="gap-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               render={
                 <Link
                   href={buildQueuePageHref({
@@ -304,7 +306,7 @@ export default async function ApplicationsQueuePage({
               }
               nativeButton={false}
             >
-              <ChevronLeft className="size-3.5" />
+              <ChevronLeft className="size-3.5" aria-hidden="true" />
               <span>Previous</span>
             </Button>
           ) : (
@@ -313,9 +315,9 @@ export default async function ApplicationsQueuePage({
               variant="outline"
               size="sm"
               disabled
-              className="text-xs gap-1"
+              className="gap-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <ChevronLeft className="size-3.5" />
+              <ChevronLeft className="size-3.5" aria-hidden="true" />
               <span>Previous</span>
             </Button>
           )}
@@ -324,7 +326,7 @@ export default async function ApplicationsQueuePage({
             <Button
               variant="outline"
               size="sm"
-              className="text-xs gap-1"
+              className="gap-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               render={
                 <Link
                   href={buildQueuePageHref({
@@ -339,7 +341,7 @@ export default async function ApplicationsQueuePage({
               nativeButton={false}
             >
               <span>Next</span>
-              <ChevronRight className="size-3.5" />
+              <ChevronRight className="size-3.5" aria-hidden="true" />
             </Button>
           ) : (
             <Button
@@ -347,10 +349,10 @@ export default async function ApplicationsQueuePage({
               variant="outline"
               size="sm"
               disabled
-              className="text-xs gap-1"
+              className="gap-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               <span>Next</span>
-              <ChevronRight className="size-3.5" />
+              <ChevronRight className="size-3.5" aria-hidden="true" />
             </Button>
           )}
         </div>

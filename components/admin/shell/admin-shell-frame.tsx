@@ -25,13 +25,13 @@ export function AdminShellFrame({
     <SidebarProvider>
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:border focus:border-gold focus:bg-primary focus:px-4 focus:py-2 focus:text-xs focus:font-semibold focus:text-primary-foreground focus:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:border focus:border-gold focus:bg-primary focus:px-4 focus:py-2 focus:text-xs focus:font-semibold focus:text-primary-foreground focus:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
       >
         {skipLinkLabel}
       </a>
-      <div className="flex min-h-screen w-full min-w-0 bg-background print:block print:bg-white">
+      <div className="flex min-h-screen w-full min-w-0 overflow-x-hidden bg-background print:block print:bg-white">
         {sidebar}
-        <SidebarInset className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+        <SidebarInset className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
           {topbar}
           <main
             id="main-content"

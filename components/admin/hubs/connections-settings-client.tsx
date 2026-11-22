@@ -1,7 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition, useMemo, useEffect } from "react"
+import {
+  useState,
+  useTransition,
+  useMemo,
+  useEffect,
+  useSyncExternalStore,
+} from "react"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import {
   Share2,
@@ -10,7 +16,6 @@ import {
   Building2,
   Shield,
   CheckCircle2,
-  XCircle,
   AlertTriangle,
   Copy,
   Check,
@@ -23,13 +28,9 @@ import {
   Cloud,
   Lock,
   Phone,
-  Globe,
   Radio,
   Sparkles,
   Activity,
-  HelpCircle,
-  UserCheck,
-  Users,
   ShieldAlert,
   Loader2,
   Trash2,
@@ -55,7 +56,6 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogClose,
 } from "@/components/ui/dialog"
 
 import {
@@ -70,7 +70,6 @@ import {
 import {
   saveSettingsWhatsappAccountAction,
   syncSettingsWhatsappTemplatesAction,
-  completeSettingsEmbeddedSignupAction,
   createSettingsWhatsappTemplateAction,
   deleteSettingsWhatsappTemplateAction,
   disconnectSettingsSocialIntegrationAction,
@@ -163,6 +162,7 @@ export interface ConnectionsSettingsClientProps {
   staffUsers: UserAccountData[]
   currentUserId: string
   currentUserRole: string
+  initialNowMs?: number
 }
 
 // ==========================================
@@ -172,6 +172,7 @@ export interface ConnectionsSettingsClientProps {
 function InstagramIcon({ className = "size-5" }: { className?: string }) {
   return (
     <svg
+      aria-hidden="true"
       className={className}
       viewBox="0 0 24 24"
       fill="none"
@@ -190,6 +191,7 @@ function InstagramIcon({ className = "size-5" }: { className?: string }) {
 function FacebookIcon({ className = "size-5" }: { className?: string }) {
   return (
     <svg
+      aria-hidden="true"
       className={className}
       viewBox="0 0 24 24"
       fill="none"
@@ -206,6 +208,7 @@ function FacebookIcon({ className = "size-5" }: { className?: string }) {
 function TikTokIcon({ className = "size-5" }: { className?: string }) {
   return (
     <svg
+      aria-hidden="true"
       className={className}
       viewBox="0 0 24 24"
       fill="none"
@@ -222,6 +225,7 @@ function TikTokIcon({ className = "size-5" }: { className?: string }) {
 function YouTubeIcon({ className = "size-5" }: { className?: string }) {
   return (
     <svg
+      aria-hidden="true"
       className={className}
       viewBox="0 0 24 24"
       fill="none"
@@ -239,6 +243,7 @@ function YouTubeIcon({ className = "size-5" }: { className?: string }) {
 function GoogleMapsIcon({ className = "size-5" }: { className?: string }) {
   return (
     <svg
+      aria-hidden="true"
       className={className}
       viewBox="0 0 24 24"
       fill="none"
@@ -260,56 +265,57 @@ interface SocialProviderMeta {
   icon: React.ComponentType<{ className?: string }>
   badgeColor: string
   oauthUrl: string
-  brandColor: string
 }
 
 const CORE_SOCIAL_PROVIDERS: SocialProviderMeta[] = [
   {
     id: "instagram",
     name: "Instagram Business",
-    subtitle: "Single spotlights, multi-package carousel sheets & Umrah story cards",
+    subtitle:
+      "Single spotlights, multi-package carousel sheets & Umrah story cards",
     icon: InstagramIcon,
-    badgeColor: "bg-pink-500/10 text-pink-700 border-pink-500/30",
+    badgeColor: "bg-accent/60 text-gold-text border-gold-border",
     oauthUrl: "/api/oauth/social/instagram",
-    brandColor: "text-pink-600",
   },
   {
     id: "facebook",
     name: "Facebook Pages",
     subtitle: "Promotional packages, departure announcements & flyer brochures",
     icon: FacebookIcon,
-    badgeColor: "bg-blue-500/10 text-blue-700 border-blue-500/30",
+    badgeColor: "bg-status-info-bg text-status-info border-status-info-border",
     oauthUrl: "/api/oauth/social/facebook",
-    brandColor: "text-blue-600",
   },
   {
     id: "tiktok",
     name: "TikTok Business",
     subtitle: "Vertical video reels, hotel room tours & pilgrim essential tips",
     icon: TikTokIcon,
-    badgeColor: "bg-cyan-500/10 text-cyan-700 border-cyan-500/30",
+    badgeColor: "bg-secondary text-foreground border-border",
     oauthUrl: "/api/oauth/social/tiktok",
-    brandColor: "text-cyan-600",
   },
   {
     id: "youtube",
     name: "YouTube Channel",
     subtitle: "Full video walkthroughs, departure guides & YouTube Shorts",
     icon: YouTubeIcon,
-    badgeColor: "bg-red-500/10 text-red-700 border-red-500/30",
+    badgeColor:
+      "bg-status-danger-bg text-status-danger border-status-danger-border",
     oauthUrl: "/api/oauth/social/youtube",
-    brandColor: "text-red-600",
   },
   {
     id: "gmb",
     name: "Google Business Profile",
     subtitle: "Google Maps local updates, call-to-actions & package offerings",
     icon: GoogleMapsIcon,
-    badgeColor: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30",
+    badgeColor:
+      "bg-status-success-bg text-status-success border-status-success-border",
     oauthUrl: "/api/oauth/social/gmb",
-    brandColor: "text-emerald-600",
   },
 ]
+
+const subscribeToOrigin = () => () => {}
+const getClientOriginSnapshot = () =>
+  typeof window !== "undefined" ? window.location.origin : ""
 
 // ==========================================
 // Tab Definitions
@@ -328,37 +334,43 @@ const TAB_CONFIG: TabMeta[] = [
     key: "connections",
     label: "Social Channels",
     icon: Share2,
-    description: "Core 5 social publishing accounts with native OAuth & publishing bridge",
+    description:
+      "Core 5 social publishing accounts with native OAuth & publishing bridge",
   },
   {
     key: "whatsapp",
     label: "WhatsApp Cloud API",
     icon: MessageCircle,
-    description: "Connected WhatsApp phones, official Meta Cloud API & template sync",
+    description:
+      "Connected WhatsApp phones, official Meta Cloud API & template sync",
   },
   {
     key: "infrastructure",
     label: "Cloud Infrastructure",
     icon: Cpu,
-    description: "Cloud background tasks, Cloudflare R2 media storage, Multimodal AI & 4K PDF render engine",
+    description:
+      "Cloud background tasks, Cloudflare R2 media storage, Multimodal AI & 4K PDF render engine",
   },
   {
     key: "agency",
     label: "Agency Parameters",
     icon: Building2,
-    description: "Official agency branding, regulatory licenses, banking IBAN governance, SLA thresholds & SAR rate",
+    description:
+      "Official agency branding, regulatory licenses, banking IBAN governance, SLA thresholds & SAR rate",
   },
   {
     key: "health",
     label: "Config Health",
     icon: Activity,
-    description: "Zero-secret readiness checks for PostgreSQL, R2, Gotenberg, Resend, WABA, Social OAuth & Trigger.dev",
+    description:
+      "Zero-secret readiness checks for PostgreSQL, R2, Gotenberg, Resend, WABA, Social OAuth & Trigger.dev",
   },
   {
     key: "staff",
     label: "Staff & RBAC",
     icon: Shield,
-    description: "Administrative staff accounts, role-based access control, active status & password resets",
+    description:
+      "Administrative staff accounts, role-based access control, active status & password resets",
     superAdminOnly: true,
   },
 ]
@@ -382,12 +394,21 @@ export function ConnectionsSettingsClient({
   staffUsers,
   currentUserId,
   currentUserRole,
+  initialNowMs = 0,
 }: ConnectionsSettingsClientProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
   const isSuperAdmin = currentUserRole === "super_admin"
+
+  const [nowMs, setNowMs] = useState<number>(initialNowMs)
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNowMs(Date.now())
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [])
 
   // URL state synchronization (`?tab=waba|devices|social|gotenberg|users|health|agency`)
   const activeTab: SettingsTabKey = useMemo(() => {
@@ -401,45 +422,54 @@ export function ConnectionsSettingsClient({
   }
 
   // Banners for OAuth callback feedback
-  const [successBanner, setSuccessBanner] = useState<string | null>(
-    connectedProvider || searchParams.get("connected") || null
+  const urlConnected =
+    searchParams.get("connected") || connectedProvider || null
+  const urlErr = searchParams.get("error") || urlError || null
+  const [dismissedConnected, setDismissedConnected] = useState<string | null>(
+    null
   )
-  const [errorBanner, setErrorBanner] = useState<string | null>(
-    urlError || searchParams.get("error") || null
+  const [dismissedUrlError, setDismissedUrlError] = useState<string | null>(
+    null
   )
+  const [localSuccessBanner, setLocalSuccessBanner] = useState<string | null>(
+    null
+  )
+  const [localErrorBanner, setLocalErrorBanner] = useState<string | null>(null)
 
-  useEffect(() => {
-    const conn = searchParams.get("connected")
-    const err = searchParams.get("error")
-    if (conn) {
-      setSuccessBanner(conn)
-    }
-    if (err) {
-      setErrorBanner(err)
-    }
-  }, [searchParams])
+  const successBanner =
+    localSuccessBanner ??
+    (urlConnected && dismissedConnected !== urlConnected ? urlConnected : null)
+  const errorBanner =
+    localErrorBanner ?? (urlErr && dismissedUrlError !== urlErr ? urlErr : null)
+
+  const setSuccessBanner = setLocalSuccessBanner
+  const setErrorBanner = setLocalErrorBanner
 
   const handleDismissSuccessBanner = () => {
-    setSuccessBanner(null)
+    setLocalSuccessBanner(null)
+    if (urlConnected) setDismissedConnected(urlConnected)
     const params = new URLSearchParams(searchParams.toString())
     params.delete("connected")
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
   const handleDismissErrorBanner = () => {
-    setErrorBanner(null)
+    setLocalErrorBanner(null)
+    if (urlErr) setDismissedUrlError(urlErr)
     const params = new URLSearchParams(searchParams.toString())
     params.delete("error")
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
   // Origin for Webhook Callback URL
-  const [origin, setOrigin] = useState<string>(infrastructureStatus.appUrl || "")
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.location.origin) {
-      setOrigin(window.location.origin)
-    }
-  }, [])
+  const origin =
+    useSyncExternalStore(
+      subscribeToOrigin,
+      getClientOriginSnapshot,
+      () => infrastructureStatus.appUrl || ""
+    ) ||
+    infrastructureStatus.appUrl ||
+    ""
   const webhookCallbackUrl = `${origin.replace(/\/$/, "")}/api/webhooks/whatsapp`
 
   // 1-Click Copy state
@@ -459,16 +489,20 @@ export function ConnectionsSettingsClient({
   // ------------------------------------------
   // Tab 1: Social Connections, Multi-Account OAuth Selector & Manual Modal
   // ------------------------------------------
-  const [socialIntegrations, setSocialIntegrations] = useState<SafeSocialIntegration[]>(
+  const [socialIntegrations, setSocialIntegrations] = useState<
+    SafeSocialIntegration[]
+  >(initialSocialIntegrations)
+  const [prevInitialSocial, setPrevInitialSocial] = useState(
     initialSocialIntegrations
   )
-
-  useEffect(() => {
+  if (prevInitialSocial !== initialSocialIntegrations) {
+    setPrevInitialSocial(initialSocialIntegrations)
     setSocialIntegrations(initialSocialIntegrations)
-  }, [initialSocialIntegrations])
+  }
 
   const [isManualModalOpen, setIsManualModalOpen] = useState(false)
-  const [manualProvider, setManualProvider] = useState<SocialProviderId>("instagram")
+  const [manualProvider, setManualProvider] =
+    useState<SocialProviderId>("instagram")
   const [manualName, setManualName] = useState("")
   const [manualHandle, setManualHandle] = useState("")
   const [manualInternalAccountId, setManualInternalAccountId] = useState("")
@@ -479,7 +513,9 @@ export function ConnectionsSettingsClient({
   const [manualError, setManualError] = useState<string | null>(null)
 
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null)
-  const [refreshingTokenId, setRefreshingTokenId] = useState<string | null>(null)
+  const [refreshingTokenId, setRefreshingTokenId] = useState<string | null>(
+    null
+  )
   const [isSweepingTokens, setIsSweepingTokens] = useState(false)
   const [, startTransition] = useTransition()
 
@@ -545,21 +581,62 @@ export function ConnectionsSettingsClient({
       searchParams.get("oauth_select") ||
       searchParams.get("selectAccount") ||
       oauthSelectProvider
-    const urlIntId =
-      searchParams.get("integrationId") || pendingIntegrationId
+    const urlIntId = searchParams.get("integrationId") || pendingIntegrationId
 
-    if (urlSelect) {
-      handleOpenCandidateSelector(
-        urlSelect as SocialProviderId,
-        urlIntId || undefined
-      )
-    } else {
-      const pendingRow = socialIntegrations.find(
-        (row) => row.status === "PENDING_SELECTION"
-      )
-      if (pendingRow) {
-        handleOpenCandidateSelector(pendingRow.provider, pendingRow.id)
+    const pendingRow = !urlSelect
+      ? socialIntegrations.find((row) => row.status === "PENDING_SELECTION")
+      : undefined
+
+    const targetProvider = (urlSelect || pendingRow?.provider) as
+      SocialProviderId | undefined
+    const targetIntId = urlSelect ? urlIntId || undefined : pendingRow?.id
+
+    if (!targetProvider) return
+
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      setCandidateProvider(targetProvider)
+      if (targetIntId) setCandidateIntegrationId(targetIntId)
+      setCandidateError(null)
+      setIsLoadingCandidates(true)
+      setIsCandidateModalOpen(true)
+
+      try {
+        const res = await getPendingSocialAccountCandidatesAction({
+          provider: targetProvider,
+          integrationId: targetIntId,
+        })
+        if (cancelled) return
+        if (res.success && res.candidates && res.candidates.length > 0) {
+          setPendingCandidates(res.candidates)
+          setSelectedCandidateInternalId(res.candidates[0]!.internalAccountId)
+          if (res.provider) setCandidateProvider(res.provider)
+          if (res.integrationId) setCandidateIntegrationId(res.integrationId)
+        } else {
+          setPendingCandidates([])
+          setCandidateError(
+            res.error ||
+              "No pending multi-account OAuth candidates found. Try reconnecting via OAuth."
+          )
+        }
+      } catch (err: unknown) {
+        if (cancelled) return
+        setCandidateError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load OAuth account candidates"
+        )
+      } finally {
+        if (!cancelled) {
+          setIsLoadingCandidates(false)
+        }
       }
+    })()
+
+    return () => {
+      cancelled = true
     }
   }, [
     isSuperAdmin,
@@ -567,13 +644,14 @@ export function ConnectionsSettingsClient({
     oauthSelectProvider,
     pendingIntegrationId,
     socialIntegrations,
-    handleOpenCandidateSelector,
   ])
 
   const handleConfirmCandidateSelection = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedCandidateInternalId) {
-      setCandidateError("Please select an account, page, or location to activate.")
+      setCandidateError(
+        "Please select an account, page, or location to activate."
+      )
       return
     }
 
@@ -647,7 +725,9 @@ export function ConnectionsSettingsClient({
           router.refresh()
         })
       } else {
-        setErrorBanner(res.error || "Proactive token sweep encountered an issue")
+        setErrorBanner(
+          res.error || "Proactive token sweep encountered an issue"
+        )
       }
     } finally {
       setIsSweepingTokens(false)
@@ -689,7 +769,9 @@ export function ConnectionsSettingsClient({
         internalAccountId: manualInternalAccountId.trim(),
         accessToken: manualAccessToken.trim(),
         refreshToken: manualRefreshToken.trim() || undefined,
-        tokenExpiresInDays: manualExpiresInDays ? parseInt(manualExpiresInDays, 10) : undefined,
+        tokenExpiresInDays: manualExpiresInDays
+          ? parseInt(manualExpiresInDays, 10)
+          : undefined,
       })
 
       if (!result.success) {
@@ -704,23 +786,33 @@ export function ConnectionsSettingsClient({
         router.refresh()
       })
     } catch (err: unknown) {
-      setManualError(err instanceof Error ? err.message : "Unexpected error saving token")
+      setManualError(
+        err instanceof Error ? err.message : "Unexpected error saving token"
+      )
     } finally {
       setManualSubmitting(false)
     }
   }
 
   const handleDisconnect = async (integrationId: string) => {
-    if (!confirm("Are you sure you want to disconnect this social integration? Scheduled posts may fail.")) {
+    if (
+      !confirm(
+        "Are you sure you want to disconnect this social integration? Scheduled posts may fail."
+      )
+    ) {
       return
     }
 
     setDisconnectingId(integrationId)
     try {
-      const res = await disconnectSettingsSocialIntegrationAction({ integrationId })
+      const res = await disconnectSettingsSocialIntegrationAction({
+        integrationId,
+      })
       if (res.success) {
         setSocialIntegrations((prev) =>
-          prev.map((item) => (item.id === integrationId ? { ...item, isActive: false } : item))
+          prev.map((item) =>
+            item.id === integrationId ? { ...item, isActive: false } : item
+          )
         )
         startTransition(() => {
           router.refresh()
@@ -729,7 +821,9 @@ export function ConnectionsSettingsClient({
         alert(res.error || "Failed to disconnect integration")
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Error disconnecting integration")
+      alert(
+        err instanceof Error ? err.message : "Error disconnecting integration"
+      )
     } finally {
       setDisconnectingId(null)
     }
@@ -738,37 +832,60 @@ export function ConnectionsSettingsClient({
   // ------------------------------------------
   // Tab 2: WhatsApp Meta WABA Configuration (Dual-Line: Coexistence + Dedicated Agent)
   // ------------------------------------------
-  const [whatsappAccounts, setWhatsappAccounts] = useState<SafeWhatsappAccount[]>(
+  const [whatsappAccounts, setWhatsappAccounts] = useState<
+    SafeWhatsappAccount[]
+  >(initialWhatsappAccounts)
+  const [whatsappTemplates, setWhatsappTemplates] = useState<
+    SafeWhatsappTemplate[]
+  >(initialWhatsappTemplates)
+  const [prevInitialWaAccounts, setPrevInitialWaAccounts] = useState(
     initialWhatsappAccounts
   )
-  const [whatsappTemplates, setWhatsappTemplates] = useState<SafeWhatsappTemplate[]>(
+  if (prevInitialWaAccounts !== initialWhatsappAccounts) {
+    setPrevInitialWaAccounts(initialWhatsappAccounts)
+    setWhatsappAccounts(initialWhatsappAccounts)
+  }
+  const [prevInitialWaTemplates, setPrevInitialWaTemplates] = useState(
     initialWhatsappTemplates
   )
-
-  useEffect(() => {
-    setWhatsappAccounts(initialWhatsappAccounts)
+  if (prevInitialWaTemplates !== initialWhatsappTemplates) {
+    setPrevInitialWaTemplates(initialWhatsappTemplates)
     setWhatsappTemplates(initialWhatsappTemplates)
-  }, [initialWhatsappAccounts, initialWhatsappTemplates])
+  }
 
   // Meta Template Builder & Deletion States (Spec 0019 AC-6)
   const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false)
   const [templateNameInput, setTemplateNameInput] = useState("")
-  const [templateCategoryInput, setTemplateCategoryInput] = useState<"MARKETING" | "UTILITY">("MARKETING")
+  const [templateCategoryInput, setTemplateCategoryInput] = useState<
+    "MARKETING" | "UTILITY"
+  >("MARKETING")
   const [templateLanguageInput, setTemplateLanguageInput] = useState("en_US")
-  const [templateHeaderTypeInput, setTemplateHeaderTypeInput] = useState<"NONE" | "TEXT" | "IMAGE" | "DOCUMENT">("NONE")
+  const [templateHeaderTypeInput, setTemplateHeaderTypeInput] = useState<
+    "NONE" | "TEXT" | "IMAGE" | "DOCUMENT"
+  >("NONE")
   const [templateHeaderTextInput, setTemplateHeaderTextInput] = useState("")
   const [templateBodyTextInput, setTemplateBodyTextInput] = useState("")
   const [templateFooterTextInput, setTemplateFooterTextInput] = useState("")
   const [templateButtonsInput, setTemplateButtonsInput] = useState<
-    Array<{ type: "QUICK_REPLY" | "URL" | "PHONE_NUMBER"; text: string; url?: string; phone_number?: string }>
+    Array<{
+      type: "QUICK_REPLY" | "URL" | "PHONE_NUMBER"
+      text: string
+      url?: string
+      phone_number?: string
+    }>
   >([])
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false)
-  const [createTemplateError, setCreateTemplateError] = useState<string | null>(null)
+  const [createTemplateError, setCreateTemplateError] = useState<string | null>(
+    null
+  )
 
-  const [templateToDelete, setTemplateToDelete] = useState<SafeWhatsappTemplate | null>(null)
+  const [templateToDelete, setTemplateToDelete] =
+    useState<SafeWhatsappTemplate | null>(null)
   const [isDeletingTemplate, setIsDeletingTemplate] = useState(false)
 
-  const [selectedWabaId, setSelectedWabaId] = useState<string | "NEW_DEDICATED">(
+  const [selectedWabaId, setSelectedWabaId] = useState<
+    string | "NEW_DEDICATED"
+  >(
     initialWhatsappAccounts.find((a) => a.isActive)?.id ||
       initialWhatsappAccounts[0]?.id ||
       "NEW_DEDICATED"
@@ -783,9 +900,7 @@ export function ConnectionsSettingsClient({
         null
 
   // WABA form state
-  const [wabaName, setWabaName] = useState(
-    activeWabaAccount?.name || ""
-  )
+  const [wabaName, setWabaName] = useState(activeWabaAccount?.name || "")
   const [wabaPhoneNumberId, setWabaPhoneNumberId] = useState(
     activeWabaAccount?.phoneNumberId || ""
   )
@@ -805,20 +920,18 @@ export function ConnectionsSettingsClient({
     "COEXISTENCE_FOUNDER" | "DEDICATED_AGENT" | "PRIMARY_CLOUD"
   >(
     (activeWabaAccount?.accountRole as
-      | "COEXISTENCE_FOUNDER"
-      | "DEDICATED_AGENT"
-      | "PRIMARY_CLOUD") || "PRIMARY_CLOUD"
+      "COEXISTENCE_FOUNDER" | "DEDICATED_AGENT" | "PRIMARY_CLOUD") ||
+      "PRIMARY_CLOUD"
   )
-  const [wabaIntentFilterEnabled, setWabaIntentFilterEnabled] = useState<boolean>(
-    activeWabaAccount?.intentFilterEnabled ?? false
-  )
+  const [wabaIntentFilterEnabled, setWabaIntentFilterEnabled] =
+    useState<boolean>(activeWabaAccount?.intentFilterEnabled ?? false)
   const [embeddedConfigId, setEmbeddedConfigId] = useState<string>(
     activeWabaAccount?.embeddedSignupConfigId || ""
   )
-  const [metaAppIdInput, setMetaAppIdInput] = useState<string>("")
-  const [isLaunchingCoexistence, setIsLaunchingCoexistence] = useState(false)
 
-  const handleSelectAccountSlot = (slot: SafeWhatsappAccount | "NEW_DEDICATED") => {
+  const handleSelectAccountSlot = (
+    slot: SafeWhatsappAccount | "NEW_DEDICATED"
+  ) => {
     setWabaFeedback(null)
     if (slot === "NEW_DEDICATED") {
       setSelectedWabaId("NEW_DEDICATED")
@@ -844,9 +957,8 @@ export function ConnectionsSettingsClient({
       setWabaIsDefault(slot.isDefault)
       setWabaAccountRole(
         (slot.accountRole as
-          | "COEXISTENCE_FOUNDER"
-          | "DEDICATED_AGENT"
-          | "PRIMARY_CLOUD") || "COEXISTENCE_FOUNDER"
+          "COEXISTENCE_FOUNDER" | "DEDICATED_AGENT" | "PRIMARY_CLOUD") ||
+          "COEXISTENCE_FOUNDER"
       )
       setWabaIntentFilterEnabled(slot.intentFilterEnabled ?? true)
       setEmbeddedConfigId(slot.embeddedSignupConfigId || "")
@@ -862,184 +974,29 @@ export function ConnectionsSettingsClient({
   const [isSyncingTemplates, setIsSyncingTemplates] = useState(false)
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null)
 
-  const handleLaunchCoexistenceEmbeddedSignup = async () => {
-    setWabaFeedback(null)
-    if (!embeddedConfigId.trim()) {
-      setWabaFeedback({
-        success: false,
-        message:
-          "Please enter your Facebook Login for Business Configuration ID (config_id) from your Tech Provider Meta App to launch the Coexistence QR pairing popup.",
-      })
-      return
-    }
-
-    setIsLaunchingCoexistence(true)
-
-    try {
-      // Load Facebook JS SDK if not already loaded
-      if (typeof window !== "undefined") {
-        const win = window as unknown as {
-          FB?: {
-            init: (opts: Record<string, unknown>) => void
-            login: (
-              cb: (res: { authResponse?: { code?: string } }) => void,
-              opts: Record<string, unknown>
-            ) => void
-          }
-        }
-
-        if (!win.FB) {
-          await new Promise<void>((resolve, reject) => {
-            const script = document.createElement("script")
-            script.src = "https://connect.facebook.net/en_US/sdk.js"
-            script.async = true
-            script.defer = true
-            script.onload = () => resolve()
-            script.onerror = () =>
-              reject(new Error("Failed to load Meta connect.facebook.net SDK"))
-            document.body.appendChild(script)
-          })
-        }
-
-        let capturedSessionData: {
-          waba_id?: string
-          phone_number_id?: string
-          messaging_account_ids?: string[]
-          primary_waac_ids?: string[]
-        } = {}
-
-        const sessionListener = (event: MessageEvent) => {
-          if (
-            !["https://www.facebook.com", "https://web.facebook.com"].includes(
-              event.origin
-            )
-          ) {
-            return
-          }
-          try {
-            const parsed =
-              typeof event.data === "string" ? JSON.parse(event.data) : event.data
-            if (
-              parsed?.type === "WA_EMBEDDED_SIGNUP" &&
-              [
-                "FINISH",
-                "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
-              ].includes(parsed?.event)
-            ) {
-              capturedSessionData = parsed.data || {}
-            }
-          } catch {
-            // ignore non-JSON message
-          }
-        }
-
-        window.addEventListener("message", sessionListener)
-
-        win.FB?.init({
-          appId: metaAppIdInput.trim(),
-          autoLogAppEvents: true,
-          xfbml: true,
-          version: "v21.0",
-        })
-
-        win.FB?.login(
-          async (response) => {
-            window.removeEventListener("message", sessionListener)
-            const code = response?.authResponse?.code
-            if (!code) {
-              setIsLaunchingCoexistence(false)
-              setWabaFeedback({
-                success: false,
-                message:
-                  "Embedded Signup popup was closed before completing QR pairing.",
-              })
-              return
-            }
-
-            try {
-              const targetWaba =
-                capturedSessionData.waba_id ||
-                capturedSessionData.messaging_account_ids?.[0] ||
-                wabaId
-              const targetPhoneId =
-                capturedSessionData.phone_number_id ||
-                capturedSessionData.primary_waac_ids?.[0] ||
-                wabaPhoneNumberId
-
-              const result = await completeSettingsEmbeddedSignupAction({
-                code,
-                wabaId: targetWaba,
-                phoneNumberId: targetPhoneId,
-                displayPhoneNumber: wabaDisplayPhone || "",
-                accountName: wabaName.trim() || "Meta WABA Account",
-                accountRole: "COEXISTENCE_FOUNDER",
-                configId: embeddedConfigId.trim(),
-              })
-
-              if (result.success) {
-                setWabaFeedback({
-                  success: true,
-                  message: `Official Meta Coexistence connected! Platform: ${result.platformType} • Contacts & 6m History Sync Triggered.`,
-                })
-                startTransition(() => {
-                  router.refresh()
-                })
-              } else {
-                setWabaFeedback({
-                  success: false,
-                  message: result.error || "Failed to finalize Coexistence onboarding",
-                })
-              }
-            } catch (err) {
-              setWabaFeedback({
-                success: false,
-                message:
-                  err instanceof Error
-                    ? err.message
-                    : "Failed to complete Coexistence token exchange",
-              })
-            } finally {
-              setIsLaunchingCoexistence(false)
-            }
-          },
-          {
-            config_id: embeddedConfigId.trim(),
-            response_type: "code",
-            override_default_response_type: true,
-            extras: {
-              version: "v5",
-              featureType: "whatsapp_business_app_onboarding",
-              sessionInfoVersion: "3",
-            },
-          }
-        )
-      }
-    } catch (err) {
-      setIsLaunchingCoexistence(false)
-      setWabaFeedback({
-        success: false,
-        message:
-          err instanceof Error
-            ? err.message
-            : "Error launching Embedded Signup SDK",
-      })
-    }
-  }
-
   const handleSaveWabaAccount = async (e: React.FormEvent) => {
     e.preventDefault()
     setWabaFeedback(null)
 
     if (!wabaPhoneNumberId.trim()) {
-      setWabaFeedback({ success: false, message: "Phone Number ID is required" })
+      setWabaFeedback({
+        success: false,
+        message: "Phone Number ID is required",
+      })
       return
     }
     if (!wabaId.trim()) {
-      setWabaFeedback({ success: false, message: "WABA Account ID is required" })
+      setWabaFeedback({
+        success: false,
+        message: "WABA Account ID is required",
+      })
       return
     }
     if (!wabaDisplayPhone.trim()) {
-      setWabaFeedback({ success: false, message: "Display Phone Number is required" })
+      setWabaFeedback({
+        success: false,
+        message: "Display Phone Number is required",
+      })
       return
     }
     if (!activeWabaAccount && !wabaAccessToken.trim()) {
@@ -1094,7 +1051,8 @@ export function ConnectionsSettingsClient({
     } catch (err) {
       setWabaFeedback({
         success: false,
-        message: err instanceof Error ? err.message : "Error saving WhatsApp account",
+        message:
+          err instanceof Error ? err.message : "Error saving WhatsApp account",
       })
     } finally {
       setIsSavingWaba(false)
@@ -1103,7 +1061,9 @@ export function ConnectionsSettingsClient({
 
   const handleSyncTemplates = async () => {
     if (!activeWabaAccount) {
-      setSyncFeedback("Please connect a WhatsApp account before syncing templates.")
+      setSyncFeedback(
+        "Please connect a WhatsApp account before syncing templates."
+      )
       return
     }
 
@@ -1111,14 +1071,18 @@ export function ConnectionsSettingsClient({
     setSyncFeedback(null)
 
     try {
-      const res = await syncSettingsWhatsappTemplatesAction(activeWabaAccount.id)
+      const res = await syncSettingsWhatsappTemplatesAction(
+        activeWabaAccount.id
+      )
       if (res.success) {
         setSyncFeedback(`Successfully synchronized Meta message templates!`)
         startTransition(() => {
           router.refresh()
         })
       } else {
-        setSyncFeedback(`Template sync notice: ${res.error || "Could not retrieve templates from Meta"}`)
+        setSyncFeedback(
+          `Template sync notice: ${res.error || "Could not retrieve templates from Meta"}`
+        )
       }
     } catch (err) {
       setSyncFeedback(
@@ -1136,9 +1100,14 @@ export function ConnectionsSettingsClient({
       return
     }
 
-    const cleanName = templateNameInput.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_")
+    const cleanName = templateNameInput
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "_")
     if (!cleanName) {
-      setCreateTemplateError("Template name is required and must contain lowercase alphanumeric characters and underscores.")
+      setCreateTemplateError(
+        "Template name is required and must contain lowercase alphanumeric characters and underscores."
+      )
       return
     }
     if (!templateBodyTextInput.trim()) {
@@ -1160,7 +1129,9 @@ export function ConnectionsSettingsClient({
             ? templateHeaderTextInput.trim()
             : undefined,
         bodyText: templateBodyTextInput.trim(),
-        footerText: templateFooterTextInput.trim() ? templateFooterTextInput.trim() : undefined,
+        footerText: templateFooterTextInput.trim()
+          ? templateFooterTextInput.trim()
+          : undefined,
         buttons: templateButtonsInput
           .filter((b) => b.text.trim())
           .map((b) => {
@@ -1194,7 +1165,9 @@ export function ConnectionsSettingsClient({
         setTemplateHeaderTextInput("")
         setTemplateFooterTextInput("")
         setTemplateButtonsInput([])
-        setSyncFeedback(`Successfully registered template "${cleanName}" with Meta (${res.status})!`)
+        setSyncFeedback(
+          `Successfully registered template "${cleanName}" with Meta (${res.status})!`
+        )
 
         startTransition(async () => {
           if (activeWabaAccount.id) {
@@ -1203,10 +1176,14 @@ export function ConnectionsSettingsClient({
           }
         })
       } else {
-        setCreateTemplateError(res.error || "Failed to create template on Meta Graph API.")
+        setCreateTemplateError(
+          res.error || "Failed to create template on Meta Graph API."
+        )
       }
     } catch (err) {
-      setCreateTemplateError(err instanceof Error ? err.message : "Error creating template")
+      setCreateTemplateError(
+        err instanceof Error ? err.message : "Error creating template"
+      )
     } finally {
       setIsCreatingTemplate(false)
     }
@@ -1222,8 +1199,12 @@ export function ConnectionsSettingsClient({
         name: templateToDelete.name,
       })
       if (res.success) {
-        setWhatsappTemplates((prev) => prev.filter((t) => t.id !== templateToDelete.id))
-        setSyncFeedback(`Template "${templateToDelete.name}" deleted successfully from Meta.`)
+        setWhatsappTemplates((prev) =>
+          prev.filter((t) => t.id !== templateToDelete.id)
+        )
+        setSyncFeedback(
+          `Template "${templateToDelete.name}" deleted successfully from Meta.`
+        )
         setTemplateToDelete(null)
         startTransition(() => {
           router.refresh()
@@ -1243,7 +1224,8 @@ export function ConnectionsSettingsClient({
   // ------------------------------------------
   const activeSocialCount = socialIntegrations.filter((s) => s.isActive).length
   const activeInfraCount = [
-    infrastructureStatus.openRouterConfigured || infrastructureStatus.geminiConfigured,
+    infrastructureStatus.openRouterConfigured ||
+      infrastructureStatus.geminiConfigured,
     infrastructureStatus.r2Configured,
     infrastructureStatus.triggerConfigured,
     infrastructureStatus.gotenbergConfigured,
@@ -1260,83 +1242,107 @@ export function ConnectionsSettingsClient({
     staff: `${staffUsers.length}`,
   }
 
-  const activeMeta = TAB_CONFIG.find((t) => t.key === activeTab) || TAB_CONFIG[0]
+  const activeMeta =
+    TAB_CONFIG.find((t) => t.key === activeTab) || TAB_CONFIG[0]
 
   return (
     <div className="flex flex-col gap-6">
       {/* Hub Header */}
       <div className="flex flex-col gap-2 border-b border-border/80 pb-5">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gold-text">
-            System Settings &amp; Technical Connections
-          </span>
-          <Badge
-            variant="outline"
-            className="text-[10px] font-mono border-primary/30 text-primary bg-primary/5"
-          >
-            {activeSocialCount} Social Channels • {activeInfraCount}/4 Cloud Engines • {staffUsers.length} Staff
-          </Badge>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
               Settings &amp; Connections Center
             </h1>
-            <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-3xl">
-              Manage Core 5 social publishing OAuth accounts, Meta WhatsApp Business Cloud API credentials,
-              Oracle Gotenberg PDF rendering, agency branding parameters, and administrative staff accounts.
+            <p className="mt-1 max-w-3xl text-xs text-muted-foreground sm:text-sm">
+              Manage Core 5 social publishing OAuth accounts, Meta WhatsApp
+              Business Cloud API credentials, Oracle Gotenberg PDF rendering,
+              agency branding parameters, and administrative staff accounts.
             </p>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <Badge
+                variant="outline"
+                className="border-gold-border bg-accent/40 text-[11px] font-medium text-gold-text"
+              >
+                System Settings &amp; Technical Connections
+              </Badge>
+              <Badge
+                variant="outline"
+                className="border-primary/25 bg-primary/5 font-mono text-[11px] text-primary tabular-nums"
+              >
+                {activeSocialCount} Social Channels
+              </Badge>
+              <Badge
+                variant="outline"
+                className="border-primary/25 bg-primary/5 font-mono text-[11px] text-primary tabular-nums"
+              >
+                {activeInfraCount}/4 Cloud Engines
+              </Badge>
+              <Badge
+                variant="outline"
+                className="border-primary/25 bg-primary/5 font-mono text-[11px] text-primary tabular-nums"
+              >
+                {staffUsers.length} Staff
+              </Badge>
+            </div>
           </div>
         </div>
 
         {/* Tab Navigation Pill Bar */}
-        <div className="mt-3 flex overflow-x-auto rounded-xl border border-border/80 bg-muted/40 p-1.5 gap-1.5 no-scrollbar">
-          {TAB_CONFIG.filter((t) => !t.superAdminOnly || isSuperAdmin).map((tab) => {
-            const Icon = tab.icon
-            const isActive = activeTab === tab.key
-            const badgeValue = tabCounts[tab.key]
+        <div
+          tabIndex={0}
+          className="mt-3 no-scrollbar flex gap-1.5 overflow-x-auto rounded-xl border border-border/80 bg-muted/40 p-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          {TAB_CONFIG.filter((t) => !t.superAdminOnly || isSuperAdmin).map(
+            (tab) => {
+              const Icon = tab.icon
+              const isActive = activeTab === tab.key
+              const badgeValue = tabCounts[tab.key]
 
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => handleTabChange(tab.key)}
-                className={cn(
-                  "flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-all cursor-pointer select-none",
-                  isActive
-                    ? "bg-card text-foreground shadow-xs border border-gold/40 text-primary"
-                    : "text-muted-foreground hover:bg-card/60 hover:text-foreground"
-                )}
-              >
-                <Icon
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => handleTabChange(tab.key)}
                   className={cn(
-                    "size-4 shrink-0 transition-colors",
-                    isActive ? "text-gold-text" : "text-muted-foreground"
-                  )}
-                />
-                <span>{tab.label}</span>
-                <span
-                  className={cn(
-                    "ml-0.5 rounded-full px-1.5 py-0.2 font-mono text-[10px] font-bold",
+                    "flex shrink-0 cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                     isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
+                      ? "border border-gold-border bg-card text-primary shadow-xs"
+                      : "text-muted-foreground hover:bg-card/60 hover:text-foreground"
                   )}
                 >
-                  {badgeValue}
-                </span>
-              </button>
-            )
-          })}
+                  <Icon
+                    className={cn(
+                      "size-4 shrink-0 transition-colors motion-reduce:transition-none",
+                      isActive ? "text-gold-text" : "text-muted-foreground"
+                    )}
+                    aria-hidden="true"
+                  />
+                  <span>{tab.label}</span>
+                  <span
+                    className={cn(
+                      "ml-0.5 rounded-full px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums",
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {badgeValue}
+                  </span>
+                </button>
+              )
+            }
+          )}
         </div>
       </div>
 
       {/* Tab Context Banner */}
       <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card px-4 py-2.5 shadow-2xs">
         <div className="flex items-center gap-2 text-xs">
-          <span className="font-semibold text-foreground">{activeMeta.label}:</span>
-          <span className="text-muted-foreground hidden sm:inline">
+          <span className="font-semibold text-foreground">
+            {activeMeta.label}:
+          </span>
+          <span className="hidden text-muted-foreground sm:inline">
             {activeMeta.description}
           </span>
         </div>
@@ -1348,40 +1354,51 @@ export function ConnectionsSettingsClient({
               size="xs"
               disabled={isSweepingTokens}
               onClick={handleSweepExpiringTokens}
-              className="h-6 text-[10px] font-semibold gap-1 border-gold/40 text-primary"
+              className="h-6 cursor-pointer gap-1 border-gold-border text-[11px] font-semibold text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               {isSweepingTokens ? (
-                <Loader2 className="size-3 animate-spin" />
+                <Loader2
+                  className="size-3 animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
               ) : (
-                <RefreshCw className="size-3 text-gold" />
+                <RefreshCw
+                  className="size-3 text-gold-text"
+                  aria-hidden="true"
+                />
               )}
               <span>Refresh Expiring Tokens</span>
             </Button>
           )}
-          <Badge variant="outline" className="text-[10px] font-mono text-muted-foreground">
+          <Badge
+            variant="outline"
+            className="font-mono text-[11px] text-muted-foreground"
+          >
             ?tab={activeTab}
           </Badge>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* TAB 1: Core 5 Social Publishing Accounts (Postiz Native OAuth)            */}
+      {/* TAB 1: Core 5 Social Publishing Accounts (Native OAuth)                   */}
       {/* ========================================================================= */}
       {activeTab === "connections" && (
         <div className="flex flex-col gap-6">
           {/* Success Banner when ?connected=<provider> is present */}
           {successBanner && (
-            <div className="flex items-center justify-between rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-emerald-950 dark:text-emerald-100 shadow-xs">
+            <div className="flex items-center justify-between rounded-xl border border-status-success-border bg-status-success-bg p-4 text-foreground shadow-xs">
               <div className="flex items-center gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600/15 text-emerald-700 dark:text-emerald-300">
-                  <CheckCircle2 className="size-5" />
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-status-success/15 text-status-success">
+                  <CheckCircle2 className="size-5" aria-hidden="true" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-semibold text-emerald-950 dark:text-emerald-100">
+                  <h4 className="text-sm font-semibold text-status-success">
                     Social Channel Connected Successfully
                   </h4>
-                  <p className="text-xs text-emerald-900/85 dark:text-emerald-200/85">
-                    Your <strong className="capitalize">{successBanner}</strong> account has been authenticated and linked. Multi-channel campaign publishing and scheduled calendar hooks are active.
+                  <p className="text-xs text-foreground/85">
+                    Your <strong className="capitalize">{successBanner}</strong>{" "}
+                    account has been authenticated and linked. Multi-channel
+                    campaign publishing and scheduled calendar hooks are active.
                   </p>
                 </div>
               </div>
@@ -1389,7 +1406,7 @@ export function ConnectionsSettingsClient({
                 variant="ghost"
                 size="xs"
                 onClick={handleDismissSuccessBanner}
-                className="text-emerald-900 hover:bg-emerald-500/20"
+                className="cursor-pointer text-status-success hover:bg-status-success/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 Dismiss
               </Button>
@@ -1398,16 +1415,16 @@ export function ConnectionsSettingsClient({
 
           {/* Setup Warning / Error Banner when ?error=<msg> is present */}
           {errorBanner && (
-            <div className="flex items-center justify-between rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-950 dark:text-amber-100 shadow-xs">
+            <div className="flex items-center justify-between rounded-xl border border-status-warning-border bg-status-warning-bg p-4 text-foreground shadow-xs">
               <div className="flex items-center gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-600/15 text-amber-700 dark:text-amber-300">
-                  <AlertTriangle className="size-5" />
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-status-warning/15 text-status-warning">
+                  <AlertTriangle className="size-5" aria-hidden="true" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+                  <h4 className="text-sm font-semibold text-status-warning">
                     OAuth Authorization Notice
                   </h4>
-                  <p className="text-xs text-amber-900/85 dark:text-amber-200/85">
+                  <p className="text-xs text-foreground/85">
                     {decodeURIComponent(errorBanner)}
                   </p>
                 </div>
@@ -1416,7 +1433,7 @@ export function ConnectionsSettingsClient({
                 variant="ghost"
                 size="xs"
                 onClick={handleDismissErrorBanner}
-                className="text-amber-900 hover:bg-amber-500/20"
+                className="cursor-pointer text-status-warning hover:bg-status-warning/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 Dismiss
               </Button>
@@ -1424,7 +1441,7 @@ export function ConnectionsSettingsClient({
           )}
 
           {/* Social Accounts Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
             {CORE_SOCIAL_PROVIDERS.map((provider) => {
               const Icon = provider.icon
               const integration =
@@ -1443,22 +1460,26 @@ export function ConnectionsSettingsClient({
 
               const isComposio = Boolean(
                 integration?.metadata &&
-                  (integration.metadata as Record<string, unknown>).authSource === "composio"
+                (integration.metadata as Record<string, unknown>).authSource ===
+                  "composio"
               )
 
-              // Token expiration check
+              // Token expiration check using passed/timer nowMs
               const isExpired =
                 integration?.status === "EXPIRED" ||
                 Boolean(
+                  nowMs > 0 &&
                   integration?.tokenExpiresAt &&
-                    new Date(integration.tokenExpiresAt).getTime() < Date.now()
+                  new Date(integration.tokenExpiresAt).getTime() < nowMs
                 )
 
-              const isExpiringSoon =
+              const isExpiringSoon = Boolean(
+                nowMs > 0 &&
                 integration?.tokenExpiresAt &&
                 !isExpired &&
-                new Date(integration.tokenExpiresAt).getTime() - Date.now() <
+                new Date(integration.tokenExpiresAt).getTime() - nowMs <
                   7 * 24 * 60 * 60 * 1000
+              )
 
               const isRefreshingThis = refreshingTokenId === integration?.id
 
@@ -1466,12 +1487,12 @@ export function ConnectionsSettingsClient({
                 <Card
                   key={provider.id}
                   className={cn(
-                    "flex flex-col justify-between border-border/80 transition-all hover:shadow-md",
+                    "flex flex-col justify-between border-border/80 transition-shadow hover:shadow-md motion-reduce:transition-none",
                     isPendingSelection
-                      ? "border-amber-500/50 bg-amber-50/20"
+                      ? "border-status-warning-border bg-status-warning-bg/35"
                       : isConnected
-                      ? "border-emerald-500/30 bg-card"
-                      : "bg-muted/15"
+                        ? "border-status-success-border bg-card"
+                        : "bg-secondary/35"
                   )}
                 >
                   <CardHeader className="pb-3">
@@ -1489,7 +1510,7 @@ export function ConnectionsSettingsClient({
                           <CardTitle className="text-base font-bold">
                             {provider.name}
                           </CardTitle>
-                          <p className="text-xs text-muted-foreground line-clamp-1">
+                          <p className="line-clamp-1 text-xs text-muted-foreground">
                             {provider.subtitle}
                           </p>
                         </div>
@@ -1498,39 +1519,49 @@ export function ConnectionsSettingsClient({
                       {isPendingSelection ? (
                         <Badge
                           variant="outline"
-                          className="text-[10px] font-semibold border-amber-500/40 text-amber-800 bg-amber-500/10 flex items-center gap-1"
+                          className="flex items-center gap-1 border-status-warning-border bg-status-warning-bg text-[11px] font-semibold text-status-warning"
                         >
-                          <AlertTriangle className="size-3" />
-                          <span>PENDING_SELECTION</span>
+                          <AlertTriangle
+                            className="size-3"
+                            aria-hidden="true"
+                          />
+                          <span>Pending Selection</span>
                         </Badge>
                       ) : isConnected ? (
                         <div className="flex flex-col items-end gap-1">
                           <Badge
                             variant="outline"
                             className={cn(
-                              "text-[10px] font-semibold border-emerald-500/40 text-emerald-700 bg-emerald-500/10 flex items-center gap-1",
-                              isExpired && "border-rose-500/40 text-rose-700 bg-rose-500/10"
+                              "flex items-center gap-1 text-[11px] font-semibold",
+                              isExpired
+                                ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+                                : "border-status-success-border bg-status-success-bg text-status-success"
                             )}
                           >
-                            <CheckCircle2 className="size-3" />
-                            {isExpired ? "EXPIRED" : "ACTIVE"}
+                            <CheckCircle2
+                              className="size-3"
+                              aria-hidden="true"
+                            />
+                            <span>{isExpired ? "Expired" : "Active"}</span>
                           </Badge>
                           <Badge
                             variant="outline"
                             className={cn(
-                              "text-[9px] font-medium tracking-tight px-1.5 py-0",
+                              "px-1.5 py-0 text-[10px] font-medium",
                               isComposio
-                                ? "border-purple-500/30 text-purple-700 bg-purple-500/10"
-                                : "border-sky-500/30 text-sky-700 bg-sky-500/10"
+                                ? "border-gold-border bg-accent/50 text-gold-text"
+                                : "border-status-info-border bg-status-info-bg text-status-info"
                             )}
                           >
-                            {isComposio ? "Managed OAuth (Composio)" : "Direct OAuth"}
+                            {isComposio
+                              ? "Managed OAuth (Composio)"
+                              : "Direct OAuth"}
                           </Badge>
                         </div>
                       ) : (
                         <Badge
                           variant="outline"
-                          className="text-[10px] font-mono text-muted-foreground border-border"
+                          className="border-border text-[11px] font-medium text-muted-foreground"
                         >
                           Disconnected
                         </Badge>
@@ -1538,41 +1569,45 @@ export function ConnectionsSettingsClient({
                     </div>
                   </CardHeader>
 
-                  <CardContent className="text-xs text-muted-foreground flex-1 flex flex-col justify-center">
+                  <CardContent className="flex flex-1 flex-col justify-center text-xs text-muted-foreground">
                     {isPendingSelection && integration ? (
-                      <div className="space-y-2 rounded-lg bg-amber-50/70 p-3 border border-amber-300 text-amber-950">
-                        <p className="font-bold text-xs">
+                      <div className="space-y-2 rounded-lg bg-status-warning-bg p-3 text-foreground">
+                        <p className="text-xs font-bold text-status-warning">
                           Multiple Accounts / Pages Discovered
                         </p>
-                        <p className="text-[11px] text-amber-900">
+                        <p className="text-[11px] text-foreground/85">
                           Your OAuth authorization returned multiple eligible{" "}
-                          {provider.name} accounts. Select which Page, Profile, or Location to bind for publishing.
+                          {provider.name} accounts. Select which Page, Profile,
+                          or Location to bind for publishing.
                         </p>
                         <Button
                           type="button"
                           size="xs"
                           onClick={() =>
-                            handleOpenCandidateSelector(provider.id, integration.id)
+                            handleOpenCandidateSelector(
+                              provider.id,
+                              integration.id
+                            )
                           }
-                          className="w-full bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-bold text-xs mt-1"
+                          className="mt-1 w-full cursor-pointer bg-primary text-xs font-bold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           Select Account / Page to Activate
                         </Button>
                       </div>
                     ) : isConnected && integration ? (
-                      <div className="space-y-2 rounded-lg bg-muted/40 p-3 border border-border/60">
+                      <div className="space-y-2 rounded-lg bg-secondary/60 p-3">
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold text-foreground text-xs">
+                          <span className="text-xs font-semibold text-foreground">
                             {integration.name}
                           </span>
                           {integration.handle && (
-                            <span className="text-[11px] font-mono text-primary font-medium">
+                            <span className="font-mono text-[11px] font-medium text-primary">
                               @{integration.handle.replace(/^@/, "")}
                             </span>
                           )}
                         </div>
 
-                        <div className="text-[11px] space-y-1 text-muted-foreground border-t border-border/40 pt-2">
+                        <div className="space-y-1 border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
                           <div className="flex justify-between">
                             <span>Account ID:</span>
                             <span className="font-mono text-foreground">
@@ -1590,16 +1625,16 @@ export function ConnectionsSettingsClient({
                               <span>Token Expiry:</span>
                               <span
                                 className={cn(
-                                  "font-medium",
+                                  "font-medium tabular-nums",
                                   isExpired
-                                    ? "text-rose-600"
+                                    ? "text-status-danger"
                                     : isExpiringSoon
-                                    ? "text-amber-600"
-                                    : "text-emerald-700"
+                                      ? "text-status-warning"
+                                      : "text-status-success"
                                 )}
                               >
                                 {isExpired
-                                  ? "Expired — Refresh Needed"
+                                  ? "Expired (Refresh Needed)"
                                   : `Expires ${new Date(
                                       integration.tokenExpiresAt
                                     ).toLocaleDateString()}`}
@@ -1609,21 +1644,25 @@ export function ConnectionsSettingsClient({
                           {integration.lastSyncedAt && (
                             <div className="flex justify-between">
                               <span>Last Verified:</span>
-                              <span>
-                                {new Date(integration.lastSyncedAt).toLocaleDateString()}
+                              <span className="tabular-nums">
+                                {new Date(
+                                  integration.lastSyncedAt
+                                ).toLocaleDateString()}
                               </span>
                             </div>
                           )}
                         </div>
                       </div>
                     ) : (
-                      <p className="text-xs text-muted-foreground/90 italic">
-                        No active connection. Link via official OAuth authorization or paste a long-lived system token to enable automated campaign publishing.
+                      <p className="text-xs text-muted-foreground italic">
+                        No active connection. Link via official OAuth
+                        authorization or paste a long-lived system token to
+                        enable automated campaign publishing.
                       </p>
                     )}
                   </CardContent>
 
-                  <CardFooter className="pt-3 border-t border-border/60 flex items-center justify-between gap-2 flex-wrap">
+                  <CardFooter className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
                     {isConnected && integration ? (
                       <>
                         <div className="flex items-center gap-1.5">
@@ -1631,15 +1670,18 @@ export function ConnectionsSettingsClient({
                             variant="outline"
                             size="xs"
                             disabled={isRefreshingThis}
-                            onClick={() => handleRefreshSingleToken(integration.id)}
-                            className="text-xs gap-1"
+                            onClick={() =>
+                              handleRefreshSingleToken(integration.id)
+                            }
+                            className="cursor-pointer gap-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             title="Refresh OAuth Token"
                           >
                             <RefreshCw
                               className={cn(
-                                "size-3 text-gold-text",
+                                "size-3 text-gold-text motion-reduce:animate-none",
                                 isRefreshingThis && "animate-spin"
                               )}
+                              aria-hidden="true"
                             />
                             <span>Refresh Token</span>
                           </Button>
@@ -1647,7 +1689,7 @@ export function ConnectionsSettingsClient({
                             variant="outline"
                             size="xs"
                             onClick={() => handleOpenManualModal(provider.id)}
-                            className="text-xs"
+                            className="cursor-pointer text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           >
                             Update
                           </Button>
@@ -1656,7 +1698,7 @@ export function ConnectionsSettingsClient({
                           <Button
                             variant="outline"
                             size="xs"
-                            className="text-xs"
+                            className="cursor-pointer text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             render={<a href={provider.oauthUrl} />}
                           >
                             Reconnect
@@ -1666,10 +1708,13 @@ export function ConnectionsSettingsClient({
                             size="xs"
                             disabled={disconnectingId === integration.id}
                             onClick={() => handleDisconnect(integration.id)}
-                            className="text-xs"
+                            className="cursor-pointer text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           >
                             {disconnectingId === integration.id ? (
-                              <Loader2 className="size-3 animate-spin" />
+                              <Loader2
+                                className="size-3 animate-spin motion-reduce:animate-none"
+                                aria-hidden="true"
+                              />
                             ) : (
                               "Disconnect"
                             )}
@@ -1682,13 +1727,13 @@ export function ConnectionsSettingsClient({
                           variant="outline"
                           size="xs"
                           onClick={() => handleOpenManualModal(provider.id)}
-                          className="text-xs text-muted-foreground hover:text-foreground"
+                          className="cursor-pointer text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           Manual Token
                         </Button>
                         <Button
                           size="xs"
-                          className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold"
+                          className="cursor-pointer bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           render={<a href={provider.oauthUrl} />}
                         >
                           Connect via OAuth
@@ -1709,15 +1754,22 @@ export function ConnectionsSettingsClient({
             <DialogContent className="sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-base font-bold">
-                  <Sparkles className="size-4 text-gold" />
+                  <Sparkles
+                    className="size-4 text-gold-text"
+                    aria-hidden="true"
+                  />
                   <span>
                     Select Official{" "}
-                    {candidateProvider ? candidateProvider.toUpperCase() : "Social"}{" "}
+                    {candidateProvider
+                      ? candidateProvider.toUpperCase()
+                      : "Social"}{" "}
                     Account / Page
                   </span>
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
-                  Multiple eligible pages, business accounts, or locations were discovered under your OAuth credentials. Choose which account Al Ramlah Travels should publish to.
+                  Multiple eligible pages, business accounts, or locations were
+                  discovered under your OAuth credentials. Choose which account
+                  Al Ramlah Travels should publish to.
                 </DialogDescription>
               </DialogHeader>
 
@@ -1726,22 +1778,26 @@ export function ConnectionsSettingsClient({
                 className="space-y-4 py-2"
               >
                 {candidateError && (
-                  <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5 text-xs text-rose-800 dark:text-rose-200">
+                  <div className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2.5 text-xs text-status-danger">
                     {candidateError}
                   </div>
                 )}
 
                 {isLoadingCandidates ? (
                   <div className="flex items-center justify-center gap-2 py-8 text-xs text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin text-gold" />
-                    <span>Loading discovered OAuth accounts...</span>
+                    <Loader2
+                      className="size-4 animate-spin text-gold-text motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                    <span>Loading discovered OAuth accounts…</span>
                   </div>
                 ) : pendingCandidates.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-                    No pending candidate accounts found. Close this dialog and click &quot;Connect via OAuth&quot; to re-authorize.
+                  <div className="rounded-lg bg-secondary/60 p-6 text-center text-xs text-muted-foreground">
+                    No pending candidate accounts found. Close this dialog and
+                    click &ldquo;Connect via OAuth&rdquo; to re-authorize.
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
                     {pendingCandidates.map((cand) => {
                       const isSelected =
                         selectedCandidateInternalId === cand.internalAccountId
@@ -1749,13 +1805,13 @@ export function ConnectionsSettingsClient({
                         <label
                           key={cand.internalAccountId}
                           className={cn(
-                            "flex items-center justify-between gap-3 rounded-xl border p-3 text-xs cursor-pointer transition-all",
+                            "flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 text-xs transition-colors motion-reduce:transition-none",
                             isSelected
-                              ? "border-[#0A3622] bg-[#0A3622]/5 ring-1 ring-[#0A3622]"
-                              : "border-border bg-white hover:border-gold"
+                              ? "border-primary bg-primary/5 ring-1 ring-primary"
+                              : "border-border bg-card hover:border-gold-border"
                           )}
                         >
-                          <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex min-w-0 items-center gap-3">
                             <input
                               type="radio"
                               name="socialCandidate"
@@ -1765,21 +1821,23 @@ export function ConnectionsSettingsClient({
                                   cand.internalAccountId
                                 )
                               }
-                              className="accent-[#0A3622]"
+                              className="accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             />
                             <div className="min-w-0">
-                              <p className="font-bold text-foreground truncate">
+                              <p className="truncate font-bold text-foreground">
                                 {cand.name}
                               </p>
-                              <p className="text-[11px] font-mono text-muted-foreground truncate">
-                                {cand.handle ? `@${cand.handle.replace(/^@/, "")} • ` : ""}
+                              <p className="truncate font-mono text-[11px] text-muted-foreground">
+                                {cand.handle
+                                  ? `@${cand.handle.replace(/^@/, "")} | `
+                                  : ""}
                                 ID: {cand.internalAccountId}
                               </p>
                             </div>
                           </div>
                           <Badge
                             variant="outline"
-                            className="text-[9px] font-mono uppercase shrink-0"
+                            className="shrink-0 text-[11px] font-medium capitalize"
                           >
                             {cand.provider}
                           </Badge>
@@ -1796,6 +1854,7 @@ export function ConnectionsSettingsClient({
                     size="sm"
                     onClick={() => setIsCandidateModalOpen(false)}
                     disabled={isSelectingCandidate}
+                    className="cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     Cancel
                   </Button>
@@ -1807,12 +1866,15 @@ export function ConnectionsSettingsClient({
                       isLoadingCandidates ||
                       pendingCandidates.length === 0
                     }
-                    className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-bold"
+                    className="cursor-pointer bg-primary font-bold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     {isSelectingCandidate ? (
                       <>
-                        <Loader2 className="mr-1.5 size-3.5 animate-spin text-gold" />
-                        Activating Account...
+                        <Loader2
+                          className="mr-1.5 size-3.5 animate-spin text-gold motion-reduce:animate-none"
+                          aria-hidden="true"
+                        />
+                        Activating Account…
                       </>
                     ) : (
                       "Activate Selected Account"
@@ -1828,30 +1890,36 @@ export function ConnectionsSettingsClient({
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-base font-bold">
-                  <Key className="size-4 text-gold" />
+                  <Key className="size-4 text-gold-text" aria-hidden="true" />
                   Paste Manual Access Token
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
-                  Connect without OAuth by providing a long-lived Page Token, System User Token, or API Key.
+                  Connect without OAuth by providing a long-lived Page Token,
+                  System User Token, or API Key.
                 </DialogDescription>
               </DialogHeader>
 
               <form onSubmit={handleSaveManualToken} className="space-y-4 py-2">
                 {manualError && (
-                  <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5 text-xs text-rose-800 dark:text-rose-200">
+                  <div className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2.5 text-xs text-status-danger">
                     {manualError}
                   </div>
                 )}
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="manual-provider" className="text-xs font-semibold">
+                  <Label
+                    htmlFor="manual-provider"
+                    className="text-xs font-semibold"
+                  >
                     Target Social Channel
                   </Label>
                   <select
                     id="manual-provider"
                     value={manualProvider}
-                    onChange={(e) => setManualProvider(e.target.value as SocialProviderId)}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
+                    onChange={(e) =>
+                      setManualProvider(e.target.value as SocialProviderId)
+                    }
+                    className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     {CORE_SOCIAL_PROVIDERS.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -1863,7 +1931,10 @@ export function ConnectionsSettingsClient({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="manual-name" className="text-xs font-semibold">
+                    <Label
+                      htmlFor="manual-name"
+                      className="text-xs font-semibold"
+                    >
                       Account Label *
                     </Label>
                     <Input
@@ -1871,13 +1942,16 @@ export function ConnectionsSettingsClient({
                       value={manualName}
                       onChange={(e) => setManualName(e.target.value)}
                       placeholder="e.g. Al Ramlah Official"
-                      className="text-xs h-8"
+                      className="h-8 text-xs"
                       required
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor="manual-handle" className="text-xs font-semibold">
+                    <Label
+                      htmlFor="manual-handle"
+                      className="text-xs font-semibold"
+                    >
                       Username / Handle
                     </Label>
                     <Input
@@ -1885,13 +1959,16 @@ export function ConnectionsSettingsClient({
                       value={manualHandle}
                       onChange={(e) => setManualHandle(e.target.value)}
                       placeholder="@alramlahtravels"
-                      className="text-xs h-8"
+                      className="h-8 text-xs"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="manual-internal-id" className="text-xs font-semibold">
+                  <Label
+                    htmlFor="manual-internal-id"
+                    className="text-xs font-semibold"
+                  >
                     Internal Account / Page ID *
                   </Label>
                   <Input
@@ -1899,32 +1976,39 @@ export function ConnectionsSettingsClient({
                     value={manualInternalAccountId}
                     onChange={(e) => setManualInternalAccountId(e.target.value)}
                     placeholder="e.g. 10293847561829"
-                    className="text-xs h-8 font-mono"
+                    className="h-8 font-mono text-xs"
                     required
                   />
-                  <p className="text-[10px] text-muted-foreground">
-                    Facebook Page ID, Instagram Business ID, or YouTube Channel ID.
+                  <p className="text-[11px] text-muted-foreground">
+                    Facebook Page ID, Instagram Business ID, or YouTube Channel
+                    ID.
                   </p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="manual-access-token" className="text-xs font-semibold">
+                  <Label
+                    htmlFor="manual-access-token"
+                    className="text-xs font-semibold"
+                  >
                     Long-Lived Access Token *
                   </Label>
                   <Textarea
                     id="manual-access-token"
                     value={manualAccessToken}
                     onChange={(e) => setManualAccessToken(e.target.value)}
-                    placeholder="Paste permanent Meta System User token or API secret token..."
+                    placeholder="Paste permanent Meta System User token or API secret token…"
                     rows={3}
-                    className="text-xs font-mono resize-none"
+                    className="resize-none font-mono text-xs"
                     required
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="manual-refresh-token" className="text-xs font-semibold">
+                    <Label
+                      htmlFor="manual-refresh-token"
+                      className="text-xs font-semibold"
+                    >
                       Refresh Token (Optional)
                     </Label>
                     <Input
@@ -1932,12 +2016,15 @@ export function ConnectionsSettingsClient({
                       value={manualRefreshToken}
                       onChange={(e) => setManualRefreshToken(e.target.value)}
                       placeholder="Optional refresh token"
-                      className="text-xs h-8 font-mono"
+                      className="h-8 font-mono text-xs"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor="manual-expiry" className="text-xs font-semibold">
+                    <Label
+                      htmlFor="manual-expiry"
+                      className="text-xs font-semibold"
+                    >
                       Token Validity (Days)
                     </Label>
                     <Input
@@ -1946,7 +2033,7 @@ export function ConnectionsSettingsClient({
                       value={manualExpiresInDays}
                       onChange={(e) => setManualExpiresInDays(e.target.value)}
                       placeholder="60"
-                      className="text-xs h-8"
+                      className="h-8 text-xs"
                     />
                   </div>
                 </div>
@@ -1958,6 +2045,7 @@ export function ConnectionsSettingsClient({
                     size="sm"
                     onClick={() => setIsManualModalOpen(false)}
                     disabled={manualSubmitting}
+                    className="cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     Cancel
                   </Button>
@@ -1965,12 +2053,15 @@ export function ConnectionsSettingsClient({
                     type="submit"
                     size="sm"
                     disabled={manualSubmitting}
-                    className="bg-primary text-primary-foreground hover:bg-primary/90"
+                    className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     {manualSubmitting ? (
                       <>
-                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                        Saving Token...
+                        <Loader2
+                          className="mr-1.5 size-3.5 animate-spin motion-reduce:animate-none"
+                          aria-hidden="true"
+                        />
+                        Saving Token…
                       </>
                     ) : (
                       "Save & Activate Channel"
@@ -1993,19 +2084,23 @@ export function ConnectionsSettingsClient({
 
           {/* Section 2: Official Meta Cloud API (WABA) & Message Templates */}
           <div className="flex flex-col gap-6 pt-2">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-border/80 pt-6">
+            <div className="flex flex-col gap-3 border-t border-border/80 pt-6 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-base font-bold text-foreground font-display flex items-center gap-2">
-                  <Sparkles className="size-4 text-gold" />
+                <h3 className="flex items-center gap-2 font-display text-base font-bold text-foreground">
+                  <Sparkles
+                    className="size-4 text-gold-text"
+                    aria-hidden="true"
+                  />
                   Official Meta Cloud API (WABA) &amp; Message Templates
                 </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Configure your official Meta WhatsApp Business Account for automated customer notifications and broadcast campaigns.
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Configure your official Meta WhatsApp Business Account for
+                  automated customer notifications and broadcast campaigns.
                 </p>
               </div>
 
               {whatsappAccounts.length > 0 && (
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex flex-wrap items-center gap-2">
                   {whatsappAccounts.length > 1 &&
                     whatsappAccounts.map((acc) => (
                       <button
@@ -2013,10 +2108,10 @@ export function ConnectionsSettingsClient({
                         type="button"
                         onClick={() => handleSelectAccountSlot(acc)}
                         className={cn(
-                          "px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer",
+                          "cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                           selectedWabaId === acc.id
-                            ? "bg-[#0A3622] text-white border-gold shadow-xs"
-                            : "bg-card text-muted-foreground hover:text-foreground border-border"
+                            ? "border-gold bg-primary text-primary-foreground shadow-xs"
+                            : "border-border bg-card text-muted-foreground hover:text-foreground"
                         )}
                       >
                         {acc.name} ({acc.displayPhoneNumber})
@@ -2026,10 +2121,10 @@ export function ConnectionsSettingsClient({
                     type="button"
                     onClick={() => handleSelectAccountSlot("NEW_DEDICATED")}
                     className={cn(
-                      "px-3 py-1.5 rounded-lg text-xs font-semibold border border-dashed transition-all cursor-pointer",
+                      "cursor-pointer rounded-lg border border-dashed px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                       selectedWabaId === "NEW_DEDICATED"
-                        ? "bg-[#0A3622] text-white border-gold shadow-xs"
-                        : "bg-card text-primary border-[#C5A059] hover:bg-gold/10"
+                        ? "border-gold bg-primary text-primary-foreground shadow-xs"
+                        : "border-gold-border bg-card text-primary hover:bg-gold/10"
                     )}
                   >
                     + Add WABA Account
@@ -2038,577 +2133,699 @@ export function ConnectionsSettingsClient({
               )}
             </div>
 
-          {/* Webhook Callback Endpoint Banner */}
-          <Card className="border-gold/40 bg-gold/5">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Radio className="size-5 text-gold" />
-                  <CardTitle className="text-sm font-bold text-foreground">
-                    Meta Webhook Receiver &amp; Challenge Endpoint
-                  </CardTitle>
-                </div>
-                <Badge variant="outline" className="text-[10px] font-mono border-gold/40 text-gold-text">
-                  wacrm Native Receiver
-                </Badge>
-              </div>
-              <CardDescription className="text-xs text-muted-foreground">
-                In your Meta Developer App under <strong>WhatsApp &gt; Configuration</strong>, register this Callback URL and Verify Token (subscribe to <code>messages</code> and <code>smb_message_echoes</code>).
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="space-y-3 pt-2">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Callback URL */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                    Webhook Callback URL
-                  </label>
-                  <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-2">
-                    <span className="font-mono text-xs text-foreground truncate flex-1 select-all">
-                      {webhookCallbackUrl}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => handleCopy(webhookCallbackUrl, "webhook")}
-                      title="Copy Webhook Callback URL"
-                    >
-                      {copiedKey === "webhook" ? (
-                        <Check className="size-3.5 text-emerald-600" />
-                      ) : (
-                        <Copy className="size-3.5 text-muted-foreground" />
-                      )}
-                    </Button>
+            {/* Webhook Callback Endpoint Banner */}
+            <Card className="border-gold-border bg-accent/25">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Radio
+                      className="size-5 text-gold-text"
+                      aria-hidden="true"
+                    />
+                    <CardTitle className="text-sm font-bold text-foreground">
+                      Meta Webhook Receiver &amp; Challenge Endpoint
+                    </CardTitle>
                   </div>
+                  <Badge
+                    variant="outline"
+                    className="border-gold-border font-mono text-[11px] text-gold-text"
+                  >
+                    wacrm Native Receiver
+                  </Badge>
                 </div>
+                <CardDescription className="text-xs text-muted-foreground">
+                  In your Meta Developer App under{" "}
+                  <strong>WhatsApp &gt; Configuration</strong>, register this
+                  Callback URL and Verify Token (subscribe to{" "}
+                  <code>messages</code> and <code>smb_message_echoes</code>).
+                </CardDescription>
+              </CardHeader>
 
-                {/* Verify Token (Masked Preview — Plaintext Never Sent to Browser) */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                    Webhook Verify Token
-                  </label>
-                  <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-2">
-                    <span className="font-mono text-xs text-foreground truncate flex-1">
-                      {activeWabaAccount?.hasVerifyToken
-                        ? activeWabaAccount.verifyTokenPreview || "••••••••"
-                        : "Set when connecting WABA"}
-                    </span>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[10px] font-semibold",
-                        activeWabaAccount?.hasVerifyToken
-                          ? "border-emerald-500/40 text-emerald-700 bg-emerald-500/10"
-                          : "border-amber-500/40 text-amber-700 bg-amber-500/10"
-                      )}
-                    >
-                      {activeWabaAccount?.hasVerifyToken
-                        ? "Redacted"
-                        : "Pending"}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Account Quality & Live Metrics Strip (if account exists) */}
-          {activeWabaAccount && (
-            <Card className="border-border/80 bg-card">
-              <CardHeader className="pb-3">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700">
-                      <Phone className="size-5" />
+              <CardContent className="space-y-3 pt-2">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {/* Callback URL */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-muted-foreground">
+                      Webhook Callback URL
+                    </label>
+                    <div className="flex items-center gap-2 rounded-lg bg-card p-2">
+                      <span className="flex-1 truncate font-mono text-xs text-foreground select-all">
+                        {webhookCallbackUrl}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() =>
+                          handleCopy(webhookCallbackUrl, "webhook")
+                        }
+                        title="Copy Webhook Callback URL"
+                        className="cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        {copiedKey === "webhook" ? (
+                          <Check
+                            className="size-3.5 text-status-success"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <Copy
+                            className="size-3.5 text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                        )}
+                      </Button>
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <CardTitle className="text-base font-bold text-foreground">
-                          {activeWabaAccount.verifiedName || activeWabaAccount.name}
-                        </CardTitle>
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] font-mono border-emerald-500/40 text-emerald-700 bg-emerald-500/10"
-                        >
-                          {activeWabaAccount.displayPhoneNumber}
-                        </Badge>
+                  </div>
+
+                  {/* Verify Token (Masked Preview — Plaintext Never Sent to Browser) */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-muted-foreground">
+                      Webhook Verify Token
+                    </label>
+                    <div className="flex items-center gap-2 rounded-lg bg-card p-2">
+                      <span className="flex-1 truncate font-mono text-xs text-foreground">
+                        {activeWabaAccount?.hasVerifyToken
+                          ? activeWabaAccount.verifyTokenPreview || "••••••••"
+                          : "Set when connecting WABA"}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "text-[11px] font-semibold",
+                          activeWabaAccount?.hasVerifyToken
+                            ? "border-status-success-border bg-status-success-bg text-status-success"
+                            : "border-status-warning-border bg-status-warning-bg text-status-warning"
+                        )}
+                      >
+                        {activeWabaAccount?.hasVerifyToken
+                          ? "Redacted"
+                          : "Pending"}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Account Quality & Live Metrics Strip (if account exists) */}
+            {activeWabaAccount && (
+              <Card className="border-border/80 bg-card">
+                <CardHeader className="pb-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-status-success-bg text-status-success">
+                        <Phone className="size-5" aria-hidden="true" />
                       </div>
-                      <p className="text-xs text-muted-foreground font-mono">
-                        Phone ID: {activeWabaAccount.phoneNumberId} • WABA ID: {activeWabaAccount.wabaId}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-base font-bold text-foreground">
+                            {activeWabaAccount.verifiedName ||
+                              activeWabaAccount.name}
+                          </CardTitle>
+                          <Badge
+                            variant="outline"
+                            className="border-status-success-border bg-status-success-bg font-mono text-[11px] text-status-success tabular-nums"
+                          >
+                            {activeWabaAccount.displayPhoneNumber}
+                          </Badge>
+                        </div>
+                        <p className="font-mono text-xs text-muted-foreground">
+                          Phone ID: {activeWabaAccount.phoneNumberId} | WABA ID:{" "}
+                          {activeWabaAccount.wabaId}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSyncTemplates}
+                        disabled={isSyncingTemplates}
+                        className="cursor-pointer gap-1.5 border-gold-border text-xs text-foreground hover:bg-gold/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        {isSyncingTemplates ? (
+                          <Loader2
+                            className="size-3.5 animate-spin text-gold-text motion-reduce:animate-none"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <RefreshCw
+                            className="size-3.5 text-gold-text"
+                            aria-hidden="true"
+                          />
+                        )}
+                        Sync Meta Templates
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="pt-0">
+                  <div className="grid grid-cols-2 gap-3 border-t border-border/60 pt-3 text-xs sm:grid-cols-4">
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] font-semibold text-muted-foreground">
+                        Line Mode
+                      </span>
+                      <div className="font-semibold text-foreground">
+                        {activeWabaAccount.accountRole ===
+                          "COEXISTENCE_FOUNDER" || activeWabaAccount.isOnBizApp
+                          ? "Coexistence (Mobile + Cloud)"
+                          : "Dedicated Cloud API Agent"}
+                      </div>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] font-semibold text-muted-foreground">
+                        AI Intent Gatekeeper
+                      </span>
+                      <div className="font-semibold text-status-success">
+                        {activeWabaAccount.intentFilterEnabled !== false
+                          ? "Active (Travel Leads Only)"
+                          : "All Inquiries Active"}
+                      </div>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] font-semibold text-muted-foreground">
+                        Active Templates
+                      </span>
+                      <div className="font-semibold text-foreground tabular-nums">
+                        {whatsappTemplates.length} Synced
+                      </div>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] font-semibold text-muted-foreground">
+                        Webhook Subscription
+                      </span>
+                      <div className="flex items-center gap-1 font-semibold text-status-success">
+                        <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                        Subscribed
+                      </div>
+                    </div>
+                  </div>
+
+                  {syncFeedback && (
+                    <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-2.5 text-xs text-primary">
+                      {syncFeedback}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Form to Connect or Update WABA Credentials */}
+            <Card className="border-border/80">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base font-bold">
+                  <Lock className="size-4 text-gold-text" aria-hidden="true" />
+                  {activeWabaAccount
+                    ? `Configure ${activeWabaAccount.name}`
+                    : "Connect Meta WhatsApp Cloud API Account"}
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground">
+                  Configure your official Meta Cloud API credentials, Phone
+                  Number ID, and Access Token.
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent>
+                <form onSubmit={handleSaveWabaAccount} className="space-y-4">
+                  {wabaFeedback && (
+                    <div
+                      className={cn(
+                        "rounded-lg border p-3 text-xs",
+                        wabaFeedback.success
+                          ? "border-status-success-border bg-status-success-bg text-status-success"
+                          : "border-status-danger-border bg-status-danger-bg text-status-danger"
+                      )}
+                    >
+                      {wabaFeedback.message}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-4 rounded-xl bg-secondary/60 p-3 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="waba-role"
+                        className="text-xs font-semibold"
+                      >
+                        Account Line Role
+                      </Label>
+                      <select
+                        id="waba-role"
+                        value={wabaAccountRole}
+                        onChange={(e) => {
+                          const val = e.target.value as
+                            | "COEXISTENCE_FOUNDER"
+                            | "DEDICATED_AGENT"
+                            | "PRIMARY_CLOUD"
+                          setWabaAccountRole(val)
+                        }}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        <option value="PRIMARY_CLOUD">
+                          Primary Cloud API Line
+                        </option>
+                        <option value="DEDICATED_AGENT">
+                          Dedicated AI Agent Line
+                        </option>
+                        <option value="COEXISTENCE_FOUNDER">
+                          Meta Coexistence Line (Mobile App + Cloud API)
+                        </option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col justify-center space-y-1">
+                      <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={wabaIntentFilterEnabled}
+                          onChange={(e) =>
+                            setWabaIntentFilterEnabled(e.target.checked)
+                          }
+                          className="size-4 rounded border-border text-primary accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        />
+                        <span>
+                          Enable AI Intent Detection Gatekeeper (OpenRouter LLM)
+                        </span>
+                      </label>
+                      <p className="pl-6 text-[11px] text-muted-foreground">
+                        Automatically classifies incoming messages and mutes
+                        travel auto-replies on personal/unrelated business
+                        chats.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleSyncTemplates}
-                      disabled={isSyncingTemplates}
-                      className="text-xs gap-1.5 border-gold/40 text-foreground hover:bg-gold/10"
-                    >
-                      {isSyncingTemplates ? (
-                        <Loader2 className="size-3.5 animate-spin text-gold" />
-                      ) : (
-                        <RefreshCw className="size-3.5 text-gold" />
-                      )}
-                      Sync Meta Templates
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="waba-name"
+                        className="text-xs font-semibold"
+                      >
+                        Account Name *
+                      </Label>
+                      <Input
+                        id="waba-name"
+                        value={wabaName}
+                        onChange={(e) => setWabaName(e.target.value)}
+                        placeholder="Al Ramlah Primary"
+                        className="h-8 text-xs"
+                        required
+                      />
+                    </div>
 
-              <CardContent className="pt-0">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-border/60 text-xs">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] text-muted-foreground uppercase font-semibold">
-                      Line Mode
-                    </span>
-                    <div className="font-semibold text-foreground">
-                      {activeWabaAccount.accountRole === "COEXISTENCE_FOUNDER" ||
-                      activeWabaAccount.isOnBizApp
-                        ? "Coexistence (Mobile + Cloud)"
-                        : "Dedicated Cloud API Agent"}
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="waba-display-phone"
+                        className="text-xs font-semibold"
+                      >
+                        Display Phone Number *
+                      </Label>
+                      <Input
+                        id="waba-display-phone"
+                        value={wabaDisplayPhone}
+                        onChange={(e) => setWabaDisplayPhone(e.target.value)}
+                        placeholder="e.g. +92 319 0462638"
+                        className="h-8 text-xs"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="waba-phone-id"
+                        className="text-xs font-semibold"
+                      >
+                        Phone Number ID *
+                      </Label>
+                      <Input
+                        id="waba-phone-id"
+                        value={wabaPhoneNumberId}
+                        onChange={(e) => setWabaPhoneNumberId(e.target.value)}
+                        placeholder="e.g. 1430405500153193"
+                        className="h-8 font-mono text-xs"
+                        required
+                      />
                     </div>
                   </div>
 
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] text-muted-foreground uppercase font-semibold">
-                      AI Intent Gatekeeper
-                    </span>
-                    <div className="font-semibold text-emerald-700 dark:text-emerald-400">
-                      {activeWabaAccount.intentFilterEnabled !== false
-                        ? "Active (Travel Leads Only)"
-                        : "All Inquiries Active"}
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="waba-account-id"
+                        className="text-xs font-semibold"
+                      >
+                        WABA Account ID *
+                      </Label>
+                      <Input
+                        id="waba-account-id"
+                        value={wabaId}
+                        onChange={(e) => setWabaId(e.target.value)}
+                        placeholder="e.g. 2527960031014926"
+                        className="h-8 font-mono text-xs"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="waba-verify-token"
+                        className="text-xs font-semibold"
+                      >
+                        Custom Webhook Verify Token{" "}
+                        {activeWabaAccount
+                          ? "(Leave blank to keep existing)"
+                          : ""}
+                      </Label>
+                      <Input
+                        id="waba-verify-token"
+                        type="password"
+                        value={wabaVerifyToken}
+                        onChange={(e) => setWabaVerifyToken(e.target.value)}
+                        placeholder={
+                          activeWabaAccount?.verifyTokenPreview
+                            ? `${activeWabaAccount.verifyTokenPreview} (Stored securely)`
+                            : "art_wa_token_verified"
+                        }
+                        className="h-8 font-mono text-xs"
+                      />
                     </div>
                   </div>
 
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] text-muted-foreground uppercase font-semibold">
-                      Active Templates
-                    </span>
-                    <div className="font-semibold text-foreground">
-                      {whatsappTemplates.length} Synced
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="space-y-1.5 md:col-span-2">
+                      <Label
+                        htmlFor="waba-access-token"
+                        className="text-xs font-semibold"
+                      >
+                        Meta Permanent System User Access Token{" "}
+                        {activeWabaAccount
+                          ? "(Leave blank to keep existing)"
+                          : "*"}
+                      </Label>
+                      <Input
+                        id="waba-access-token"
+                        type="password"
+                        value={wabaAccessToken}
+                        onChange={(e) => setWabaAccessToken(e.target.value)}
+                        placeholder={
+                          activeWabaAccount
+                            ? "•••••••••••••••• (Encrypted in Neon DB)"
+                            : "EAAB…"
+                        }
+                        className="h-8 font-mono text-xs"
+                        required={!activeWabaAccount}
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Generated under Meta Business Settings &gt; System Users
+                        &gt; WhatsApp Business Messaging.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="waba-pin"
+                        className="text-xs font-semibold"
+                      >
+                        Two-Step PIN (Dedicated Cloud Line Only)
+                      </Label>
+                      <Input
+                        id="waba-pin"
+                        type="password"
+                        maxLength={6}
+                        value={wabaPin}
+                        onChange={(e) => setWabaPin(e.target.value)}
+                        placeholder={
+                          wabaAccountRole === "COEXISTENCE_FOUNDER"
+                            ? "Skipped on Coexistence"
+                            : "6-digit PIN"
+                        }
+                        disabled={wabaAccountRole === "COEXISTENCE_FOUNDER"}
+                        className="h-8 font-mono text-xs"
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Required only if 2-step verification is active on the
+                        line.
+                      </p>
                     </div>
                   </div>
 
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] text-muted-foreground uppercase font-semibold">
-                      Webhook Subscription
-                    </span>
-                    <div className="font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 className="size-3.5" />
-                      Subscribed
-                    </div>
-                  </div>
-                </div>
-
-                {syncFeedback && (
-                  <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-2.5 text-xs text-primary">
-                    {syncFeedback}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Form to Connect or Update WABA Credentials */}
-          <Card className="border-border/80">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-bold flex items-center gap-2">
-                <Lock className="size-4 text-gold" />
-                {activeWabaAccount
-                  ? `Configure ${activeWabaAccount.name}`
-                  : "Connect Meta WhatsApp Cloud API Account"}
-              </CardTitle>
-              <CardDescription className="text-xs text-muted-foreground">
-                Configure your official Meta Cloud API credentials, Phone Number ID, and Access Token.
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent>
-              <form onSubmit={handleSaveWabaAccount} className="space-y-4">
-                {wabaFeedback && (
-                  <div
-                    className={cn(
-                      "rounded-lg border p-3 text-xs",
-                      wabaFeedback.success
-                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
-                        : "border-rose-500/30 bg-rose-500/10 text-rose-900 dark:text-rose-100"
-                    )}
-                  >
-                    {wabaFeedback.message}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-xl border border-border/70 bg-muted/20 p-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="waba-role" className="text-xs font-semibold">
-                      Account Line Role
-                    </Label>
-                    <select
-                      id="waba-role"
-                      value={wabaAccountRole}
-                      onChange={(e) => {
-                        const val = e.target.value as
-                          | "COEXISTENCE_FOUNDER"
-                          | "DEDICATED_AGENT"
-                          | "PRIMARY_CLOUD"
-                        setWabaAccountRole(val)
-                      }}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
-                    >
-                      <option value="PRIMARY_CLOUD">
-                        Primary Cloud API Line
-                      </option>
-                      <option value="DEDICATED_AGENT">
-                        Dedicated AI Agent Line
-                      </option>
-                      <option value="COEXISTENCE_FOUNDER">
-                        Meta Coexistence Line (Mobile App + Cloud API)
-                      </option>
-                    </select>
-                  </div>
-
-                  <div className="flex flex-col justify-center space-y-1">
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-foreground">
+                  <div className="flex items-center justify-between pt-2">
+                    <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
                       <input
                         type="checkbox"
-                        checked={wabaIntentFilterEnabled}
-                        onChange={(e) => setWabaIntentFilterEnabled(e.target.checked)}
-                        className="rounded border-border text-primary focus:ring-primary size-4"
+                        checked={wabaIsDefault}
+                        onChange={(e) => setWabaIsDefault(e.target.checked)}
+                        className="size-4 rounded border-border text-primary accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       />
-                      <span>Enable AI Intent Detection Gatekeeper (OpenRouter LLM)</span>
+                      <span>Set as Primary Dispatch WhatsApp Account</span>
                     </label>
-                    <p className="text-[11px] text-muted-foreground pl-6">
-                      Automatically classifies incoming messages and mutes travel auto-replies on personal/unrelated business chats.
-                    </p>
+
+                    <Button
+                      type="submit"
+                      disabled={isSavingWaba}
+                      className="cursor-pointer bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    >
+                      {isSavingWaba ? (
+                        <>
+                          <Loader2
+                            className="mr-1.5 size-3.5 animate-spin motion-reduce:animate-none"
+                            aria-hidden="true"
+                          />
+                          Verifying &amp; Saving…
+                        </>
+                      ) : (
+                        "Save & Verify WABA Credentials"
+                      )}
+                    </Button>
                   </div>
+                </form>
+              </CardContent>
+            </Card>
+
+            {/* Synced Templates Strip */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">
+                    Synchronized Meta Message Templates (
+                    {whatsappTemplates.length})
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Approved templates available for 24-hour window
+                    re-engagement and broadcast campaigns.
+                  </p>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="waba-name" className="text-xs font-semibold">
-                      Account Name *
-                    </Label>
-                    <Input
-                      id="waba-name"
-                      value={wabaName}
-                      onChange={(e) => setWabaName(e.target.value)}
-                      placeholder="Al Ramlah Primary"
-                      className="text-xs h-8"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="waba-display-phone" className="text-xs font-semibold">
-                      Display Phone Number *
-                    </Label>
-                    <Input
-                      id="waba-display-phone"
-                      value={wabaDisplayPhone}
-                      onChange={(e) => setWabaDisplayPhone(e.target.value)}
-                      placeholder="e.g. +92 319 0462638"
-                      className="text-xs h-8"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="waba-phone-id" className="text-xs font-semibold">
-                      Phone Number ID *
-                    </Label>
-                    <Input
-                      id="waba-phone-id"
-                      value={wabaPhoneNumberId}
-                      onChange={(e) => setWabaPhoneNumberId(e.target.value)}
-                      placeholder="e.g. 1430405500153193"
-                      className="text-xs h-8 font-mono"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="waba-account-id" className="text-xs font-semibold">
-                      WABA Account ID *
-                    </Label>
-                    <Input
-                      id="waba-account-id"
-                      value={wabaId}
-                      onChange={(e) => setWabaId(e.target.value)}
-                      placeholder="e.g. 2527960031014926"
-                      className="text-xs h-8 font-mono"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="waba-verify-token" className="text-xs font-semibold">
-                      Custom Webhook Verify Token{" "}
-                      {activeWabaAccount ? "(Leave blank to keep existing)" : ""}
-                    </Label>
-                    <Input
-                      id="waba-verify-token"
-                      type="password"
-                      value={wabaVerifyToken}
-                      onChange={(e) => setWabaVerifyToken(e.target.value)}
-                      placeholder={
-                        activeWabaAccount?.verifyTokenPreview
-                          ? `${activeWabaAccount.verifyTokenPreview} (Stored securely)`
-                          : "art_wa_token_verified"
-                      }
-                      className="text-xs h-8 font-mono"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="md:col-span-2 space-y-1.5">
-                    <Label htmlFor="waba-access-token" className="text-xs font-semibold">
-                      Meta Permanent System User Access Token {activeWabaAccount ? "(Leave blank to keep existing)" : "*"}
-                    </Label>
-                    <Input
-                      id="waba-access-token"
-                      type="password"
-                      value={wabaAccessToken}
-                      onChange={(e) => setWabaAccessToken(e.target.value)}
-                      placeholder={activeWabaAccount ? "•••••••••••••••• (Encrypted in Neon DB)" : "EAAB..."}
-                      className="text-xs h-8 font-mono"
-                      required={!activeWabaAccount}
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Generated under Meta Business Settings &gt; System Users &gt; WhatsApp Business Messaging.
-                    </p>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="waba-pin" className="text-xs font-semibold">
-                      Two-Step PIN (Dedicated Cloud Line Only)
-                    </Label>
-                    <Input
-                      id="waba-pin"
-                      type="password"
-                      maxLength={6}
-                      value={wabaPin}
-                      onChange={(e) => setWabaPin(e.target.value)}
-                      placeholder={wabaAccountRole === "COEXISTENCE_FOUNDER" ? "Skipped on Coexistence" : "6-digit PIN"}
-                      disabled={wabaAccountRole === "COEXISTENCE_FOUNDER"}
-                      className="text-xs h-8 font-mono"
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Required only if 2-step verification is active on the line.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-2">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs text-foreground">
-                    <input
-                      type="checkbox"
-                      checked={wabaIsDefault}
-                      onChange={(e) => setWabaIsDefault(e.target.checked)}
-                      className="rounded border-border text-primary focus:ring-primary size-4"
-                    />
-                    <span>Set as Primary Dispatch WhatsApp Account</span>
-                  </label>
-
+                <div className="flex items-center gap-2">
                   <Button
-                    type="submit"
-                    disabled={isSavingWaba}
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold"
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      setCreateTemplateError(null)
+                      setIsCreateTemplateOpen(true)
+                    }}
+                    className="h-8 cursor-pointer gap-1.5 bg-primary text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    {isSavingWaba ? (
-                      <>
-                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                        Verifying &amp; Saving...
-                      </>
-                    ) : (
-                      "Save &amp; Verify WABA Credentials"
-                    )}
+                    <Plus className="size-3.5" aria-hidden="true" />
+                    Create Meta Template
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleSyncTemplates}
+                    disabled={isSyncingTemplates || !activeWabaAccount}
+                    className="h-8 cursor-pointer gap-1.5 border-border/80 text-xs text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    <RefreshCw
+                      className={cn(
+                        "size-3.5 motion-reduce:animate-none",
+                        isSyncingTemplates && "animate-spin"
+                      )}
+                      aria-hidden="true"
+                    />
+                    {isSyncingTemplates ? "Syncing…" : "Sync"}
                   </Button>
                 </div>
-              </form>
-            </CardContent>
-          </Card>
+              </div>
 
-          {/* Synced Templates Strip */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-foreground">
-                  Synchronized Meta Message Templates ({whatsappTemplates.length})
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Approved templates available for 24-hour window re-engagement and broadcast campaigns.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    setCreateTemplateError(null)
-                    setIsCreateTemplateOpen(true)
-                  }}
-                  className="h-8 gap-1.5 text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm"
-                >
-                  <Plus className="size-3.5" />
-                  Create Meta Template
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={handleSyncTemplates}
-                  disabled={isSyncingTemplates || !activeWabaAccount}
-                  className="h-8 gap-1.5 text-xs text-muted-foreground border-border/80"
-                >
-                  <RefreshCw className={cn("size-3.5", isSyncingTemplates && "animate-spin")} />
-                  {isSyncingTemplates ? "Syncing..." : "Sync"}
-                </Button>
-              </div>
+              {whatsappTemplates.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
+                  <FileText
+                    className="mx-auto mb-2 size-8 text-muted-foreground/60"
+                    aria-hidden="true"
+                  />
+                  <p className="font-semibold text-foreground">
+                    No Message Templates Synced Yet
+                  </p>
+                  <p className="mt-1">
+                    Click <strong>Create Meta Template</strong> to author a new
+                    template or <strong>Sync</strong> to pull down pre-approved
+                    templates from Meta.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {whatsappTemplates.map((template) => (
+                    <Card
+                      key={template.id}
+                      className="flex flex-col justify-between border-border/70 text-xs"
+                    >
+                      <div>
+                        <CardHeader className="pb-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 pr-1">
+                              <CardTitle
+                                className="truncate font-mono text-xs font-bold"
+                                title={template.name}
+                              >
+                                {template.name}
+                              </CardTitle>
+                              <span className="text-[11px] text-muted-foreground">
+                                {template.language} | {template.category}
+                              </span>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "text-[11px] font-semibold",
+                                  template.status === "APPROVED"
+                                    ? "border-status-success-border bg-status-success-bg text-status-success"
+                                    : template.status === "PENDING"
+                                      ? "border-status-warning-border bg-status-warning-bg text-status-warning"
+                                      : "border-status-danger-border bg-status-danger-bg text-status-danger"
+                                )}
+                              >
+                                {template.status}
+                              </Badge>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                title="Delete template from Meta"
+                                onClick={() => setTemplateToDelete(template)}
+                                className="size-6 cursor-pointer text-muted-foreground hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                              >
+                                <Trash2
+                                  className="size-3.5"
+                                  aria-hidden="true"
+                                />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="line-clamp-3 pb-2 text-[11px] text-muted-foreground">
+                          {template.bodyText}
+                        </CardContent>
+                      </div>
+                      {template.footerText && (
+                        <CardFooter className="mt-1 border-t border-border/40 pt-0 pb-2 text-[11px] text-muted-foreground">
+                          Footer: {template.footerText}
+                        </CardFooter>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
-
-            {whatsappTemplates.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
-                <FileText className="mx-auto size-8 text-muted-foreground/60 mb-2" />
-                <p className="font-semibold text-foreground">No Message Templates Synced Yet</p>
-                <p className="mt-1">
-                  Click <strong>Create Meta Template</strong> to author a new template or <strong>Sync</strong> to pull down pre-approved templates from Meta.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {whatsappTemplates.map((template) => (
-                  <Card key={template.id} className="border-border/70 text-xs flex flex-col justify-between">
-                    <div>
-                      <CardHeader className="pb-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 pr-1">
-                            <CardTitle className="text-xs font-bold font-mono truncate" title={template.name}>
-                              {template.name}
-                            </CardTitle>
-                            <span className="text-[10px] text-muted-foreground">
-                              {template.language} • {template.category}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-[10px] font-semibold",
-                                template.status === "APPROVED"
-                                  ? "border-emerald-500/40 text-emerald-700 bg-emerald-500/10"
-                                  : template.status === "PENDING"
-                                  ? "border-amber-500/40 text-amber-700 bg-amber-500/10"
-                                  : "border-rose-500/40 text-rose-700 bg-rose-500/10"
-                              )}
-                            >
-                              {template.status}
-                            </Badge>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              title="Delete template from Meta"
-                              onClick={() => setTemplateToDelete(template)}
-                              className="size-6 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10"
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="text-[11px] text-muted-foreground line-clamp-3 pb-2">
-                        {template.bodyText}
-                      </CardContent>
-                    </div>
-                    {template.footerText && (
-                      <CardFooter className="pt-0 pb-2 text-[10px] text-muted-foreground/75 border-t border-border/40 mt-1">
-                        Footer: {template.footerText}
-                      </CardFooter>
-                    )}
-                  </Card>
-                ))}
-              </div>
-            )}
           </div>
         </div>
-      </div>
-    )}
+      )}
 
       {/* ========================================================================= */}
       {/* TAB 3: Cloud Infrastructure Status                                        */}
       {/* ========================================================================= */}
       {activeTab === "infrastructure" && (
         <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {/* 1. Multimodal AI Extraction Gateway */}
             <Card className="border-border/80">
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-700">
-                      <Sparkles className="size-5" />
+                    <div className="flex size-10 items-center justify-center rounded-xl bg-accent/60 text-gold-text">
+                      <Sparkles className="size-5" aria-hidden="true" />
                     </div>
                     <div>
                       <CardTitle className="text-base font-bold">
                         Multimodal AI Extraction Gateway
                       </CardTitle>
                       <CardDescription className="text-xs text-muted-foreground">
-                        Google Gemini (3.8 / 3.5 Flash Primary) &amp; OpenRouter Secondary
+                        Google Gemini (3.8 / 3.5 Flash Primary) &amp; OpenRouter
+                        Secondary
                       </CardDescription>
                     </div>
                   </div>
-                  {infrastructureStatus.openRouterConfigured || infrastructureStatus.geminiConfigured ? (
+                  {infrastructureStatus.openRouterConfigured ||
+                  infrastructureStatus.geminiConfigured ? (
                     <Badge
                       variant="outline"
-                      className="border-emerald-500/40 text-emerald-700 bg-emerald-500/10 text-[10px] font-semibold"
+                      className="border-status-success-border bg-status-success-bg text-[11px] font-semibold text-status-success"
                     >
                       Active
                     </Badge>
                   ) : (
                     <Badge
                       variant="outline"
-                      className="border-amber-500/40 text-amber-700 bg-amber-500/10 text-[10px] font-mono"
+                      className="border-status-warning-border bg-status-warning-bg text-[11px] font-medium text-status-warning"
                     >
                       Missing Keys
                     </Badge>
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="text-xs space-y-3 pt-2">
+              <CardContent className="space-y-3 pt-2 text-xs">
                 <p className="text-muted-foreground">
-                  Drives multimodal flyer analysis inside Studio Hub: automatically parses Urdu/English WhatsApp texts, dates, airlines, Makkah/Madinah hotels, and quad/triple/double sharing tariffs.
+                  Drives multimodal flyer analysis inside Studio Hub:
+                  automatically parses Urdu/English WhatsApp texts, dates,
+                  airlines, Makkah/Madinah hotels, and quad/triple/double
+                  sharing tariffs.
                 </p>
-                <div className="rounded-lg bg-muted/40 p-3 border border-border/60 space-y-1.5 font-mono text-[11px]">
-                  <div className="flex justify-between">
-                    <span>GOOGLE_GENERATIVE_AI_API_KEY:</span>
+                <div className="space-y-1.5 rounded-lg bg-secondary/60 p-3 text-[11px]">
+                  <div className="flex justify-between gap-2">
+                    <code className="font-mono">
+                      GOOGLE_GENERATIVE_AI_API_KEY:
+                    </code>
                     <span
-                      className={
+                      className={cn(
+                        "inline-flex items-center gap-1 font-semibold",
                         infrastructureStatus.geminiConfigured
-                          ? "text-emerald-700 font-semibold"
-                          : "text-amber-700"
-                      }
+                          ? "text-status-success"
+                          : "text-status-warning"
+                      )}
                     >
-                      {infrastructureStatus.geminiConfigured ? "Configured ✓" : "Not Set"}
+                      {infrastructureStatus.geminiConfigured ? (
+                        <>
+                          <CheckCircle2 className="size-3" aria-hidden="true" />
+                          <span>Configured</span>
+                        </>
+                      ) : (
+                        "Not Set"
+                      )}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>OPENROUTER_API_KEY:</span>
+                  <div className="flex justify-between gap-2">
+                    <code className="font-mono">OPENROUTER_API_KEY:</code>
                     <span
-                      className={
+                      className={cn(
+                        "inline-flex items-center gap-1 font-semibold",
                         infrastructureStatus.openRouterConfigured
-                          ? "text-emerald-700 font-semibold"
-                          : "text-amber-700"
-                      }
+                          ? "text-status-success"
+                          : "text-status-warning"
+                      )}
                     >
-                      {infrastructureStatus.openRouterConfigured ? "Configured ✓" : "Not Set"}
+                      {infrastructureStatus.openRouterConfigured ? (
+                        <>
+                          <CheckCircle2 className="size-3" aria-hidden="true" />
+                          <span>Configured</span>
+                        </>
+                      ) : (
+                        "Not Set"
+                      )}
                     </span>
                   </div>
                 </div>
@@ -2620,55 +2837,68 @@ export function ConnectionsSettingsClient({
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-xl bg-orange-500/10 border border-orange-500/30 text-orange-700">
-                      <Cloud className="size-5" />
+                    <div className="flex size-10 items-center justify-center rounded-xl bg-status-warning-bg text-status-warning">
+                      <Cloud className="size-5" aria-hidden="true" />
                     </div>
                     <div>
                       <CardTitle className="text-base font-bold">
                         Cloudflare R2 Object Storage
                       </CardTitle>
                       <CardDescription className="text-xs text-muted-foreground">
-                        S3-Compatible High Performance Storage (Zero Egress Fees)
+                        S3-Compatible High Performance Storage (Zero Egress
+                        Fees)
                       </CardDescription>
                     </div>
                   </div>
                   {infrastructureStatus.r2Configured ? (
                     <Badge
                       variant="outline"
-                      className="border-emerald-500/40 text-emerald-700 bg-emerald-500/10 text-[10px] font-semibold"
+                      className="border-status-success-border bg-status-success-bg text-[11px] font-semibold text-status-success"
                     >
                       Connected
                     </Badge>
                   ) : (
                     <Badge
                       variant="outline"
-                      className="border-amber-500/40 text-amber-700 bg-amber-500/10 text-[10px] font-mono"
+                      className="border-status-warning-border bg-status-warning-bg text-[11px] font-medium text-status-warning"
                     >
                       Local Fallback
                     </Badge>
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="text-xs space-y-3 pt-2">
+              <CardContent className="space-y-3 pt-2 text-xs">
                 <p className="text-muted-foreground">
-                  Stores raw supplier PDFs, presigned flyer uploads, 4K multi-package sheets, spotlight posters, and generated 3-page luxury vector PDF itineraries.
+                  Stores raw supplier PDFs, presigned flyer uploads, 4K
+                  multi-package sheets, spotlight posters, and generated 3-page
+                  luxury vector PDF itineraries.
                 </p>
-                <div className="rounded-lg bg-muted/40 p-3 border border-border/60 space-y-1.5 font-mono text-[11px]">
-                  <div className="flex justify-between">
-                    <span>R2_BUCKET_NAME &amp; Credentials:</span>
+                <div className="space-y-1.5 rounded-lg bg-secondary/60 p-3 text-[11px]">
+                  <div className="flex justify-between gap-2">
+                    <code className="font-mono">
+                      R2_BUCKET_NAME &amp; Credentials:
+                    </code>
                     <span
-                      className={
+                      className={cn(
+                        "inline-flex items-center gap-1 font-semibold",
                         infrastructureStatus.r2Configured
-                          ? "text-emerald-700 font-semibold"
-                          : "text-amber-700"
-                      }
+                          ? "text-status-success"
+                          : "text-status-warning"
+                      )}
                     >
-                      {infrastructureStatus.r2Configured ? "Connected ✓" : "Local Mode"}
+                      {infrastructureStatus.r2Configured ? (
+                        <>
+                          <CheckCircle2 className="size-3" aria-hidden="true" />
+                          <span>Connected</span>
+                        </>
+                      ) : (
+                        "Local Mode"
+                      )}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Storage Engine:</span>
-                    <span className="text-foreground">
+                  <div className="flex justify-between gap-2">
+                    <span className="font-medium">Storage Engine:</span>
+                    <span className="font-mono text-foreground">
                       {infrastructureStatus.r2Configured
                         ? "Production Cloudflare R2"
                         : "Local Disk / Dev Mode"}
@@ -2683,50 +2913,62 @@ export function ConnectionsSettingsClient({
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-700">
-                      <Activity className="size-5" />
+                    <div className="flex size-10 items-center justify-center rounded-xl bg-status-info-bg text-status-info">
+                      <Activity className="size-5" aria-hidden="true" />
                     </div>
                     <div>
                       <CardTitle className="text-base font-bold">
                         Trigger.dev Cloud Scheduler
                       </CardTitle>
                       <CardDescription className="text-xs text-muted-foreground">
-                        Durable Background Jobs, 4-Hour Post Hooks &amp; Outreach Cooldowns
+                        Durable Background Jobs, 4-Hour Post Hooks &amp;
+                        Outreach Cooldowns
                       </CardDescription>
                     </div>
                   </div>
                   {infrastructureStatus.triggerConfigured ? (
                     <Badge
                       variant="outline"
-                      className="border-emerald-500/40 text-emerald-700 bg-emerald-500/10 text-[10px] font-semibold"
+                      className="border-status-success-border bg-status-success-bg text-[11px] font-semibold text-status-success"
                     >
                       Active
                     </Badge>
                   ) : (
                     <Badge
                       variant="outline"
-                      className="border-amber-500/40 text-amber-700 bg-amber-500/10 text-[10px] font-mono"
+                      className="border-status-warning-border bg-status-warning-bg text-[11px] font-medium text-status-warning"
                     >
                       Sync Fallback
                     </Badge>
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="text-xs space-y-3 pt-2">
+              <CardContent className="space-y-3 pt-2 text-xs">
                 <p className="text-muted-foreground">
-                  Executes the two-step marketing campaign hook (publishes single package spotlight immediately, delays multi-package sheet by 4 hours) and maintains 14-day pilgrim contact cooldowns.
+                  Executes the two-step marketing campaign hook (publishes
+                  single package spotlight immediately, delays multi-package
+                  sheet by 4 hours) and maintains 14-day pilgrim contact
+                  cooldowns.
                 </p>
-                <div className="rounded-lg bg-muted/40 p-3 border border-border/60 space-y-1.5 font-mono text-[11px]">
-                  <div className="flex justify-between">
-                    <span>TRIGGER_SECRET_KEY:</span>
+                <div className="space-y-1.5 rounded-lg bg-secondary/60 p-3 text-[11px]">
+                  <div className="flex justify-between gap-2">
+                    <code className="font-mono">TRIGGER_SECRET_KEY:</code>
                     <span
-                      className={
+                      className={cn(
+                        "inline-flex items-center gap-1 font-semibold",
                         infrastructureStatus.triggerConfigured
-                          ? "text-emerald-700 font-semibold"
-                          : "text-amber-700"
-                      }
+                          ? "text-status-success"
+                          : "text-status-warning"
+                      )}
                     >
-                      {infrastructureStatus.triggerConfigured ? "Authenticated ✓" : "Local Runner"}
+                      {infrastructureStatus.triggerConfigured ? (
+                        <>
+                          <CheckCircle2 className="size-3" aria-hidden="true" />
+                          <span>Authenticated</span>
+                        </>
+                      ) : (
+                        "Local Runner"
+                      )}
                     </span>
                   </div>
                 </div>
@@ -2738,8 +2980,8 @@ export function ConnectionsSettingsClient({
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-xl bg-gold/15 border border-gold/40 text-gold-text">
-                      <Server className="size-5" />
+                    <div className="flex size-10 items-center justify-center rounded-xl bg-accent/50 text-gold-text">
+                      <Server className="size-5" aria-hidden="true" />
                     </div>
                     <div>
                       <CardTitle className="text-base font-bold">
@@ -2753,35 +2995,45 @@ export function ConnectionsSettingsClient({
                   {infrastructureStatus.gotenbergConfigured ? (
                     <Badge
                       variant="outline"
-                      className="border-emerald-500/40 text-emerald-700 bg-emerald-500/10 text-[10px] font-semibold"
+                      className="border-status-success-border bg-status-success-bg text-[11px] font-semibold text-status-success"
                     >
                       Connected
                     </Badge>
                   ) : (
                     <Badge
                       variant="outline"
-                      className="border-amber-500/40 text-amber-700 bg-amber-500/10 text-[10px] font-mono"
+                      className="border-status-warning-border bg-status-warning-bg text-[11px] font-medium text-status-warning"
                     >
                       Local Chromium
                     </Badge>
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="text-xs space-y-3 pt-2">
+              <CardContent className="space-y-3 pt-2 text-xs">
                 <p className="text-muted-foreground">
-                  Converts Al Ramlah Travels quotation worksheets into official 3-page luxury vector PDF itineraries with custom Arabic typography and metallic gold borders.
+                  Converts Al Ramlah Travels quotation worksheets into official
+                  3-page luxury vector PDF itineraries with custom Arabic
+                  typography and metallic gold borders.
                 </p>
-                <div className="rounded-lg bg-muted/40 p-3 border border-border/60 space-y-1.5 font-mono text-[11px]">
-                  <div className="flex justify-between">
-                    <span>GOTENBERG_API_URL:</span>
+                <div className="space-y-1.5 rounded-lg bg-secondary/60 p-3 text-[11px]">
+                  <div className="flex justify-between gap-2">
+                    <code className="font-mono">GOTENBERG_API_URL:</code>
                     <span
-                      className={
+                      className={cn(
+                        "inline-flex items-center gap-1 font-semibold",
                         infrastructureStatus.gotenbergConfigured
-                          ? "text-emerald-700 font-semibold"
-                          : "text-amber-700"
-                      }
+                          ? "text-status-success"
+                          : "text-status-warning"
+                      )}
                     >
-                      {infrastructureStatus.gotenbergConfigured ? "Connected ✓" : "Local Chromium"}
+                      {infrastructureStatus.gotenbergConfigured ? (
+                        <>
+                          <CheckCircle2 className="size-3" aria-hidden="true" />
+                          <span>Connected</span>
+                        </>
+                      ) : (
+                        "Local Chromium"
+                      )}
                     </span>
                   </div>
                 </div>
@@ -2794,76 +3046,95 @@ export function ConnectionsSettingsClient({
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Server className="size-5 text-primary" />
+                  <Server className="size-5 text-primary" aria-hidden="true" />
                   <CardTitle className="text-base font-bold text-foreground">
                     Oracle Cloud Always Free Deployment Setup
                   </CardTitle>
                 </div>
                 <Badge
                   variant="outline"
-                  className="text-[10px] font-bold border-gold/50 text-gold-text bg-gold/10"
+                  className="border-gold-border bg-accent/40 text-[11px] font-bold text-gold-text tabular-nums"
                 >
                   $0.00 / month forever
                 </Badge>
               </div>
               <CardDescription className="text-xs text-muted-foreground">
-                Run an enterprise Gotenberg 8 PDF conversion microservice fully covered by Oracle Cloud Always Free tier (4 OCPU, 24 GB RAM, 200 GB SSD) with automated Let&apos;s Encrypt TLS.
+                Run an enterprise Gotenberg 8 PDF conversion microservice fully
+                covered by Oracle Cloud Always Free tier (4 OCPU, 24 GB RAM, 200
+                GB SSD) with automated Let&apos;s Encrypt TLS.
               </CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-4 pt-2 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="rounded-lg border border-border bg-card p-3">
-                  <div className="font-semibold text-foreground">1. Setup Script</div>
-                  <div className="text-[11px] font-mono text-primary mt-1">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-lg bg-card/85 p-3">
+                  <div className="font-semibold text-foreground">
+                    1. Setup Script
+                  </div>
+                  <div className="mt-1 font-mono text-[11px] break-all text-primary">
                     scripts/oracle-gotenberg/setup-oracle-arm.sh
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Turnkey bootstrap script: configures Docker, fixes Ubuntu iptables &amp; starts Caddy.
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Turnkey bootstrap script: configures Docker, fixes Ubuntu
+                    iptables &amp; starts Caddy.
                   </p>
                 </div>
 
-                <div className="rounded-lg border border-border bg-card p-3">
-                  <div className="font-semibold text-foreground">2. Docker Compose</div>
-                  <div className="text-[11px] font-mono text-primary mt-1">
+                <div className="rounded-lg bg-card/85 p-3">
+                  <div className="font-semibold text-foreground">
+                    2. Docker Compose
+                  </div>
+                  <div className="mt-1 font-mono text-[11px] break-all text-primary">
                     scripts/oracle-gotenberg/docker-compose.yml
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Multi-container bundle (Gotenberg 8 + Caddy 2) tuned for ARM64 Ampere A1.
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Multi-container bundle (Gotenberg 8 + Caddy 2) tuned for
+                    ARM64 Ampere A1.
                   </p>
                 </div>
 
-                <div className="rounded-lg border border-border bg-card p-3">
-                  <div className="font-semibold text-foreground">3. Caddy Reverse Proxy</div>
-                  <div className="text-[11px] font-mono text-primary mt-1">
+                <div className="rounded-lg bg-card/85 p-3">
+                  <div className="font-semibold text-foreground">
+                    3. Caddy Reverse Proxy
+                  </div>
+                  <div className="mt-1 font-mono text-[11px] break-all text-primary">
                     scripts/oracle-gotenberg/Caddyfile
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Automated TLS, X-Gotenberg-Api-Key authentication &amp; public /health route.
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Automated TLS, X-Gotenberg-Api-Key authentication &amp;
+                    public /health route.
                   </p>
                 </div>
 
-                <div className="rounded-lg border border-border bg-card p-3">
-                  <div className="font-semibold text-foreground">4. Documentation</div>
-                  <div className="text-[11px] font-mono text-primary mt-1">
+                <div className="rounded-lg bg-card/85 p-3">
+                  <div className="font-semibold text-foreground">
+                    4. Documentation
+                  </div>
+                  <div className="mt-1 font-mono text-[11px] break-all text-primary">
                     scripts/oracle-gotenberg/README.md
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Complete architecture walkthrough, VCN security rules &amp; healthchecks.
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Complete architecture walkthrough, VCN security rules &amp;
+                    healthchecks.
                   </p>
                 </div>
               </div>
 
-              <div className="rounded-lg bg-card p-3 border border-border/80 flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-card/85 p-3">
                 <div className="space-y-0.5">
-                  <span className="font-semibold text-foreground text-xs">
+                  <span className="text-xs font-semibold text-foreground">
                     Deployment Documentation Guide:
                   </span>
                   <p className="text-[11px] text-muted-foreground">
-                    Follow the step-by-step instructions in <code>scripts/oracle-gotenberg/README.md</code> to deploy to Oracle Cloud in under 10 minutes.
+                    Follow the step-by-step instructions in{" "}
+                    <code>scripts/oracle-gotenberg/README.md</code> to deploy to
+                    Oracle Cloud in under 10 minutes.
                   </p>
                 </div>
-                <Badge variant="outline" className="font-mono text-[10px]">
+                <Badge
+                  variant="outline"
+                  className="shrink-0 text-[11px] font-medium"
+                >
                   ARM64 Ampere A1
                 </Badge>
               </div>
@@ -2905,13 +3176,17 @@ export function ConnectionsSettingsClient({
               currentUserRole={currentUserRole}
             />
           ) : (
-            <Card className="border-rose-500/30 bg-rose-500/5 p-8 text-center">
-              <ShieldAlert className="mx-auto size-10 text-rose-600 mb-3" />
+            <Card className="border-status-danger-border bg-status-danger-bg/40 p-8 text-center">
+              <ShieldAlert
+                className="mx-auto mb-3 size-10 text-status-danger"
+                aria-hidden="true"
+              />
               <CardTitle className="text-lg font-bold text-foreground">
                 Access Restricted to Super Administrators
               </CardTitle>
-              <CardDescription className="text-xs text-muted-foreground max-w-md mx-auto mt-2">
-                Managing staff accounts, role-based access control, and password resets requires elevated <code>super_admin</code> privileges.
+              <CardDescription className="mx-auto mt-2 max-w-md text-xs text-muted-foreground">
+                Managing staff accounts, role-based access control, and password
+                resets requires <code>super_admin</code> privileges.
               </CardDescription>
             </Card>
           )}
@@ -2920,38 +3195,45 @@ export function ConnectionsSettingsClient({
       {/* ========================================================================= */}
       {/* Create Meta Template Modal Dialog (Spec 0019 AC-6)                        */}
       {/* ========================================================================= */}
-      <Dialog open={isCreateTemplateOpen} onOpenChange={setIsCreateTemplateOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 gap-0">
-          <DialogHeader className="p-6 pb-4 border-b border-border/60 bg-muted/20">
+      <Dialog
+        open={isCreateTemplateOpen}
+        onOpenChange={setIsCreateTemplateOpen}
+      >
+        <DialogContent className="max-h-[90vh] max-w-4xl gap-0 overflow-y-auto p-0">
+          <DialogHeader className="border-b border-border/60 bg-secondary/40 p-6 pb-4">
             <div className="flex items-center gap-2">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-700 border border-emerald-500/30">
-                <Plus className="size-4" />
+              <div className="flex size-8 items-center justify-center rounded-lg bg-status-success-bg text-status-success">
+                <Plus className="size-4" aria-hidden="true" />
               </div>
               <div>
                 <DialogTitle className="text-base font-bold text-foreground">
                   Create Meta WhatsApp Message Template
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
-                  Submit a structured template to Meta Graph API for marketing or utility communications.
+                  Submit a structured template to Meta Graph API for marketing
+                  or utility communications.
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
 
           {createTemplateError && (
-            <div className="mx-6 mt-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-700 text-xs flex items-center gap-2">
-              <AlertTriangle className="size-4 shrink-0" />
+            <div className="mx-6 mt-4 flex items-center gap-2 rounded-lg border border-status-danger-border bg-status-danger-bg p-3 text-xs text-status-danger">
+              <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
               <span>{createTemplateError}</span>
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
+          <div className="grid grid-cols-1 gap-0 lg:grid-cols-12">
             {/* Left Column: Form Controls */}
-            <form onSubmit={handleCreateTemplateSubmit} className="lg:col-span-7 p-6 flex flex-col gap-4 border-r border-border/40">
+            <form
+              onSubmit={handleCreateTemplateSubmit}
+              className="flex flex-col gap-4 border-r border-border/40 p-6 lg:col-span-7"
+            >
               {/* Template Name */}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="tmpl-name" className="text-xs font-semibold">
-                  Template Name <span className="text-rose-500">*</span>
+                  Template Name <span className="text-status-danger">*</span>
                 </Label>
                 <Input
                   id="tmpl-name"
@@ -2962,11 +3244,12 @@ export function ConnectionsSettingsClient({
                     )
                   }
                   placeholder="e.g. ramadan_early_bird_offer_2027"
-                  className="text-xs font-mono h-8"
+                  className="h-8 font-mono text-xs"
                   required
                 />
-                <p className="text-[10px] text-muted-foreground">
-                  Meta requires lowercase alphanumeric characters and underscores only.
+                <p className="text-[11px] text-muted-foreground">
+                  Meta requires lowercase alphanumeric characters and
+                  underscores only.
                 </p>
               </div>
 
@@ -2980,12 +3263,18 @@ export function ConnectionsSettingsClient({
                     id="tmpl-cat"
                     value={templateCategoryInput}
                     onChange={(e) =>
-                      setTemplateCategoryInput(e.target.value as "MARKETING" | "UTILITY")
+                      setTemplateCategoryInput(
+                        e.target.value as "MARKETING" | "UTILITY"
+                      )
                     }
-                    className="h-8 rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className="h-8 rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <option value="MARKETING">MARKETING (Broadcast & Promotions)</option>
-                    <option value="UTILITY">UTILITY (Quotes, Updates & Confirmations)</option>
+                    <option value="MARKETING">
+                      Marketing (Broadcast &amp; Promotions)
+                    </option>
+                    <option value="UTILITY">
+                      Utility (Quotes, Updates &amp; Confirmations)
+                    </option>
                   </select>
                 </div>
 
@@ -2997,19 +3286,22 @@ export function ConnectionsSettingsClient({
                     id="tmpl-lang"
                     value={templateLanguageInput}
                     onChange={(e) => setTemplateLanguageInput(e.target.value)}
-                    className="h-8 rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className="h-8 rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <option value="en_US">English (US) — en_US</option>
-                    <option value="en">English (UK) — en</option>
-                    <option value="ur">Urdu (Pakistan) — ur</option>
-                    <option value="ar">Arabic — ar</option>
+                    <option value="en_US">English (US) (en_US)</option>
+                    <option value="en">English (UK) (en)</option>
+                    <option value="ur">Urdu (Pakistan) (ur)</option>
+                    <option value="ar">Arabic (ar)</option>
                   </select>
                 </div>
               </div>
 
               {/* Header Type */}
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="tmpl-header-type" className="text-xs font-semibold">
+                <Label
+                  htmlFor="tmpl-header-type"
+                  className="text-xs font-semibold"
+                >
                   Header Type
                 </Label>
                 <select
@@ -3020,7 +3312,7 @@ export function ConnectionsSettingsClient({
                       e.target.value as "NONE" | "TEXT" | "IMAGE" | "DOCUMENT"
                     )
                   }
-                  className="h-8 rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="h-8 rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <option value="NONE">None (No Header)</option>
                   <option value="TEXT">Text Header</option>
@@ -3031,9 +3323,11 @@ export function ConnectionsSettingsClient({
                 {templateHeaderTypeInput === "TEXT" && (
                   <Input
                     value={templateHeaderTextInput}
-                    onChange={(e) => setTemplateHeaderTextInput(e.target.value.slice(0, 60))}
+                    onChange={(e) =>
+                      setTemplateHeaderTextInput(e.target.value.slice(0, 60))
+                    }
                     placeholder="e.g. Al Ramlah Luxury Umrah"
-                    className="text-xs h-8 mt-1"
+                    className="mt-1 h-8 text-xs"
                     maxLength={60}
                   />
                 )}
@@ -3043,18 +3337,21 @@ export function ConnectionsSettingsClient({
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="tmpl-body" className="text-xs font-semibold">
-                    Body Text <span className="text-rose-500">*</span>
+                    Body Text <span className="text-status-danger">*</span>
                   </Label>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      const matches = templateBodyTextInput.match(/\{\{(\d+)\}\}/g) || []
+                      const matches =
+                        templateBodyTextInput.match(/\{\{(\d+)\}\}/g) || []
                       const nextNum = matches.length + 1
-                      setTemplateBodyTextInput((prev) => prev + ` {{${nextNum}}}`)
+                      setTemplateBodyTextInput(
+                        (prev) => prev + ` {{${nextNum}}}`
+                      )
                     }}
-                    className="h-6 text-[10px] px-2 text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20"
+                    className="h-6 cursor-pointer bg-status-success-bg px-2 text-[11px] text-status-success hover:bg-status-success-bg/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     + Insert Placeholder
                   </Button>
@@ -3062,14 +3359,19 @@ export function ConnectionsSettingsClient({
                 <Textarea
                   id="tmpl-body"
                   value={templateBodyTextInput}
-                  onChange={(e) => setTemplateBodyTextInput(e.target.value.slice(0, 1024))}
-                  placeholder="Assalam-o-Alaikum {{1}}! We are delighted to share our {{2}} package..."
+                  onChange={(e) =>
+                    setTemplateBodyTextInput(e.target.value.slice(0, 1024))
+                  }
+                  placeholder="Assalam-o-Alaikum {{1}}! We are delighted to share our {{2}} package…"
                   rows={4}
-                  className="text-xs font-sans resize-none"
+                  className="resize-none font-sans text-xs"
                   required
                 />
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                  <span>Use &#123;&#123;1&#125;&#125;, &#123;&#123;2&#125;&#125; for recipient variables</span>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground tabular-nums">
+                  <span>
+                    Use &#123;&#123;1&#125;&#125;, &#123;&#123;2&#125;&#125; for
+                    recipient variables
+                  </span>
                   <span>{templateBodyTextInput.length}/1024 chars</span>
                 </div>
               </div>
@@ -3082,9 +3384,11 @@ export function ConnectionsSettingsClient({
                 <Input
                   id="tmpl-footer"
                   value={templateFooterTextInput}
-                  onChange={(e) => setTemplateFooterTextInput(e.target.value.slice(0, 60))}
-                  placeholder="e.g. Al Ramlah Travels • Askari 10 Lahore"
-                  className="text-xs h-8"
+                  onChange={(e) =>
+                    setTemplateFooterTextInput(e.target.value.slice(0, 60))
+                  }
+                  placeholder="e.g. Al Ramlah Travels, Askari 10 Lahore"
+                  className="h-8 text-xs"
                   maxLength={60}
                 />
               </div>
@@ -3106,24 +3410,31 @@ export function ConnectionsSettingsClient({
                           { type: "QUICK_REPLY", text: "" },
                         ])
                       }
-                      className="h-6 text-[10px] px-2 text-emerald-700"
+                      className="h-6 cursor-pointer px-2 text-[11px] text-status-success focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <Plus className="size-3 mr-1" /> Add Button
+                      <Plus className="mr-1 size-3" aria-hidden="true" /> Add
+                      Button
                     </Button>
                   )}
                 </div>
 
                 {templateButtonsInput.map((btn, idx) => (
-                  <div key={idx} className="flex items-center gap-2 p-2 rounded border border-border/60 bg-muted/20">
+                  <div
+                    key={idx}
+                    className="flex items-center gap-2 rounded-lg bg-secondary/60 p-2"
+                  >
                     <select
                       value={btn.type}
                       onChange={(e) => {
-                        const newType = e.target.value as "QUICK_REPLY" | "URL" | "PHONE_NUMBER"
+                        const newType = e.target.value as
+                          "QUICK_REPLY" | "URL" | "PHONE_NUMBER"
                         setTemplateButtonsInput((prev) =>
-                          prev.map((b, i) => (i === idx ? { ...b, type: newType } : b))
+                          prev.map((b, i) =>
+                            i === idx ? { ...b, type: newType } : b
+                          )
                         )
                       }}
-                      className="h-7 text-[10px] rounded border border-input bg-background px-1.5"
+                      className="h-7 rounded border border-input bg-background px-1.5 text-[11px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       <option value="QUICK_REPLY">Quick Reply</option>
                       <option value="URL">CTA Website URL</option>
@@ -3135,12 +3446,14 @@ export function ConnectionsSettingsClient({
                       onChange={(e) =>
                         setTemplateButtonsInput((prev) =>
                           prev.map((b, i) =>
-                            i === idx ? { ...b, text: e.target.value.slice(0, 25) } : b
+                            i === idx
+                              ? { ...b, text: e.target.value.slice(0, 25) }
+                              : b
                           )
                         )
                       }
                       placeholder="Button Title (max 25)"
-                      className="h-7 text-xs flex-1"
+                      className="h-7 flex-1 text-xs"
                       maxLength={25}
                     />
 
@@ -3154,8 +3467,8 @@ export function ConnectionsSettingsClient({
                             )
                           )
                         }
-                        placeholder="https://..."
-                        className="h-7 text-xs flex-1 font-mono"
+                        placeholder="https://…"
+                        className="h-7 flex-1 font-mono text-xs"
                       />
                     )}
 
@@ -3165,12 +3478,14 @@ export function ConnectionsSettingsClient({
                         onChange={(e) =>
                           setTemplateButtonsInput((prev) =>
                             prev.map((b, i) =>
-                              i === idx ? { ...b, phone_number: e.target.value } : b
+                              i === idx
+                                ? { ...b, phone_number: e.target.value }
+                                : b
                             )
                           )
                         }
                         placeholder={`+${DEFAULT_COMPANY_INFO.normalizedWhatsapp}`}
-                        className="h-7 text-xs flex-1 font-mono"
+                        className="h-7 flex-1 font-mono text-xs"
                       />
                     )}
 
@@ -3179,37 +3494,46 @@ export function ConnectionsSettingsClient({
                       variant="ghost"
                       size="icon"
                       onClick={() =>
-                        setTemplateButtonsInput((prev) => prev.filter((_, i) => i !== idx))
+                        setTemplateButtonsInput((prev) =>
+                          prev.filter((_, i) => i !== idx)
+                        )
                       }
-                      className="size-7 text-muted-foreground hover:text-rose-600"
+                      className="size-7 cursor-pointer text-muted-foreground hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <Trash2 className="size-3.5" />
+                      <Trash2 className="size-3.5" aria-hidden="true" />
                     </Button>
                   </div>
                 ))}
               </div>
 
-              <DialogFooter className="mt-2 pt-3 border-t border-border/40 flex items-center justify-end gap-2">
+              <DialogFooter className="mt-2 flex items-center justify-end gap-2 border-t border-border/40 pt-3">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => setIsCreateTemplateOpen(false)}
                   disabled={isCreatingTemplate}
-                  className="h-8 text-xs"
+                  className="h-8 cursor-pointer text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   size="sm"
-                  disabled={isCreatingTemplate || !templateNameInput.trim() || !templateBodyTextInput.trim()}
-                  className="h-8 text-xs bg-emerald-700 hover:bg-emerald-800 text-white"
+                  disabled={
+                    isCreatingTemplate ||
+                    !templateNameInput.trim() ||
+                    !templateBodyTextInput.trim()
+                  }
+                  className="h-8 cursor-pointer bg-primary text-xs text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {isCreatingTemplate ? (
                     <>
-                      <Loader2 className="size-3.5 mr-1.5 animate-spin" />
-                      Submitting to Meta...
+                      <Loader2
+                        className="mr-1.5 size-3.5 animate-spin motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
+                      Submitting to Meta…
                     </>
                   ) : (
                     "Submit Template to Meta"
@@ -3219,84 +3543,109 @@ export function ConnectionsSettingsClient({
             </form>
 
             {/* Right Column: Live Simulated WhatsApp Bubble Preview */}
-            <div className="lg:col-span-5 p-6 bg-muted/30 flex flex-col items-center justify-center">
-              <div className="w-full max-w-sm rounded-2xl border border-border/80 shadow-md bg-[#EFEAE2] dark:bg-stone-900 overflow-hidden">
+            <div className="flex flex-col items-center justify-center bg-muted/30 p-6 lg:col-span-5">
+              <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-secondary/90 shadow-md">
                 {/* Simulated WhatsApp Chat Header */}
-                <div className="bg-[#075E54] text-white px-3 py-2 flex items-center gap-2">
-                  <div className="size-6 rounded-full bg-emerald-300 flex items-center justify-center text-emerald-950 font-bold text-[10px]">
+                <div className="flex items-center gap-2 bg-primary px-3 py-2 text-primary-foreground">
+                  <div className="flex size-6 items-center justify-center rounded-full bg-gold text-[10px] font-bold text-gold-foreground">
                     AR
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold leading-tight truncate">Al Ramlah Travels</p>
-                    <p className="text-[9px] text-emerald-100/80">Official Business Account</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs leading-tight font-semibold">
+                      Al Ramlah Travels
+                    </p>
+                    <p className="text-[10px] text-primary-foreground/80">
+                      Official Business Account
+                    </p>
                   </div>
-                  <CheckCircle2 className="size-3.5 text-emerald-300" />
+                  <CheckCircle2
+                    className="size-3.5 text-gold"
+                    aria-hidden="true"
+                  />
                 </div>
 
                 {/* Simulated Chat Canvas */}
                 <div className="p-3">
-                  <div className="rounded-lg bg-white dark:bg-card border border-border/40 shadow-sm overflow-hidden text-left text-xs">
+                  <div className="overflow-hidden rounded-lg bg-card text-left text-xs shadow-sm">
                     {/* Header preview */}
-                    {templateHeaderTypeInput === "TEXT" && templateHeaderTextInput && (
-                      <div className="p-2.5 pb-1 font-bold text-foreground text-xs">
-                        {templateHeaderTextInput}
-                      </div>
-                    )}
+                    {templateHeaderTypeInput === "TEXT" &&
+                      templateHeaderTextInput && (
+                        <div className="p-2.5 pb-1 text-xs font-bold text-foreground">
+                          {templateHeaderTextInput}
+                        </div>
+                      )}
                     {templateHeaderTypeInput === "IMAGE" && (
-                      <div className="h-28 bg-emerald-900/10 dark:bg-emerald-950/40 flex flex-col items-center justify-center text-muted-foreground border-b border-border/40">
-                        <FileText className="size-6 text-emerald-600 mb-1" />
-                        <span className="text-[10px] font-semibold text-emerald-800 dark:text-emerald-400">
+                      <div className="flex h-28 flex-col items-center justify-center border-b border-border/40 bg-status-success-bg/70 text-muted-foreground">
+                        <FileText
+                          className="mb-1 size-6 text-status-success"
+                          aria-hidden="true"
+                        />
+                        <span className="text-[11px] font-semibold text-status-success">
                           [Image Header: 1080×1520 Flyer]
                         </span>
                       </div>
                     )}
                     {templateHeaderTypeInput === "DOCUMENT" && (
-                      <div className="p-2 bg-muted/40 border-b border-border/40 flex items-center gap-2">
-                        <FileText className="size-5 text-rose-600" />
-                        <span className="text-[10px] font-semibold">Itinerary_Dossier.pdf</span>
+                      <div className="flex items-center gap-2 border-b border-border/40 bg-secondary/60 p-2">
+                        <FileText
+                          className="size-5 text-status-danger"
+                          aria-hidden="true"
+                        />
+                        <span className="text-[11px] font-semibold">
+                          Itinerary_Dossier.pdf
+                        </span>
                       </div>
                     )}
 
                     {/* Body preview with highlighted tokens */}
-                    <div className="p-2.5 text-[11px] leading-relaxed text-foreground whitespace-pre-wrap">
+                    <div className="p-2.5 text-[11px] leading-relaxed whitespace-pre-wrap text-foreground">
                       {templateBodyTextInput ? (
-                        templateBodyTextInput.split(/(\{\{[A-Za-z0-9_]+\}\})/g).map((part, i) => {
-                          if (/^\{\{[A-Za-z0-9_]+\}\}$/.test(part)) {
-                            return (
-                              <span
-                                key={i}
-                                className="inline-block px-1 py-0.5 mx-0.5 rounded font-mono text-[9px] font-bold bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30"
-                              >
-                                {part}
-                              </span>
-                            )
-                          }
-                          return <span key={i}>{part}</span>
-                        })
+                        templateBodyTextInput
+                          .split(/(\{\{[A-Za-z0-9_]+\}\})/g)
+                          .map((part, i) => {
+                            if (/^\{\{[A-Za-z0-9_]+\}\}$/.test(part)) {
+                              return (
+                                <span
+                                  key={i}
+                                  className="mx-0.5 inline-block rounded border border-status-success-border bg-status-success-bg px-1 py-0.5 font-mono text-[10px] font-bold text-status-success"
+                                >
+                                  {part}
+                                </span>
+                              )
+                            }
+                            return <span key={i}>{part}</span>
+                          })
                       ) : (
                         <span className="text-muted-foreground italic">
-                          Template body preview will appear here as you type...
+                          Template body preview will appear here as you type…
                         </span>
                       )}
                     </div>
 
                     {/* Footer preview */}
                     {templateFooterTextInput && (
-                      <div className="px-2.5 pb-2 text-[9px] text-muted-foreground border-t border-border/30 pt-1">
+                      <div className="border-t border-border/30 px-2.5 pt-1 pb-2 text-[10px] text-muted-foreground">
                         {templateFooterTextInput}
                       </div>
                     )}
 
                     {/* Buttons preview */}
                     {templateButtonsInput.length > 0 && (
-                      <div className="border-t border-border/50 divide-y divide-border/50 bg-muted/10">
+                      <div className="divide-y divide-border/50 border-t border-border/50 bg-secondary/40">
                         {templateButtonsInput.map((b, i) => (
                           <div
                             key={i}
-                            className="py-1.5 px-3 text-center text-[10px] font-semibold text-[#00A884] dark:text-emerald-400 flex items-center justify-center gap-1.5"
+                            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-center text-[11px] font-semibold text-primary"
                           >
-                            {b.type === "URL" && <ExternalLink className="size-3" />}
-                            {b.type === "PHONE_NUMBER" && <Phone className="size-3" />}
+                            {b.type === "URL" && (
+                              <ExternalLink
+                                className="size-3"
+                                aria-hidden="true"
+                              />
+                            )}
+                            {b.type === "PHONE_NUMBER" && (
+                              <Phone className="size-3" aria-hidden="true" />
+                            )}
                             {b.text || `Button ${i + 1}`}
                           </div>
                         ))}
@@ -3305,7 +3654,7 @@ export function ConnectionsSettingsClient({
                   </div>
                 </div>
 
-                <div className="p-2 text-center text-[10px] text-muted-foreground">
+                <div className="p-2 text-center text-[11px] text-muted-foreground">
                   Simulated WhatsApp pilgrim view
                 </div>
               </div>
@@ -3315,18 +3664,23 @@ export function ConnectionsSettingsClient({
       </Dialog>
 
       {/* Delete Template Confirmation Dialog */}
-      <Dialog open={templateToDelete !== null} onOpenChange={(open) => !open && setTemplateToDelete(null)}>
+      <Dialog
+        open={templateToDelete !== null}
+        onOpenChange={(open) => !open && setTemplateToDelete(null)}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold flex items-center gap-2 text-rose-600">
-              <Trash2 className="size-4" />
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-status-danger">
+              <Trash2 className="size-4" aria-hidden="true" />
               Delete Meta Message Template
             </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground pt-1">
+            <DialogDescription className="pt-1 text-xs text-muted-foreground">
               Are you sure you want to delete template{" "}
-              <strong className="text-foreground">{templateToDelete?.name}</strong> (
-              {templateToDelete?.language})? This action will permanently remove the template from your
-              Meta WhatsApp Business Account.
+              <strong className="text-foreground">
+                {templateToDelete?.name}
+              </strong>{" "}
+              ({templateToDelete?.language})? This action will permanently
+              remove the template from your Meta WhatsApp Business Account.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-3 flex items-center justify-end gap-2">
@@ -3336,7 +3690,7 @@ export function ConnectionsSettingsClient({
               size="sm"
               onClick={() => setTemplateToDelete(null)}
               disabled={isDeletingTemplate}
-              className="h-8 text-xs"
+              className="h-8 cursor-pointer text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               Cancel
             </Button>
@@ -3346,16 +3700,19 @@ export function ConnectionsSettingsClient({
               size="sm"
               onClick={handleDeleteTemplateConfirm}
               disabled={isDeletingTemplate}
-              className="h-8 text-xs gap-1.5"
+              className="h-8 cursor-pointer gap-1.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               {isDeletingTemplate ? (
                 <>
-                  <Loader2 className="size-3.5 animate-spin" />
-                  Deleting...
+                  <Loader2
+                    className="size-3.5 animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
+                  Deleting…
                 </>
               ) : (
                 <>
-                  <Trash2 className="size-3.5" />
+                  <Trash2 className="size-3.5" aria-hidden="true" />
                   Confirm Delete
                 </>
               )}

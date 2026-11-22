@@ -1,13 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState, useTransition } from "react"
+import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { AirlineData, AirlineDialog } from "./airline-dialog"
-import {
-  DepartureCityData,
-  DepartureCityDialog,
-} from "./departure-city-dialog"
+import { DepartureCityData, DepartureCityDialog } from "./departure-city-dialog"
 import {
   deleteAirline,
   deleteDepartureCity,
@@ -40,19 +37,25 @@ export function FlightsClient({
   const [activeTab, setActiveTab] = useState<"airlines" | "cities">("airlines")
   const [airlines, setAirlines] = useState<AirlineData[]>(initialAirlines)
   const [cities, setCities] = useState<DepartureCityData[]>(initialCities)
+
+  const [prevInitialAirlines, setPrevInitialAirlines] =
+    useState(initialAirlines)
+  if (prevInitialAirlines !== initialAirlines) {
+    setPrevInitialAirlines(initialAirlines)
+    setAirlines(initialAirlines)
+  }
+
+  const [prevInitialCities, setPrevInitialCities] = useState(initialCities)
+  if (prevInitialCities !== initialCities) {
+    setPrevInitialCities(initialCities)
+    setCities(initialCities)
+  }
+
   const [notice, setNotice] = useState<{
     tone: "error" | "info"
     text: string
   } | null>(null)
   const [, startTransition] = useTransition()
-
-  useEffect(() => {
-    setAirlines(initialAirlines)
-  }, [initialAirlines])
-
-  useEffect(() => {
-    setCities(initialCities)
-  }, [initialCities])
 
   function handleAirlineToggle(id: string, current: boolean) {
     const next = !current
@@ -115,7 +118,7 @@ export function FlightsClient({
           tone: "info",
           text:
             res.error ||
-            "Airline is referenced by packages or applications — deactivated instead.",
+            "Airline is referenced by packages or applications, so it was deactivated instead.",
         })
         router.refresh()
         return
@@ -193,7 +196,7 @@ export function FlightsClient({
           tone: "info",
           text:
             res.error ||
-            "Departure city is referenced by batches or applications — deactivated instead.",
+            "Departure city is referenced by batches or applications, so it was deactivated instead.",
         })
         router.refresh()
         return
@@ -235,8 +238,8 @@ export function FlightsClient({
         <div
           className={`rounded-xl border p-3 text-xs font-medium ${
             notice.tone === "error"
-              ? "border-red-300 bg-red-50 text-red-800"
-              : "border-amber-300 bg-amber-50 text-amber-900"
+              ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+              : "border-status-warning-border bg-status-warning-bg text-status-warning"
           }`}
         >
           {notice.text}
@@ -248,25 +251,25 @@ export function FlightsClient({
         <button
           type="button"
           onClick={() => setActiveTab("airlines")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
             activeTab === "airlines"
               ? "bg-primary text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <Plane className="size-4" />
+          <Plane className="size-4" aria-hidden="true" />
           <span>Preferred Airlines ({airlines.length})</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("cities")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
             activeTab === "cities"
               ? "bg-primary text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <Building className="size-4" />
+          <Building className="size-4" aria-hidden="true" />
           <span>Departure Gateways ({cities.length})</span>
         </button>
       </div>
@@ -277,10 +280,10 @@ export function FlightsClient({
           {airlines.map((a, idx) => (
             <div
               key={a.id}
-              className={`flex flex-col justify-between rounded-xl border bg-card p-4 shadow-2xs transition-all hover:shadow-sm ${
+              className={`flex flex-col justify-between rounded-xl border bg-card p-4 shadow-2xs transition-shadow hover:shadow-sm motion-reduce:transition-none ${
                 a.isActive
-                  ? "border-border hover:border-gold/60"
-                  : "border-border/60 opacity-60 bg-muted/20"
+                  ? "border-border hover:border-gold-border"
+                  : "border-border/60 bg-muted/20 opacity-60"
               }`}
             >
               <div className="space-y-3">
@@ -290,40 +293,43 @@ export function FlightsClient({
                       {a.iataCode}
                     </span>
                     <div>
-                      <h3 className="font-semibold text-base text-foreground leading-tight">
+                      <h3 className="text-base leading-tight font-semibold text-foreground">
                         {a.name}
                       </h3>
-                      <span className="font-mono text-xs text-muted-foreground">
-                        IATA: {a.iataCode}
+                      <span className="text-xs text-muted-foreground">
+                        IATA:{" "}
+                        <span className="font-mono font-medium">
+                          {a.iataCode}
+                        </span>
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground pt-1">
+                <div className="flex flex-wrap gap-2 pt-1 text-xs text-muted-foreground">
                   {a.isDirectAvailable && (
-                    <span className="flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 font-medium text-emerald-800 border border-emerald-200">
-                      <Check className="size-3" />
+                    <span className="flex items-center gap-1 rounded border border-status-success-border bg-status-success-bg px-2 py-0.5 font-medium text-status-success">
+                      <Check className="size-3" aria-hidden="true" />
                       Direct Flights
                     </span>
                   )}
                   {a.isConnectingAvailable && (
-                    <span className="flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 font-medium text-blue-800 border border-blue-200">
-                      <Check className="size-3" />
+                    <span className="flex items-center gap-1 rounded border border-status-info-border bg-status-info-bg px-2 py-0.5 font-medium text-status-info">
+                      <Check className="size-3" aria-hidden="true" />
                       Connecting Flights
                     </span>
                   )}
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-3 border-t border-border/80 mt-3 text-xs">
+              <div className="mt-3 flex items-center justify-between border-t border-border/80 pt-3 text-xs">
                 <button
                   type="button"
                   onClick={() => a.id && handleAirlineToggle(a.id, a.isActive)}
-                  className="flex items-center gap-1.5 font-medium hover:opacity-80 cursor-pointer"
+                  className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                 >
                   {a.isActive ? (
-                    <span className="text-emerald-700 font-semibold">
+                    <span className="font-semibold text-status-success">
                       Active
                     </span>
                   ) : (
@@ -337,20 +343,20 @@ export function FlightsClient({
                     size="icon-xs"
                     disabled={idx === 0}
                     onClick={() => handleAirlineMove(idx, -1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Up"
                   >
-                    <ArrowUp className="size-3.5" />
+                    <ArrowUp className="size-3.5" aria-hidden="true" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     disabled={idx === airlines.length - 1}
                     onClick={() => handleAirlineMove(idx, 1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Down"
                   >
-                    <ArrowDown className="size-3.5" />
+                    <ArrowDown className="size-3.5" aria-hidden="true" />
                   </Button>
                   <AirlineDialog
                     airline={a}
@@ -358,10 +364,10 @@ export function FlightsClient({
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         title="Edit Airline"
                       >
-                        <Edit2 className="size-3.5" />
+                        <Edit2 className="size-3.5" aria-hidden="true" />
                       </Button>
                     }
                   />
@@ -369,10 +375,10 @@ export function FlightsClient({
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => a.id && handleAirlineDelete(a.id, a.name)}
-                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                    className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Delete Airline"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
@@ -387,40 +393,40 @@ export function FlightsClient({
           {cities.map((c, idx) => (
             <div
               key={c.id}
-              className={`flex flex-col justify-between rounded-xl border bg-card p-4 shadow-2xs transition-all hover:shadow-sm ${
+              className={`flex flex-col justify-between rounded-xl border bg-card p-4 shadow-2xs transition-shadow hover:shadow-sm motion-reduce:transition-none ${
                 c.isActive
-                  ? "border-border hover:border-gold/60"
-                  : "border-border/60 opacity-60 bg-muted/20"
+                  ? "border-border hover:border-gold-border"
+                  : "border-border/60 bg-muted/20 opacity-60"
               }`}
             >
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="flex size-9 items-center justify-center rounded-lg bg-amber-500/10 font-mono text-sm font-bold text-amber-800">
+                  <span className="flex size-9 items-center justify-center rounded-lg bg-status-warning-bg font-mono text-sm font-bold text-status-warning">
                     {c.airportCode}
                   </span>
-                  <Badge variant="outline" className="text-[10px] font-mono">
+                  <Badge variant="outline" className="text-[10px]">
                     Pakistan
                   </Badge>
                 </div>
 
                 <div>
-                  <h3 className="font-semibold text-base text-foreground">
+                  <h3 className="text-base font-semibold text-foreground">
                     {c.cityName}
                   </h3>
-                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                  <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
                     {c.airportName}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-3 border-t border-border/80 mt-3 text-xs">
+              <div className="mt-3 flex items-center justify-between border-t border-border/80 pt-3 text-xs">
                 <button
                   type="button"
                   onClick={() => c.id && handleCityToggle(c.id, c.isActive)}
-                  className="flex items-center gap-1.5 font-medium hover:opacity-80 cursor-pointer"
+                  className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                 >
                   {c.isActive ? (
-                    <span className="text-emerald-700 font-semibold">
+                    <span className="font-semibold text-status-success">
                       Enabled
                     </span>
                   ) : (
@@ -434,20 +440,20 @@ export function FlightsClient({
                     size="icon-xs"
                     disabled={idx === 0}
                     onClick={() => handleCityMove(idx, -1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Up"
                   >
-                    <ArrowUp className="size-3.5" />
+                    <ArrowUp className="size-3.5" aria-hidden="true" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     disabled={idx === cities.length - 1}
                     onClick={() => handleCityMove(idx, 1)}
-                    className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Move Down"
                   >
-                    <ArrowDown className="size-3.5" />
+                    <ArrowDown className="size-3.5" aria-hidden="true" />
                   </Button>
                   <DepartureCityDialog
                     city={c}
@@ -455,10 +461,10 @@ export function FlightsClient({
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         title="Edit Gateway"
                       >
-                        <Edit2 className="size-3.5" />
+                        <Edit2 className="size-3.5" aria-hidden="true" />
                       </Button>
                     }
                   />
@@ -466,10 +472,10 @@ export function FlightsClient({
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => c.id && handleCityDelete(c.id, c.cityName)}
-                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                    className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Delete Gateway"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
               </div>

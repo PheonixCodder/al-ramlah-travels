@@ -118,12 +118,9 @@ export function MandatoryPasswordChangeGate({
     >
       <Card className="w-full border-gold/40 bg-card shadow-lg">
         <CardHeader className="flex flex-col gap-2 text-center">
-          <div className="mx-auto flex size-12 items-center justify-center rounded-2xl border border-gold/40 bg-primary/5 text-primary">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-2xl border border-gold-border/60 bg-primary/5 text-primary">
             <KeyRound className="size-6" aria-hidden="true" />
           </div>
-          <p className="text-[11px] font-semibold tracking-widest text-gold-text uppercase">
-            Security Policy · Bootstrap Rotation Required
-          </p>
           <CardTitle
             id="mandatory-password-rotation-heading"
             className="font-display text-xl font-bold text-foreground"
@@ -148,9 +145,9 @@ export function MandatoryPasswordChangeGate({
             <Alert
               role="alert"
               variant="destructive"
-              className="border-destructive/30 bg-destructive/10 text-destructive"
+              className="border-status-danger-border bg-status-danger-bg text-status-danger"
             >
-              <AlertCircle className="size-4 shrink-0" />
+              <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
               <AlertTitle className="text-xs font-semibold">
                 Password Update Required
               </AlertTitle>
@@ -182,7 +179,7 @@ export function MandatoryPasswordChangeGate({
                   aria-describedby={errorMessage ? "password-gate-error" : undefined}
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="pl-9 text-sm"
+                  className="pl-9 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   disabled={isSubmitting}
                 />
               </div>
@@ -210,7 +207,7 @@ export function MandatoryPasswordChangeGate({
                   aria-describedby={errorMessage ? "password-gate-error" : undefined}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="pl-9 text-sm"
+                  className="pl-9 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   disabled={isSubmitting}
                 />
               </div>
@@ -238,7 +235,7 @@ export function MandatoryPasswordChangeGate({
                   aria-describedby={errorMessage ? "password-gate-error" : undefined}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="pl-9 text-sm"
+                  className="pl-9 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   disabled={isSubmitting}
                 />
               </div>
@@ -247,17 +244,17 @@ export function MandatoryPasswordChangeGate({
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-primary font-medium text-primary-foreground hover:bg-primary/90"
+              className="w-full bg-primary font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="size-4 animate-spin" />
-                  <span>Updating Password...</span>
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                  <span>Updating Password…</span>
                 </>
               ) : (
                 <>
                   <span>Update Password &amp; Unlock Portal</span>
-                  <ArrowRight className="size-4" />
+                  <ArrowRight className="size-4" aria-hidden="true" />
                 </>
               )}
             </Button>
@@ -267,7 +264,7 @@ export function MandatoryPasswordChangeGate({
         <CardFooter className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4 pb-4">
           <Link
             href={loginHref}
-            className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+            className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             Open Login Rotation Form
           </Link>
@@ -276,9 +273,9 @@ export function MandatoryPasswordChangeGate({
             variant="ghost"
             size="sm"
             onClick={handleSignOutToLogin}
-            className="text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className="text-xs text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <LogOut className="size-3.5" />
+            <LogOut className="size-3.5" aria-hidden="true" />
             <span>Sign Out</span>
           </Button>
         </CardFooter>

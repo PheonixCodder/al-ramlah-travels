@@ -24,14 +24,14 @@ export function SmartInsightsBanner({
   if (insights.length === 0) return null
 
   return (
-    <div className="rounded-xl border border-gold/40 bg-linear-to-r from-card via-[#FAF7F0] to-gold/10 p-4 shadow-xs">
-      <div className="flex items-center gap-2 pb-3 mb-3 border-b border-border/80">
-        <div className="flex size-7 items-center justify-center rounded-lg bg-gold/20 text-gold-foreground">
-          <Sparkles className="size-4 text-gold" />
+    <div className="rounded-xl border border-gold-border/60 bg-linear-to-r from-background via-secondary/50 to-accent/35 p-4 shadow-xs">
+      <div className="mb-3 flex items-center gap-2 border-b border-border/80 pb-3">
+        <div className="flex size-7 items-center justify-center rounded-lg bg-accent text-gold-text">
+          <Sparkles className="size-4" aria-hidden="true" />
         </div>
         <div>
           <h3 className="font-display text-sm font-bold text-foreground">
-            Executive Smart Insights & Operational Alerts
+            Executive Smart Insights &amp; Operational Alerts
           </h3>
           <p className="text-[11px] text-muted-foreground">
             Real-time intelligence automatically synthesized from pilgrim inquiries and inventory allocations.
@@ -43,38 +43,38 @@ export function SmartInsightsBanner({
         {insights.map((item, idx) => (
           <div
             key={idx}
-            className={`flex flex-col justify-between rounded-lg border p-3 text-xs transition-all ${
+            className={`flex flex-col justify-between rounded-lg p-3 text-xs ${
               item.type === "warning"
-                ? "border-red-200 bg-red-50/70 text-red-900"
+                ? "bg-status-danger-bg text-status-danger"
                 : item.type === "opportunity"
-                ? "border-emerald-200 bg-emerald-50/70 text-emerald-950"
-                : "border-border bg-card text-foreground"
+                  ? "bg-status-success-bg text-status-success"
+                  : "bg-secondary/80 text-foreground"
             }`}
           >
             <div>
               <div className="flex items-center gap-1.5 font-semibold">
                 {item.type === "warning" ? (
-                  <AlertTriangle className="size-3.5 shrink-0 text-red-600" />
+                  <AlertTriangle className="size-3.5 shrink-0 text-status-danger" aria-hidden="true" />
                 ) : item.type === "opportunity" ? (
-                  <TrendingUp className="size-3.5 shrink-0 text-emerald-600" />
+                  <TrendingUp className="size-3.5 shrink-0 text-status-success" aria-hidden="true" />
                 ) : (
-                  <Building2 className="size-3.5 shrink-0 text-primary" />
+                  <Building2 className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
                 )}
                 <span>{item.title}</span>
               </div>
-              <p className="mt-1 text-[11px] text-muted-foreground/90 leading-relaxed">
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
                 {item.description}
               </p>
             </div>
 
             {item.actionLabel && item.actionHref && (
-              <div className="mt-2.5 pt-2 border-t border-border/40">
+              <div className="mt-2.5 border-t border-border/50 pt-2">
                 <Link
                   href={item.actionHref}
-                  className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+                  className="inline-flex items-center gap-1 rounded font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <span>{item.actionLabel}</span>
-                  <ArrowRight className="size-3" />
+                  <ArrowRight className="size-3" aria-hidden="true" />
                 </Link>
               </div>
             )}

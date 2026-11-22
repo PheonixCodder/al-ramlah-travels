@@ -162,12 +162,30 @@ export function AdminTopbar({
   const [hasLoadedPalette, setHasLoadedPalette] = React.useState(false)
 
   const handleOpenCommandPalette = React.useCallback(() => {
+    if (hasLoadedPalette) {
+      setCommandPaletteOpen(true)
+      window.dispatchEvent(new CustomEvent("open-command-palette"))
+      return
+    }
     setHasLoadedPalette(true)
     setCommandPaletteOpen(true)
-  }, [])
+  }, [hasLoadedPalette])
 
   React.useEffect(() => {
-    if (hasLoadedPalette) return
+    const handleCustomOpen = () => {
+      setHasLoadedPalette(true)
+      setCommandPaletteOpen(true)
+    }
+
+    window.addEventListener("open-command-palette", handleCustomOpen)
+    window.addEventListener("open-post-lookup", handleCustomOpen)
+
+    if (hasLoadedPalette) {
+      return () => {
+        window.removeEventListener("open-command-palette", handleCustomOpen)
+        window.removeEventListener("open-post-lookup", handleCustomOpen)
+      }
+    }
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (
@@ -180,15 +198,10 @@ export function AdminTopbar({
       }
     }
 
-    const handleCustomOpen = () => {
-      setHasLoadedPalette(true)
-      setCommandPaletteOpen(true)
-    }
-
     window.addEventListener("keydown", handleKeyDown)
-    window.addEventListener("open-post-lookup", handleCustomOpen)
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
+      window.removeEventListener("open-command-palette", handleCustomOpen)
       window.removeEventListener("open-post-lookup", handleCustomOpen)
     }
   }, [hasLoadedPalette])
@@ -209,7 +222,7 @@ export function AdminTopbar({
         <Separator orientation="vertical" className="h-4" />
 
         <div className="flex min-w-0 flex-col">
-          <span className="truncate text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+          <span className="truncate text-[11px] font-medium text-muted-foreground">
             {activeMeta.category}
           </span>
           <span className="truncate font-display text-sm font-bold text-foreground">
@@ -224,15 +237,18 @@ export function AdminTopbar({
         <button
           type="button"
           onClick={handleOpenCommandPalette}
-          className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gold/40 bg-background/80 px-2 py-1.5 text-xs font-medium text-foreground transition-all hover:border-gold hover:bg-gold/10 hover:shadow-2xs focus-visible:ring-2 focus-visible:ring-ring sm:px-3"
+          className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gold-border/60 bg-background/80 px-2 py-1.5 text-xs font-medium whitespace-nowrap text-foreground transition-colors hover:border-gold hover:bg-accent/50 hover:shadow-2xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:px-3"
           title="Search Post Ref codes, PKR prices, hotels, or jump to operational hubs (⌘K or Ctrl+K)"
         >
-          <Search aria-hidden="true" className="size-3.5 shrink-0 text-gold-text" />
-          <span className="hidden sm:inline">Search Post Ref / Price</span>
-          <span className="text-[11px] sm:hidden">Search</span>
+          <Search
+            aria-hidden="true"
+            className="size-3.5 shrink-0 text-gold-text"
+          />
+          <span>Search</span>
+          <span className="hidden sm:inline">Ref / Price</span>
           <kbd
             aria-hidden="true"
-            className="pointer-events-none hidden h-4.5 items-center gap-0.5 rounded border border-gold/30 bg-gold/10 px-1.5 font-mono text-[10px] font-bold text-gold-foreground select-none sm:inline-flex"
+            className="pointer-events-none hidden h-4.5 items-center gap-0.5 rounded border border-gold-border/40 bg-accent/60 px-1.5 font-mono text-[10px] font-bold text-gold-foreground select-none sm:inline-flex"
           >
             ⌘K
           </kbd>
@@ -242,12 +258,12 @@ export function AdminTopbar({
         {overdueCount > 0 ? (
           <Link
             href="/admin/desk?tab=pipeline&filter=overdue"
-            className="inline-flex items-center gap-1.5 rounded-full border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800 tabular-nums shadow-2xs transition-colors hover:bg-red-100"
+            className="inline-flex items-center gap-1.5 rounded-full border border-status-danger-border bg-status-danger-bg px-2.5 py-1 text-xs font-semibold text-status-danger tabular-nums shadow-2xs transition-colors hover:bg-status-danger-bg/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             title={`${overdueCount} application(s) have been pending quote over ${effectiveSlaHours}h SLA`}
           >
             <span aria-hidden="true" className="relative flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-400 opacity-75 motion-reduce:animate-none" />
-              <span className="relative inline-flex size-2 rounded-full bg-red-600" />
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-status-danger/60 opacity-75 motion-reduce:animate-none" />
+              <span className="relative inline-flex size-2 rounded-full bg-status-danger" />
             </span>
             <span className="hidden tabular-nums sm:inline">
               {overdueCount} Overdue {overdueCount === 1 ? "Quote" : "Quotes"}
@@ -258,10 +274,13 @@ export function AdminTopbar({
           </Link>
         ) : (
           <div
-            className="hidden items-center gap-1.5 rounded-full border border-emerald-300/60 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 shadow-2xs lg:inline-flex"
+            className="hidden items-center gap-1.5 rounded-full border border-status-success-border bg-status-success-bg px-2.5 py-1 text-xs font-medium text-status-success shadow-2xs lg:inline-flex"
             title={`All quotes are currently within ${effectiveSlaHours}h SLA limits`}
           >
-            <CheckCircle2 aria-hidden="true" className="size-3.5 text-emerald-600" />
+            <CheckCircle2
+              aria-hidden="true"
+              className="size-3.5 text-status-success"
+            />
             <span>All Quotes Within SLA</span>
           </div>
         )}
@@ -274,11 +293,11 @@ export function AdminTopbar({
                 variant="ghost"
                 size="icon-sm"
                 aria-label="View notifications"
-                className="relative cursor-pointer text-muted-foreground hover:text-foreground"
+                className="relative cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               />
             }
           >
-            <Bell className="size-4" />
+            <Bell className="size-4" aria-hidden="true" />
             {(pendingQuoteCount > 0 || unreadMessagesCount > 0) && (
               <span
                 aria-hidden="true"
@@ -289,22 +308,27 @@ export function AdminTopbar({
 
           <DropdownMenuContent align="end" className="w-64 bg-card">
             <DropdownMenuGroup>
-              <DropdownMenuLabel className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+              <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground">
                 Operational Inbox
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
 
               <DropdownMenuItem
-                render={<Link href="/admin/desk?tab=pipeline&status=pending_quote" />}
+                render={
+                  <Link href="/admin/desk?tab=pipeline&status=pending_quote" />
+                }
                 className="flex cursor-pointer items-center justify-between"
               >
                 <div className="flex items-center gap-2">
-                  <FileText className="size-4 text-amber-600" />
+                  <FileText
+                    className="size-4 text-status-warning"
+                    aria-hidden="true"
+                  />
                   <span className="text-xs font-medium">Pending Quotes</span>
                 </div>
                 <Badge
                   variant="outline"
-                  className="border-amber-300 bg-amber-50 font-mono text-xs font-bold text-amber-800 tabular-nums"
+                  className="border-status-warning-border bg-status-warning-bg font-mono text-xs font-bold text-status-warning tabular-nums"
                 >
                   {pendingQuoteCount}
                 </Badge>
@@ -315,12 +339,15 @@ export function AdminTopbar({
                 className="flex cursor-pointer items-center justify-between"
               >
                 <div className="flex items-center gap-2">
-                  <Inbox className="size-4 text-emerald-600" />
+                  <Inbox
+                    className="size-4 text-status-success"
+                    aria-hidden="true"
+                  />
                   <span className="text-xs font-medium">Unread Messages</span>
                 </div>
                 <Badge
                   variant="outline"
-                  className="border-emerald-300 bg-emerald-50 font-mono text-xs font-bold text-emerald-800 tabular-nums"
+                  className="border-status-success-border bg-status-success-bg font-mono text-xs font-bold text-status-success tabular-nums"
                 >
                   {unreadMessagesCount}
                 </Badge>
@@ -338,7 +365,7 @@ export function AdminTopbar({
               <Button
                 variant="ghost"
                 size="sm"
-                className="cursor-pointer gap-2 px-1.5 hover:bg-secondary"
+                className="cursor-pointer gap-2 px-1.5 hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               />
             }
           >
@@ -351,12 +378,15 @@ export function AdminTopbar({
               <span className="text-xs leading-none font-semibold text-foreground">
                 {displayName}
               </span>
-              <span className="mt-0.5 text-[10px] leading-none text-muted-foreground">
+              <span className="mt-0.5 text-[11px] leading-none text-muted-foreground">
                 {formattedRole}
               </span>
             </div>
             <span className="sr-only">account menu</span>
-            <ChevronDown aria-hidden="true" className="hidden size-3.5 text-muted-foreground md:inline-block" />
+            <ChevronDown
+              aria-hidden="true"
+              className="hidden size-3.5 text-muted-foreground md:inline-block"
+            />
           </DropdownMenuTrigger>
 
           <DropdownMenuContent align="end" className="w-56 bg-card">
@@ -367,10 +397,11 @@ export function AdminTopbar({
                     {displayName}
                   </span>
                   <Badge
-                    className={`px-1.5 py-0 text-[10px] ${
+                    variant="outline"
+                    className={`px-1.5 py-0 text-[11px] ${
                       isSuperAdmin
-                        ? "border-gold/40 bg-gold/20 text-gold-foreground"
-                        : "border-emerald-300 bg-emerald-50 text-emerald-800"
+                        ? "border-gold-border bg-accent text-accent-foreground"
+                        : "border-status-success-border bg-status-success-bg text-status-success"
                     }`}
                   >
                     {formattedRole}
@@ -388,7 +419,10 @@ export function AdminTopbar({
                 render={<Link href="/admin/settings" />}
                 className="cursor-pointer"
               >
-                <Settings className="size-4 text-muted-foreground" />
+                <Settings
+                  className="size-4 text-muted-foreground"
+                  aria-hidden="true"
+                />
                 <span>Agency Settings</span>
               </DropdownMenuItem>
 
@@ -397,7 +431,10 @@ export function AdminTopbar({
                   render={<Link href="/admin/settings?tab=users" />}
                   className="cursor-pointer"
                 >
-                  <ShieldCheck className="size-4 text-muted-foreground" />
+                  <ShieldCheck
+                    className="size-4 text-muted-foreground"
+                    aria-hidden="true"
+                  />
                   <span>Staff &amp; Roles</span>
                 </DropdownMenuItem>
               )}
@@ -407,9 +444,9 @@ export function AdminTopbar({
 
             <DropdownMenuItem
               onClick={handleSignOut}
-              className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive"
+              className="cursor-pointer text-status-danger focus:bg-status-danger-bg focus:text-status-danger"
             >
-              <LogOut className="size-4" />
+              <LogOut className="size-4" aria-hidden="true" />
               <span>Sign Out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>

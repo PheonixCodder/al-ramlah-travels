@@ -61,7 +61,7 @@ export default async function AdminDashboardPage({
                 <Link
                   key={r.key}
                   href={`/admin?range=${r.key}`}
-                  className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+                  className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                     isSelected
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground"
@@ -110,7 +110,7 @@ export default async function AdminDashboardPage({
       {/* 4-Hub Operations & Module Shortcut Directory */}
       <section
         aria-label="Operations hubs and module shortcuts"
-        className="rounded-xl border border-border bg-card p-5 shadow-2xs space-y-3"
+        className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-2xs"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-display text-sm font-bold text-foreground">
@@ -118,32 +118,32 @@ export default async function AdminDashboardPage({
           </h2>
           <Link
             href="/admin/login"
-            className="text-xs font-medium text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+            className="rounded text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             Staff Auth Portal
           </Link>
         </div>
         <ul className="flex flex-wrap gap-2 text-xs">
-          <li><Link href="/admin/desk" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-semibold text-foreground hover:border-primary">Inbox &amp; Quote Desk</Link></li>
-          <li><Link href="/admin/studio" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-semibold text-foreground hover:border-primary">4K Poster &amp; Package Studio</Link></li>
-          <li><Link href="/admin/campaigns" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-semibold text-foreground hover:border-primary">Campaigns &amp; Social Scheduler</Link></li>
-          <li><Link href="/admin/catalog" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-semibold text-foreground hover:border-primary">Catalog &amp; Dynamic Inventory</Link></li>
-          <li><Link href="/admin/settings" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-semibold text-foreground hover:border-primary">Connections &amp; Staff Settings</Link></li>
-          <li><Link href="/admin/applications" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Applications Queue</Link></li>
-          <li><Link href="/admin/groups" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Group Packages</Link></li>
-          <li><Link href="/admin/supplier-flyers" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Supplier Flyers</Link></li>
-          <li><Link href="/admin/hotels" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Haramain Hotels</Link></li>
-          <li><Link href="/admin/flights" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Airlines &amp; Gateways</Link></li>
-          <li><Link href="/admin/visa" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Saudi Visa Rates</Link></li>
-          <li><Link href="/admin/transport" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Transport Fleet</Link></li>
-          <li><Link href="/admin/ziyarat" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Ziyarat Landmarks</Link></li>
-          <li><Link href="/admin/content" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Website CMS</Link></li>
-          <li><Link href="/admin/messages" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Web Contact Messages</Link></li>
-          <li><Link href="/admin/social" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Core 5 Social</Link></li>
-          <li><Link href="/admin/distribution" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">WhatsApp Distribution</Link></li>
-          <li><Link href="/admin/outreach" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">VIP Outreach</Link></li>
-          <li><Link href="/admin/post-lookup" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Post Code Lookup</Link></li>
-          <li><Link href="/admin/users" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground">Staff Accounts</Link></li>
+          <li><Link href="/admin/desk" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-semibold text-foreground transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Inbox &amp; Quote Desk</Link></li>
+          <li><Link href="/admin/studio" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-semibold text-foreground transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">4K Poster &amp; Package Studio</Link></li>
+          <li><Link href="/admin/campaigns" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-semibold text-foreground transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Campaigns &amp; Social Scheduler</Link></li>
+          <li><Link href="/admin/catalog" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-semibold text-foreground transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Catalog &amp; Dynamic Inventory</Link></li>
+          <li><Link href="/admin/settings" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-semibold text-foreground transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Connections &amp; Staff Settings</Link></li>
+          <li><Link href="/admin/applications" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Applications Queue</Link></li>
+          <li><Link href="/admin/groups" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Group Packages</Link></li>
+          <li><Link href="/admin/supplier-flyers" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Supplier Flyers</Link></li>
+          <li><Link href="/admin/hotels" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Haramain Hotels</Link></li>
+          <li><Link href="/admin/flights" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Airlines &amp; Gateways</Link></li>
+          <li><Link href="/admin/visa" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Saudi Visa Rates</Link></li>
+          <li><Link href="/admin/transport" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Transport Fleet</Link></li>
+          <li><Link href="/admin/ziyarat" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Ziyarat Landmarks</Link></li>
+          <li><Link href="/admin/content" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Website CMS</Link></li>
+          <li><Link href="/admin/messages" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Web Contact Messages</Link></li>
+          <li><Link href="/admin/social" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Core 5 Social</Link></li>
+          <li><Link href="/admin/distribution" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">WhatsApp Distribution</Link></li>
+          <li><Link href="/admin/outreach" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">VIP Outreach</Link></li>
+          <li><Link href="/admin/post-lookup" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Post Code Lookup</Link></li>
+          <li><Link href="/admin/users" className="inline-block rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Staff Accounts</Link></li>
         </ul>
       </section>
     </div>

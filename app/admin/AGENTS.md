@@ -20,10 +20,12 @@ Protected 4-Hub staff and super-admin workspace (`/admin`, `/admin/studio`, `/ad
 | [application dossier](./%28dashboard%29/applications/%5Bid%5D/page.tsx) | Pilgrim dossier, Quote Worksheet, AI Copilot, Payment Ledger |
 | [auth-guard.ts](../../lib/auth-guard.ts) | `requireAdmin()`, `requireSuperAdmin()`, live DB `isActive` revocation |
 | [quotes.ts](../actions/quotes.ts) & [command-lookup.ts](../actions/command-lookup.ts) | Quoting workflow + `Cmd+K` lookup with `staff` wholesale redaction |
+| [admin-labels.ts](../../lib/constants/admin-labels.ts) | Test-locked Studio Mode A/B labels and `Cmd+K` passenger summary formatter |
 
 ## Conventions
 
 - **4-Hub Admin IA (`Spec 0011`)**: Place all new admin workflows under `/admin`, `/admin/studio`, `/admin/campaigns`, `/admin/desk`, `/admin/catalog`, or `/admin/settings`. Keep legacy subdirectories (`content`, `distribution`, `flights`, `groups`, `hotels`, `messages`, `outreach`, `post-lookup`, `social`, `supplier-flyers`, `transport`, `users`, `visa`, `ziyarat`) strictly as server `redirect()` stubs.
+- **`Operate` Tokens, Hook Purity & Dialog Resets (`Spec 0028`)**: Style admin badges and alerts with semantic `--status-{success,warning,danger,info}{,-bg,-border}` utilities (`app/globals.css`), pass `initialNowMs` from Server Components (`desk`, `campaigns`, `settings`) to seed PKT clocks without hydration drift, reset entity dialogs via keyed inner `*FormBody` children inside unkeyed `<Dialog>` wrappers, and keep `/admin` free of Lenis and `HaramainSectionReveal`.
 - **Auth & Validation Everywhere**: Every Server Component page, Server Action (`app/actions/*.ts`), and admin Route Handler must call `requireAdmin()` or `requireSuperAdmin()` (checks session + live PostgreSQL `user.isActive`) and validate payloads with `zod`.
 - **Next.js 16 Async Props & Pagination**: Await `params` and `searchParams` as `Promise`s; paginate high-volume tables (`applications`, `campaigns`, `catalog`) with SQL `count()` queries.
 - **SEO Cache Revalidation**: Mutating public catalog, departure, CMS, flyer, or agency settings records in [catalog.ts](../actions/catalog.ts), [cms.ts](../actions/cms.ts), [groups.ts](../actions/groups.ts), or [marketing-ops.ts](../actions/marketing-ops.ts) must invoke `revalidatePublicSeoPaths()` ([revalidate-public.ts](../../lib/seo/revalidate-public.ts)).
@@ -37,6 +39,7 @@ Protected 4-Hub staff and super-admin workspace (`/admin`, `/admin/studio`, `/ad
 ## Agent skills
 
 - [impeccable](../../.agents/skills/impeccable/): `Operate` mode density, status tables, and tabular numeric discipline
+- [hallmark](../../.agents/skills/hallmark/): Static anti-slop UI floor gate (`sloplint.mjs`) for `Operate` surfaces
 - [better-auth-best-practices](../../.agents/skills/better-auth-best-practices/): Active-user session checks & RBAC ([services/better-auth](../../../services/better-auth/))
 - [shadcn](../../.agents/skills/shadcn/): Base UI `base-nova` patterns for admin panels
 
@@ -45,5 +48,6 @@ Protected 4-Hub staff and super-admin workspace (`/admin`, `/admin/studio`, `/ad
 - [Spec 0011 — Four-Hub Admin IA & Kanban Desk](../../docs/specs/0011-four-hub-admin-ia-and-kanban-desk.md)
 - [Spec 0006 — Admin Quoting Worksheet & Status Tracker](../../docs/specs/0006-admin-quoting-worksheet-and-status-tracker.md)
 - [Spec 0024 — Production Readiness Audit & Hardening](../../docs/specs/0024-production-readiness-audit-and-hardening.md)
+- [Spec 0028 — Admin 4 Hub Operate Surface and Shell Alignment](../../docs/specs/0028-admin-operate-surface-alignment/index.md)
 
 _Drafted by /audit from the repo, worth a quick human pass. Edit freely: once a line stops matching this draft, later runs treat it as curated and will flag rather than overwrite it._

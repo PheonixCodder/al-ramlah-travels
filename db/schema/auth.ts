@@ -10,7 +10,6 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core"
-import { applications, applicationQuotes } from "./applications"
 
 export const roleEnum = pgEnum("user_role", ["super_admin", "staff"])
 
@@ -124,13 +123,6 @@ export const rateLimit = pgTable("rate_limit", {
   count: integer("count").notNull(),
   lastRequest: bigint("last_request", { mode: "number" }).notNull(),
 })
-
-export const userRelations = relations(user, ({ many }) => ({
-  sessions: many(session),
-  accounts: many(account),
-  assignedApplications: many(applications),
-  quotesCreated: many(applicationQuotes),
-}))
 
 export const sessionRelations = relations(session, ({ one }) => ({
   user: one(user, {

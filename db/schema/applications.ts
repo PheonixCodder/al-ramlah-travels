@@ -15,7 +15,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core"
-import { user } from "./auth"
+import { account, session, user } from "./auth"
 import {
   airlines,
   cityNameEnum,
@@ -767,3 +767,10 @@ export const applicationPaymentsRelations = relations(
     }),
   })
 )
+
+export const userRelations = relations(user, ({ many }) => ({
+  sessions: many(session),
+  accounts: many(account),
+  assignedApplications: many(applications),
+  quotesCreated: many(applicationQuotes),
+}))

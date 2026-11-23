@@ -11,6 +11,7 @@ import {
 } from "@/app/actions/applications"
 import { HARAMAIN_EASE } from "@/components/motion"
 import { formatPkr, toWaMeUrl } from "@/components/public/public-utils"
+import { Button } from "@/components/ui/button"
 import { DEFAULT_COMPANY_INFO } from "@/lib/company-info"
 import { formatCitySequence } from "@/lib/domain"
 import { cn } from "@/lib/utils"
@@ -22,6 +23,8 @@ import {
   Clock,
   ExternalLink,
   FileCheck2,
+  FileUp,
+  FolderCheck,
   Gift,
   Loader2,
   MessageCircle,
@@ -195,6 +198,19 @@ export function StatusTracker({
             ? "Alhamdulillah. Your quotation is approved and your QR-signed Travel Confirmation Voucher is ready below."
             : "Alhamdulillah. Your quotation acceptance is recorded. Your signed Confirmation Voucher will open automatically once deposit verification is recorded."
         )
+        if (res.voucherGateState === "unlocked") {
+          try {
+            const refreshed = await lookupApplicationStatus({
+              referenceNumber: lookupData.application.referenceNumber,
+              customerPhone: customerPhone.trim(),
+            })
+            if (refreshed.success && refreshed.application) {
+              setLookupData(refreshed)
+            }
+          } catch {
+            // Non-fatal refresh for document checklist summary
+          }
+        }
       } else {
         setShowRevisionForm(false)
         setDecisionMessage(
@@ -630,6 +646,73 @@ export function StatusTracker({
                     )}
                   </div>
                 )}
+
+                {/* Pilgrim Document Portal Launch CTA (`Spec 0029` `AC-8`) */}
+                {app.documentPortal?.unlocked === true &&
+                  app.documentPortal.portalPath && (
+                    <div
+                      data-testid="tracker-document-portal-cta"
+                      className="mb-6 rounded-2xl border border-gold-border bg-secondary/55 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <FolderCheck
+                          className="size-6 text-primary shrink-0 mt-0.5"
+                          aria-hidden="true"
+                        />
+                        <div className="flex flex-col gap-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-display text-base font-bold text-primary">
+                              Pilgrim Travel Document Checklist
+                            </h3>
+                            <span
+                              role="status"
+                              className={cn(
+                                "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums",
+                                app.documentPortal.reuploadRequestedCount > 0
+                                  ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+                                  : app.documentPortal.totalRequiredCount > 0 &&
+                                      app.documentPortal.approvedCount ===
+                                        app.documentPortal.totalRequiredCount
+                                    ? "border-status-success-border bg-status-success-bg text-status-success"
+                                    : app.documentPortal.uploadedCount > 0
+                                      ? "border-status-info-border bg-status-info-bg text-status-info"
+                                      : "border-border bg-background text-primary"
+                              )}
+                            >
+                              {app.documentPortal.reuploadRequestedCount > 0
+                                ? `${app.documentPortal.reuploadRequestedCount} reupload needed`
+                                : app.documentPortal.totalRequiredCount > 0 &&
+                                    app.documentPortal.approvedCount ===
+                                      app.documentPortal.totalRequiredCount
+                                  ? `${app.documentPortal.approvedCount}/${app.documentPortal.totalRequiredCount} verified`
+                                  : app.documentPortal.uploadedCount > 0
+                                    ? `${app.documentPortal.uploadedCount + app.documentPortal.approvedCount}/${app.documentPortal.totalRequiredCount} uploaded`
+                                    : `${app.documentPortal.approvedCount}/${app.documentPortal.totalRequiredCount} verified`}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            Submit passport details, passport bio scans, CNIC or NADRA B-Forms, and visa photos for{" "}
+                            <span className="font-mono tabular-nums font-semibold text-foreground">
+                              {app.totalPassportCount}
+                            </span>{" "}
+                            {app.totalPassportCount === 1 ? "pilgrim" : "pilgrims"}.
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        render={<Link href={app.documentPortal.portalPath} />}
+                        nativeButton={false}
+                        className="min-h-10 shrink-0 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-90 whitespace-nowrap"
+                      >
+                        <FileUp
+                          className="size-4 text-gold"
+                          data-icon="inline-start"
+                          aria-hidden="true"
+                        />
+                        <span>Upload Travel Documents</span>
+                      </Button>
+                    </div>
+                  )}
 
                 {/* Pre-Built Group Package & Flight Block Card */}
                 {app.groupPackage && (

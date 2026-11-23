@@ -1,8 +1,9 @@
 import { Resend } from "resend"
 import { z } from "zod"
+import { getCompanyInfo, type CompanyInfo } from "@/lib/company-info"
 import { isAuditLocalE2eMode } from "../env"
 import { logger } from "../logger"
-import { escapeAttr, escapeHtml } from "./html-escape"
+import { escapeAttr, escapeHtml, sanitizeSafeUrl } from "./html-escape"
 
 export interface EmailAttachment {
   filename: string
@@ -277,5 +278,141 @@ export async function sendQuotationEmail(params: {
     html,
     text: `Assalamu Alaikum ${params.customerName}, your quotation (${params.referenceNumber}) for ${formattedTotal} is ready.${params.portalUrl ? ` View online: ${params.portalUrl}` : ""}`,
     attachments,
+  })
+}
+
+export interface PilgrimDocumentPortalEmailInput {
+  to: string
+  customerName: string
+  referenceNumber: string
+  portalUrl: string
+  event: "portal_unlocked" | "reupload_requested" | "all_verified"
+  travellerLabel?: string
+  documentLabel?: string
+  rejectionReason?: string
+  companyInfo?: CompanyInfo
+}
+
+/**
+ * Dispatches privacy-hardened transactional emails for the Pilgrim Document Upload Portal (`AC-8`).
+ * Strictly omits passport numbers, CNIC/B-Form numbers, and private R2 object keys/URLs.
+ */
+export async function sendPilgrimDocumentPortalEmail(
+  params: PilgrimDocumentPortalEmailInput
+): Promise<TransactionalEmailResult> {
+  const company = params.companyInfo ?? getCompanyInfo()
+  const rawName = params.customerName.trim() || "Respected Pilgrim"
+  const safeName = escapeHtml(rawName)
+  const safeRef = escapeHtml(params.referenceNumber.trim())
+  const safePortalHref =
+    sanitizeSafeUrl(params.portalUrl, { allowRelative: true }) ??
+    escapeAttr(params.portalUrl)
+  const safeDisplayUrl = escapeHtml(params.portalUrl)
+  const safeAgencyName = escapeHtml(company.agencyName)
+  const safeAddress = escapeHtml(company.officeAddress)
+  const safeHotline = escapeHtml(company.hotlineDisplay)
+  const safeSupportEmail = escapeHtml(company.supportEmail)
+
+  const cleanTravellerLabel =
+    params.travellerLabel?.trim() || "Traveller Slot"
+  const cleanDocumentLabel =
+    params.documentLabel?.trim() || "Travel Document"
+  const cleanReason =
+    params.rejectionReason?.trim() ||
+    "Please upload a clearer, uncropped scan matching the official guidelines."
+
+  let subject: string
+  let headline: string
+  let introHtml: string
+  let detailBlockHtml = ""
+  let ctaLabel: string
+  let textLines: string[]
+
+  if (params.event === "reupload_requested") {
+    subject = `Action Required: Re-upload Travel Document (${params.referenceNumber})`
+    headline = "Clearer Document Scan Requested"
+    introHtml = `Our Haramain desk reviewed dossier <strong>${safeRef}</strong> and requires a replacement scan for <strong>${escapeHtml(cleanTravellerLabel)}</strong> (${escapeHtml(cleanDocumentLabel)}).`
+    detailBlockHtml = `<div style="margin:0 0 20px;padding:14px 16px;background:#FEF3C7;border:1px solid #D97706;border-radius:8px;color:#92400E;font-size:13px;line-height:1.5;">
+      <strong>Desk Review Note:</strong> ${escapeHtml(cleanReason)}
+    </div>`
+    ctaLabel = "Upload Replacement Scan"
+    textLines = [
+      `Assalamu Alaikum ${rawName},`,
+      "",
+      `Our Haramain desk reviewed dossier ${params.referenceNumber} and requires a replacement scan for ${cleanTravellerLabel} (${cleanDocumentLabel}).`,
+      `Reason: ${cleanReason}`,
+      "",
+      `Open your secure document checklist: ${params.portalUrl}`,
+    ]
+  } else if (params.event === "all_verified") {
+    subject = `All Travel Documents Verified (${params.referenceNumber})`
+    headline = "All Travel Documents Verified"
+    introHtml = `Alhamdulillah, every required passport bio page, national ID, and visa photograph for dossier <strong>${safeRef}</strong> has been verified by our desk and queued for visa processing.`
+    ctaLabel = "View Verified Checklist"
+    textLines = [
+      `Assalamu Alaikum ${rawName},`,
+      "",
+      `Alhamdulillah, all required travel documents for dossier ${params.referenceNumber} have been verified by our desk and queued for visa processing.`,
+      "",
+      `View your verified checklist: ${params.portalUrl}`,
+    ]
+  } else {
+    subject = `Upload Your Umrah Travel Documents (${params.referenceNumber})`
+    headline = "Travel Document Checklist Unlocked"
+    introHtml = `Your booking <strong>${safeRef}</strong> is approved and your deposit has been verified. Please enter each traveller's passport expiry details and upload clear scans via your private document portal below.`
+    ctaLabel = "Open Document Checklist"
+    textLines = [
+      `Assalamu Alaikum ${rawName},`,
+      "",
+      `Your booking ${params.referenceNumber} is approved and your deposit has been verified.`,
+      `Open your private travel document checklist: ${params.portalUrl}`,
+    ]
+  }
+
+  textLines.push(
+    "",
+    "Verify your booking phone number when prompted to protect your family's privacy.",
+    `${company.agencyName} · ${company.officeAddress} · ${company.hotlineDisplay} · ${company.supportEmail}`
+  )
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+  <body style="margin:0;padding:24px;background-color:#FAF7F0;font-family:'Plus Jakarta Sans',Arial,sans-serif;color:#14281D;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#FFFFFF;border:1px solid #E4DCCB;border-radius:12px;overflow:hidden;">
+      <tr>
+        <td style="background:#0A3622;padding:22px 28px;border-bottom:3px solid #C5A059;">
+          <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#ECD9B0;">${safeAgencyName} · Haramain Concierge</p>
+          <h1 style="margin:6px 0 0;font-size:20px;color:#FFFFFF;font-weight:700;">${escapeHtml(headline)} (${safeRef})</h1>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:28px;">
+          <p style="margin:0 0 14px;font-size:15px;line-height:1.6;">Assalamu Alaikum ${safeName},</p>
+          <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#3E4E44;">${introHtml}</p>
+          ${detailBlockHtml}
+          <p style="margin:0 0 22px;">
+            <a href="${safePortalHref}" style="display:inline-block;background:#0A3622;color:#FFFFFF;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:14px;font-weight:600;border:1px solid #C5A059;">
+              ${escapeHtml(ctaLabel)}
+            </a>
+          </p>
+          <p style="margin:0 0 6px;font-size:12px;color:#526158;">If the button does not open, copy this private link into your browser (you will be asked to confirm your booking phone number once):</p>
+          <p style="margin:0 0 20px;font-size:12px;word-break:break-all;color:#0A3622;">${safeDisplayUrl}</p>
+          <hr style="border:none;border-top:1px solid #E4DCCB;margin:20px 0;" />
+          <p style="margin:0;font-size:12px;color:#526158;line-height:1.5;">
+            ${safeAgencyName} · ${safeAddress}<br />
+            Official Desk: ${safeHotline} · ${safeSupportEmail}
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`
+
+  return sendTransactionalEmail({
+    to: params.to,
+    subject,
+    html,
+    text: textLines.join("\n"),
+    replyTo: company.supportEmail,
   })
 }

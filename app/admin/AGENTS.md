@@ -17,7 +17,7 @@ Protected 4-Hub staff and super-admin workspace (`/admin`, `/admin/studio`, `/ad
 | [desk hub](./%28dashboard%29/desk/page.tsx) | Live WhatsApp Cloud Inbox + `@dnd-kit` Kanban + Contact Messages |
 | [catalog hub](./%28dashboard%29/catalog/page.tsx) | Visa, Flights, Hotels, Vehicles, Ziyarat, Hajj 2027, CMS tabs |
 | [settings hub](./%28dashboard%29/settings/page.tsx) | WABA, Social OAuth, Gotenberg/R2, Staff RBAC, `?tab=health` |
-| [application dossier](./%28dashboard%29/applications/%5Bid%5D/page.tsx) | Pilgrim dossier, Quote Worksheet, AI Copilot, Payment Ledger |
+| [application dossier](./%28dashboard%29/applications/%5Bid%5D/page.tsx) | Pilgrim dossier, Quote Worksheet, AI Copilot, Payment Ledger, [Pilgrim Documents Review](../../components/admin/applications/pilgrim-documents-review-panel.tsx) |
 | [auth-guard.ts](../../lib/auth-guard.ts) | `requireAdmin()`, `requireSuperAdmin()`, live DB `isActive` revocation |
 | [quotes.ts](../actions/quotes.ts) & [command-lookup.ts](../actions/command-lookup.ts) | Quoting workflow + `Cmd+K` lookup with `staff` wholesale redaction |
 | [admin-labels.ts](../../lib/constants/admin-labels.ts) | Test-locked Studio Mode A/B labels and `Cmd+K` passenger summary formatter |
@@ -49,5 +49,6 @@ Protected 4-Hub staff and super-admin workspace (`/admin`, `/admin/studio`, `/ad
 - [Spec 0006 — Admin Quoting Worksheet & Status Tracker](../../docs/specs/0006-admin-quoting-worksheet-and-status-tracker.md)
 - [Spec 0024 — Production Readiness Audit & Hardening](../../docs/specs/0024-production-readiness-audit-and-hardening.md)
 - [Spec 0028 — Admin 4 Hub Operate Surface and Shell Alignment](../../docs/specs/0028-admin-operate-surface-alignment/index.md)
+- [Spec 0029 — Pilgrim Document Upload Portal and Staff Verification](../../docs/specs/0029-pilgrim-document-upload-portal/index.md)
 
 _Drafted by /audit from the repo, worth a quick human pass. Edit freely: once a line stops matching this draft, later runs treat it as curated and will flag rather than overwrite it._

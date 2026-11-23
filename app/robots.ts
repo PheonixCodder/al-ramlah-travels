@@ -6,6 +6,7 @@ const DISALLOWED_PRIVATE_PATHS = [
   "/api/",
   "/voucher/",
   "/quote/",
+  "/documents/",
 ]
 
 export default function robots(): MetadataRoute.Robots {

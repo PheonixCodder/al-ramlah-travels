@@ -66,6 +66,7 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 50 | Spec 0026 — Home Page Editorial Redesign & Public Motion Architecture (`Lenis` + `GSAP` + `Motion`) | Slice 46 | done |
 | 51 | Spec 0027 — Secondary public hubs, spokes & shell editorial alignment | Slice 47 | done |
 | 52 | Spec 0028 · Admin 4 Hub Operate Surface and Shell Alignment | Slice 48 | done |
+| 53 | Spec 0029 · Pilgrim Document Upload Portal and Staff Verification | Slice 49 | done |
 
 ## Foundations
 
@@ -779,12 +780,31 @@ spec [0028](docs/specs/0028-admin-operate-surface-alignment/index.md) · code in
 - [x] Verify it: `/check verify Admin 4 Hub Operate Surface and Shell Alignment` ([verify.md](docs/specs/0028-admin-operate-surface-alignment/verify.md) · [2026-11-22-main.md](docs/reviews/2026-11-22-main.md))
 - [x] Test it: `/test Admin 4 Hub Operate Surface and Shell Alignment` ([admin-operate-alignment.test.ts](tests/unit/admin-operate-alignment.test.ts) · [j06-j12-admin-desk-quote-studio.spec.ts](tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts))
 
+## Slice 49: Pilgrim Document Upload Portal and Staff Verification
+
+### 53. Slice 49 · Pilgrim Document Upload Portal and Staff Verification · GA · done
+
+Give pilgrims with an approved and deposit verified booking a self service checklist to upload passport bio pages, national ID scans, and visa photos for every adult, child, and infant on the journey, and let staff approve or request a clearer reupload inside the application dossier.
+**Done when:** the portal unlocks only when a booking is approved with verified deposit or full payment, pilgrims can open it from a dedicated capability link or from `/#track-status` without creating an account password, every traveller passport slot enforces private storage with short lived signed previews, `noindex` headers, and 60 day post return retention, and consultants can approve or request reuploads per document in `/admin/applications/[id]` with accessible mobile and desktop states.
+spec [0029](docs/specs/0029-pilgrim-document-upload-portal/index.md) · code in `db/schema/applications.ts`, `drizzle/0004_pilgrim_document_portal.sql`, `lib/domain/pilgrim-documents.ts`, `lib/validations/pilgrim-documents.ts`, `app/actions/pilgrim-documents.ts`, `app/api/documents/[token]/`, `app/(public)/documents/[token]/`, `components/public/pilgrim-document-portal.tsx`, `components/admin/applications/pilgrim-documents-review-panel.tsx`
+
+- [x] Design it (spec): `/architect Pilgrim Document Upload Portal and Staff Verification` ([0029](docs/specs/0029-pilgrim-document-upload-portal/index.md))
+- [x] Build it: `/develop Pilgrim Document Upload Portal and Staff Verification`
+  - [x] Milestone 1 (`M1` Schema, Migration `0004`, Domain Rules & Storage Verifier): Add `application_travellers`, `application_documents`, and `documentPortalToken*` columns, domain/Zod helpers, and `512` byte R2 header verifier (`AC-1`..`AC-6`, `AC-9`)
+  - [x] Milestone 2 (`M2` Actions, Mailer, Presign & Local Upload Routes, Crawl & Retention): Build `pilgrim-documents.ts` actions, `presign` + `local-upload` routes, `robots.ts` / `proxy.ts` `noindex` guards, 4 way token minting, and `60` day post return purge (`AC-1`..`AC-9`)
+  - [x] Milestone 3 (`M3` Public `/documents/[token]` Portal & Status Tracker CTA): Build `/documents/[token]` (`page.tsx`, `forbidden.tsx`, phone session gate, traveller checklist) and `/#track-status` launch button (`AC-1`..`AC-6`, `AC-8`, `AC-10`)
+  - [x] Milestone 4 (`M4` Admin Dossier Verification Panel & Dispatch Controls): Build `pilgrim-documents-review-panel.tsx` and wire dossier review, nudges, passenger count edits, and `super_admin` override/rotation controls (`AC-3`, `AC-4`, `AC-6`..`AC-8`, `AC-10`)
+- [x] Verify it: `/check verify Pilgrim Document Upload Portal and Staff Verification` ([verify.md](docs/specs/0029-pilgrim-document-upload-portal/verify.md))
+- [x] Test it: `/test Pilgrim Document Upload Portal and Staff Verification` ([pilgrim-documents-domain.test.ts](tests/unit/pilgrim-documents-domain.test.ts) · [pilgrim-documents-portal.integration.test.ts](tests/integration/pilgrim-documents-portal.integration.test.ts) · [j24-pilgrim-document-portal.spec.ts](tests/e2e/j24-pilgrim-document-portal.spec.ts))
+- [x] Review it (fresh model): `/check review Pilgrim Document Upload Portal and Staff Verification` ([2026-11-22-slice-49.md](docs/reviews/2026-11-22-slice-49.md))
+- [x] Document it: `/document Pilgrim Document Upload Portal and Staff Verification` (PR `feat/slices-45-49-ui-and-document-portal`)
+
 ## Deferred
 
 Out of scope for the current build pass, kept so the plan stays honest.
 
 - **Online card payment gateway**: collect online credit card or bank checkout payments directly on the website · needs a decision · GA
-- **Pilgrim document upload portal**: self service passport scan and photo upload after quote approval · needs a decision
+- **Passport MRZ text pre fill**: optional OCR pre fill of passport numbers and expiry dates on the pilgrim document checklist (from spec 0029) · needs a decision
 
 ## Legend
 

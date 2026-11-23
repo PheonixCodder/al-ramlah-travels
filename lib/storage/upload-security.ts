@@ -1,4 +1,20 @@
 import { getAuthenticatedAdminOrNull, requireAdmin } from "@/lib/auth-guard"
+import {
+  hasBlockedActiveContentExtension,
+  MAX_PILGRIM_DOCUMENT_BYTES,
+  PILGRIM_DOC_ALLOWED_MIMES,
+  validatePilgrimDocumentMimeAndSize,
+  type PilgrimDocSlotType,
+  type PilgrimDocumentValidationResult,
+} from "@/lib/validations/pilgrim-documents"
+
+export {
+  hasBlockedActiveContentExtension,
+  PILGRIM_DOC_ALLOWED_MIMES,
+  validatePilgrimDocumentMimeAndSize,
+  type PilgrimDocSlotType,
+  type PilgrimDocumentValidationResult,
+}
 
 export const ALLOWED_UPLOAD_ROOT_FOLDERS = new Set([
   "uploads",
@@ -16,6 +32,7 @@ export const ALLOWED_UPLOAD_ROOT_FOLDERS = new Set([
 ])
 
 export const MAX_IMAGE_OR_DOC_UPLOAD_BYTES = 50 * 1024 * 1024 // 50 MB
+export const MAX_PILGRIM_DOCUMENT_UPLOAD_BYTES = MAX_PILGRIM_DOCUMENT_BYTES
 export const MAX_VIDEO_UPLOAD_BYTES = 250 * 1024 * 1024 // 250 MB
 export const MAX_LOCAL_DEV_UPLOAD_BYTES = 25 * 1024 * 1024 // 25 MB
 
@@ -58,36 +75,6 @@ export const PRESIGN_CONTENT_TYPE_LIMITS: Record<
     extension: "mov",
     maxBytes: MAX_VIDEO_UPLOAD_BYTES,
   },
-}
-
-const BLOCKED_FILENAME_EXTENSIONS = new Set([
-  ".html",
-  ".htm",
-  ".xhtml",
-  ".svg",
-  ".svgz",
-  ".xml",
-  ".js",
-  ".mjs",
-  ".cjs",
-  ".jsx",
-  ".ts",
-  ".tsx",
-  ".php",
-  ".sh",
-  ".exe",
-  ".bat",
-  ".cmd",
-])
-
-export function hasBlockedActiveContentExtension(filename: string): boolean {
-  const lower = filename.trim().toLowerCase()
-  for (const ext of BLOCKED_FILENAME_EXTENSIONS) {
-    if (lower.endsWith(ext)) {
-      return true
-    }
-  }
-  return false
 }
 
 export function sanitizeUploadFolder(rawFolder: string): string | null {
@@ -218,8 +205,7 @@ export function sniffAllowedBinaryMagicBytes(
 }
 
 export type RouteAdminAuthDecision =
-  | { ok: true }
-  | { ok: false; status: 401 | 403; error: string }
+  { ok: true } | { ok: false; status: 401 | 403; error: string }
 
 let routeAdminVerifierOverrideForTests:
   | ((req: Request) => Promise<RouteAdminAuthDecision> | RouteAdminAuthDecision)
@@ -227,7 +213,9 @@ let routeAdminVerifierOverrideForTests:
 
 export function setRouteAdminVerifierForTests(
   verifier:
-    | ((req: Request) => Promise<RouteAdminAuthDecision> | RouteAdminAuthDecision)
+    | ((
+        req: Request
+      ) => Promise<RouteAdminAuthDecision> | RouteAdminAuthDecision)
     | null
 ): void {
   routeAdminVerifierOverrideForTests = verifier
@@ -263,8 +251,7 @@ export async function enforceRouteAdminAuth(
     await requireAdmin()
     return { ok: true }
   } catch (authErr) {
-    const message =
-      authErr instanceof Error ? authErr.message : "Unauthorized"
+    const message = authErr instanceof Error ? authErr.message : "Unauthorized"
     if (message.toLowerCase().includes("outside a request scope")) {
       return {
         ok: false,

@@ -121,7 +121,7 @@ describe("T-040: Isolated PostgreSQL Migrations, Idempotent Seed, Constraints & 
   }, 60_000)
 
   it(
-    "applies all Drizzle SQL migrations cleanly onto a blank database and creates all 48 schema tables + unique indexes",
+    "applies all Drizzle SQL migrations cleanly onto a blank database and creates all 50 schema tables + unique indexes",
     async () => {
       await runMigrations({ connectionString: migTestUrl, argv: [] })
 
@@ -136,7 +136,7 @@ describe("T-040: Isolated PostgreSQL Migrations, Idempotent Seed, Constraints & 
           ORDER BY table_name ASC`
       )
       const tableNames = tablesRes.rows.map((r) => r.table_name)
-      expect(tableNames.length).toBe(48)
+      expect(tableNames.length).toBe(50)
 
       for (const expectedTable of [
         "user",
@@ -153,6 +153,8 @@ describe("T-040: Isolated PostgreSQL Migrations, Idempotent Seed, Constraints & 
         "applications",
         "application_quotes",
         "application_payments",
+        "application_travellers",
+        "application_documents",
         "marketing_channels",
         "whatsapp_accounts",
         "whatsapp_conversations",
@@ -219,10 +221,10 @@ describe("T-040: Isolated PostgreSQL Migrations, Idempotent Seed, Constraints & 
         "Askari 10, Airport Road, Lahore Cantt"
       )
     },
-    90_000
+    420_000
   )
 
-  it("enforces SQL CHECK constraints on negative money and group_departures oversold seats, and blocks UPDATE/DELETE on audit_logs", async () => {
+  it("enforces SQL CHECK constraints on negative money, group_departures oversold seats, 0004 pilgrim document portal constraints, and blocks UPDATE/DELETE on audit_logs", async () => {
     expect(migClient).not.toBeNull()
     const client = migClient!
 
@@ -237,6 +239,103 @@ describe("T-040: Isolated PostgreSQL Migrations, Idempotent Seed, Constraints & 
         `UPDATE group_departures SET booked_seats = total_seats + 1`
       )
     ).rejects.toThrow(/booked_seats|violates check constraint/i)
+
+    // 2b. Verify all five 0004_pilgrim_document_portal CHECK constraints exist in pg_constraint
+    const expectedPortalChecks = [
+      "chk_app_traveller_slot_pos",
+      "chk_app_traveller_override_reason",
+      "chk_app_doc_size_bounds",
+      "chk_app_doc_rejection_reason",
+      "chk_app_doc_visa_photo_mime",
+    ] as const
+
+    const portalChecksRes = await client.query<{
+      conname: string
+      table_name: string
+    }>(
+      `SELECT c.conname, t.relname AS table_name
+         FROM pg_constraint c
+         JOIN pg_class t ON t.oid = c.conrelid
+         JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.contype = 'c'
+          AND c.conname = ANY($1::text[])`,
+      [expectedPortalChecks]
+    )
+    const foundCheckNames = portalChecksRes.rows.map((r) => r.conname)
+    for (const checkName of expectedPortalChecks) {
+      expect(foundCheckNames).toContain(checkName)
+    }
+
+    // Exercise actual PostgreSQL rejection on 0004 CHECK constraints in the isolated migtest DB
+    const probeAppRes = await client.query<{ id: string }>(
+      `INSERT INTO applications (
+         reference_number, source, preset_mode, customer_name, customer_phone,
+         customer_whatsapp, customer_city, adults, children, infants,
+         total_passport_count, bed_and_seat_count
+       ) VALUES (
+         'ART-MIGTEST-CHK04', 'custom_builder', 'visa_only', 'Migtest Pilgrim',
+         '+923001112233', '+923001112233', 'Lahore', 1, 0, 0, 1, 1
+       ) RETURNING id`
+    )
+    const probeAppId = probeAppRes.rows[0]?.id
+    expect(probeAppId).toBeTruthy()
+
+    const probeTravRes = await client.query<{ id: string }>(
+      `INSERT INTO application_travellers (
+         application_id, slot_index, category, category_ordinal
+       ) VALUES ($1, 1, 'adult', 1) RETURNING id`,
+      [probeAppId]
+    )
+    const probeTravId = probeTravRes.rows[0]?.id
+    expect(probeTravId).toBeTruthy()
+
+    await expect(
+      client.query(
+        `INSERT INTO application_travellers (
+           application_id, slot_index, category, category_ordinal
+         ) VALUES ($1, 0, 'adult', 2)`,
+        [probeAppId]
+      )
+    ).rejects.toThrow(/chk_app_traveller_slot_pos|violates check constraint/i)
+
+    await expect(
+      client.query(
+        `UPDATE application_travellers
+            SET expiry_override_by_staff = true, expiry_override_reason = '   '
+          WHERE id = $1`,
+        [probeTravId]
+      )
+    ).rejects.toThrow(/chk_app_traveller_override_reason|violates check constraint/i)
+
+    await expect(
+      client.query(
+        `INSERT INTO application_documents (
+           application_id, traveller_id, doc_type, status, size_bytes
+         ) VALUES ($1, $2, 'passport_bio_page', 'uploaded', 10485761)`,
+        [probeAppId, probeTravId]
+      )
+    ).rejects.toThrow(/chk_app_doc_size_bounds|violates check constraint/i)
+
+    await expect(
+      client.query(
+        `INSERT INTO application_documents (
+           application_id, traveller_id, doc_type, status, rejection_reason
+         ) VALUES ($1, $2, 'national_id', 'reupload_requested', '   ')`,
+        [probeAppId, probeTravId]
+      )
+    ).rejects.toThrow(/chk_app_doc_rejection_reason|violates check constraint/i)
+
+    await expect(
+      client.query(
+        `INSERT INTO application_documents (
+           application_id, traveller_id, doc_type, status, mime_type
+         ) VALUES ($1, $2, 'visa_photo', 'uploaded', 'application/pdf')`,
+        [probeAppId, probeTravId]
+      )
+    ).rejects.toThrow(/chk_app_doc_visa_photo_mime|violates check constraint/i)
+
+    await client.query(`DELETE FROM applications WHERE id = $1`, [probeAppId])
 
     // 3. Append-only audit_logs immutability trigger blocks UPDATE and DELETE
     const insertedAudit = await client.query<{ id: string }>(

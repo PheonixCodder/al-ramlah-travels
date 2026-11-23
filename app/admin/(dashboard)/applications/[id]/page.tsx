@@ -8,6 +8,7 @@ import { z } from "zod"
 
 import { db } from "@/db"
 import * as schema from "@/db/schema"
+import { getAdminApplicationDocumentPortalData } from "@/app/actions/pilgrim-documents"
 import { requireAdmin } from "@/lib/auth-guard"
 import { ApplicationDossier } from "@/components/admin/applications/application-dossier"
 import { QuoteWorksheetForm } from "@/components/admin/applications/quote-worksheet-form"
@@ -40,6 +41,11 @@ export default async function ApplicationDetailPage({
 
   const application = await db.query.applications.findFirst({
     where: eq(schema.applications.id, parsedId.data),
+    columns: {
+      documentPortalTokenHash: false,
+      documentPortalTokenEncrypted: false,
+      voucherToken: false,
+    },
     with: {
       quotes: {
         orderBy: [desc(schema.applicationQuotes.version)],
@@ -91,6 +97,7 @@ export default async function ApplicationDetailPage({
     settings,
     suppliers,
     paymentsHistory,
+    documentPortalData,
   ] = await Promise.all([
     application.selectedZiyaratPlaceIds &&
     application.selectedZiyaratPlaceIds.length > 0
@@ -126,6 +133,7 @@ export default async function ApplicationDetailPage({
       .from(schema.applicationPayments)
       .where(eq(schema.applicationPayments.applicationId, parsedId.data))
       .orderBy(desc(schema.applicationPayments.createdAt)),
+    getAdminApplicationDocumentPortalData(application.id),
   ])
 
   const sarToPkrRate = Number(settings?.sarToPkrRate) || 75
@@ -172,11 +180,45 @@ export default async function ApplicationDetailPage({
     sarToPkrRate
   )
 
+  const isSuperAdmin = session.user.role === "super_admin"
+
   const quotesWithSignedPdf = application.quotes.map((q) => ({
     ...q,
     quotationPdfUrl: resolveSignedQuotationPdfUrl(q.quotationPdfUrl),
+    supplierNetCostPkr: isSuperAdmin ? q.supplierNetCostPkr : 0,
+    commissionPkr: isSuperAdmin ? q.commissionPkr : 0,
   }))
   const latestQuote = quotesWithSignedPdf[0] || null
+
+  const safeSuppliers = suppliers.map((s) => ({
+    id: s.id,
+    name: s.name,
+    codePrefix: s.codePrefix,
+    defaultCommissionPkr: isSuperAdmin ? s.defaultCommissionPkr : 0,
+  }))
+
+  const worksheetApplication = {
+    id: application.id,
+    referenceNumber: application.referenceNumber,
+    source: application.source,
+    status: application.status,
+    customerName: application.customerName,
+    customerPhone: application.customerPhone,
+    customerWhatsapp: application.customerWhatsapp,
+    customerEmail: application.customerEmail,
+    ksaArrivalDate: application.ksaArrivalDate,
+    ksaDepartureDate: application.ksaDepartureDate,
+    totalPassportCount: application.totalPassportCount,
+    totalKsaDays: application.totalKsaDays,
+    includeVisa: application.includeVisa,
+    includeFlights: application.includeFlights,
+    includeHotels: application.includeHotels,
+    includeTransport: application.includeTransport,
+    includeZiyarat: application.includeZiyarat,
+    lockedVisaRatePerPersonPkr: application.lockedVisaRatePerPersonPkr,
+    calculatedVisaTotalPkr: application.calculatedVisaTotalPkr,
+    supplierId: application.supplierId,
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -212,19 +254,24 @@ export default async function ApplicationDetailPage({
           <ApplicationDossier
             application={application}
             ziyaratPlaces={ziyaratPlacesResult}
+            documentPortal={documentPortalData}
           />
         </div>
 
         <div className="lg:col-span-5">
           <QuoteWorksheetForm
-            application={application}
+            application={worksheetApplication}
             initialQuote={latestQuote}
             quoteHistory={quotesWithSignedPdf}
             paymentsHistory={paymentsHistory}
             currentUserRole={session.user.role}
             rateHints={rateHints}
             sarToPkrRate={sarToPkrRate}
-            suppliers={suppliers}
+            suppliers={safeSuppliers}
+            portalPath={
+              documentPortalData?.unlocked ? documentPortalData.portalPath : null
+            }
+            whatsappOptedOut={documentPortalData?.whatsappOptedOut ?? false}
           />
         </div>
       </div>

@@ -146,7 +146,9 @@ export function sanitizeStorageKey(rawKey: string): string {
     .replace(/\\/g, "/")
     .split("/")
     .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+    .filter(
+      (segment) => segment.length > 0 && segment !== "." && segment !== ".."
+    )
     .map((segment) => segment.replace(/[^a-zA-Z0-9._-]/g, "_"))
 
   if (segments.length === 0) {
@@ -159,7 +161,9 @@ export function sanitizeStorageKey(rawKey: string): string {
 export function isPrivateMediaKey(rawKey: string): boolean {
   try {
     const normalized = sanitizeStorageKey(rawKey).toLowerCase()
-    return PRIVATE_MEDIA_PREFIXES.some((prefix) => normalized.startsWith(prefix))
+    return PRIVATE_MEDIA_PREFIXES.some((prefix) =>
+      normalized.startsWith(prefix)
+    )
   } catch {
     return false
   }
@@ -203,8 +207,7 @@ interface ResolvedR2Env {
 }
 
 function resolveR2Env(options: { requirePublicUrl: boolean }): ResolvedR2Env {
-  const isProd =
-    process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()
+  const isProd = process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()
   const accountId = process.env.R2_ACCOUNT_ID?.trim() ?? ""
   const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim() ?? ""
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim() ?? ""
@@ -244,7 +247,7 @@ export function hasR2CredentialsConfigured(): boolean {
     (process.env.R2_ACCOUNT_ID?.trim() &&
       process.env.R2_ACCESS_KEY_ID?.trim() &&
       process.env.R2_SECRET_ACCESS_KEY?.trim()) ||
-      s3ClientOverrideForTests
+    s3ClientOverrideForTests
   )
 }
 
@@ -325,7 +328,10 @@ function deriveMediaTokenKey(): Buffer {
   )
 }
 
-function computeMediaTokenHmacHex(sanitizedKey: string, expUnixSec: number): string {
+function computeMediaTokenHmacHex(
+  sanitizedKey: string,
+  expUnixSec: number
+): string {
   const signingKey = deriveMediaTokenKey()
   return crypto
     .createHmac("sha256", signingKey)
@@ -362,6 +368,16 @@ export function createSignedMediaProxyUrl(
 }
 
 /**
+ * Convenience alias returning a short-lived (`10m` default) HMAC-signed `/api/media/...` path.
+ */
+export function buildSignedMediaProxyPath(
+  rawKey: string,
+  ttlSeconds: number = DEFAULT_MEDIA_TOKEN_TTL_SECONDS
+): string {
+  return createSignedMediaProxyUrl(rawKey, { ttlSeconds })
+}
+
+/**
  * Verifies a short-lived HMAC-signed `/api/media/[...key]` query token in constant time.
  */
 export function verifySignedMediaProxyToken(params: {
@@ -391,7 +407,10 @@ export function verifySignedMediaProxyToken(params: {
 
   const nowSec = Math.floor((params.nowMs ?? Date.now()) / 1000)
   // Reject expired tokens and excessively far-future tokens (> 16 minutes)
-  if (expSec <= nowSec || expSec > nowSec + MAX_PRESIGNED_READ_TTL_SECONDS + 60) {
+  if (
+    expSec <= nowSec ||
+    expSec > nowSec + MAX_PRESIGNED_READ_TTL_SECONDS + 60
+  ) {
     return false
   }
 
@@ -420,7 +439,9 @@ export async function createPresignedReadUrl(
   const sanitizedKey = sanitizeStorageKey(rawKey)
   const r2 = resolveR2Env({ requirePublicUrl: false })
   if (!r2.configured) {
-    throw new Error("Cannot presign R2 GET URL when R2 credentials are not configured.")
+    throw new Error(
+      "Cannot presign R2 GET URL when R2 credentials are not configured."
+    )
   }
 
   const expiresIn = Math.max(
@@ -476,6 +497,258 @@ export async function readLocalFallbackObject(rawKey: string): Promise<{
   }
 
   return null
+}
+
+/**
+ * Writes an object to the non-production local fallback directory (`alramlah-r2-local`
+ * for private keys/tests, or `public/uploads/r2-local` for public dev uploads).
+ */
+export async function writeLocalFallbackObject(
+  rawKey: string,
+  buffer: Buffer,
+  contentType: string
+): Promise<{ key: string; sizeBytes: number }> {
+  if (process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()) {
+    throw new Error("Local fallback object writes are disabled in production.")
+  }
+
+  void contentType
+  const sanitizedKey = sanitizeStorageKey(rawKey)
+  const isPrivate = isPrivateMediaKey(sanitizedKey)
+  const rootDir = getLocalFallbackRootDir(isPrivate)
+  const localFilePath = resolveSafeLocalPath(rootDir, sanitizedKey)
+  await fs.mkdir(path.dirname(localFilePath), { recursive: true })
+  await fs.writeFile(localFilePath, buffer)
+
+  return {
+    key: sanitizedKey,
+    sizeBytes: buffer.byteLength,
+  }
+}
+
+/**
+ * Deletes an object from all non-production local fallback directories (ignores ENOENT).
+ */
+export async function deleteLocalFallbackObject(rawKey: string): Promise<void> {
+  if (process.env.NODE_ENV === "production" && !isAuditLocalE2eMode()) {
+    throw new Error("Local fallback object deletes are disabled in production.")
+  }
+
+  const sanitizedKey = sanitizeStorageKey(rawKey)
+  const candidateRoots = [
+    path.join(os.tmpdir(), "alramlah-r2-local"),
+    path.join(process.cwd(), "public", "uploads", "r2-local"),
+  ]
+
+  for (const root of candidateRoots) {
+    const target = resolveSafeLocalPath(root, sanitizedKey)
+    await fs.unlink(target).catch((err: NodeJS.ErrnoException) => {
+      if (err.code !== "ENOENT") {
+        throw err
+      }
+    })
+  }
+}
+
+interface S3GetObjectHeaderResponse {
+  Body?: unknown
+  ContentRange?: string
+  ContentLength?: number
+  ContentType?: string
+}
+
+async function readStreamHeadBytes(
+  body: unknown,
+  maxBytes: number
+): Promise<Buffer> {
+  if (!body) {
+    return Buffer.alloc(0)
+  }
+  if (Buffer.isBuffer(body)) {
+    return body.subarray(0, maxBytes)
+  }
+  if (body instanceof Uint8Array) {
+    return Buffer.from(
+      body.buffer,
+      body.byteOffset,
+      Math.min(body.byteLength, maxBytes)
+    )
+  }
+  if (typeof body === "string") {
+    return Buffer.from(body, "utf8").subarray(0, maxBytes)
+  }
+  if (typeof body === "object" && Symbol.asyncIterator in body) {
+    const chunks: Buffer[] = []
+    let collected = 0
+    for await (const chunk of body as AsyncIterable<unknown>) {
+      const buf = Buffer.isBuffer(chunk)
+        ? chunk
+        : chunk instanceof Uint8Array
+          ? Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+          : typeof chunk === "string"
+            ? Buffer.from(chunk, "utf8")
+            : Buffer.alloc(0)
+      if (buf.byteLength > 0) {
+        const needed = maxBytes - collected
+        chunks.push(buf.byteLength > needed ? buf.subarray(0, needed) : buf)
+        collected += Math.min(buf.byteLength, needed)
+      }
+      if (collected >= maxBytes) {
+        if (
+          "destroy" in body &&
+          typeof (body as { destroy?: unknown }).destroy === "function"
+        ) {
+          ;(body as { destroy: () => void }).destroy()
+        }
+        break
+      }
+    }
+    return Buffer.concat(chunks, collected)
+  }
+  if (
+    typeof body === "object" &&
+    "transformToByteArray" in body &&
+    typeof (body as { transformToByteArray?: unknown }).transformToByteArray ===
+      "function"
+  ) {
+    const bytes = await (
+      body as { transformToByteArray: () => Promise<Uint8Array> }
+    ).transformToByteArray()
+    return Buffer.from(
+      bytes.buffer,
+      bytes.byteOffset,
+      Math.min(bytes.byteLength, maxBytes)
+    )
+  }
+  return Buffer.alloc(0)
+}
+
+function isS3NotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false
+  const record = err as {
+    name?: unknown
+    Code?: unknown
+    $metadata?: { httpStatusCode?: unknown }
+  }
+  return (
+    record.name === "NoSuchKey" ||
+    record.name === "NotFound" ||
+    record.Code === "NoSuchKey" ||
+    record.$metadata?.httpStatusCode === 404
+  )
+}
+
+function isS3InvalidRangeError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false
+  const record = err as {
+    name?: unknown
+    Code?: unknown
+    $metadata?: { httpStatusCode?: unknown }
+  }
+  return (
+    record.name === "InvalidRange" ||
+    record.Code === "InvalidRange" ||
+    record.$metadata?.httpStatusCode === 416
+  )
+}
+
+/**
+ * Reads up to `maxBytes` (default `512`) from the start of an R2 object (via HTTP `Range`
+ * `GetObjectCommand`) or from local fallback storage, returning header bytes plus total size.
+ * Returns `null` when the object does not exist.
+ */
+export async function readR2ObjectHeaderBytes(
+  rawKey: string,
+  maxBytes = 512
+): Promise<{
+  headerBytes: Buffer
+  totalSizeBytes: number
+  contentType: string | null
+} | null> {
+  const safeKey = sanitizeStorageKey(rawKey)
+  const boundedMaxBytes = Math.max(1, Math.min(65_536, Math.floor(maxBytes)))
+  const r2 = resolveR2Env({ requirePublicUrl: false })
+
+  if (r2.configured || s3ClientOverrideForTests) {
+    const sender = getActiveS3Sender(
+      r2.accountId || "override-account",
+      r2.accessKeyId || "override-key",
+      r2.secretAccessKey || "override-secret"
+    )
+    const command = new GetObjectCommand({
+      Bucket: r2.bucketName,
+      Key: safeKey,
+      Range: `bytes=0-${boundedMaxBytes - 1}`,
+    })
+
+    try {
+      const response = (await sender.send(command, {
+        abortSignal: AbortSignal.timeout(S3_REQUEST_TIMEOUT_MS),
+      })) as S3GetObjectHeaderResponse
+
+      const headerBytes = await readStreamHeadBytes(
+        response?.Body,
+        boundedMaxBytes
+      )
+
+      let totalSizeBytes: number | null = null
+      if (typeof response?.ContentRange === "string") {
+        const rangeMatch = /\/(\d+)\s*$/.exec(response.ContentRange.trim())
+        if (rangeMatch?.[1]) {
+          const parsedTotal = Number.parseInt(rangeMatch[1], 10)
+          if (Number.isFinite(parsedTotal) && parsedTotal >= 0) {
+            totalSizeBytes = parsedTotal
+          }
+        }
+      }
+      if (totalSizeBytes === null) {
+        if (
+          typeof response?.ContentLength === "number" &&
+          Number.isFinite(response.ContentLength) &&
+          response.ContentLength >= 0
+        ) {
+          totalSizeBytes = response.ContentLength
+        } else {
+          totalSizeBytes = headerBytes.byteLength
+        }
+      }
+
+      const contentType =
+        typeof response?.ContentType === "string" &&
+        response.ContentType.trim().length > 0
+          ? response.ContentType.trim()
+          : null
+
+      return {
+        headerBytes,
+        totalSizeBytes,
+        contentType,
+      }
+    } catch (err: unknown) {
+      if (isS3NotFoundError(err)) {
+        return null
+      }
+      if (isS3InvalidRangeError(err)) {
+        return {
+          headerBytes: Buffer.alloc(0),
+          totalSizeBytes: 0,
+          contentType: null,
+        }
+      }
+      throw err
+    }
+  }
+
+  const localObj = await readLocalFallbackObject(safeKey)
+  if (!localObj) {
+    return null
+  }
+
+  return {
+    headerBytes: localObj.buffer.subarray(0, boundedMaxBytes),
+    totalSizeBytes: localObj.buffer.byteLength,
+    contentType: localObj.contentType,
+  }
 }
 
 /**
@@ -592,12 +865,14 @@ export function extractStorageKeyFromUrlOrKey(
   }
 
   let candidate = trimmed
-  const configuredPublicBase = (process.env.R2_PUBLIC_URL?.trim() ?? "").replace(
-    /\/+$/,
-    ""
-  )
+  const configuredPublicBase = (
+    process.env.R2_PUBLIC_URL?.trim() ?? ""
+  ).replace(/\/+$/, "")
 
-  if (configuredPublicBase && candidate.startsWith(`${configuredPublicBase}/`)) {
+  if (
+    configuredPublicBase &&
+    candidate.startsWith(`${configuredPublicBase}/`)
+  ) {
     candidate = stripQueryAndDecode(
       candidate.slice(configuredPublicBase.length + 1)
     )
@@ -731,7 +1006,8 @@ export async function deleteR2Objects(
     } catch (err) {
       errors.push({
         key,
-        message: err instanceof Error ? err.message : "Failed to unlink local object",
+        message:
+          err instanceof Error ? err.message : "Failed to unlink local object",
       })
     }
   }
@@ -768,8 +1044,7 @@ export async function createPresignedUploadUrl(
   const r2 = resolveR2Env({ requirePublicUrl: !isPrivate })
 
   const normalizedContentType = options.contentType.trim().toLowerCase()
-  const safeExt =
-    EXTENSION_BY_CONTENT_TYPE[normalizedContentType] ?? "bin"
+  const safeExt = EXTENSION_BY_CONTENT_TYPE[normalizedContentType] ?? "bin"
   const uniqueKey = `${sanitizedFolder}/${Date.now()}-${crypto.randomUUID()}.${safeExt}`
 
   if (r2.configured) {
@@ -819,6 +1094,78 @@ export async function createPresignedUploadUrl(
     key: uniqueKey,
     mode: "local_put",
     expiresInSeconds: 900,
+  }
+}
+
+export interface CreatePilgrimDocumentPresignedPutOptions {
+  storageKey: string
+  contentType: string
+  sizeBytes: number
+  token: string
+  expiresInSeconds?: number
+}
+
+/**
+ * Mints a short-lived (`5m` default) private `passports/` presigned `PUT` URL bound to
+ * `ContentType`, `ContentLength`, and `Cache-Control: private, no-store`, or a session-gated
+ * local fallback upload route in non-production / `.env.audit` environments.
+ */
+export async function createPilgrimDocumentPresignedPutUrl(
+  options: CreatePilgrimDocumentPresignedPutOptions
+): Promise<PresignedUploadUrlResult> {
+  const safeKey = sanitizeStorageKey(options.storageKey)
+  if (!safeKey.startsWith("passports/")) {
+    throw new Error(
+      "Pilgrim document uploads must reside strictly under the passports/ prefix."
+    )
+  }
+
+  if (!Number.isInteger(options.sizeBytes) || options.sizeBytes <= 0) {
+    throw new Error("sizeBytes must be a positive integer")
+  }
+
+  const normalizedContentType = options.contentType.trim().toLowerCase()
+  const expiresInSeconds = Math.max(
+    60,
+    Math.min(900, Math.floor(options.expiresInSeconds ?? 300))
+  )
+
+  const r2 = resolveR2Env({ requirePublicUrl: false })
+  const publicUrl = buildSignedMediaProxyPath(safeKey)
+
+  if (r2.configured) {
+    const s3 = getOrCreateR2S3Client(
+      r2.accountId,
+      r2.accessKeyId,
+      r2.secretAccessKey
+    )
+    const command = new PutObjectCommand({
+      Bucket: r2.bucketName,
+      Key: safeKey,
+      ContentType: normalizedContentType,
+      ContentLength: options.sizeBytes,
+      CacheControl: "private, no-store",
+    })
+
+    const uploadUrl = await getSignedUrl(s3, command, {
+      expiresIn: expiresInSeconds,
+    })
+
+    return {
+      uploadUrl,
+      publicUrl,
+      key: safeKey,
+      mode: "r2_presigned",
+      expiresInSeconds,
+    }
+  }
+
+  return {
+    uploadUrl: `/api/documents/${encodeURIComponent(options.token)}/local-upload?key=${encodeURIComponent(safeKey)}`,
+    publicUrl,
+    key: safeKey,
+    mode: "local_put",
+    expiresInSeconds,
   }
 }
 

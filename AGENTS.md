@@ -14,7 +14,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - **Language / Runtime**: TypeScript 5, Node 22+ LTS
 - **Framework**: Next.js 16.4.6+ (App Router, `output: "standalone"`), React 19.2.8 (deployed on Vercel / Docker Standalone)
-- **Database & ORM**: PostgreSQL 16 — dual-driver Drizzle ORM (`drizzle-orm`, `drizzle-kit`) over Neon Serverless (`@neondatabase/serverless`) in production and `node-postgres` (`pg.Pool`) for local Docker & CI (`48` tables, `47` enums, `17` SQL `CHECK` constraints, append-only `audit_logs` immutability trigger)
+- **Database & ORM**: PostgreSQL 16 — dual-driver Drizzle ORM (`drizzle-orm`, `drizzle-kit`) over Neon Serverless (`@neondatabase/serverless`) in production and `node-postgres` (`pg.Pool`) for local Docker & CI (`50` tables, `50` enums, `22` SQL `CHECK` constraints, append-only `audit_logs` immutability trigger)
 - **Authentication & Security**: Better Auth (`better-auth`) with disabled public sign-up (`403`), live DB `isActive` session revocation (`super_admin` and `staff` roles), PostgreSQL `rate_limit_buckets`, `v2:` HKDF-AES-256-GCM secret vault (`lib/security/vault.ts`), and PII-redacted structured logger (`lib/logger.ts`)
 - **Validation & UI**: Zod (`zod`), Tailwind CSS v4 (locked light Haramain palette in [DESIGN.md](DESIGN.md)), Base UI (`@base-ui/react`), shadcn/ui (`base-nova` preset in `components/ui/`), Lenis (`lenis`), GSAP (`gsap`, `@gsap/react`), Motion (`motion`), `@dnd-kit/*` (Kanban Desk), `cmdk` (`Cmd+K`), Recharts 3.8, Lucide React
 - **Multimodal AI, Email, Media & Durable Jobs**: Vercel AI SDK (`ai`, `@openrouter/ai-sdk-provider` with Zero-Data-Retention `data_collection: "deny"`, `@ai-sdk/google`), Resend (`resend`, `@react-email/components` — `OD-02`), Trigger.dev Cloud v4 (`@trigger.dev/sdk` — `8` `schemaTask`s + `6` PKT crons across `9` bounded queues), Cloudflare R2 (`@aws-sdk/client-s3` — public marketing prefixes vs private signed `/api/media/[...key]` PII prefixes per `OD-06`), `sharp` (`1080×1520` JPEG social normalizer), and Oracle Cloud PAYG Always Free ARM64 Gotenberg v8.17.0 (`lib/posters/gotenberg.ts`)
@@ -49,7 +49,7 @@ npm audit --omit=dev --audit-level=high                                         
 npx next typegen && npm run typecheck && npx tsc --noEmit -p tests/e2e/tsconfig.json # Strict TS checks
 npm run lint && npm run format                                                      # ESLint (0 errors) & Prettier
 npm test                                                                            # Hermetic unit, property, SEO & PG suite (.env.audit)
-npm run test:e2e                                                                    # Playwright E2E + Axe WCAG 2.2 AA (J1–J23)
+npm run test:e2e                                                                    # Playwright E2E + Axe WCAG 2.2 AA (J1–J24)
 npm run build                                                                       # Production standalone build
 npm run trigger:dev && npm run trigger:deploy                                       # Trigger.dev v4 worker dev & deploy
 npm run db:generate && npm run db:migrate && npm run db:seed && npm run db:backup   # Drizzle DB lifecycle
@@ -93,9 +93,9 @@ npm run db:generate && npm run db:migrate && npm run db:seed && npm run db:backu
 - [app/(public)/AGENTS.md](app/(public)/AGENTS.md): Public 19-route Hub-and-Spoke storefront, `Spec 0025` SEO/GEO, JSON-LD & UTM attribution
 - [app/admin/AGENTS.md](app/admin/AGENTS.md): 4-Hub Admin IA (`/studio`, `/campaigns`, `/desk`, `/catalog`, `/settings`), RBAC & wholesale redaction
 - [components/AGENTS.md](components/AGENTS.md): `@base-ui/react` (`base-nova`), Haramain light tokens, `<ArabicText>` & Custom Journey Builder UI guards
-- [db/AGENTS.md](db/AGENTS.md): Dual-driver PostgreSQL 16 + Drizzle schema (`48` tables), `FOR UPDATE` locks, `2×` seed & `.env.audit` safety
+- [db/AGENTS.md](db/AGENTS.md): Dual-driver PostgreSQL 16 + Drizzle schema (`50` tables), `FOR UPDATE` locks, `2×` seed & `.env.audit` safety
 - [lib/whatsapp/AGENTS.md](lib/whatsapp/AGENTS.md): Meta WhatsApp Cloud API v21.0, HMAC/outbox, `v2:` vault, Intake & `OD-01` Assisted Queue
 - [lib/social/AGENTS.md](lib/social/AGENTS.md): Core 5 Social OAuth, PKCE/HKDF state, `OD-11` vendor audit gates & live-only analytics
 - [trigger/AGENTS.md](trigger/AGENTS.md): Trigger.dev Cloud v4 `schemaTask`s, `9` bounded queues, `6` PKT crons & realtime hooks
 
-_Synchronized after Slice 48 (Admin 4 Hub Operate Surface and Shell Alignment)._
+_Synchronized after Slice 49 (Pilgrim Document Upload Portal and Staff Verification)._

@@ -54,8 +54,7 @@ export const applicationStatusEnum = pgEnum("application_status", [
  * (`0002_production_hardening_foundation.sql`) for W3B pilgrim quote-revision flows (`T-017`).
  */
 export type ExtendedApplicationStatus =
-  | (typeof applicationStatusEnum.enumValues)[number]
-  | "revision_requested"
+  (typeof applicationStatusEnum.enumValues)[number] | "revision_requested"
 
 export const REVISION_REQUESTED_STATUS =
   "revision_requested" as unknown as (typeof applicationStatusEnum.enumValues)[number]
@@ -105,8 +104,7 @@ export const paymentStatusEnum = pgEnum("payment_status", [
 ])
 
 export type ExtendedPaymentStatus =
-  | (typeof paymentStatusEnum.enumValues)[number]
-  | "deposit_paid"
+  (typeof paymentStatusEnum.enumValues)[number] | "deposit_paid"
 
 export const DEPOSIT_PAID_PAYMENT_STATUS =
   "deposit_paid" as unknown as (typeof paymentStatusEnum.enumValues)[number]
@@ -118,6 +116,33 @@ export const paymentMethodEnum = pgEnum("payment_method", [
   "online_gateway",
   "other",
 ])
+
+export const travellerCategoryEnum = pgEnum("traveller_category", [
+  "adult",
+  "child",
+  "infant",
+])
+
+export const pilgrimDocumentTypeEnum = pgEnum("pilgrim_document_type", [
+  "passport_bio_page",
+  "national_id",
+  "visa_photo",
+])
+
+export const pilgrimDocumentStatusEnum = pgEnum("pilgrim_document_status", [
+  "missing",
+  "uploaded",
+  "approved",
+  "reupload_requested",
+  "purged",
+])
+
+export type TravellerCategory =
+  (typeof travellerCategoryEnum.enumValues)[number]
+export type PilgrimDocumentType =
+  (typeof pilgrimDocumentTypeEnum.enumValues)[number]
+export type PilgrimDocumentStatus =
+  (typeof pilgrimDocumentStatusEnum.enumValues)[number]
 
 // ==========================================
 // APPLICATIONS TABLE
@@ -134,6 +159,14 @@ export const applications = pgTable(
       length: 64,
     }).unique(),
     voucherToken: varchar("voucher_token", { length: 128 }).unique(),
+    documentPortalTokenHash: varchar("document_portal_token_hash", {
+      length: 64,
+    }).unique(),
+    documentPortalTokenEncrypted: text("document_portal_token_encrypted"),
+    documentPortalTokenRotatedAt: timestamp(
+      "document_portal_token_rotated_at",
+      { withTimezone: true }
+    ),
     source: applicationSourceEnum("source").notNull(),
     status: applicationStatusEnum("status").notNull().default("pending_quote"),
     presetMode: builderPresetModeEnum("preset_mode").notNull(),
@@ -466,12 +499,122 @@ export const applicationPayments = pgTable(
   (table) => [
     index("idx_payment_app_created").on(table.applicationId, table.createdAt),
     index("idx_payment_quote_id").on(table.quoteId),
-    check("chk_application_payments_positive_amount", sql`${table.amountPkr} > 0`),
+    check(
+      "chk_application_payments_positive_amount",
+      sql`${table.amountPkr} > 0`
+    ),
   ]
 )
 
 export type ApplicationPayment = typeof applicationPayments.$inferSelect
 export type NewApplicationPayment = typeof applicationPayments.$inferInsert
+
+// ==========================================
+// APPLICATION TRAVELLERS & DOCUMENTS (`Spec 0029`)
+// ==========================================
+
+export const applicationTravellers = pgTable(
+  "application_travellers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    applicationId: uuid("application_id")
+      .notNull()
+      .references(() => applications.id, { onDelete: "cascade" }),
+    slotIndex: integer("slot_index").notNull(),
+    category: travellerCategoryEnum("category").notNull(),
+    categoryOrdinal: integer("category_ordinal").notNull(),
+    fullName: text("full_name"),
+    passportNumber: varchar("passport_number", { length: 32 }),
+    passportExpiryDate: date("passport_expiry_date"),
+    nationalIdNumber: varchar("national_id_number", { length: 32 }),
+    expiryOverrideByStaff: boolean("expiry_override_by_staff")
+      .notNull()
+      .default(false),
+    expiryOverrideReason: text("expiry_override_reason"),
+    piiPurgedAt: timestamp("pii_purged_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("uq_app_traveller_slot").on(
+      table.applicationId,
+      table.slotIndex
+    ),
+    uniqueIndex("uq_app_traveller_cat_ord").on(
+      table.applicationId,
+      table.category,
+      table.categoryOrdinal
+    ),
+    check(
+      "chk_app_traveller_slot_pos",
+      sql`${table.slotIndex} >= 1 AND ${table.categoryOrdinal} >= 1`
+    ),
+    check(
+      "chk_app_traveller_override_reason",
+      sql`${table.expiryOverrideByStaff} = false OR (${table.expiryOverrideReason} IS NOT NULL AND length(btrim(${table.expiryOverrideReason})) > 0)`
+    ),
+  ]
+)
+
+export type ApplicationTraveller = typeof applicationTravellers.$inferSelect
+export type NewApplicationTraveller = typeof applicationTravellers.$inferInsert
+
+export const applicationDocuments = pgTable(
+  "application_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    applicationId: uuid("application_id")
+      .notNull()
+      .references(() => applications.id, { onDelete: "cascade" }),
+    travellerId: uuid("traveller_id")
+      .notNull()
+      .references(() => applicationTravellers.id, { onDelete: "cascade" }),
+    docType: pilgrimDocumentTypeEnum("doc_type").notNull(),
+    status: pilgrimDocumentStatusEnum("status").notNull().default("missing"),
+    storageKey: text("storage_key"),
+    originalFilename: varchar("original_filename", { length: 200 }),
+    mimeType: varchar("mime_type", { length: 64 }),
+    sizeBytes: integer("size_bytes"),
+    rejectionReason: text("rejection_reason"),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    piiPurgedAt: timestamp("pii_purged_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("uq_traveller_doc_type").on(table.travellerId, table.docType),
+    index("idx_app_docs_app_status").on(table.applicationId, table.status),
+    check(
+      "chk_app_doc_size_bounds",
+      sql`${table.sizeBytes} IS NULL OR (${table.sizeBytes} > 0 AND ${table.sizeBytes} <= 10485760)`
+    ),
+    check(
+      "chk_app_doc_rejection_reason",
+      sql`${table.status} != 'reupload_requested' OR (${table.rejectionReason} IS NOT NULL AND length(btrim(${table.rejectionReason})) > 0)`
+    ),
+    check(
+      "chk_app_doc_visa_photo_mime",
+      sql`${table.docType} != 'visa_photo' OR ${table.mimeType} IS NULL OR ${table.mimeType} IN ('image/jpeg', 'image/png', 'image/webp')`
+    ),
+  ]
+)
+
+export type ApplicationDocument = typeof applicationDocuments.$inferSelect
+export type NewApplicationDocument = typeof applicationDocuments.$inferInsert
 
 // ==========================================
 // DRIZZLE RELATIONS GRAPH
@@ -516,6 +659,37 @@ export const applicationsRelations = relations(
     transportSegments: many(applicationTransportSegments),
     quotes: many(applicationQuotes),
     payments: many(applicationPayments),
+    travellers: many(applicationTravellers),
+    documents: many(applicationDocuments),
+  })
+)
+
+export const applicationTravellersRelations = relations(
+  applicationTravellers,
+  ({ one, many }) => ({
+    application: one(applications, {
+      fields: [applicationTravellers.applicationId],
+      references: [applications.id],
+    }),
+    documents: many(applicationDocuments),
+  })
+)
+
+export const applicationDocumentsRelations = relations(
+  applicationDocuments,
+  ({ one }) => ({
+    application: one(applications, {
+      fields: [applicationDocuments.applicationId],
+      references: [applications.id],
+    }),
+    traveller: one(applicationTravellers, {
+      fields: [applicationDocuments.travellerId],
+      references: [applicationTravellers.id],
+    }),
+    reviewedByUser: one(user, {
+      fields: [applicationDocuments.reviewedByUserId],
+      references: [user.id],
+    }),
   })
 )
 

@@ -15,6 +15,7 @@ Public pilgrim-facing Hub-and-Spoke pages (`19` indexable route patterns covered
 | [umrah-packages/slug](./umrah-packages/%5Bslug%5D/page.tsx) | Package detail + [opengraph-image.tsx](./umrah-packages/%5Bslug%5D/opengraph-image.tsx) (`1200x630`) |
 | [hotels/city](./hotels/%5Bcity%5D/page.tsx) | Makkah & Madinah hotel guides (`dynamicParams = false`) |
 | [voucher/token](./voucher/%5Btoken%5D/page.tsx) | Private QR voucher (`force-dynamic`, `noindex`, [forbidden.tsx](./voucher/%5Btoken%5D/forbidden.tsx)) |
+| [documents/token](./documents/%5Btoken%5D/page.tsx) | Private pilgrim document checklist (`force-dynamic`, `noindex`, `no-referrer`, [forbidden.tsx](./documents/%5Btoken%5D/forbidden.tsx)) |
 | [metadata.ts](../../lib/seo/metadata.ts) | `buildPublicMetadata()`, apex `CANONICAL_ORIGIN`, `clampSeoTitle`/`Description` |
 | [public-queries.ts](../../lib/seo/public-queries.ts) | Wholesale-SAR-stripped public DTOs & active PKT date filters |
 | [json-ld.ts](../../lib/seo/json-ld.ts) | `<JsonLd />` + XSS-safe `serializeJsonLd()` (`OD-09b`/`OD-09e`/`OD-10` guards) |
@@ -31,7 +32,7 @@ Public pilgrim-facing Hub-and-Spoke pages (`19` indexable route patterns covered
 
 - **Voucher Access Gate (`OD-03`/`OD-04`)**: `/voucher/[token]` runs `resolvePublicVoucherByToken()` ([voucher-loader.ts](../../components/public/voucher-loader.ts)) with constant-time hash comparison — returns `404` `notFound()` on invalid token and HTTP `403` `forbidden()` until `approved` plus verified deposit or full payment.
 - **Route Parameter Locks**: `/umrah-packages/from-[city]` and `/hotels/[city]` enforce `dynamicParams = false`; Next.js 16 `params` and `searchParams` must be awaited as `Promise`s.
-- **Preview Crawl Block & Revalidation**: [robots.ts](../robots.ts) blocks everything when `VERCEL_ENV !== "production"`, plus `/admin/`, `/api/`, `/voucher/`, `/quote/`, `CCBot`, and `Bytespider`. Catalog/CMS mutations must call `revalidatePublicSeoPaths()` ([revalidate-public.ts](../../lib/seo/revalidate-public.ts)).
+- **Preview Crawl Block & Revalidation**: [robots.ts](../robots.ts) blocks everything when `VERCEL_ENV !== "production"`, plus `/admin/`, `/api/`, `/voucher/`, `/quote/`, `/documents/`, `CCBot`, and `Bytespider`. Catalog/CMS mutations must call `revalidatePublicSeoPaths()` ([revalidate-public.ts](../../lib/seo/revalidate-public.ts)).
 
 ## Agent skills
 
@@ -45,5 +46,6 @@ Public pilgrim-facing Hub-and-Spoke pages (`19` indexable route patterns covered
 - [Spec 0007 — Group Packages & Hajj Inquiries](../../docs/specs/0007-group-packages-and-hajj-inquiries.md)
 - [Spec 0026 — Home Page Editorial Redesign and Public Motion Architecture](../../docs/specs/0026-home-page-redesign-and-motion-architecture/index.md)
 - [Spec 0027 — Secondary Public Hubs, Spokes and Shell Editorial Alignment](../../docs/specs/0027-public-storefront-editorial-alignment/index.md)
+- [Spec 0029 — Pilgrim Document Upload Portal and Staff Verification](../../docs/specs/0029-pilgrim-document-upload-portal/index.md)
 
 _Drafted by /audit from the repo, worth a quick human pass. Edit freely: once a line stops matching this draft, later runs treat it as curated and will flag rather than overwrite it._

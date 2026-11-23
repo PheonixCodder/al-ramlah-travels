@@ -131,6 +131,8 @@ export interface QuoteWorksheetFormProps {
     codePrefix: string
     defaultCommissionPkr: number
   }>
+  portalPath?: string | null
+  whatsappOptedOut?: boolean
 }
 
 export function QuoteWorksheetForm({
@@ -142,8 +144,11 @@ export function QuoteWorksheetForm({
   rateHints,
   sarToPkrRate = 75,
   suppliers = [],
+  portalPath = null,
+  whatsappOptedOut = false,
 }: QuoteWorksheetFormProps) {
   const router = useRouter()
+  const isSuperAdmin = currentUserRole === "super_admin"
 
   // Hydrate initial pillars without zeroing `group_booking` package totals (`T-022`)
   const hydratedPillars = React.useMemo(
@@ -384,8 +389,10 @@ export function QuoteWorksheetForm({
     setTransportTotal(ws.transportTotalPkr)
     setZiyaratTotal(ws.ziyaratTotalPkr)
     setDiscount(ws.discountPkr)
-    setCommissionPkr(ws.commissionPkr)
-    setSupplierNetCostPkr(ws.supplierNetCostPkr)
+    if (isSuperAdmin) {
+      setCommissionPkr(ws.commissionPkr)
+      setSupplierNetCostPkr(ws.supplierNetCostPkr)
+    }
     setCustomerNotes(ws.quoteNotesCustomer)
     setInternalNotes(ws.internalNotesAdmin)
 
@@ -541,9 +548,13 @@ export function QuoteWorksheetForm({
         paymentStatus: reconciledPaymentStatus,
         amountPaidPkr: effectivePaid,
         supplierId: supplierId || null,
-        supplierNetCostPkr: Math.max(0, Math.floor(supplierNetCostPkr)),
-        commissionPkr: Math.max(0, Math.floor(commissionPkr)),
-        allowBelowNetCost,
+        ...(isSuperAdmin
+          ? {
+              supplierNetCostPkr: Math.max(0, Math.floor(supplierNetCostPkr)),
+              commissionPkr: Math.max(0, Math.floor(commissionPkr)),
+              allowBelowNetCost,
+            }
+          : { allowBelowNetCost: false }),
         validUntilDays: validDays,
         targetStatus,
       }
@@ -628,6 +639,8 @@ export function QuoteWorksheetForm({
       {/* Live Quote Dispatch Bar synced with form state */}
       <QuoteDispatchBar
         application={application}
+        documentPortalPath={portalPath}
+        whatsappOptedOut={whatsappOptedOut}
         liveQuote={{
           grandTotalPkr,
           visaTotalPkr: visaTotal,
@@ -880,9 +893,10 @@ export function QuoteWorksheetForm({
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                 <span className="text-[10px] text-muted-foreground tabular-nums">
                   Exchange Rate: 1 SAR ={" "}
-                  {copilotDraft.suggestedQuoteWorksheet.sarToPkrRate} PKR ·
-                  Margin: PKR{" "}
-                  {copilotDraft.suggestedQuoteWorksheet.commissionPkr.toLocaleString()}
+                  {copilotDraft.suggestedQuoteWorksheet.sarToPkrRate} PKR
+                  {isSuperAdmin
+                    ? ` · Margin: PKR ${copilotDraft.suggestedQuoteWorksheet.commissionPkr.toLocaleString()}`
+                    : ""}
                 </span>
                 <Button
                   type="button"
@@ -1238,18 +1252,22 @@ export function QuoteWorksheetForm({
             </div>
           </div>
 
-          {/* B2B Supplier Attribution & Commission Box (`T-059`) */}
+          {/* B2B Supplier Attribution & Commission Box (`T-059`, `T-061`) */}
           <div className="flex flex-col gap-3 rounded-lg bg-accent/30 p-3 text-xs">
             <div className="flex items-center justify-between font-semibold text-foreground">
-              <span>B2B Supplier &amp; Al Ramlah Commission:</span>
-              <Badge
-                variant="outline"
-                className="border-gold-border bg-background font-mono text-[10px] font-bold text-primary tabular-nums"
-              >
-                Margin: PKR {commissionPkr.toLocaleString()}
-              </Badge>
+              <span>B2B Supplier Attribution{isSuperAdmin ? " & Al Ramlah Commission:" : ":"}</span>
+              {isSuperAdmin && (
+                <Badge
+                  variant="outline"
+                  className="border-gold-border bg-background font-mono text-[10px] font-bold text-primary tabular-nums"
+                >
+                  Margin: PKR {commissionPkr.toLocaleString()}
+                </Badge>
+              )}
             </div>
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+            <div
+              className={`grid grid-cols-1 gap-2.5 ${isSuperAdmin ? "sm:grid-cols-3" : ""}`}
+            >
               <div>
                 <Label
                   htmlFor="quote-supplier"
@@ -1263,6 +1281,7 @@ export function QuoteWorksheetForm({
                   onChange={(e) => {
                     const nextSupId = e.target.value
                     setSupplierId(nextSupId)
+                    if (!isSuperAdmin) return
                     if (nextSupId) {
                       const found = suppliers.find((s) => s.id === nextSupId)
                       if (found && commissionPkr === 0) {
@@ -1291,80 +1310,84 @@ export function QuoteWorksheetForm({
                   ))}
                 </select>
               </div>
-              <div>
-                <Label
-                  htmlFor="quote-commission"
-                  className="text-[11px] text-muted-foreground"
-                >
-                  Our Commission (PKR)
-                </Label>
-                <Input
-                  id="quote-commission"
-                  type="number"
-                  min={0}
-                  value={commissionPkr}
-                  onChange={(e) => {
-                    const nextComm = Math.max(0, Number(e.target.value) || 0)
-                    setCommissionPkr(nextComm)
-                    if (supplierId && grandTotalPkr > 0) {
-                      setSupplierNetCostPkr(
-                        Math.max(0, grandTotalPkr - nextComm)
-                      )
-                    }
-                  }}
-                  className="mt-1 font-mono text-xs tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                  disabled={isSubmitting}
-                />
-              </div>
-              <div>
-                <Label
-                  htmlFor="quote-net-cost"
-                  className="text-[11px] text-muted-foreground"
-                >
-                  Supplier Net Payable (PKR)
-                </Label>
-                <Input
-                  id="quote-net-cost"
-                  type="number"
-                  min={0}
-                  value={supplierNetCostPkr}
-                  onChange={(e) =>
-                    setSupplierNetCostPkr(
-                      Math.max(0, Number(e.target.value) || 0)
-                    )
-                  }
-                  className="mt-1 font-mono text-xs tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                  disabled={isSubmitting}
-                />
-              </div>
+              {isSuperAdmin && (
+                <>
+                  <div>
+                    <Label
+                      htmlFor="quote-commission"
+                      className="text-[11px] text-muted-foreground"
+                    >
+                      Our Commission (PKR)
+                    </Label>
+                    <Input
+                      id="quote-commission"
+                      type="number"
+                      min={0}
+                      value={commissionPkr}
+                      onChange={(e) => {
+                        const nextComm = Math.max(0, Number(e.target.value) || 0)
+                        setCommissionPkr(nextComm)
+                        if (supplierId && grandTotalPkr > 0) {
+                          setSupplierNetCostPkr(
+                            Math.max(0, grandTotalPkr - nextComm)
+                          )
+                        }
+                      }}
+                      className="mt-1 font-mono text-xs tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                  <div>
+                    <Label
+                      htmlFor="quote-net-cost"
+                      className="text-[11px] text-muted-foreground"
+                    >
+                      Supplier Net Payable (PKR)
+                    </Label>
+                    <Input
+                      id="quote-net-cost"
+                      type="number"
+                      min={0}
+                      value={supplierNetCostPkr}
+                      onChange={(e) =>
+                        setSupplierNetCostPkr(
+                          Math.max(0, Number(e.target.value) || 0)
+                        )
+                      }
+                      className="mt-1 font-mono text-xs tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
-            {isBelowNetCost && (
+            {!isSuperAdmin && (
+              <p className="text-[11px] text-muted-foreground">
+                Wholesale supplier net cost and margin figures are visible to
+                Super Admin only.
+              </p>
+            )}
+
+            {isSuperAdmin && isBelowNetCost && (
               <div className="flex flex-col gap-1.5 rounded-md bg-status-danger-bg p-2 text-[11px] text-status-danger">
                 <p className="font-semibold tabular-nums">
                   Warning: Grand Total (PKR {grandTotalPkr.toLocaleString()}) is
                   below Supplier Net Payable (PKR{" "}
                   {supplierNetCostPkr.toLocaleString()}).
                 </p>
-                {currentUserRole === "super_admin" ? (
-                  <label className="inline-flex cursor-pointer items-center gap-1.5 font-medium">
-                    <input
-                      type="checkbox"
-                      checked={allowBelowNetCost}
-                      onChange={(e) => setAllowBelowNetCost(e.target.checked)}
-                      className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                    />
-                    <span>
-                      Super Admin Override: Authorize promotional pricing below
-                      net cost
-                    </span>
-                  </label>
-                ) : (
-                  <p>
-                    Only a Super Admin can authorize selling below supplier net
-                    cost.
-                  </p>
-                )}
+                <label className="inline-flex cursor-pointer items-center gap-1.5 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={allowBelowNetCost}
+                    onChange={(e) => setAllowBelowNetCost(e.target.checked)}
+                    className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  />
+                  <span>
+                    Super Admin Override: Authorize promotional pricing below
+                    net cost
+                  </span>
+                </label>
               </div>
             )}
           </div>

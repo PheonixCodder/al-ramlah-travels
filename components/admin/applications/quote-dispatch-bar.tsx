@@ -11,8 +11,12 @@ import {
   Loader2,
   Send,
   Lock,
+  Copy,
+  Check,
+  ShieldCheck,
 } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   dispatchApplicationQuotationWhatsappAction,
@@ -53,12 +57,16 @@ export interface QuoteDispatchBarProps {
   }
   latestQuote?: QuoteDispatchBarQuoteItem | null
   liveQuote?: QuoteDispatchBarQuoteItem | null
+  documentPortalPath?: string | null
+  whatsappOptedOut?: boolean
 }
 
 export function QuoteDispatchBar({
   application,
   latestQuote,
   liveQuote,
+  documentPortalPath = null,
+  whatsappOptedOut = false,
 }: QuoteDispatchBarProps) {
   const activeQuote = liveQuote ?? latestQuote
   const serverPdfUrl = activeQuote?.quotationPdfUrl ?? null
@@ -73,10 +81,33 @@ export function QuoteDispatchBar({
   const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false)
   const [isSendingEmail, setIsSendingEmail] = React.useState(false)
   const [isCheckingWaWindow, setIsCheckingWaWindow] = React.useState(false)
+  const [copiedPortalLink, setCopiedPortalLink] = React.useState(false)
   const [dispatchNotice, setDispatchNotice] = React.useState<{
     tone: "success" | "warning" | "error"
     message: string
   } | null>(null)
+
+  const handleCopyPortalLink = async () => {
+    if (!documentPortalPath) return
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://alramlahtravels.com"
+    try {
+      await navigator.clipboard.writeText(`${origin}${documentPortalPath}`)
+      setCopiedPortalLink(true)
+      setDispatchNotice({
+        tone: "success",
+        message: "Document portal link copied to clipboard.",
+      })
+      setTimeout(() => setCopiedPortalLink(false), 2500)
+    } catch {
+      setDispatchNotice({
+        tone: "error",
+        message: "Clipboard copy failed. Open the Document Portal link directly.",
+      })
+    }
+  }
 
   const handleGenerateLuxuryPdf = async () => {
     setIsGeneratingPdf(true)
@@ -267,26 +298,52 @@ export function QuoteDispatchBar({
 
         <div className="flex flex-wrap items-center gap-2">
           {/* WhatsApp Direct Click-to-Chat */}
-          <a
-            href={waUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            title="Open WhatsApp Click-to-Chat with itemized quotation"
-          >
-            <MessageSquare className="size-3.5" aria-hidden="true" />
-            <span>WhatsApp Chat</span>
-          </a>
+          {whatsappOptedOut ? (
+            <>
+              <Badge
+                variant="outline"
+                className="border-status-danger-border bg-status-danger-bg text-[11px] font-semibold text-status-danger"
+              >
+                WhatsApp Opted Out
+              </Badge>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled
+                title="Pilgrim opted out of WhatsApp messages (do_not_contact)"
+                className="gap-1.5 border-border bg-muted/50 text-xs font-medium text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <MessageSquare className="size-3.5" aria-hidden="true" />
+                <span>WhatsApp Chat</span>
+              </Button>
+            </>
+          ) : (
+            <a
+              href={waUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              title="Open WhatsApp Click-to-Chat with itemized quotation"
+            >
+              <MessageSquare className="size-3.5" aria-hidden="true" />
+              <span>WhatsApp Chat</span>
+            </a>
+          )}
 
           {/* Meta 24h Window Check for Cloud API PDF */}
           <Button
             type="button"
             variant="outline"
             size="sm"
-            disabled={isCheckingWaWindow}
+            disabled={isCheckingWaWindow || whatsappOptedOut}
             onClick={handleVerifyWhatsappWindow}
             className="gap-1.5 border-status-success-border bg-card text-xs font-medium text-status-success hover:bg-status-success-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            title="Check Meta 24-hour customer care window before sending freeform PDF"
+            title={
+              whatsappOptedOut
+                ? "Pilgrim opted out of WhatsApp messages (do_not_contact)"
+                : "Check Meta 24-hour customer care window before sending freeform PDF"
+            }
           >
             {isCheckingWaWindow ? (
               <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
@@ -377,6 +434,50 @@ export function QuoteDispatchBar({
               <Lock className="size-3.5" aria-hidden="true" />
               <span>Voucher Locked</span>
             </Button>
+          )}
+
+          {/* Pilgrim Document Upload Portal Link (`Spec 0029`, `AC-8`) */}
+          {documentPortalPath && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCopyPortalLink}
+                className="gap-1.5 border-primary/30 bg-card text-xs font-medium text-primary hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                {copiedPortalLink ? (
+                  <Check
+                    className="size-3.5 text-status-success"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Copy className="size-3.5" aria-hidden="true" />
+                )}
+                <span>
+                  {copiedPortalLink
+                    ? "Copied Portal Link"
+                    : "Copy Document Portal Link"}
+                </span>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-primary/30 bg-primary/5 text-xs font-medium text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                render={
+                  <Link href={documentPortalPath} target="_blank" />
+                }
+                nativeButton={false}
+              >
+                <ShieldCheck className="size-3.5" aria-hidden="true" />
+                <span>Document Portal</span>
+                <ExternalLink
+                  className="size-3 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              </Button>
+            </>
           )}
         </div>
       </div>

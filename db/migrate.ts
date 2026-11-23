@@ -12,7 +12,16 @@ import {
   loadSafeScriptEnv,
   maskConnectionUrl,
 } from "../scripts/_guard"
-import { isNeonServerlessUrl } from "./index"
+
+function isNeonServerlessUrl(connectionString: string): boolean {
+  try {
+    const parsed = new URL(connectionString)
+    const host = parsed.hostname.toLowerCase()
+    return host.endsWith(".neon.tech") || host.includes(".neon.tech")
+  } catch {
+    return false
+  }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const MIGRATIONS_FOLDER = path.resolve(__dirname, "../drizzle")

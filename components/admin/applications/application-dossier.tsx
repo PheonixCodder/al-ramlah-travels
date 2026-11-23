@@ -19,6 +19,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/layout/status-badge"
 import { ArabicText } from "@/components/public/arabic-text"
+import type { AdminApplicationDocumentPortalData } from "@/app/actions/pilgrim-documents"
+import { PilgrimDocumentsReviewPanel } from "./pilgrim-documents-review-panel"
 import { formatCitySequence } from "@/lib/domain"
 import { formatWhatsAppPhone } from "@/lib/phone"
 import { inferAcquisitionChannel } from "@/lib/seo/utm"
@@ -173,11 +175,13 @@ export interface ApplicationDossierProps {
     transportSegments: TransportSegmentItem[]
   }
   ziyaratPlaces?: ZiyaratPlaceItem[]
+  documentPortal?: AdminApplicationDocumentPortalData | null
 }
 
 export function ApplicationDossier({
   application,
   ziyaratPlaces = [],
+  documentPortal = null,
 }: ApplicationDossierProps) {
   const cleanWa = formatWhatsAppPhone(application.customerWhatsapp || application.customerPhone)
   const acquisitionChannel = inferAcquisitionChannel(application)
@@ -524,6 +528,19 @@ export function ApplicationDossier({
           </div>
         </CardContent>
       </Card>
+
+      {/* 2b. Pilgrim Document Upload Portal & Staff Verification (`Spec 0029`) */}
+      {documentPortal && (
+        <PilgrimDocumentsReviewPanel
+          applicationId={application.id}
+          referenceNumber={application.referenceNumber}
+          customerName={application.customerName}
+          customerEmail={application.customerEmail ?? null}
+          customerPhone={application.customerPhone}
+          customerWhatsapp={application.customerWhatsapp}
+          documentPortal={documentPortal}
+        />
+      )}
 
       {/* 3. Flights Configuration (if requested) */}
       {application.includeFlights && (

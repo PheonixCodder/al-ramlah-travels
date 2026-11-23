@@ -3,7 +3,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
-import { and, desc, eq, inArray } from "drizzle-orm"
+import { and, desc, eq, inArray, sql } from "drizzle-orm"
 import { z } from "zod"
 import { db, withTransaction, type DbOrTx } from "@/db"
 import * as schema from "@/db/schema"
@@ -11,11 +11,23 @@ import {
   DEPOSIT_PAID_PAYMENT_STATUS,
   REVISION_REQUESTED_STATUS,
 } from "@/db/schema/applications"
+import {
+  ensureApplicationDocumentPortalUnlockedTx,
+  type EnsureDocumentPortalTokenResult,
+} from "@/app/actions/pilgrim-documents"
 import { recordAuditLog } from "@/lib/audit-log"
 import { requireAdmin } from "@/lib/auth-guard"
+import { getCompanyInfo } from "@/lib/company-info"
+import {
+  decryptDocumentPortalPath,
+  evaluateDocumentPortalUnlockGate,
+} from "@/lib/domain/pilgrim-documents"
 import { calculateVisaTierAndCost } from "@/lib/domain/visa-calc"
 import { calculateVehicleQuantity } from "@/lib/domain/vehicle-capacity"
+import { logger } from "@/lib/logger"
 import { enforceRateLimit, extractClientIp } from "@/lib/rate-limit"
+import { sendPilgrimDocumentPortalEmail } from "@/lib/security/mailer"
+import { getCanonicalSiteUrl } from "@/lib/seo/metadata"
 import {
   getTodayPktIso,
   isStrictIsoCalendarDate,
@@ -183,7 +195,23 @@ export interface PublicStatusApplicationDto {
   latestQuote: PublicStatusQuoteSummary | null
   voucherUrl: string | null
   voucherGateState: "unlocked" | "awaiting_deposit" | "locked"
+  documentPortal: PublicStatusDocumentPortalSummary
 }
+
+export type PublicStatusDocumentPortalSummary =
+  | {
+      unlocked: true
+      portalPath: string
+      uploadedCount: number
+      approvedCount: number
+      reuploadRequestedCount: number
+      totalRequiredCount: number
+    }
+  | {
+      unlocked: false
+      reason: "hajj_inquiry" | "unapproved" | "closed" | "awaiting_deposit"
+      portalPath: null
+    }
 
 export interface StatusLookupResult {
   success: boolean
@@ -1963,6 +1991,84 @@ export async function lookupApplicationStatus(
       ? "awaiting_deposit"
       : "locked"
 
+  const [paidSumRow] = await db
+    .select({
+      verifiedTotal: sql<number>`COALESCE(SUM(${schema.applicationPayments.amountPkr}), 0)::bigint`,
+    })
+    .from(schema.applicationPayments)
+    .where(
+      and(
+        eq(schema.applicationPayments.applicationId, app.id),
+        sql`${schema.applicationPayments.verifiedAt} IS NOT NULL`
+      )
+    )
+
+  const verifiedPaidSumPkr = Number(paidSumRow?.verifiedTotal ?? 0)
+  const portalGateDecision = evaluateDocumentPortalUnlockGate({
+    status: app.status,
+    source: app.source,
+    latestQuotePaymentStatus: latestQuote?.paymentStatus ?? null,
+    verifiedPaidSumPkr,
+  })
+
+  let documentPortal: PublicStatusDocumentPortalSummary
+  if (portalGateDecision.unlocked) {
+    let portalPath: string | null = null
+    if (app.documentPortalTokenEncrypted) {
+      try {
+        portalPath = decryptDocumentPortalPath(app.documentPortalTokenEncrypted)
+      } catch {
+        portalPath = null
+      }
+    }
+    if (!portalPath) {
+      const minted = await withTransaction((tx) =>
+        ensureApplicationDocumentPortalUnlockedTx(tx, app.id)
+      )
+      if (minted.unlocked) {
+        portalPath = minted.portalPath
+      }
+    }
+
+    if (portalPath) {
+      const [docAgg] = await db
+        .select({
+          totalCount: sql<number>`count(*)::int`,
+          uploadedCount: sql<number>`count(*) filter (where ${schema.applicationDocuments.status} = 'uploaded')::int`,
+          approvedCount: sql<number>`count(*) filter (where ${schema.applicationDocuments.status} = 'approved')::int`,
+          reuploadRequestedCount: sql<number>`count(*) filter (where ${schema.applicationDocuments.status} = 'reupload_requested')::int`,
+        })
+        .from(schema.applicationDocuments)
+        .where(eq(schema.applicationDocuments.applicationId, app.id))
+
+      const totalRequiredCount =
+        (docAgg?.totalCount ?? 0) > 0
+          ? docAgg!.totalCount
+          : Math.max(0, app.totalPassportCount * 3)
+
+      documentPortal = {
+        unlocked: true,
+        portalPath,
+        uploadedCount: docAgg?.uploadedCount ?? 0,
+        approvedCount: docAgg?.approvedCount ?? 0,
+        reuploadRequestedCount: docAgg?.reuploadRequestedCount ?? 0,
+        totalRequiredCount,
+      }
+    } else {
+      documentPortal = {
+        unlocked: false,
+        reason: "awaiting_deposit",
+        portalPath: null,
+      }
+    }
+  } else {
+    documentPortal = {
+      unlocked: false,
+      reason: portalGateDecision.reason,
+      portalPath: null,
+    }
+  }
+
   const sanitizedQuote: PublicStatusQuoteSummary | null = latestQuote
     ? {
         version: latestQuote.version,
@@ -2088,6 +2194,7 @@ export async function lookupApplicationStatus(
         ? `/voucher/${encodeURIComponent(app.voucherToken)}`
         : null,
     voucherGateState,
+    documentPortal,
   }
 
   return {
@@ -2101,6 +2208,41 @@ export async function lookupApplicationStatus(
 // ==========================================
 // 5. PILGRIM QUOTE ACCEPTANCE / REVISION (`T-017`, `OD-04`)
 // ==========================================
+
+async function dispatchPortalUnlockedEmailNonFatal(
+  portalUnlock: EnsureDocumentPortalTokenResult | null | undefined
+): Promise<void> {
+  if (
+    !portalUnlock?.unlocked ||
+    !portalUnlock.newlyMinted ||
+    !portalUnlock.portalPath ||
+    !portalUnlock.customerEmail
+  ) {
+    return
+  }
+
+  try {
+    const [settingsRow] = await db
+      .select()
+      .from(schema.agencySettings)
+      .limit(1)
+    const companyInfo = getCompanyInfo(settingsRow ?? null)
+    const portalUrl = `${getCanonicalSiteUrl().origin}${portalUnlock.portalPath}`
+    await sendPilgrimDocumentPortalEmail({
+      to: portalUnlock.customerEmail,
+      customerName: portalUnlock.customerName,
+      referenceNumber: portalUnlock.referenceNumber,
+      portalUrl,
+      event: "portal_unlocked",
+      companyInfo,
+    })
+  } catch (mailErr: unknown) {
+    logger.warn("Non-fatal document portal unlock email warning", {
+      referenceNumber: portalUnlock.referenceNumber,
+      error: mailErr,
+    })
+  }
+}
 
 export async function respondToApplicationQuoteAction(
   rawInput: unknown
@@ -2190,6 +2332,12 @@ export async function respondToApplicationQuoteAction(
   }
 
   if (decision === "accept" && app.status === "approved") {
+    if (!app.documentPortalTokenHash || !app.documentPortalTokenEncrypted) {
+      const portalUnlock = await withTransaction((tx) =>
+        ensureApplicationDocumentPortalUnlockedTx(tx, app.id)
+      )
+      await dispatchPortalUnlockedEmailNonFatal(portalUnlock)
+    }
     const token = app.voucherToken
     const unlocked = isVoucherUnlocked("approved", token, latestQuote.paymentStatus)
     return {
@@ -2211,7 +2359,54 @@ export async function respondToApplicationQuoteAction(
   try {
     const outcome = await withTransaction(async (tx) => {
       if (decision === "accept") {
-        const voucherToken = app.voucherToken || mintCapabilityVoucherToken()
+        const lockedRes = await tx.execute(
+          sql`SELECT id, status::text AS status, voucher_token FROM applications WHERE id = ${app.id} FOR UPDATE`
+        )
+        const lockedRow = (
+          lockedRes as unknown as {
+            rows?: Array<{
+              id: string
+              status: string
+              voucher_token: string | null
+            }>
+          }
+        ).rows?.[0]
+
+        if (!lockedRow) {
+          throw new Error("Application dossier not found.")
+        }
+
+        if (lockedRow.status === "approved") {
+          const portalUnlock = await ensureApplicationDocumentPortalUnlockedTx(
+            tx,
+            app.id
+          )
+          const unlocked = isVoucherUnlocked(
+            "approved",
+            lockedRow.voucher_token,
+            latestQuote.paymentStatus
+          )
+          return {
+            status: "approved" as const,
+            voucherUrl:
+              unlocked && lockedRow.voucher_token
+                ? `/voucher/${encodeURIComponent(lockedRow.voucher_token)}`
+                : null,
+            voucherGateState: (unlocked
+              ? "unlocked"
+              : "awaiting_deposit") as "unlocked" | "awaiting_deposit",
+            portalUnlock,
+          }
+        }
+
+        if (!allowedSourceStatuses.includes(lockedRow.status)) {
+          throw new Error(
+            `Quotation response cannot be recorded while dossier status is '${lockedRow.status}'.`
+          )
+        }
+
+        const voucherToken =
+          lockedRow.voucher_token || mintCapabilityVoucherToken()
         const now = new Date()
 
         await tx
@@ -2244,7 +2439,7 @@ export async function respondToApplicationQuoteAction(
             action: "pilgrim.quote.accepted",
             entityType: "application",
             entityId: app.id,
-            before: { status: app.status },
+            before: { status: lockedRow.status },
             after: {
               status: "approved",
               quoteVersion: latestQuote.version,
@@ -2253,6 +2448,11 @@ export async function respondToApplicationQuoteAction(
             ipAddress: clientIp,
           },
           tx
+        )
+
+        const portalUnlock = await ensureApplicationDocumentPortalUnlockedTx(
+          tx,
+          app.id
         )
 
         const unlocked = isVoucherUnlocked(
@@ -2269,6 +2469,7 @@ export async function respondToApplicationQuoteAction(
           voucherGateState: (unlocked
             ? "unlocked"
             : "awaiting_deposit") as "unlocked" | "awaiting_deposit",
+          portalUnlock,
         }
       } else {
         const cleanedNotes = (revisionNotes ?? "").trim().slice(0, 1000)
@@ -2305,13 +2506,18 @@ export async function respondToApplicationQuoteAction(
           status: String(REVISION_REQUESTED_STATUS),
           voucherUrl: null,
           voucherGateState: "locked" as const,
+          portalUnlock: null as EnsureDocumentPortalTokenResult | null,
         }
       }
     })
 
+    await dispatchPortalUnlockedEmailNonFatal(outcome.portalUnlock)
+
     return {
       success: true,
-      ...outcome,
+      status: outcome.status,
+      voucherUrl: outcome.voucherUrl,
+      voucherGateState: outcome.voucherGateState,
     }
   } catch (err: unknown) {
     return {

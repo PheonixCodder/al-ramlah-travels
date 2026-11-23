@@ -44,16 +44,16 @@ jobs:
       DATABASE_URL_UNPOOLED: "postgresql://postgres:auditpass@127.0.0.1:5432/alramlah_audit"
       # Deterministic CI-only non-secret 64-hex AES-256-GCM test key
       ENCRYPTION_KEY: "a3f19c4e7b2d80561e4a9c7b3f802d6e5a1c9f4b7d208e631a5f8c2d9b4e7013"
-      BETTER_AUTH_SECRET: "ci-hermetic-better-auth-test-secret-8f4c2e9a1b7d6035"
+      BETTER_AUTH_SECRET: "audit_mock_ci_better_auth_test_secret_8f4c2e9a1b7d6035"
       BETTER_AUTH_URL: "http://127.0.0.1:3123"
       NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3123"
-      WHATSAPP_VERIFY_TOKEN: "ci-hermetic-whatsapp-verify-token"
+      WHATSAPP_VERIFY_TOKEN: "audit_mock_whatsapp_verify_token"
       WHATSAPP_MOCK_MODE: "true"
-      META_APP_ID: "ci-hermetic-meta-app-id"
-      META_APP_SECRET: "ci-hermetic-meta-app-secret"
+      META_APP_ID: "audit_mock_meta_app_id"
+      META_APP_SECRET: "audit_mock_meta_app_secret"
       GOTENBERG_API_URL: "http://127.0.0.1:3999"
-      GOTENBERG_API_KEY: "test-gotenberg-key"
-      HEALTHCHECK_BEARER_TOKEN: "ci-hermetic-healthcheck-token-9f8e7d6c"
+      GOTENBERG_API_KEY: "audit_mock_gotenberg_key"
+      HEALTHCHECK_BEARER_TOKEN: "audit_mock_healthcheck_token_9f8e7d6c"
 
     steps:
       - name: Checkout repository
@@ -226,7 +226,7 @@ jobs:
             console.log(`Verified ${nftFiles.length} .nft.json manifests with 0 .env or public/uploads leaks.`);
           '
 
-      - name: "Gate 10: Playwright Chromium E2E & WCAG suite (J1-J22)"
+      - name: "Gate 10: Playwright Chromium E2E & WCAG suite (J1-J24)"
         run: npx playwright install --with-deps chromium && npm run test:e2e
 
       - name: Upload Playwright report on failure

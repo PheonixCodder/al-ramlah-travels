@@ -5,7 +5,19 @@ import { describe, it } from "node:test"
 import { fileURLToPath } from "node:url"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const ORACLE_DIR = path.resolve(__dirname, "../../../../scripts/oracle-gotenberg")
+const REPO_LOCAL_ORACLE_DIR = path.resolve(
+  __dirname,
+  "../../../scripts/oracle-gotenberg"
+)
+const WORKSPACE_PARENT_ORACLE_DIR = path.resolve(
+  __dirname,
+  "../../../../scripts/oracle-gotenberg"
+)
+const ORACLE_DIR = fs.existsSync(
+  path.join(REPO_LOCAL_ORACLE_DIR, "docker-compose.yml")
+)
+  ? REPO_LOCAL_ORACLE_DIR
+  : WORKSPACE_PARENT_ORACLE_DIR
 
 describe("F-INFRA T-051: Oracle Cloud Always Free Gotenberg Hardening & Font/SSRF Lockdown", () => {
   it("T-051: pins gotenberg:8.17.x, disables Chromium JS, blocks IMDS/RFC1918/localhost, and sets non-Swarm Compose limits", () => {

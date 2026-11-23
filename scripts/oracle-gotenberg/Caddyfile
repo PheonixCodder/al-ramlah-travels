@@ -1,0 +1,47 @@
+{$GOTENBERG_DOMAIN} {
+    # Bound request payload size to prevent memory exhaustion on HTML/asset uploads
+    request_body {
+        max_size 20MB
+    }
+
+    # Public liveness probe for uptime monitors
+    @health {
+        path /health
+        method GET
+    }
+    handle @health {
+        reverse_proxy gotenberg:3000
+    }
+
+    # Protected conversion & screenshot endpoints:
+    # Require either Authorization: Bearer <token> or X-Gotenberg-Api-Key: <token>
+    handle {
+        @unauthorized {
+            not header Authorization "Bearer {$GOTENBERG_API_KEY}"
+            not header X-Gotenberg-Api-Key "{$GOTENBERG_API_KEY}"
+        }
+        respond @unauthorized "Unauthorized" 401
+
+        reverse_proxy gotenberg:3000 {
+            transport http {
+                response_header_timeout 45s
+                dial_timeout 5s
+            }
+        }
+    }
+
+    encode zstd gzip
+
+    # Structured stdout logging with auth header redaction
+    log {
+        output stdout
+        format filter {
+            wrap console
+            fields {
+                request>headers>Authorization delete
+                request>headers>X-Gotenberg-Api-Key delete
+            }
+        }
+        level INFO
+    }
+}

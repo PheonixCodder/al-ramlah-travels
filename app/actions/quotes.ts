@@ -15,6 +15,7 @@ import type {
 import { recordAuditLog } from "@/lib/audit-log"
 import { requireAdmin, requireSuperAdmin } from "@/lib/auth-guard"
 import { getCompanyInfo } from "@/lib/company-info"
+import { logger } from "@/lib/logger"
 import { formatWhatsAppPhone, toWaMeUrl } from "@/lib/phone"
 import { getCanonicalSiteUrl } from "@/lib/seo/metadata"
 import {
@@ -24,7 +25,14 @@ import {
   type QuotationPdfHotelStayLeg,
   type QuotationPdfTransportLeg,
 } from "@/lib/posters/render-quotation-pdf"
-import { sendQuotationEmail } from "@/lib/security/mailer"
+import {
+  sendPilgrimDocumentPortalEmail,
+  sendQuotationEmail,
+} from "@/lib/security/mailer"
+import {
+  ensureApplicationDocumentPortalUnlockedTx,
+  type EnsureDocumentPortalTokenResult,
+} from "@/app/actions/pilgrim-documents"
 import { extractStorageKeyFromUrlOrKey } from "@/lib/storage/r2"
 import {
   APPLICATION_PIPELINE_STATUSES,
@@ -178,15 +186,60 @@ function computeDepartureBatchStatus(
   return "open"
 }
 
-function revalidateDeskAndApplicationPaths(applicationId: string): void {
-  revalidatePath("/")
-  revalidatePath("/admin")
-  revalidatePath("/admin/desk")
-  revalidatePath("/admin/studio")
-  revalidatePath("/admin/catalog")
-  revalidatePath("/admin/applications")
-  revalidatePath(`/admin/applications/${applicationId}`)
-  revalidatePath(`/admin/applications/${applicationId}/voucher`)
+function revalidateDeskAndApplicationPaths(
+  applicationId: string,
+  extraPath?: string | null
+): void {
+  const paths = [
+    "/",
+    "/admin",
+    "/admin/desk",
+    "/admin/studio",
+    "/admin/catalog",
+    "/admin/applications",
+    `/admin/applications/${applicationId}`,
+    `/admin/applications/${applicationId}/voucher`,
+    ...(extraPath ? [extraPath] : []),
+  ]
+  for (const p of paths) {
+    try {
+      revalidatePath(p)
+    } catch {
+      // Safe no-op outside Next.js request/static generation store
+    }
+  }
+}
+
+async function dispatchPortalUnlockedEmailNonFatal(
+  portalUnlock: EnsureDocumentPortalTokenResult
+): Promise<void> {
+  if (
+    !portalUnlock.unlocked ||
+    !portalUnlock.newlyMinted ||
+    !portalUnlock.portalPath ||
+    !portalUnlock.customerEmail
+  ) {
+    return
+  }
+
+  try {
+    const [settingsRow] = await db.select().from(schema.agencySettings).limit(1)
+    const companyInfo = getCompanyInfo(settingsRow ?? null)
+    const portalUrl = `${getCanonicalSiteUrl().origin}${portalUnlock.portalPath}`
+    await sendPilgrimDocumentPortalEmail({
+      to: portalUnlock.customerEmail,
+      customerName: portalUnlock.customerName,
+      referenceNumber: portalUnlock.referenceNumber,
+      portalUrl,
+      event: "portal_unlocked",
+      companyInfo,
+    })
+  } catch (mailErr: unknown) {
+    logger.warn("Non-fatal document portal unlock email warning", {
+      referenceNumber: portalUnlock.referenceNumber,
+      error: mailErr,
+    })
+  }
 }
 
 function sanitizeCsvCellInternal(
@@ -387,6 +440,22 @@ export async function saveApplicationQuote(rawInput: unknown) {
       if (hydratedInput.expectedVersion === 0) {
         delete hydratedInput.expectedVersion
       }
+
+      // Preserve super_admin-managed wholesale net cost, commission, and supplier on `staff` saves (`T-061`)
+      if (session.user.role !== "super_admin") {
+        if (hydratedInput.supplierId === undefined) {
+          hydratedInput.supplierId = latestQuote?.supplierId ?? undefined
+        }
+        hydratedInput.commissionPkr = latestQuote?.commissionPkr ?? 25000
+        const submittedNetCostRaw = Number(hydratedInput.supplierNetCostPkr)
+        const submittedNetCost =
+          Number.isFinite(submittedNetCostRaw) && submittedNetCostRaw > 0
+            ? Math.floor(submittedNetCostRaw)
+            : 0
+        hydratedInput.supplierNetCostPkr = latestQuote
+          ? Math.max(submittedNetCost, latestQuote.supplierNetCostPkr ?? 0)
+          : submittedNetCost
+      }
       const rawPillarSum =
         (Number(hydratedInput.visaTotalPkr) || 0) +
         (Number(hydratedInput.flightsTotalPkr) || 0) +
@@ -532,8 +601,17 @@ export async function saveApplicationQuote(rawInput: unknown) {
       }
 
       const validated = parsed.data
-      const netCostPkr = validated.supplierNetCostPkr ?? 0
-      const commissionPkr = validated.commissionPkr ?? 25000
+      const netCostPkr =
+        session.user.role === "super_admin"
+          ? (validated.supplierNetCostPkr ?? 0)
+          : Math.max(
+              validated.supplierNetCostPkr ?? 0,
+              latestQuote?.supplierNetCostPkr ?? 0
+            )
+      const commissionPkr =
+        session.user.role === "super_admin"
+          ? (validated.commissionPkr ?? 25000)
+          : (latestQuote?.commissionPkr ?? 25000)
       const depositRequiredPkr = validated.depositRequiredPkr ?? 0
 
       const subtotalPkr =
@@ -862,6 +940,11 @@ export async function saveApplicationQuote(rawInput: unknown) {
         tx
       )
 
+      const portalUnlock = await ensureApplicationDocumentPortalUnlockedTx(
+        tx,
+        applicationId
+      )
+
       return {
         success: true as const,
         quoteId: insertedQuote.id,
@@ -878,6 +961,7 @@ export async function saveApplicationQuote(rawInput: unknown) {
         )
           ? nextVoucherToken
           : null,
+        portalUnlock,
       }
     })
 
@@ -885,8 +969,14 @@ export async function saveApplicationQuote(rawInput: unknown) {
       return txOutcome
     }
 
-    revalidateDeskAndApplicationPaths(applicationId)
-    return txOutcome
+    await dispatchPortalUnlockedEmailNonFatal(txOutcome.portalUnlock)
+    revalidateDeskAndApplicationPaths(
+      applicationId,
+      txOutcome.portalUnlock.portalPath
+    )
+    const { portalUnlock: _unusedPortalUnlock, ...quoteResult } = txOutcome
+    void _unusedPortalUnlock
+    return quoteResult
   } catch (err: unknown) {
     return {
       success: false as const,
@@ -1163,9 +1253,15 @@ export async function updateApplicationStatus(rawInput: unknown) {
         tx
       )
 
+      const portalUnlock = await ensureApplicationDocumentPortalUnlockedTx(
+        tx,
+        applicationId
+      )
+
       return {
         success: true as const,
         status: targetStatus,
+        portalUnlock,
       }
     })
 
@@ -1173,8 +1269,15 @@ export async function updateApplicationStatus(rawInput: unknown) {
       return txRes
     }
 
-    revalidateDeskAndApplicationPaths(applicationId)
-    return txRes
+    await dispatchPortalUnlockedEmailNonFatal(txRes.portalUnlock)
+    revalidateDeskAndApplicationPaths(
+      applicationId,
+      txRes.portalUnlock.portalPath
+    )
+    return {
+      success: true as const,
+      status: txRes.status,
+    }
   } catch (err: unknown) {
     return {
       success: false as const,
@@ -1420,6 +1523,11 @@ export async function recordApplicationPaymentAction(rawInput: unknown) {
         tx
       )
 
+      const portalUnlock = await ensureApplicationDocumentPortalUnlockedTx(
+        tx,
+        applicationId
+      )
+
       return {
         success: true as const,
         paymentId: insertedPayment.id,
@@ -1434,6 +1542,7 @@ export async function recordApplicationPaymentAction(rawInput: unknown) {
         )
           ? nextVoucherToken
           : null,
+        portalUnlock,
       }
     })
 
@@ -1441,8 +1550,14 @@ export async function recordApplicationPaymentAction(rawInput: unknown) {
       return txRes
     }
 
-    revalidateDeskAndApplicationPaths(applicationId)
-    return txRes
+    await dispatchPortalUnlockedEmailNonFatal(txRes.portalUnlock)
+    revalidateDeskAndApplicationPaths(
+      applicationId,
+      txRes.portalUnlock.portalPath
+    )
+    const { portalUnlock: _unusedPortalUnlock, ...paymentResult } = txRes
+    void _unusedPortalUnlock
+    return paymentResult
   } catch (err: unknown) {
     return {
       success: false as const,

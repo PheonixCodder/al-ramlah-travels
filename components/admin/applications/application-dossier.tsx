@@ -18,6 +18,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/layout/status-badge"
+import { ArabicText } from "@/components/public/arabic-text"
+import type { AdminApplicationDocumentPortalData } from "@/app/actions/pilgrim-documents"
+import { PilgrimDocumentsReviewPanel } from "./pilgrim-documents-review-panel"
 import { formatCitySequence } from "@/lib/domain"
 import { formatWhatsAppPhone } from "@/lib/phone"
 import { inferAcquisitionChannel } from "@/lib/seo/utm"
@@ -172,11 +175,13 @@ export interface ApplicationDossierProps {
     transportSegments: TransportSegmentItem[]
   }
   ziyaratPlaces?: ZiyaratPlaceItem[]
+  documentPortal?: AdminApplicationDocumentPortalData | null
 }
 
 export function ApplicationDossier({
   application,
   ziyaratPlaces = [],
+  documentPortal = null,
 }: ApplicationDossierProps) {
   const cleanWa = formatWhatsAppPhone(application.customerWhatsapp || application.customerPhone)
   const acquisitionChannel = inferAcquisitionChannel(application)
@@ -217,7 +222,7 @@ export function ApplicationDossier({
             {acquisitionChannel && (
               <Badge
                 variant="outline"
-                className="border-emerald-600/30 bg-emerald-50 text-xs font-semibold text-emerald-900"
+                className="border-status-success-border bg-status-success-bg text-xs font-semibold text-status-success"
               >
                 {acquisitionChannel}
               </Badge>
@@ -225,7 +230,7 @@ export function ApplicationDossier({
             {application.supplier && (
               <Badge
                 variant="outline"
-                className="border-emerald-600/30 bg-emerald-50 text-xs font-semibold text-emerald-800"
+                className="border-status-success-border bg-status-success-bg text-xs font-semibold text-status-success"
               >
                 Supplier: {application.supplier.name}
               </Badge>
@@ -245,7 +250,7 @@ export function ApplicationDossier({
               {application.utmSource && (
                 <Badge
                   variant="outline"
-                  className="border-emerald-700/30 bg-emerald-50/70 font-mono text-[11px] font-semibold text-emerald-900"
+                  className="border-status-success-border bg-status-success-bg/80 font-mono text-[11px] font-semibold text-status-success"
                 >
                   {`${application.utmSource.charAt(0).toUpperCase()}${application.utmSource.slice(1)}${
                     application.utmMedium
@@ -257,7 +262,7 @@ export function ApplicationDossier({
               {application.utmCampaign && (
                 <Badge
                   variant="outline"
-                  className="border-gold/40 bg-gold/10 font-mono text-[11px] font-medium text-gold-text"
+                  className="border-gold-border/60 bg-accent/50 font-mono text-[11px] font-medium text-gold-text"
                 >
                   Campaign: {application.utmCampaign}
                 </Badge>
@@ -265,7 +270,7 @@ export function ApplicationDossier({
               {application.landingPage && (
                 <Badge
                   variant="outline"
-                  className="border-border bg-muted/40 font-mono text-[11px] font-normal text-foreground"
+                  className="border-border bg-secondary/70 font-mono text-[11px] font-normal text-foreground"
                 >
                   Entry: {application.landingPage}
                 </Badge>
@@ -273,7 +278,7 @@ export function ApplicationDossier({
               {application.utmTerm && (
                 <Badge
                   variant="outline"
-                  className="border-border bg-muted/40 font-mono text-[11px] font-normal text-muted-foreground"
+                  className="border-border bg-secondary/70 font-mono text-[11px] font-normal text-muted-foreground"
                 >
                   Term: {application.utmTerm}
                 </Badge>
@@ -281,7 +286,7 @@ export function ApplicationDossier({
               {application.httpReferrer && (
                 <Badge
                   variant="outline"
-                  className="max-w-xs truncate border-border bg-muted/40 font-mono text-[11px] font-normal text-muted-foreground"
+                  className="max-w-xs truncate border-border bg-secondary/70 font-mono text-[11px] font-normal text-muted-foreground"
                   title={application.httpReferrer}
                 >
                   Referrer: {application.httpReferrer}
@@ -302,11 +307,11 @@ export function ApplicationDossier({
       <Card className="border-border bg-card shadow-xs">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 font-display text-base font-bold text-foreground">
-            <User className="size-4 text-primary" />
-            <span>Lead Pilgrim & Contact Details</span>
+            <User className="size-4 text-primary" aria-hidden="true" />
+            <span>Lead Pilgrim &amp; Contact Details</span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <span className="text-xs text-muted-foreground">Pilgrim Name</span>
@@ -316,20 +321,20 @@ export function ApplicationDossier({
             </div>
             <div>
               <span className="text-xs text-muted-foreground">City of Residence</span>
-              <p className="text-sm font-semibold text-foreground flex items-center gap-1">
-                <MapPin className="size-3.5 text-muted-foreground" />
+              <p className="flex items-center gap-1 text-sm font-semibold text-foreground">
+                <MapPin className="size-3.5 text-muted-foreground" aria-hidden="true" />
                 {application.customerCity}
               </p>
             </div>
             <div>
               <span className="text-xs text-muted-foreground">Direct Phone</span>
-              <p className="font-mono text-sm font-semibold text-foreground">
+              <p className="font-mono text-sm font-semibold text-foreground tabular-nums">
                 {application.customerPhone}
               </p>
             </div>
             <div>
               <span className="text-xs text-muted-foreground">WhatsApp Number</span>
-              <p className="font-mono text-sm font-semibold text-emerald-700">
+              <p className="font-mono text-sm font-semibold text-status-success tabular-nums">
                 {application.customerWhatsapp}
               </p>
             </div>
@@ -344,51 +349,51 @@ export function ApplicationDossier({
           </div>
 
           {/* Direct Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
             <a
               href={`tel:${application.customerPhone}`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary/80"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <Phone className="size-3.5 text-primary" />
+              <Phone className="size-3.5 text-primary" aria-hidden="true" />
               <span>Call Pilgrim</span>
             </a>
             <a
               href={`https://wa.me/${cleanWa}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-status-success-border bg-status-success-bg px-3 py-1.5 text-xs font-semibold text-status-success transition-colors hover:bg-status-success-bg/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <MessageSquare className="size-3.5 text-emerald-600" />
+              <MessageSquare className="size-3.5 text-status-success" aria-hidden="true" />
               <span>Open WhatsApp</span>
             </a>
             {application.customerEmail && (
               <a
                 href={`mailto:${application.customerEmail}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary/80"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <Mail className="size-3.5 text-muted-foreground" />
+                <Mail className="size-3.5 text-muted-foreground" aria-hidden="true" />
                 <span>Email Pilgrim</span>
               </a>
             )}
           </div>
 
           {application.revisionNotesCustomer && (
-            <div className="rounded-lg border border-sky-300 bg-sky-50/80 p-3 text-xs">
-              <span className="font-semibold text-sky-950 block mb-1">
+            <div className="rounded-lg bg-status-info-bg p-3 text-xs text-status-info">
+              <span className="mb-1 block font-semibold">
                 Pilgrim Revision Request Notes:
               </span>
-              <p className="text-sky-900 whitespace-pre-wrap" dir="auto">
+              <p className="whitespace-pre-wrap" dir="auto">
                 {application.revisionNotesCustomer}
               </p>
             </div>
           )}
 
           {application.specialRequests && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-xs">
-              <span className="font-semibold text-amber-900 block mb-1">
+            <div className="rounded-lg bg-status-warning-bg p-3 text-xs text-status-warning">
+              <span className="mb-1 block font-semibold">
                 Pilgrim Notes / Special Requests:
               </span>
-              <p className="text-amber-800 whitespace-pre-wrap" dir="auto">
+              <p className="whitespace-pre-wrap" dir="auto">
                 {application.specialRequests}
               </p>
             </div>
@@ -396,8 +401,8 @@ export function ApplicationDossier({
 
           {application.source === "hajj_inquiry" &&
             (application.hajjConsultationType || application.hajjInquiryJson) && (
-              <div className="rounded-lg border border-gold/40 bg-gold/10 p-3 text-xs space-y-1.5">
-                <span className="font-semibold text-foreground block">
+              <div className="flex flex-col gap-1.5 rounded-lg bg-accent/50 p-3 text-xs">
+                <span className="block font-semibold text-foreground">
                   Hajj 2027 Consultation Preferences:
                 </span>
                 {application.hajjConsultationType && (
@@ -429,51 +434,51 @@ export function ApplicationDossier({
       <Card className="border-border bg-card shadow-xs">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 font-display text-base font-bold text-foreground">
-            <Calendar className="size-4 text-primary" />
-            <span>Kingdom of Saudi Arabia (KSA) Stay & Demographics</span>
+            <Calendar className="size-4 text-primary" aria-hidden="true" />
+            <span>Kingdom of Saudi Arabia (KSA) Stay &amp; Demographics</span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div className="rounded-lg border border-border bg-secondary/40 p-3">
-              <span className="text-[11px] text-muted-foreground block">
+            <div className="rounded-lg bg-secondary/60 p-3">
+              <span className="block text-[11px] text-muted-foreground">
                 Arrival Date
               </span>
-              <span className="text-sm font-bold text-foreground">
+              <span className="text-sm font-bold text-foreground tabular-nums">
                 {application.ksaArrivalDate || "TBD"}
               </span>
             </div>
-            <div className="rounded-lg border border-border bg-secondary/40 p-3">
-              <span className="text-[11px] text-muted-foreground block">
+            <div className="rounded-lg bg-secondary/60 p-3">
+              <span className="block text-[11px] text-muted-foreground">
                 Departure Date
               </span>
-              <span className="text-sm font-bold text-foreground">
+              <span className="text-sm font-bold text-foreground tabular-nums">
                 {application.ksaDepartureDate || "TBD"}
               </span>
             </div>
-            <div className="rounded-lg border border-border bg-secondary/40 p-3">
-              <span className="text-[11px] text-muted-foreground block">
+            <div className="rounded-lg bg-secondary/60 p-3">
+              <span className="block text-[11px] text-muted-foreground">
                 Duration in KSA
               </span>
-              <span className="text-sm font-bold text-foreground">
+              <span className="text-sm font-bold text-foreground tabular-nums">
                 {application.totalKsaDays ? `${application.totalKsaDays} Days` : "Flexible"}
               </span>
             </div>
-            <div className="rounded-lg border border-border bg-secondary/40 p-3">
-              <span className="text-[11px] text-muted-foreground block">
+            <div className="rounded-lg bg-secondary/60 p-3">
+              <span className="block text-[11px] text-muted-foreground">
                 Auto Visa Tier
               </span>
-              <span className="text-xs font-bold text-primary uppercase">
+              <span className="text-xs font-bold text-primary">
                 {application.calculatedVisaTier === "long_term"
                   ? "Long-Term (>30d)"
-                  : "Short-Term (≤30d)"}
+                  : "Short-Term (<=30d)"}
               </span>
             </div>
           </div>
 
           {application.citySequence && (
-            <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-2.5 text-xs">
-              <span className="text-muted-foreground font-medium">Sacred Route Sequence:</span>
+            <div className="flex items-center justify-between rounded-lg bg-primary/5 px-3.5 py-2.5 text-xs">
+              <span className="font-medium text-muted-foreground">Sacred Route Sequence:</span>
               <span className="font-bold text-primary">
                 {formatCitySequence(application.citySequence)}
                 {application.entryAirport ? ` (In: ${application.entryAirport}` : ""}
@@ -482,37 +487,37 @@ export function ApplicationDossier({
             </div>
           )}
 
-          <div className="rounded-lg border border-border bg-card p-3">
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-border">
+          <div className="rounded-lg bg-secondary/45 p-3">
+            <div className="mb-2 flex items-center justify-between border-b border-border pb-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                <Users className="size-4 text-primary" />
+                <Users className="size-4 text-primary" aria-hidden="true" />
                 <span>Passenger Manifest Breakdown:</span>
               </div>
-              <div className="flex items-center gap-3 font-mono text-xs font-semibold">
+              <div className="flex items-center gap-3 font-mono text-xs font-semibold tabular-nums">
                 <span>{application.totalPassportCount} Total Passports</span>
-                <span>•</span>
-                <span className="text-primary font-bold">
+                <span aria-hidden="true">•</span>
+                <span className="font-bold text-primary">
                   {application.bedAndSeatCount} Beds / Seats
                 </span>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3 text-center text-xs">
-              <div className="p-2.5 bg-secondary/30 rounded-md">
-                <span className="text-muted-foreground block">Adults (12+ yrs)</span>
-                <span className="font-bold text-foreground text-sm">
+              <div className="rounded-md bg-background p-2.5">
+                <span className="block text-muted-foreground">Adults (12+ yrs)</span>
+                <span className="font-mono text-sm font-bold text-foreground tabular-nums">
                   {application.adults}
                 </span>
               </div>
-              <div className="p-2.5 bg-secondary/30 rounded-md">
-                <span className="text-muted-foreground block">Children (2–11 yrs)</span>
-                <span className="font-bold text-foreground text-sm">
+              <div className="rounded-md bg-background p-2.5">
+                <span className="block text-muted-foreground">Children (2-11 yrs)</span>
+                <span className="font-mono text-sm font-bold text-foreground tabular-nums">
                   {application.children}
                 </span>
               </div>
-              <div className="p-2.5 bg-secondary/30 rounded-md">
-                <span className="text-muted-foreground block">Infants (&lt;2 yrs)</span>
-                <span className="font-bold text-foreground text-sm">
+              <div className="rounded-md bg-background p-2.5">
+                <span className="block text-muted-foreground">Infants (&lt;2 yrs)</span>
+                <span className="font-mono text-sm font-bold text-foreground tabular-nums">
                   {application.infants}
                 </span>
               </div>
@@ -524,19 +529,32 @@ export function ApplicationDossier({
         </CardContent>
       </Card>
 
+      {/* 2b. Pilgrim Document Upload Portal & Staff Verification (`Spec 0029`) */}
+      {documentPortal && (
+        <PilgrimDocumentsReviewPanel
+          applicationId={application.id}
+          referenceNumber={application.referenceNumber}
+          customerName={application.customerName}
+          customerEmail={application.customerEmail ?? null}
+          customerPhone={application.customerPhone}
+          customerWhatsapp={application.customerWhatsapp}
+          documentPortal={documentPortal}
+        />
+      )}
+
       {/* 3. Flights Configuration (if requested) */}
       {application.includeFlights && (
         <Card className="border-border bg-card shadow-xs">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 font-display text-base font-bold text-foreground">
-              <Plane className="size-4 text-sky-700" />
-              <span>Flight Routing & Airline Preferences</span>
+              <Plane className="size-4 text-status-info" aria-hidden="true" />
+              <span>Flight Routing &amp; Airline Preferences</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 text-xs">
+            <div className="grid grid-cols-2 gap-4 text-xs sm:grid-cols-4">
               <div>
-                <span className="text-muted-foreground block">Origin Departure</span>
+                <span className="block text-muted-foreground">Origin Departure</span>
                 <span className="font-semibold text-foreground">
                   {application.departureCity
                     ? `${application.departureCity.cityName} (${application.departureCity.airportCode})`
@@ -544,20 +562,20 @@ export function ApplicationDossier({
                 </span>
               </div>
               <div>
-                <span className="text-muted-foreground block">Entry Airport (KSA)</span>
+                <span className="block text-muted-foreground">Entry Airport (KSA)</span>
                 <span className="font-semibold text-foreground">
                   {application.entryAirport || "Jeddah (JED)"}
                 </span>
               </div>
               <div>
-                <span className="text-muted-foreground block">Route & Cabin</span>
+                <span className="block text-muted-foreground">Route &amp; Cabin</span>
                 <span className="font-semibold text-foreground capitalize">
                   {application.flightRouteType || "Direct"} ·{" "}
                   {application.cabinClass || "Economy"}
                 </span>
               </div>
               <div>
-                <span className="text-muted-foreground block">Preferred Carrier</span>
+                <span className="block text-muted-foreground">Preferred Carrier</span>
                 <span className="font-semibold text-foreground">
                   {application.preferredAirline?.name || "Best Available"}
                 </span>
@@ -571,10 +589,10 @@ export function ApplicationDossier({
       {application.source === "group_booking" &&
         (application.groupPackage || application.groupDeparture) && (
           <Card className="border-border bg-card shadow-xs">
-            <CardHeader className="bg-primary/5 pb-3 border-b border-border">
+            <CardHeader className="border-b border-border bg-primary/5 pb-3">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2">
-                  <Package className="size-4 text-primary" />
+                  <Package className="size-4 text-primary" aria-hidden="true" />
                   <CardTitle className="font-display text-base font-bold text-foreground">
                     {application.groupPackage?.title || "Pre-Built Group Umrah Package"}
                   </CardTitle>
@@ -583,7 +601,7 @@ export function ApplicationDossier({
                   {application.groupPackage?.tier && (
                     <Badge
                       variant="outline"
-                      className="border-gold/40 bg-gold/10 text-xs font-bold text-gold-text uppercase"
+                      className="border-gold-border/60 bg-accent/60 text-xs font-bold text-gold-text capitalize"
                     >
                       {application.groupPackage.tier.replace(/_/g, " ")} Tier
                     </Badge>
@@ -591,7 +609,7 @@ export function ApplicationDossier({
                   {application.groupDeparture && (
                     <Badge
                       variant="outline"
-                      className="border-primary/30 bg-primary/10 text-xs font-mono font-bold text-primary uppercase"
+                      className="border-primary/30 bg-primary/10 font-mono text-xs font-bold text-primary capitalize"
                     >
                       Batch: {application.groupDeparture.batchCode} ({application.groupDeparture.status.replace(/_/g, " ")})
                     </Badge>
@@ -599,19 +617,19 @@ export function ApplicationDossier({
                 </div>
               </div>
               <CardDescription className="text-xs text-muted-foreground">
-                Fixed-schedule departure block with confirmed flight allotments & hotel inventory.
+                Fixed-schedule departure block with confirmed flight allotments &amp; hotel inventory.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 pt-4">
+            <CardContent className="flex flex-col gap-4 pt-4">
               {/* Seat Block Accounting */}
               {application.groupDeparture && (
-                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-primary/10">
-                    <span className="font-semibold text-foreground flex items-center gap-1.5">
-                      <Users className="size-3.5 text-primary" />
+                <div className="rounded-lg bg-primary/5 p-3 text-xs">
+                  <div className="mb-2 flex items-center justify-between border-b border-primary/10 pb-2">
+                    <span className="flex items-center gap-1.5 font-semibold text-foreground">
+                      <Users className="size-3.5 text-primary" aria-hidden="true" />
                       <span>Departure Flight Seat Allotment</span>
                     </span>
-                    <span className="font-mono font-bold text-primary">
+                    <span className="font-mono font-bold text-primary tabular-nums">
                       {application.groupDeparture.bookedSeats} / {application.groupDeparture.totalSeats} Seats Confirmed
                     </span>
                   </div>
@@ -620,46 +638,46 @@ export function ApplicationDossier({
                       Pilgrim Request: <strong className="text-foreground">{application.bedAndSeatCount} Beds / Seats</strong> ({application.totalPassportCount} Passports)
                     </span>
                     <span>
-                      Batch Inventory: <strong className="text-emerald-700">{Math.max(0, application.groupDeparture.totalSeats - application.groupDeparture.bookedSeats)} Available</strong>
+                      Batch Inventory: <strong className="text-status-success tabular-nums">{Math.max(0, application.groupDeparture.totalSeats - application.groupDeparture.bookedSeats)} Available</strong>
                     </span>
                   </div>
                 </div>
               )}
 
               {/* Confirmed Flight Details */}
-              <div className="rounded-lg border border-border bg-secondary/20 p-3 text-xs space-y-2">
+              <div className="flex flex-col gap-2 rounded-lg bg-secondary/50 p-3 text-xs">
                 <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                  <Plane className="size-3.5 text-sky-700" />
-                  <span>Group Charter & Flight Routing</span>
+                  <Plane className="size-3.5 text-status-info" aria-hidden="true" />
+                  <span>Group Charter &amp; Flight Routing</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div>
-                    <span className="text-[11px] text-muted-foreground block">Outbound Flight</span>
+                    <span className="block text-[11px] text-muted-foreground">Outbound Flight</span>
                     <span className="font-mono font-bold text-foreground">
                       {application.groupDeparture?.outboundFlightNumber || "TBD"}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[11px] text-muted-foreground block">Return Flight</span>
+                    <span className="block text-[11px] text-muted-foreground">Return Flight</span>
                     <span className="font-mono font-bold text-foreground">
                       {application.groupDeparture?.returnFlightNumber || "TBD"}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[11px] text-muted-foreground block">Airline Carrier</span>
+                    <span className="block text-[11px] text-muted-foreground">Airline Carrier</span>
                     <span className="font-semibold text-foreground">
                       {application.groupPackage?.airline?.name || application.preferredAirline?.name || "Direct Carrier"}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[11px] text-muted-foreground block">Baggage Allowance</span>
+                    <span className="block text-[11px] text-muted-foreground">Baggage Allowance</span>
                     <span className="font-semibold text-foreground">
                       {application.groupDeparture?.baggageAllowance || "23-KG Out / 46-KG In"}
                     </span>
                   </div>
                 </div>
                 {application.groupDeparture?.flightScheduleSummary && (
-                  <p className="text-[11px] text-muted-foreground border-t border-border/60 pt-1.5 mt-1.5">
+                  <p className="mt-1.5 border-t border-border/60 pt-1.5 text-[11px] text-muted-foreground">
                     <span className="font-medium text-foreground">Flight Schedule:</span> {application.groupDeparture.flightScheduleSummary}
                   </p>
                 )}
@@ -667,40 +685,40 @@ export function ApplicationDossier({
 
               {/* Pre-Built Hotel Stays */}
               {application.groupPackage && (
-                <div className="rounded-lg border border-border bg-secondary/20 p-3 text-xs space-y-2">
+                <div className="flex flex-col gap-2 rounded-lg bg-secondary/50 p-3 text-xs">
                   <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                    <Building2 className="size-3.5 text-amber-700" />
+                    <Building2 className="size-3.5 text-gold-text" aria-hidden="true" />
                     <span>Pre-Arranged Package Accommodations</span>
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="rounded border border-border bg-card p-2.5">
+                    <div className="rounded-lg bg-background p-2.5">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs uppercase text-primary">Makkah Hotel</span>
-                        <span className="font-mono text-[11px] font-semibold text-muted-foreground">
+                        <span className="text-xs font-bold text-primary">Makkah Hotel</span>
+                        <span className="font-mono text-[11px] font-semibold text-muted-foreground tabular-nums">
                           {application.groupPackage.makkahNights} Nights
                         </span>
                       </div>
-                      <p className="font-semibold text-sm text-foreground mt-1">
-                        {application.groupPackage.makkahHotel?.name || "Makkah 4/5★ Hotel"}
+                      <p className="mt-1 text-sm font-semibold text-foreground">
+                        {application.groupPackage.makkahHotel?.name || "Makkah 4/5 Star Hotel"}
                       </p>
                       {application.groupPackage.makkahHotel?.distanceLabel && (
-                        <span className="text-[11px] text-muted-foreground block">
+                        <span className="block text-[11px] text-muted-foreground">
                           {application.groupPackage.makkahHotel.distanceLabel}
                         </span>
                       )}
                     </div>
-                    <div className="rounded border border-border bg-card p-2.5">
+                    <div className="rounded-lg bg-background p-2.5">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs uppercase text-primary">Madinah Hotel</span>
-                        <span className="font-mono text-[11px] font-semibold text-muted-foreground">
+                        <span className="text-xs font-bold text-primary">Madinah Hotel</span>
+                        <span className="font-mono text-[11px] font-semibold text-muted-foreground tabular-nums">
                           {application.groupPackage.madinahNights} Nights
                         </span>
                       </div>
-                      <p className="font-semibold text-sm text-foreground mt-1">
-                        {application.groupPackage.madinahHotel?.name || "Madinah 4/5★ Hotel"}
+                      <p className="mt-1 text-sm font-semibold text-foreground">
+                        {application.groupPackage.madinahHotel?.name || "Madinah 4/5 Star Hotel"}
                       </p>
                       {application.groupPackage.madinahHotel?.distanceLabel && (
-                        <span className="text-[11px] text-muted-foreground block">
+                        <span className="block text-[11px] text-muted-foreground">
                           {application.groupPackage.madinahHotel.distanceLabel}
                         </span>
                       )}
@@ -711,32 +729,32 @@ export function ApplicationDossier({
 
               {/* Group Package Pricing Reference */}
               {application.groupPackage && (
-                <div className="rounded-lg border border-border bg-card p-3 text-xs">
-                  <span className="font-semibold text-foreground block mb-2">
+                <div className="rounded-lg bg-secondary/50 p-3 text-xs">
+                  <span className="mb-2 block font-semibold text-foreground">
                     Standard Package Rates (PKR per Pilgrim):
                   </span>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 text-center font-mono text-xs">
-                    <div className="rounded bg-secondary/40 p-2">
-                      <span className="text-muted-foreground block text-[10px]">Sharing Bed</span>
-                      <span className="font-bold text-primary">
+                  <div className="grid grid-cols-2 gap-2 text-center font-mono text-xs sm:grid-cols-4">
+                    <div className="rounded bg-background p-2">
+                      <span className="block font-sans text-[11px] text-muted-foreground">Sharing Bed</span>
+                      <span className="font-bold text-primary tabular-nums">
                         PKR {(application.groupDeparture?.sharingPriceOverridePkr || application.groupPackage.sharingPricePkr || 258299).toLocaleString()}
                       </span>
                     </div>
-                    <div className="rounded bg-secondary/40 p-2">
-                      <span className="text-muted-foreground block text-[10px]">Quad Room</span>
-                      <span className="font-bold text-foreground">
+                    <div className="rounded bg-background p-2">
+                      <span className="block font-sans text-[11px] text-muted-foreground">Quad Room</span>
+                      <span className="font-bold text-foreground tabular-nums">
                         PKR {(application.groupDeparture?.quadPriceOverridePkr || application.groupPackage.quadPricePkr || 275000).toLocaleString()}
                       </span>
                     </div>
-                    <div className="rounded bg-secondary/40 p-2">
-                      <span className="text-muted-foreground block text-[10px]">Triple Room</span>
-                      <span className="font-bold text-foreground">
+                    <div className="rounded bg-background p-2">
+                      <span className="block font-sans text-[11px] text-muted-foreground">Triple Room</span>
+                      <span className="font-bold text-foreground tabular-nums">
                         PKR {(application.groupDeparture?.triplePriceOverridePkr || application.groupPackage.triplePricePkr || 295000).toLocaleString()}
                       </span>
                     </div>
-                    <div className="rounded bg-secondary/40 p-2">
-                      <span className="text-muted-foreground block text-[10px]">Double Room</span>
-                      <span className="font-bold text-foreground">
+                    <div className="rounded bg-background p-2">
+                      <span className="block font-sans text-[11px] text-muted-foreground">Double Room</span>
+                      <span className="font-bold text-foreground tabular-nums">
                         PKR {(application.groupDeparture?.doublePriceOverridePkr || application.groupPackage.doublePricePkr || 325000).toLocaleString()}
                       </span>
                     </div>
@@ -752,32 +770,32 @@ export function ApplicationDossier({
         <Card className="border-border bg-card shadow-xs">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 font-display text-base font-bold text-foreground">
-              <Building2 className="size-4 text-amber-700" />
+              <Building2 className="size-4 text-gold-text" aria-hidden="true" />
               <span>Hotel Accommodations ({application.hotelStays.length} Stays)</span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="flex flex-col gap-3">
             {application.hotelStays.map((stay, index) => {
               const priv = stay.privateRoomAllocation
               return (
                 <div
                   key={stay.id}
-                  className="rounded-lg border border-border bg-secondary/20 p-4"
+                  className="rounded-lg bg-secondary/50 p-4"
                 >
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between pb-2 mb-2 border-b border-border">
+                  <div className="mb-2 flex flex-col gap-1 border-b border-border pb-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2">
                       <Badge
                         variant="outline"
-                        className="bg-primary/5 text-primary border-primary/20 text-xs font-bold uppercase"
+                        className="border-primary/20 bg-primary/5 text-xs font-bold text-primary capitalize"
                       >
                         Stay {index + 1}: {stay.city}
                       </Badge>
                       <span className="font-display text-sm font-bold text-foreground">
                         {stay.hotel.name}
                       </span>
-                      <div className="flex items-center text-amber-500">
+                      <div className="flex items-center text-gold" aria-hidden="true">
                         {Array.from({ length: stay.hotel.starRating }).map((_, i) => (
-                          <Star key={i} className="size-3 fill-amber-400" />
+                          <Star key={i} className="size-3 fill-gold" />
                         ))}
                       </div>
                     </div>
@@ -786,21 +804,21 @@ export function ApplicationDossier({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 text-xs">
+                  <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
                     <div>
-                      <span className="text-muted-foreground block">Check-in → Check-out</span>
-                      <span className="font-semibold text-foreground">
+                      <span className="block text-muted-foreground">Check-in to Check-out</span>
+                      <span className="font-semibold text-foreground tabular-nums">
                         {stay.checkInDate} to {stay.checkOutDate}
                       </span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block">Nights</span>
-                      <span className="font-semibold text-foreground">
+                      <span className="block text-muted-foreground">Nights</span>
+                      <span className="font-semibold text-foreground tabular-nums">
                         {stay.nights} Nights
                       </span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block">Room &amp; Dining</span>
+                      <span className="block text-muted-foreground">Room &amp; Dining</span>
                       <span className="font-semibold text-foreground capitalize">
                         {stay.roomCategory === "private" ? "Private Rooms" : "Shared Beds"} ·{" "}
                         {(stay.mealPlan || "room_only").replace(/_/g, " ")}
@@ -809,11 +827,11 @@ export function ApplicationDossier({
                   </div>
 
                   {stay.roomCategory === "private" && priv && (
-                    <div className="mt-2.5 flex items-center gap-2 rounded bg-card p-2 text-xs border border-border">
+                    <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 rounded bg-background px-2.5 py-2 text-xs">
                       <span className="font-semibold text-foreground">Room Allocation:</span>
                       {priv.double > 0 && <span>{priv.double} Double</span>}
-                      {priv.triple > 0 && <span>• {priv.triple} Triple</span>}
-                      {priv.quad > 0 && <span>• {priv.quad} Quad</span>}
+                      {priv.triple > 0 && <span>{priv.triple} Triple</span>}
+                      {priv.quad > 0 && <span>{priv.quad} Quad</span>}
                     </div>
                   )}
                 </div>
@@ -828,25 +846,25 @@ export function ApplicationDossier({
         <Card className="border-border bg-card shadow-xs">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 font-display text-base font-bold text-foreground">
-              <Car className="size-4 text-emerald-700" />
+              <Car className="size-4 text-status-success" aria-hidden="true" />
               <span>Ground Transport Itinerary ({application.transportSegments.length} Segments)</span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="flex flex-col gap-3">
             {application.transportSegments.map((segment, idx) => (
               <div
                 key={segment.id}
-                className="flex flex-col gap-2 rounded-lg border border-border bg-secondary/20 p-3 sm:flex-row sm:items-center sm:justify-between text-xs"
+                className="flex flex-col gap-2 rounded-lg bg-secondary/50 p-3 text-xs sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="flex items-center gap-2.5">
-                  <span className="flex size-6 items-center justify-center rounded-full bg-primary/10 font-mono text-[11px] font-bold text-primary">
+                  <span className="flex size-6 items-center justify-center rounded-full bg-primary/10 font-mono text-[11px] font-bold text-primary tabular-nums">
                     {idx + 1}
                   </span>
                   <div>
-                    <span className="font-semibold text-foreground block">
+                    <span className="block font-semibold text-foreground">
                       {segment.sector.label}
                     </span>
-                    <span className="text-muted-foreground text-[11px]">
+                    <span className="text-[11px] text-muted-foreground">
                       {segment.serviceType === "private" ? "Private VIP Transfer" : "Shared Pilgrim Coach"} ·{" "}
                       {segment.vehicleQuantity}x {segment.vehicle.name}
                     </span>
@@ -855,12 +873,12 @@ export function ApplicationDossier({
 
                 <div className="flex items-center gap-3">
                   {segment.scheduledDate && (
-                    <span className="font-mono text-muted-foreground">
+                    <span className="font-mono text-muted-foreground tabular-nums">
                       {segment.scheduledDate}
                     </span>
                   )}
                   {segment.pickupTime && (
-                    <Badge variant="outline" className="border-border bg-card font-mono text-[11px]">
+                    <Badge variant="outline" className="border-border bg-background font-mono text-[11px] tabular-nums">
                       Pickup: {segment.pickupTime}
                     </Badge>
                   )}
@@ -876,8 +894,8 @@ export function ApplicationDossier({
         <Card className="border-border bg-card shadow-xs">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 font-display text-base font-bold text-foreground">
-              <Compass className="size-4 text-purple-700" />
-              <span>Historical Ziyarat & Sacred Sites ({ziyaratPlaces.length} Sites)</span>
+              <Compass className="size-4 text-primary" aria-hidden="true" />
+              <span>Historical Ziyarat &amp; Sacred Sites ({ziyaratPlaces.length} Sites)</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -885,17 +903,17 @@ export function ApplicationDossier({
               {ziyaratPlaces.map((place) => (
                 <div
                   key={place.id}
-                  className="rounded-lg border border-border bg-card p-3 shadow-2xs"
+                  className="rounded-lg bg-secondary/60 p-3"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-semibold text-foreground">
                       {place.name}
                     </span>
-                    <span className="font-arabic text-sm text-gold-text">
+                    <ArabicText className="text-sm text-gold-text">
                       {place.arabicName}
-                    </span>
+                    </ArabicText>
                   </div>
-                  <span className="text-[10px] text-muted-foreground block capitalize mt-0.5">
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground capitalize">
                     {place.city}
                   </span>
                 </div>

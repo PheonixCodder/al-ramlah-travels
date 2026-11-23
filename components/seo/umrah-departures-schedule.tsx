@@ -16,23 +16,19 @@ const STATUS_BADGE_STYLES: Record<
 > = {
   open: {
     label: "Open Seats",
-    className:
-      "border-[#0A3622]/30 bg-[#0A3622]/10 text-[#0A3622]",
+    className: "border-primary/30 bg-primary/10 text-primary",
   },
   filling_fast: {
     label: "Filling Fast",
-    className:
-      "border-[#7A5C1E]/40 bg-[#FAF7F0] text-gold-text",
+    className: "border-gold-border bg-accent text-gold-text",
   },
   sold_out: {
     label: "Sold Out",
-    className:
-      "border-red-300 bg-red-50 text-red-800",
+    className: "border-destructive/35 bg-destructive/10 text-destructive",
   },
   closed: {
     label: "Closed",
-    className:
-      "border-[#E6DEC8] bg-[#FAF7F0] text-[#4A5048]",
+    className: "border-border bg-secondary text-muted-foreground",
   },
 }
 
@@ -48,17 +44,20 @@ export function UmrahDeparturesSchedule({
 }: UmrahDeparturesScheduleProps): React.ReactElement {
   if (departures.length === 0) {
     return (
-      <div className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-6 text-sm text-[#4A5048] space-y-3">
-        <p className="font-semibold text-[#0A3622]">
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-secondary/65 p-6 text-sm text-muted-foreground">
+        <p className="font-semibold text-primary">
           Next Departure Dates Releasing Soon
         </p>
         <p>
-          All scheduled batches on this group itinerary have completed departure or are awaiting next-month airline PNR allocation. You can still travel on these exact Makkah and Madinah hotels on your preferred dates via our Custom Journey Builder.
+          All scheduled batches on this group itinerary have completed departure
+          or are awaiting next-month airline PNR allocation. You can still
+          travel on these exact Makkah and Madinah hotels on your preferred
+          dates via our Custom Journey Builder.
         </p>
         <div>
           <Link
             href={emptyBuilderHref}
-            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#0A3622] px-4 py-2 text-xs sm:text-sm font-semibold text-white transition-colors hover:bg-[#0F5132]"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none sm:text-sm"
           >
             Request Custom Travel Dates in Builder
           </Link>
@@ -68,12 +67,15 @@ export function UmrahDeparturesSchedule({
   }
 
   return (
-    <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8] bg-white shadow-xs">
+    <div
+      tabIndex={0}
+      className="overflow-x-auto rounded-2xl border border-border bg-card shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    >
       <table className="w-full min-w-[760px] border-collapse text-left text-xs sm:text-sm">
-        <caption className="border-b border-[#E6DEC8] bg-[#FAF7F0] px-4 py-3 text-left text-xs font-medium text-[#4A5048]">
+        <caption className="border-b border-border bg-secondary/65 px-4 py-3 text-left text-xs font-medium text-muted-foreground">
           {caption}
         </caption>
-        <thead className="border-b border-[#E6DEC8] bg-[#FAF7F0] text-[#0A3622]">
+        <thead className="border-b border-border bg-secondary text-primary">
           <tr>
             <th scope="col" className="px-4 py-3 font-bold">
               Batch Code
@@ -82,7 +84,7 @@ export function UmrahDeparturesSchedule({
               Gateway Airport
             </th>
             <th scope="col" className="px-4 py-3 font-bold">
-              Departure → Return
+              Departure &amp; Return
             </th>
             <th scope="col" className="px-4 py-3 font-bold">
               Flight &amp; Baggage Notes
@@ -90,12 +92,12 @@ export function UmrahDeparturesSchedule({
             <th scope="col" className="px-4 py-3 font-bold">
               Batch Quad Tariff
             </th>
-            <th scope="col" className="px-4 py-3 font-bold text-right">
+            <th scope="col" className="px-4 py-3 text-right font-bold">
               Availability
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-[#E6DEC8] text-[#1A1D1A]">
+        <tbody className="divide-y divide-border text-foreground">
           {departures.map((dep) => {
             const effectiveQuad =
               dep.quadPriceOverridePkr ?? defaultQuadPricePkr
@@ -108,31 +110,33 @@ export function UmrahDeparturesSchedule({
             return (
               <tr
                 key={dep.id}
-                className="transition-colors hover:bg-[#FAF7F0]/60"
+                className="transition-colors hover:bg-secondary/50 motion-reduce:transition-none"
               >
-                <td className="px-4 py-3.5 align-top font-mono tabular-nums font-bold text-[#0A3622]">
+                <td className="px-4 py-3.5 align-top font-mono font-bold text-primary tabular-nums">
                   {dep.batchCode}
                 </td>
 
                 <td className="px-4 py-3.5 align-top">
-                  <span className="font-semibold text-[#1A1D1A]">
+                  <span className="font-semibold text-foreground">
                     {dep.departureCity?.cityName ?? "Pakistan"}
                   </span>
                   {dep.departureCity?.airportCode ? (
-                    <span className="ml-1.5 font-mono tabular-nums text-xs text-gold-text">
+                    <span className="ml-1.5 font-mono text-xs text-gold-text tabular-nums">
                       ({dep.departureCity.airportCode})
                     </span>
                   ) : null}
                 </td>
 
-                <td className="px-4 py-3.5 align-top font-mono tabular-nums text-xs sm:text-sm">
-                  {dep.departureDate} → {dep.returnDate}
+                <td className="px-4 py-3.5 align-top text-xs tabular-nums sm:text-sm">
+                  <span className="font-mono">{dep.departureDate}</span>{" "}
+                  <span className="text-muted-foreground">to</span>{" "}
+                  <span className="font-mono">{dep.returnDate}</span>
                 </td>
 
-                <td className="px-4 py-3.5 align-top text-xs text-[#4A5048]">
+                <td className="px-4 py-3.5 align-top text-xs text-muted-foreground">
                   <div className="flex flex-col gap-0.5">
-                    {(dep.outboundFlightNumber || dep.returnFlightNumber) ? (
-                      <span className="font-mono tabular-nums font-semibold text-[#1A1D1A]">
+                    {dep.outboundFlightNumber || dep.returnFlightNumber ? (
+                      <span className="font-mono font-semibold text-foreground tabular-nums">
                         {[dep.outboundFlightNumber, dep.returnFlightNumber]
                           .filter(Boolean)
                           .join(" / ")}
@@ -143,30 +147,38 @@ export function UmrahDeparturesSchedule({
                     ) : null}
                     {dep.routingNote ? <span>{dep.routingNote}</span> : null}
                     {dep.baggageAllowance ? (
-                      <span className="text-[11px] text-gold-text font-medium">
+                      <span className="text-xs font-medium text-gold-text">
                         Baggage: {dep.baggageAllowance}
                       </span>
                     ) : null}
                   </div>
                 </td>
 
-                <td className="px-4 py-3.5 align-top font-mono tabular-nums font-bold">
+                <td className="px-4 py-3.5 align-top font-bold">
                   {formattedQuad.isBookable ? (
-                    <span className="text-[#0A3622]">{formattedQuad.label}</span>
+                    <span className="font-mono text-primary tabular-nums">
+                      {formattedQuad.label}
+                    </span>
                   ) : (
-                    <span className="text-gold-text">On Request</span>
+                    <span className="font-semibold text-gold-text">
+                      On Request
+                    </span>
                   )}
                 </td>
 
-                <td className="px-4 py-3.5 align-top text-right">
+                <td className="px-4 py-3.5 text-right align-top">
                   <div className="inline-flex flex-col items-end gap-1">
                     <span
-                      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${badge.className}`}
+                      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badge.className}`}
                     >
                       {badge.label}
                     </span>
-                    <span className="font-mono tabular-nums text-xs text-[#4A5048]">
-                      {dep.seatsRemaining} / {dep.totalSeats} seats left
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      <span className="font-mono font-semibold text-foreground">
+                        {dep.seatsRemaining}
+                      </span>{" "}
+                      / <span className="font-mono">{dep.totalSeats}</span>{" "}
+                      seats left
                     </span>
                   </div>
                 </td>

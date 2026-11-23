@@ -1,5 +1,24 @@
+import { formatPkr } from "@/components/public/public-utils"
 import type { FaqJsonLdItem } from "@/lib/seo/json-ld"
 import type { PublicHajjPackageDto } from "@/lib/seo/public-queries"
+
+export const HAJJ_REGULATORY_DISCLOSURE_HEADING =
+  "Mandatory Regulatory Disclosure — Non-Binding Indicative Pre-Registration Only" as const
+
+export const HAJJ_PATHWAY_DIASPORA_COLUMN_LABEL =
+  "Overseas Diaspora (Nusuk Hajj — UK/US/CA/EU/GCC)" as const
+
+export const HAJJ_FAQ_SECTION_HEADING =
+  "Frequently Asked Questions — Hajj 2027 Pre-Registration" as const
+
+export function formatIndicativePriceRange(
+  sharingPkr: number,
+  doublePkr?: number | null
+): string {
+  return `${formatPkr(sharingPkr)}${
+    doublePkr && doublePkr > sharingPkr ? ` – ${formatPkr(doublePkr)}` : ""
+  }`
+}
 
 export const HAJJ_2027_METADATA_SPEC = {
   path: "/hajj-2027",

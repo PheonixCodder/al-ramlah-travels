@@ -59,6 +59,7 @@ describe("W6A F-SEO-PLAT: Discovery (robots/sitemap/llms.txt), Edge X-Robots-Tag
       "/api/",
       "/voucher/",
       "/quote/",
+      "/documents/",
     ])
     expect(
       rules.some(

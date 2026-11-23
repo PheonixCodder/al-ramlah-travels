@@ -122,7 +122,9 @@ export function evaluateSystemConfigHealth(
       label: "Pooled Serverless PostgreSQL URL",
       configured:
         hasRealValue(sourceEnv.DATABASE_URL_POOLED) &&
-        /^postgres(ql)?:\/\//i.test(sourceEnv.DATABASE_URL_POOLED?.trim() ?? ""),
+        /^postgres(ql)?:\/\//i.test(
+          sourceEnv.DATABASE_URL_POOLED?.trim() ?? ""
+        ),
       requiredInProd: true,
     },
   ]
@@ -349,7 +351,8 @@ export function evaluateSystemConfigHealth(
     {
       id: "vault_and_auth",
       title: "Auth & AES-256-GCM Vault",
-      description: "Better Auth session signing & 64-hex token encryption keyring",
+      description:
+        "Better Auth session signing & 64-hex token encryption keyring",
       ...computeStatus(vaultChecks),
       checks: vaultChecks,
       summaryNote: vaultChecks.every((c) => c.configured)
@@ -359,18 +362,21 @@ export function evaluateSystemConfigHealth(
     {
       id: "r2",
       title: "Cloudflare R2 Storage",
-      description: "S3-compatible object storage for flyers, posters & private quote PDFs",
+      description:
+        "S3-compatible object storage for flyers, posters & private quote PDFs",
       ...computeStatus(r2Checks),
       checks: r2Checks,
-      summaryNote:
-        r2Checks.filter((c) => c.requiredInProd).every((c) => c.configured)
-          ? "All required Cloudflare R2 bucket credentials configured."
-          : "Missing one or more R2_* credentials (local dev fallback active).",
+      summaryNote: r2Checks
+        .filter((c) => c.requiredInProd)
+        .every((c) => c.configured)
+        ? "All required Cloudflare R2 bucket credentials configured."
+        : "Missing one or more R2_* credentials (local dev fallback active).",
     },
     {
       id: "gotenberg",
       title: "Oracle Gotenberg PDF Engine",
-      description: "Headless Chromium 4K poster & 3-page luxury quotation PDF renderer",
+      description:
+        "Headless Chromium 4K poster & 3-page luxury quotation PDF renderer",
       ...computeStatus(gotenbergChecks),
       checks: gotenbergChecks,
       summaryNote: gotenbergChecks.every((c) => c.configured)
@@ -380,7 +386,8 @@ export function evaluateSystemConfigHealth(
     {
       id: "resend",
       title: "Resend Transactional Email",
-      description: "Staff password-reset links & operational transactional emails",
+      description:
+        "Staff password-reset links & operational transactional emails",
       ...computeStatus(resendChecks),
       checks: resendChecks,
       summaryNote: resendChecks[0]!.configured
@@ -390,7 +397,8 @@ export function evaluateSystemConfigHealth(
     {
       id: "waba",
       title: "Meta WhatsApp Cloud API",
-      description: "Official Meta Graph v21.0 webhook HMAC verification & WABA dispatch",
+      description:
+        "Official Meta Graph v21.0 webhook HMAC verification & WABA dispatch",
       ...computeStatus(wabaChecks),
       checks: wabaChecks,
       summaryNote:
@@ -401,25 +409,27 @@ export function evaluateSystemConfigHealth(
     {
       id: "social_oauth",
       title: "Social Publishing OAuth",
-      description: "Core 5 OAuth credentials (Instagram, Facebook, TikTok, YouTube, GBP)",
+      description:
+        "Core 5 OAuth credentials (Instagram, Facebook, TikTok, YouTube, GBP)",
       status: socialReady
         ? "ready"
         : socialChecks.some((c) => c.configured)
-        ? "partial"
-        : "missing",
+          ? "partial"
+          : "missing",
       ready: socialReady,
       checks: socialChecks,
       summaryNote:
         (dbSummary.activeSocialCount ?? 0) > 0
           ? `${dbSummary.activeSocialCount} social channel(s) connected.`
           : socialReady
-          ? "OAuth client credentials ready; connect channels in Social tab."
-          : "Configure OAuth client credentials or Composio bridge key.",
+            ? "OAuth client credentials ready; connect channels in Social tab."
+            : "Configure OAuth client credentials or Composio bridge key.",
     },
     {
       id: "trigger",
       title: "Trigger.dev Cloud Jobs",
-      description: "Durable background workers for webhooks, PDFs, broadcasts & schedules",
+      description:
+        "Durable background workers for webhooks, PDFs, broadcasts & schedules",
       ...computeStatus(triggerChecks),
       checks: triggerChecks,
       summaryNote: triggerChecks[0]!.configured
@@ -429,7 +439,8 @@ export function evaluateSystemConfigHealth(
     {
       id: "ai",
       title: "Multimodal AI Gateway",
-      description: "Supplier flyer extraction, quoting copilot & social caption copilot",
+      description:
+        "Supplier flyer extraction, quoting copilot & social caption copilot",
       ...computeStatus(aiChecks),
       checks: aiChecks,
       summaryNote: aiChecks[0]!.configured

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState, useTransition } from "react"
+import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
   deleteContactMessage,
@@ -53,6 +53,13 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
   const router = useRouter()
   const [messages, setMessages] =
     useState<ContactMessageData[]>(initialMessages)
+  const [prevInitialMessages, setPrevInitialMessages] =
+    useState(initialMessages)
+  if (prevInitialMessages !== initialMessages) {
+    setPrevInitialMessages(initialMessages)
+    setMessages(initialMessages)
+  }
+
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [search, setSearch] = useState("")
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -67,16 +74,12 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
   } | null>(null)
   const [, startTransition] = useTransition()
 
-  useEffect(() => {
-    setMessages(initialMessages)
-  }, [initialMessages])
-
   const selectedMessage = React.useMemo(
     () => messages.find((m) => m.id === selectedId) ?? null,
     [messages, selectedId]
   )
 
-  // Keep active message pinned in list even if marking unread -> read under statusFilter === "unread"
+  // Keep active message pinned in list even if marking unread to read under statusFilter === "unread"
   const filteredMessages = React.useMemo(() => {
     const q = search.trim().toLowerCase()
     return messages.filter((m) => {
@@ -108,9 +111,7 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
     status: "unread" | "read" | "replied" | "archived"
   ) {
     const previous = messages
-    setMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, status } : m))
-    )
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, status } : m)))
     startTransition(async () => {
       const res = await updateContactMessageStatus({ id, status })
       if (!res.success) {
@@ -169,7 +170,9 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
           setSelectedId(id)
           setFeedback({
             tone: "error",
-            text: res.error || "Only Super Admins can permanently delete inquiries.",
+            text:
+              res.error ||
+              "Only Super Admins can permanently delete inquiries.",
           })
           return
         }
@@ -208,7 +211,8 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
           Contact Messages Inbox
         </h2>
         <p className="text-sm text-muted-foreground">
-          Pilgrim inquiries, callback requests, and direct WhatsApp/email triage.
+          Pilgrim inquiries, callback requests, and direct WhatsApp/email
+          triage.
         </p>
       </div>
 
@@ -216,8 +220,8 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
         <div
           className={`rounded-xl border p-3 text-xs font-medium ${
             feedback.tone === "error"
-              ? "border-red-300 bg-red-50 text-red-800"
-              : "border-emerald-300 bg-emerald-50 text-emerald-900"
+              ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+              : "border-status-success-border bg-status-success-bg text-status-success"
           }`}
         >
           {feedback.text}
@@ -230,9 +234,9 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
           <button
             type="button"
             onClick={() => setStatusFilter("all")}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+            className={`cursor-pointer rounded-md px-3 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
               statusFilter === "all"
-                ? "bg-card text-foreground shadow-xs font-semibold"
+                ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -241,9 +245,9 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
           <button
             type="button"
             onClick={() => setStatusFilter("unread")}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+            className={`cursor-pointer rounded-md px-3 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
               statusFilter === "unread"
-                ? "bg-card text-amber-900 shadow-xs font-semibold"
+                ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -252,9 +256,9 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
           <button
             type="button"
             onClick={() => setStatusFilter("read")}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+            className={`cursor-pointer rounded-md px-3 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
               statusFilter === "read"
-                ? "bg-card text-foreground shadow-xs font-semibold"
+                ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -263,9 +267,9 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
           <button
             type="button"
             onClick={() => setStatusFilter("replied")}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+            className={`cursor-pointer rounded-md px-3 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
               statusFilter === "replied"
-                ? "bg-card text-emerald-900 shadow-xs font-semibold"
+                ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -274,9 +278,9 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
           <button
             type="button"
             onClick={() => setStatusFilter("archived")}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+            className={`cursor-pointer rounded-md px-3 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
               statusFilter === "archived"
-                ? "bg-card text-foreground shadow-xs font-semibold"
+                ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -285,12 +289,15 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
         </div>
 
         <div className="relative w-full sm:w-64">
-          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Search
+            className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, subject, or phone..."
-            className="pl-8 text-xs h-8"
+            placeholder="Search by name, subject, or phone"
+            className="h-8 pl-8 text-xs"
           />
         </div>
       </div>
@@ -305,42 +312,44 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
             </div>
           ) : (
             filteredMessages.map((m) => (
-              <div
+              <button
+                type="button"
                 key={m.id}
                 onClick={() => handleSelect(m)}
-                className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
+                aria-pressed={selectedMessage?.id === m.id}
+                className={`w-full cursor-pointer rounded-xl border p-3.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
                   selectedMessage?.id === m.id
                     ? "border-primary bg-primary/5 shadow-xs"
                     : "border-border bg-card hover:bg-muted/30"
-                } ${m.status === "unread" ? "border-l-4 border-l-amber-500 font-medium" : ""}`}
+                } ${m.status === "unread" ? "border-l-4 border-l-status-warning font-medium" : ""}`}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <span className="font-semibold text-sm text-foreground truncate">
+                  <span className="truncate text-sm font-semibold text-foreground">
                     {m.name}
                   </span>
                   <Badge
-                    className={`text-[9px] font-semibold uppercase ${
+                    className={`text-[9px] font-semibold capitalize ${
                       m.status === "unread"
-                        ? "bg-amber-100 text-amber-900 border-amber-300"
+                        ? "border-status-warning-border bg-status-warning-bg text-status-warning"
                         : m.status === "replied"
-                        ? "bg-emerald-100 text-emerald-900 border-emerald-300"
-                        : "bg-muted text-muted-foreground"
+                          ? "border-status-success-border bg-status-success-bg text-status-success"
+                          : "bg-muted text-muted-foreground"
                     }`}
                   >
                     {m.status}
                   </Badge>
                 </div>
-                <h4 className="text-xs font-medium text-foreground/90 mt-1 truncate">
+                <h4 className="mt-1 truncate text-xs font-medium text-foreground/90">
                   {m.subject}
                 </h4>
-                <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
                   {m.message}
                 </p>
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-2 mt-1 border-t border-border/50">
+                <div className="mt-1 flex items-center justify-between border-t border-border/50 pt-2 text-[10px] text-muted-foreground">
                   <span className="font-mono">{m.phone}</span>
                   <span>{new Date(m.createdAt).toLocaleDateString()}</span>
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>
@@ -348,33 +357,36 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
         {/* Right Reader */}
         <div className="lg:col-span-7">
           {selectedMessage ? (
-            <div className="rounded-xl border border-border bg-card p-6 shadow-xs space-y-6">
+            <div className="space-y-6 rounded-xl border border-border bg-card p-6 shadow-xs">
               {/* Message Header */}
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between border-b border-border pb-4">
+              <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-lg font-bold text-foreground">
                       {selectedMessage.subject}
                     </h3>
-                    <Badge variant="outline" className="text-[10px] uppercase">
+                    <Badge variant="outline" className="text-[10px] capitalize">
                       {selectedMessage.status}
                     </Badge>
                     {inferAcquisitionChannel(selectedMessage) && (
                       <Badge
                         variant="outline"
-                        className="border-emerald-600/30 bg-emerald-50 text-[10px] font-semibold text-emerald-900"
+                        className="border-status-success-border bg-status-success-bg text-[10px] font-semibold text-status-success"
                       >
                         {inferAcquisitionChannel(selectedMessage)}
                       </Badge>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                     <span className="font-semibold text-foreground">
                       {selectedMessage.name}
                     </span>
                     <span>·</span>
                     <span className="flex items-center gap-1">
-                      <Calendar className="size-3 text-primary" />
+                      <Calendar
+                        className="size-3 text-primary"
+                        aria-hidden="true"
+                      />
                       {new Date(selectedMessage.createdAt).toLocaleString()}
                     </span>
                   </div>
@@ -386,7 +398,7 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                       {selectedMessage.utmSource && (
                         <Badge
                           variant="outline"
-                          className="border-emerald-700/30 bg-emerald-50/70 font-mono text-[10px] font-semibold text-emerald-900"
+                          className="border-status-success-border bg-status-success-bg text-[10px] font-semibold text-status-success"
                         >
                           {`${selectedMessage.utmSource.charAt(0).toUpperCase()}${selectedMessage.utmSource.slice(1)}${
                             selectedMessage.utmMedium
@@ -398,7 +410,7 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                       {selectedMessage.utmCampaign && (
                         <Badge
                           variant="outline"
-                          className="border-gold/40 bg-gold/10 font-mono text-[10px] font-medium text-gold-text"
+                          className="border-gold-border bg-accent/35 text-[10px] font-medium text-gold-text"
                         >
                           Campaign: {selectedMessage.utmCampaign}
                         </Badge>
@@ -406,7 +418,7 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                       {selectedMessage.landingPage && (
                         <Badge
                           variant="outline"
-                          className="border-border bg-muted/40 font-mono text-[10px] font-normal text-foreground"
+                          className="border-border bg-muted/40 text-[10px] font-normal text-foreground"
                         >
                           Entry: {selectedMessage.landingPage}
                         </Badge>
@@ -414,7 +426,7 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                       {selectedMessage.httpReferrer && (
                         <Badge
                           variant="outline"
-                          className="max-w-xs truncate border-border bg-muted/40 font-mono text-[10px] font-normal text-muted-foreground"
+                          className="max-w-xs truncate border-border bg-muted/40 text-[10px] font-normal text-muted-foreground"
                           title={selectedMessage.httpReferrer}
                         >
                           Referrer: {selectedMessage.httpReferrer}
@@ -434,9 +446,9 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                     }
                     size="xs"
                     onClick={() => updateStatus(selectedMessage.id, "replied")}
-                    className="gap-1 text-xs cursor-pointer"
+                    className="cursor-pointer gap-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <CheckCircle className="size-3.5" />
+                    <CheckCircle className="size-3.5" aria-hidden="true" />
                     <span>Replied</span>
                   </Button>
                   <Button
@@ -447,19 +459,19 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                     }
                     size="xs"
                     onClick={() => updateStatus(selectedMessage.id, "archived")}
-                    className="gap-1 text-xs cursor-pointer"
+                    className="cursor-pointer gap-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <Archive className="size-3.5" />
+                    <Archive className="size-3.5" aria-hidden="true" />
                     <span>Archive</span>
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => handleDelete(selectedMessage.id)}
-                    className="size-7 text-red-500 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                    className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     title="Delete Inquiry (Super Admin)"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
@@ -468,9 +480,12 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
               <div className="flex flex-wrap gap-2 text-xs">
                 <a
                   href={`tel:${selectedMessage.phone}`}
-                  className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5 font-medium text-foreground hover:bg-muted"
+                  className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5 font-medium text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
-                  <Phone className="size-3.5 text-emerald-700" />
+                  <Phone
+                    className="size-3.5 text-status-success"
+                    aria-hidden="true"
+                  />
                   <span>Call {selectedMessage.phone}</span>
                 </a>
 
@@ -479,11 +494,15 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                     href={whatsappReplyHref}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 font-medium text-emerald-800 hover:bg-emerald-100"
+                    className="flex items-center gap-1.5 rounded-lg border border-status-success-border bg-status-success-bg px-3 py-1.5 font-medium text-status-success hover:bg-status-success-bg/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <MessageCircle className="size-3.5 text-emerald-600" />
+                    <MessageCircle
+                      className="size-3.5 text-status-success"
+                      aria-hidden="true"
+                    />
                     <span>
-                      WhatsApp Pilgrim (+{normalizeWhatsappNumber(whatsappCandidate)})
+                      WhatsApp Pilgrim (+
+                      {normalizeWhatsappNumber(whatsappCandidate)})
                     </span>
                   </a>
                 )}
@@ -491,46 +510,50 @@ export function MessagesClient({ initialMessages }: MessagesClientProps) {
                 {selectedMessage.email && (
                   <a
                     href={`mailto:${selectedMessage.email}?subject=Re: ${encodeURIComponent(selectedMessage.subject)}`}
-                    className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5 font-medium text-foreground hover:bg-muted"
+                    className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5 font-medium text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <Mail className="size-3.5 text-primary" />
+                    <Mail
+                      className="size-3.5 text-primary"
+                      aria-hidden="true"
+                    />
                     <span>Email ({selectedMessage.email})</span>
                   </a>
                 )}
               </div>
 
               {/* Message Content Body */}
-              <div className="rounded-lg bg-muted/20 p-4 border border-border/80">
-                <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+              <div className="rounded-lg bg-secondary/45 p-4">
+                <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
                   {selectedMessage.message}
                 </p>
               </div>
 
               {/* Admin Staff Internal Notes */}
-              <div className="space-y-2 pt-2 border-t border-border">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="space-y-2 border-t border-border pt-2">
+                <span className="text-xs font-semibold text-muted-foreground">
                   Internal Staff Notes
                 </span>
                 <Textarea
                   rows={3}
                   value={adminNotes}
                   onChange={(e) => setAdminNotes(e.target.value)}
-                  placeholder="Note discussions with the pilgrim, customized rate promises, or follow-up dates..."
+                  placeholder="Note discussions with the pilgrim, customized rate promises, or follow-up dates"
                   className="text-xs"
                 />
                 <Button
                   size="xs"
                   onClick={handleSaveNotes}
-                  className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                  className="cursor-pointer gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
-                  <Save className="size-3" />
+                  <Save className="size-3" aria-hidden="true" />
                   <span>Save Internal Notes</span>
                 </Button>
               </div>
             </div>
           ) : (
             <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-border text-xs text-muted-foreground">
-              Select a message from the list to view details and contact actions.
+              Select a message from the list to view details and contact
+              actions.
             </div>
           )}
         </div>

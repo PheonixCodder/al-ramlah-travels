@@ -22,6 +22,7 @@ import * as cmsActions from "../../app/actions/cms"
 import * as commandLookupActions from "../../app/actions/command-lookup"
 import * as groupsActions from "../../app/actions/groups"
 import * as marketingOpsActions from "../../app/actions/marketing-ops"
+import * as pilgrimDocumentsActions from "../../app/actions/pilgrim-documents"
 import * as quotesActions from "../../app/actions/quotes"
 import * as quotingCopilotActions from "../../app/actions/quoting-copilot"
 import * as socialSchedulerActions from "../../app/actions/social-scheduler"
@@ -32,6 +33,8 @@ import {
   GET as authGetHandler,
   POST as authPostHandler,
 } from "../../app/api/auth/[...all]/route"
+import { PUT as pilgrimLocalPutHandler } from "../../app/api/documents/[token]/local-upload/route"
+import { POST as pilgrimPresignPostHandler } from "../../app/api/documents/[token]/presign/route"
 import { GET as healthGetHandler } from "../../app/api/health/route"
 import { GET as mediaGetHandler } from "../../app/api/media/[...key]/route"
 import { PUT as localUploadPutHandler } from "../../app/api/uploads/local/route"
@@ -42,7 +45,9 @@ import {
 } from "../../app/api/webhooks/whatsapp/route"
 import { db } from "../../db"
 import * as schema from "../../db/schema"
+import { DEPOSIT_PAID_PAYMENT_STATUS } from "../../db/schema/applications"
 import { provisionStaffAccountInternal } from "../../lib/auth"
+import { mintDocumentPortalTokenMaterial } from "../../lib/domain/pilgrim-documents"
 import { hashIp } from "../../lib/rate-limit"
 import { createSignedMediaProxyUrl } from "../../lib/storage/r2"
 import { signMetaWebhookPayload } from "../fakes/meta-whatsapp.fake"
@@ -60,6 +65,7 @@ const ACTION_MODULES: Record<string, Record<string, unknown>> = {
   "command-lookup.ts": commandLookupActions,
   "groups.ts": groupsActions,
   "marketing-ops.ts": marketingOpsActions,
+  "pilgrim-documents.ts": pilgrimDocumentsActions,
   "quotes.ts": quotesActions,
   "quoting-copilot.ts": quotingCopilotActions,
   "social-scheduler.ts": socialSchedulerActions,
@@ -83,6 +89,10 @@ const PUBLIC_PILGRIM_ACTIONS = new Set<string>([
   "cms.ts:submitContactMessage",
   "groups.ts:submitGroupBooking",
   "groups.ts:submitHajjInquiry",
+  "pilgrim-documents.ts:resolvePublicDocumentPortalByToken",
+  "pilgrim-documents.ts:verifyPilgrimDocumentSessionAction",
+  "pilgrim-documents.ts:savePilgrimTravellerDetailsAction",
+  "pilgrim-documents.ts:commitPilgrimDocumentUploadAction",
 ])
 
 const PURE_DIAGNOSTIC_EXPORTS = new Set<string>([
@@ -341,6 +351,8 @@ describe("T-078: Dynamic Server Actions AuthZ Matrix (100% Admin Exports) & API 
       { id: "whatsapp-crm.ts:createWhatsAppTemplateAction", fn: whatsappCrmActions.createWhatsAppTemplateAction as GenericActionFn },
       { id: "whatsapp-linked-device.ts:createLinkedDeviceSessionSlotAction", fn: whatsappLinkedDeviceActions.createLinkedDeviceSessionSlotAction as GenericActionFn },
       { id: "whatsapp-linked-device.ts:purgeFakeMarketingChannelsAction", fn: whatsappLinkedDeviceActions.purgeFakeMarketingChannelsAction as GenericActionFn },
+      { id: "pilgrim-documents.ts:setTravellerExpiryOverrideAction", fn: pilgrimDocumentsActions.setTravellerExpiryOverrideAction as GenericActionFn },
+      { id: "pilgrim-documents.ts:rotateDocumentPortalTokenAction", fn: pilgrimDocumentsActions.rotateDocumentPortalTokenAction as GenericActionFn },
     ]
 
     for (const target of superAdminOnlyTargets) {
@@ -575,5 +587,146 @@ describe("T-078: Dynamic Server Actions AuthZ Matrix (100% Admin Exports) & API 
       })
     )
     expect(validHmacRes.status).toBe(200)
+
+    // 6. /api/documents/[token]/presign & /api/documents/[token]/local-upload capability + session gates
+    const unknownPortalToken = "unknown_portal_token_abcdefghijklmnopqrstuvwxyz_01"
+    const malformedPortalToken = "short-bad-token"
+
+    const unknownPresignRes = await pilgrimPresignPostHandler(
+      new NextRequest(
+        `http://localhost:3000/api/documents/${unknownPortalToken}/presign`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-forwarded-for": "203.0.113.77",
+          },
+          body: JSON.stringify({}),
+        }
+      ),
+      { params: Promise.resolve({ token: unknownPortalToken }) }
+    )
+    expect(unknownPresignRes.status).toBe(404)
+    expect(unknownPresignRes.headers.get("x-robots-tag")).toContain("noindex")
+
+    const malformedPresignRes = await pilgrimPresignPostHandler(
+      new NextRequest(
+        `http://localhost:3000/api/documents/${malformedPortalToken}/presign`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-forwarded-for": "203.0.113.77",
+          },
+          body: JSON.stringify({}),
+        }
+      ),
+      { params: Promise.resolve({ token: malformedPortalToken }) }
+    )
+    expect(malformedPresignRes.status).toBe(404)
+
+    const unknownLocalPutRes = await pilgrimLocalPutHandler(
+      new NextRequest(
+        `http://localhost:3000/api/documents/${unknownPortalToken}/local-upload?key=passports/a/b/passport_bio_page-12345678.jpg`,
+        {
+          method: "PUT",
+          body: new Uint8Array([0xff, 0xd8, 0xff]),
+        }
+      ),
+      { params: Promise.resolve({ token: unknownPortalToken }) }
+    )
+    expect(unknownLocalPutRes.status).toBe(404)
+
+    const tokenMaterial = mintDocumentPortalTokenMaterial()
+    const [probeApp] = await db
+      .insert(schema.applications)
+      .values({
+        referenceNumber: `ART-AUTHZ-${Date.now().toString().slice(-6)}`,
+        source: "custom_builder",
+        presetMode: "visa_only",
+        status: "approved",
+        adults: 1,
+        children: 0,
+        infants: 0,
+        totalPassportCount: 1,
+        bedAndSeatCount: 1,
+        customerName: "AuthZ Probe Pilgrim",
+        customerPhone: "+923001122334",
+        customerWhatsapp: "+923001122334",
+        customerCity: "Lahore",
+        documentPortalTokenHash: tokenMaterial.tokenHash,
+        documentPortalTokenEncrypted: tokenMaterial.tokenEncrypted,
+      })
+      .returning()
+
+    try {
+      const [probeQuote] = await db
+        .insert(schema.applicationQuotes)
+        .values({
+          applicationId: probeApp!.id,
+          version: 1,
+          visaTotalPkr: 45000,
+          grandTotalPkr: 45000,
+          depositRequiredPkr: 20000,
+          amountPaidPkr: 20000,
+          paymentStatus: DEPOSIT_PAID_PAYMENT_STATUS,
+        })
+        .returning()
+
+      await db.insert(schema.applicationPayments).values({
+        applicationId: probeApp!.id,
+        quoteId: probeQuote!.id,
+        amountPkr: 20000,
+        paymentMethod: "bank_transfer",
+        verifiedAt: new Date(),
+      })
+
+      const unverifiedPresignRes = await pilgrimPresignPostHandler(
+        new NextRequest(
+          `http://localhost:3000/api/documents/${tokenMaterial.rawToken}/presign`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-forwarded-for": "203.0.113.77",
+            },
+            body: JSON.stringify({
+              travellerId: crypto.randomUUID(),
+              docType: "passport_bio_page",
+              filename: "passport.jpg",
+              contentType: "image/jpeg",
+              sizeBytes: 2048,
+            }),
+          }
+        ),
+        { params: Promise.resolve({ token: tokenMaterial.rawToken }) }
+      )
+      expect(unverifiedPresignRes.status).toBe(401)
+
+      const unverifiedLocalPutRes = await pilgrimLocalPutHandler(
+        new NextRequest(
+          `http://localhost:3000/api/documents/${tokenMaterial.rawToken}/local-upload?key=passports/${probeApp!.id}/${crypto.randomUUID()}/passport_bio_page-12345678.jpg`,
+          {
+            method: "PUT",
+            body: new Uint8Array([0xff, 0xd8, 0xff]),
+          }
+        ),
+        { params: Promise.resolve({ token: tokenMaterial.rawToken }) }
+      )
+      expect(unverifiedLocalPutRes.status).toBe(401)
+    } finally {
+      await db
+        .delete(schema.rateLimitBuckets)
+        .where(like(schema.rateLimitBuckets.key, `%${tokenMaterial.tokenHash}%`))
+      await db
+        .delete(schema.applicationPayments)
+        .where(eq(schema.applicationPayments.applicationId, probeApp!.id))
+      await db
+        .delete(schema.applicationQuotes)
+        .where(eq(schema.applicationQuotes.applicationId, probeApp!.id))
+      await db
+        .delete(schema.applications)
+        .where(eq(schema.applications.id, probeApp!.id))
+    }
   })
 })

@@ -101,28 +101,29 @@ export function ApplicationsFilters({
       {/* Top Bar: Search Input & Source Filter */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <form onSubmit={handleSearchSubmit} className="relative flex-1 sm:max-w-md">
-          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
             id="admin-global-search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search reference (ART-...), pilgrim name, phone, city..."
-            className="pl-9 pr-8 text-sm"
+            placeholder="Search reference (ART-...), pilgrim name, phone, city…"
+            className="pr-8 pl-9 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           />
           {searchTerm && (
             <button
               type="button"
               onClick={clearSearch}
-              className="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+              className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <X className="size-3.5" />
+              <X className="size-3.5" aria-hidden="true" />
             </button>
           )}
         </form>
 
         {/* Source Filter Buttons */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-          <Filter className="size-3.5 shrink-0 text-muted-foreground" />
+          <Filter className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="text-xs font-medium text-muted-foreground">Source:</span>
           {SOURCE_OPTIONS.map((src) => {
             const isSelected = currentSource === src.key
@@ -131,10 +132,10 @@ export function ApplicationsFilters({
                 key={src.key}
                 type="button"
                 onClick={() => updateFilters({ source: src.key })}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap ${
+                className={`rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                   isSelected
-                    ? "bg-primary text-primary-foreground font-semibold"
-                    : "bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+                    ? "bg-primary font-semibold text-primary-foreground"
+                    : "bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
                 }`}
               >
                 {src.label}
@@ -147,15 +148,16 @@ export function ApplicationsFilters({
       {/* Overdue Active Filter Indicator */}
       {(currentFilter === "overdue" || searchParams.get("filter") === "overdue") && (
         <div className="flex items-center gap-2">
-          <div className="inline-flex items-center gap-2 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-800 shadow-2xs">
+          <div className="inline-flex items-center gap-2 rounded-full border border-status-danger-border bg-status-danger-bg px-3 py-1 text-xs font-semibold text-status-danger shadow-2xs">
             <span>Filtered by: SLA Overdue (&gt;{slaOverdueHours}h)</span>
             <button
               type="button"
               onClick={() => updateFilters({ filter: "" })}
-              className="inline-flex size-4 items-center justify-center rounded-full bg-red-200 text-red-900 transition-colors hover:bg-red-300"
+              aria-label="Clear overdue filter"
+              className="inline-flex size-4 items-center justify-center rounded-full bg-status-danger/15 text-status-danger transition-colors hover:bg-status-danger/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               title="Clear Overdue Filter"
             >
-              <X className="size-3" />
+              <X className="size-3" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -172,15 +174,15 @@ export function ApplicationsFilters({
               key={tab.key}
               type="button"
               onClick={() => updateFilters({ status: tab.key })}
-              className={`flex items-center gap-2 border-b-2 px-3 py-2 text-xs font-medium transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2 border-b-2 px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                 isSelected
-                  ? "border-primary text-primary font-bold"
-                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                  ? "border-primary font-bold text-primary"
+                  : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
               }`}
             >
               <span>{tab.label}</span>
               <span
-                className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono font-semibold ${
+                className={`rounded-full px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums ${
                   isSelected
                     ? "bg-primary/10 text-primary"
                     : "bg-muted text-muted-foreground"

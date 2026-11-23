@@ -262,24 +262,17 @@ function AdminLoginForm() {
 
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -left-40 size-96 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute -right-40 -bottom-40 size-96 rounded-full bg-gold/15 blur-3xl" />
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `radial-gradient(var(--color-primary) 1px, transparent 1px)`,
-            backgroundSize: "24px 24px",
-          }}
-        />
-      </div>
+      <div
+        aria-hidden="true"
+        className="bg-haramain-pattern pointer-events-none absolute inset-0 opacity-60"
+      />
 
       <main
         id="main-content"
         className="relative z-10 w-full max-w-md"
       >
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="relative mb-3 flex size-16 items-center justify-center rounded-2xl border border-gold/40 bg-card p-2 shadow-md">
+          <div className="relative mb-3 flex size-16 items-center justify-center rounded-2xl border border-gold-border/60 bg-card p-2 shadow-md">
             <Image
               src="/logo.jpg"
               alt="Al Ramlah Travels Emblem"
@@ -302,7 +295,7 @@ function AdminLoginForm() {
           <div className="mt-1 flex items-center gap-2">
             <Badge
               variant="outline"
-              className="border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-semibold tracking-wider text-primary uppercase"
+              className="border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-semibold text-primary"
             >
               Executive Admin Portal
             </Badge>
@@ -333,9 +326,9 @@ function AdminLoginForm() {
             {isSessionExpired && !errorMessage && !successMessage && (
               <Alert
                 role="alert"
-                className="border-amber-600/30 bg-amber-500/10 text-amber-900"
+                className="border-status-warning-border bg-status-warning-bg text-status-warning"
               >
-                <Clock className="size-4 shrink-0" />
+                <Clock className="size-4 shrink-0" aria-hidden="true" />
                 <AlertTitle className="text-xs font-semibold">
                   Session Expired
                 </AlertTitle>
@@ -348,9 +341,9 @@ function AdminLoginForm() {
             {successMessage && (
               <Alert
                 role="status"
-                className="border-primary/30 bg-primary/5 text-primary"
+                className="border-status-success-border bg-status-success-bg text-status-success"
               >
-                <CheckCircle2 className="size-4 shrink-0" />
+                <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
                 <AlertTitle className="text-xs font-semibold">
                   Security Notice
                 </AlertTitle>
@@ -364,9 +357,9 @@ function AdminLoginForm() {
               <Alert
                 role="alert"
                 variant="destructive"
-                className="border-destructive/30 bg-destructive/10 text-destructive"
+                className="border-status-danger-border bg-status-danger-bg text-status-danger"
               >
-                <AlertCircle className="size-4 shrink-0" />
+                <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
                 <AlertTitle className="text-xs font-semibold">
                   Authentication Error
                 </AlertTitle>
@@ -386,7 +379,7 @@ function AdminLoginForm() {
                     Corporate Email
                   </Label>
                   <div className="relative">
-                    <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Mail aria-hidden="true" className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="email"
                       type="email"
@@ -396,7 +389,7 @@ function AdminLoginForm() {
                       placeholder="name@alramlahtravels.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="pl-9 text-sm"
+                      className="pl-9 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       disabled={isLoading}
                     />
                   </div>
@@ -413,13 +406,13 @@ function AdminLoginForm() {
                     <button
                       type="button"
                       onClick={() => switchMode("forgot")}
-                      className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+                      className="rounded text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       Forgot password?
                     </button>
                   </div>
                   <div className="relative">
-                    <Lock className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Lock aria-hidden="true" className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="password"
                       type="password"
@@ -429,7 +422,7 @@ function AdminLoginForm() {
                       placeholder="••••••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="pl-9 text-sm"
+                      className="pl-9 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       disabled={isLoading}
                     />
                   </div>
@@ -438,17 +431,17 @@ function AdminLoginForm() {
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-primary font-medium text-primary-foreground hover:bg-primary/90"
+                  className="w-full bg-primary font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="size-4 animate-spin" />
-                      <span>Verifying Session...</span>
+                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                      <span>Verifying Session…</span>
                     </>
                   ) : (
                     <>
                       <span>Sign In to Dashboard</span>
-                      <ArrowRight className="size-4" />
+                      <ArrowRight className="size-4" aria-hidden="true" />
                     </>
                   )}
                 </Button>
@@ -468,7 +461,7 @@ function AdminLoginForm() {
                     Corporate Email
                   </Label>
                   <div className="relative">
-                    <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Mail aria-hidden="true" className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="reset-email"
                       type="email"
@@ -477,7 +470,7 @@ function AdminLoginForm() {
                       placeholder="name@alramlahtravels.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="pl-9 text-sm"
+                      className="pl-9 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       disabled={isLoading}
                     />
                   </div>
@@ -486,16 +479,16 @@ function AdminLoginForm() {
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-primary font-medium text-primary-foreground hover:bg-primary/90"
+                  className="w-full bg-primary font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="size-4 animate-spin" />
-                      <span>Dispatching Link...</span>
+                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                      <span>Dispatching Link…</span>
                     </>
                   ) : (
                     <>
-                      <KeyRound className="size-4" />
+                      <KeyRound className="size-4" aria-hidden="true" />
                       <span>Send Password Reset Link</span>
                     </>
                   )}
@@ -505,9 +498,9 @@ function AdminLoginForm() {
                   type="button"
                   variant="ghost"
                   onClick={() => switchMode("signin")}
-                  className="w-full text-xs text-muted-foreground"
+                  className="w-full text-xs text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
-                  <ArrowLeft className="size-3.5" />
+                  <ArrowLeft className="size-3.5" aria-hidden="true" />
                   <span>Return to Sign In</span>
                 </Button>
               </form>
@@ -526,7 +519,7 @@ function AdminLoginForm() {
                     New Password (min. 10 characters)
                   </Label>
                   <div className="relative">
-                    <Lock className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Lock aria-hidden="true" className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="new-password"
                       type="password"
@@ -535,7 +528,7 @@ function AdminLoginForm() {
                       autoComplete="new-password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="pl-9 text-sm"
+                      className="pl-9 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       disabled={isLoading}
                     />
                   </div>
@@ -549,7 +542,7 @@ function AdminLoginForm() {
                     Confirm New Password
                   </Label>
                   <div className="relative">
-                    <ShieldCheck className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <ShieldCheck aria-hidden="true" className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="confirm-password"
                       type="password"
@@ -558,7 +551,7 @@ function AdminLoginForm() {
                       autoComplete="new-password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="pl-9 text-sm"
+                      className="pl-9 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       disabled={isLoading}
                     />
                   </div>
@@ -567,17 +560,17 @@ function AdminLoginForm() {
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-primary font-medium text-primary-foreground hover:bg-primary/90"
+                  className="w-full bg-primary font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="size-4 animate-spin" />
-                      <span>Updating Credentials...</span>
+                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                      <span>Updating Credentials…</span>
                     </>
                   ) : (
                     <>
                       <span>Save New Password</span>
-                      <ArrowRight className="size-4" />
+                      <ArrowRight className="size-4" aria-hidden="true" />
                     </>
                   )}
                 </Button>
@@ -603,7 +596,7 @@ function AdminLoginForm() {
                     autoComplete="current-password"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="text-sm"
+                    className="text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     disabled={isLoading}
                   />
                 </div>
@@ -623,7 +616,7 @@ function AdminLoginForm() {
                     autoComplete="new-password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="text-sm"
+                    className="text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     disabled={isLoading}
                   />
                 </div>
@@ -643,7 +636,7 @@ function AdminLoginForm() {
                     autoComplete="new-password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="text-sm"
+                    className="text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     disabled={isLoading}
                   />
                 </div>
@@ -651,17 +644,17 @@ function AdminLoginForm() {
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-primary font-medium text-primary-foreground hover:bg-primary/90"
+                  className="w-full bg-primary font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="size-4 animate-spin" />
-                      <span>Rotating Password...</span>
+                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                      <span>Rotating Password…</span>
                     </>
                   ) : (
                     <>
                       <span>Update Password &amp; Continue</span>
-                      <ArrowRight className="size-4" />
+                      <ArrowRight className="size-4" aria-hidden="true" />
                     </>
                   )}
                 </Button>
@@ -672,9 +665,10 @@ function AdminLoginForm() {
           <CardFooter className="flex flex-col items-center justify-center border-t border-border pt-4 pb-4">
             <Link
               href="/"
-              className="text-xs font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
+              className="inline-flex items-center gap-1.5 rounded text-xs font-medium text-muted-foreground transition-colors hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              ← Back to Public Website
+              <ArrowLeft className="size-3.5" aria-hidden="true" />
+              <span>Back to Public Website</span>
             </Link>
           </CardFooter>
         </Card>

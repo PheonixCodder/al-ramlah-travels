@@ -21,12 +21,15 @@ export function UmrahPackageComparisonTable({
   caption = "2026–2027 Fixed-Departure Group Umrah Packages in Pakistani Rupees (PKR) — Adult Occupancy & Infant Tariffs",
 }: UmrahPackageComparisonTableProps): React.ReactElement {
   return (
-    <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8] bg-white shadow-xs">
+    <div
+      tabIndex={0}
+      className="overflow-x-auto rounded-2xl border border-border bg-card shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    >
       <table className="w-full min-w-[920px] border-collapse text-left text-xs sm:text-sm">
-        <caption className="border-b border-[#E6DEC8] bg-[#FAF7F0] px-4 py-3 text-left text-xs font-medium text-[#4A5048]">
+        <caption className="border-b border-border bg-secondary/65 px-4 py-3 text-left text-xs font-medium text-muted-foreground">
           {caption}
         </caption>
-        <thead className="border-b border-[#E6DEC8] bg-[#FAF7F0] text-[#0A3622]">
+        <thead className="border-b border-border bg-secondary text-primary">
           <tr>
             <th scope="col" className="px-4 py-3.5 font-bold">
               Package &amp; Duration
@@ -49,22 +52,23 @@ export function UmrahPackageComparisonTable({
             <th scope="col" className="px-3.5 py-3.5 font-bold">
               Infant (&lt;2 yrs)
             </th>
-            <th scope="col" className="px-4 py-3.5 font-bold text-right">
+            <th scope="col" className="px-4 py-3.5 text-right font-bold">
               Next Departure
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-[#E6DEC8] text-[#1A1D1A]">
+        <tbody className="divide-y divide-border text-foreground">
           {packages.length === 0 ? (
             <tr>
               <td
                 colSpan={8}
-                className="px-4 py-8 text-center text-sm text-[#4A5048]"
+                className="px-4 py-8 text-center text-sm text-muted-foreground"
               >
-                Seasonal fixed-departure group seat blocks are currently refreshing.{" "}
+                Seasonal fixed-departure group seat blocks are currently
+                refreshing.{" "}
                 <Link
                   href="/?preset=complete_umrah#journey-builder"
-                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-gold-text"
+                  className="inline-flex min-h-6 items-center rounded-sm font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
                 >
                   Configure a custom flexible-date Umrah itinerary
                 </Link>{" "}
@@ -78,58 +82,74 @@ export function UmrahPackageComparisonTable({
               const triple = formatTierPriceOrOnRequest(pkg.triplePricePkr)
               const double = formatTierPriceOrOnRequest(pkg.doublePricePkr)
               const infant = formatTierPriceOrOnRequest(pkg.infantPricePkr)
-              const nextBatch = pkg.departures.find(
-                (dep) =>
-                  (dep.status === "open" || dep.status === "filling_fast") &&
-                  dep.seatsRemaining > 0
-              ) ?? pkg.departures[0]
+              const nextBatch =
+                pkg.departures.find(
+                  (dep) =>
+                    (dep.status === "open" || dep.status === "filling_fast") &&
+                    dep.seatsRemaining > 0
+                ) ?? pkg.departures[0]
 
               return (
                 <tr
                   key={pkg.id}
-                  className="transition-colors hover:bg-[#FAF7F0]/70"
+                  className="transition-colors hover:bg-secondary/50 motion-reduce:transition-none"
                 >
                   <td className="px-4 py-4 align-top">
                     <div className="flex flex-col gap-1">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-gold-text">
+                      <span className="text-xs font-semibold text-gold-text">
                         {TIER_DISPLAY_LABELS[pkg.tier]}
                       </span>
                       <Link
                         href={`/umrah-packages/${pkg.slug}`}
-                        className="inline-flex min-h-6 items-center font-display text-sm sm:text-base font-bold text-[#0A3622] hover:text-gold-text hover:underline"
+                        className="inline-flex min-h-6 items-center rounded-sm font-display text-sm font-bold text-primary transition-colors hover:text-gold-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none sm:text-base"
                       >
                         {pkg.title}
                       </Link>
-                      <span className="font-mono tabular-nums text-xs text-[#4A5048]">
-                        {pkg.durationDays} Days ({pkg.makkahNights}N Makkah ·{" "}
-                        {pkg.madinahNights}N Madinah)
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        <span className="font-mono font-semibold text-foreground">
+                          {pkg.durationDays}
+                        </span>{" "}
+                        Days (
+                        <span className="font-mono">{pkg.makkahNights}</span>N
+                        Makkah,{" "}
+                        <span className="font-mono">{pkg.madinahNights}</span>N
+                        Madinah)
                       </span>
                     </div>
                   </td>
 
-                  <td className="px-4 py-4 align-top text-xs text-[#4A5048]">
+                  <td className="px-4 py-4 align-top text-xs text-muted-foreground">
                     <div className="flex flex-col gap-1.5">
                       <span className="inline-flex items-start gap-1.5">
-                        <Building2 className="mt-0.5 size-3.5 shrink-0 text-gold-text" />
+                        <Building2
+                          className="mt-0.5 size-3.5 shrink-0 text-gold-text"
+                          aria-hidden="true"
+                        />
                         <span>
-                          <strong className="text-[#1A1D1A]">Makkah:</strong>{" "}
+                          <strong className="text-foreground">Makkah:</strong>{" "}
                           {pkg.makkahHotel
                             ? `${pkg.makkahHotel.name} (${pkg.makkahHotel.distanceLabel})`
                             : "Verified Haramain Contract Hotel"}
                         </span>
                       </span>
                       <span className="inline-flex items-start gap-1.5">
-                        <Building2 className="mt-0.5 size-3.5 shrink-0 text-gold-text" />
+                        <Building2
+                          className="mt-0.5 size-3.5 shrink-0 text-gold-text"
+                          aria-hidden="true"
+                        />
                         <span>
-                          <strong className="text-[#1A1D1A]">Madinah:</strong>{" "}
+                          <strong className="text-foreground">Madinah:</strong>{" "}
                           {pkg.madinahHotel
                             ? `${pkg.madinahHotel.name} (${pkg.madinahHotel.distanceLabel})`
                             : "Verified Markaziyah Hotel"}
                         </span>
                       </span>
                       {pkg.airline ? (
-                        <span className="inline-flex items-center gap-1.5 font-medium text-[#0A3622]">
-                          <Plane className="size-3.5 shrink-0 text-[#0A3622]" />
+                        <span className="inline-flex items-center gap-1.5 font-medium text-primary">
+                          <Plane
+                            className="size-3.5 shrink-0 text-primary"
+                            aria-hidden="true"
+                          />
                           <span>
                             {pkg.airline.name} (
                             <span className="font-mono tabular-nums">
@@ -142,33 +162,43 @@ export function UmrahPackageComparisonTable({
                     </div>
                   </td>
 
-                  <td className="px-3.5 py-4 align-top font-mono tabular-nums font-semibold">
+                  <td className="px-3.5 py-4 align-top font-semibold">
                     {sharing.isBookable ? (
-                      <span className="text-[#0A3622]">{sharing.label}</span>
+                      <span className="font-mono text-primary tabular-nums">
+                        {sharing.label}
+                      </span>
                     ) : (
                       <span className="text-gold-text">On Request</span>
                     )}
                   </td>
 
-                  <td className="px-3.5 py-4 align-top font-mono tabular-nums font-bold">
+                  <td className="px-3.5 py-4 align-top font-bold">
                     {quad.isBookable ? (
-                      <span className="text-[#0A3622]">{quad.label}</span>
+                      <span className="font-mono text-primary tabular-nums">
+                        {quad.label}
+                      </span>
                     ) : (
-                      <span className="text-gold-text">On Request</span>
+                      <span className="font-semibold text-gold-text">
+                        On Request
+                      </span>
                     )}
                   </td>
 
-                  <td className="px-3.5 py-4 align-top font-mono tabular-nums font-semibold">
+                  <td className="px-3.5 py-4 align-top font-semibold">
                     {triple.isBookable ? (
-                      <span className="text-[#0A3622]">{triple.label}</span>
+                      <span className="font-mono text-primary tabular-nums">
+                        {triple.label}
+                      </span>
                     ) : (
                       <span className="text-gold-text">On Request</span>
                     )}
                   </td>
 
-                  <td className="px-3.5 py-4 align-top font-mono tabular-nums font-semibold">
+                  <td className="px-3.5 py-4 align-top font-semibold">
                     {double.isBookable ? (
-                      <span className="text-[#0A3622]">{double.label}</span>
+                      <span className="font-mono text-primary tabular-nums">
+                        {double.label}
+                      </span>
                     ) : (
                       <span className="text-gold-text">On Request</span>
                     )}
@@ -176,23 +206,29 @@ export function UmrahPackageComparisonTable({
 
                   <td className="px-3.5 py-4 align-top">
                     <div className="flex flex-col gap-0.5">
-                      <span className="font-mono tabular-nums font-semibold text-[#1A1D1A]">
-                        {infant.isBookable ? infant.label : "On Request"}
-                      </span>
-                      <span className="text-[11px] text-[#4A5048]">
+                      {infant.isBookable ? (
+                        <span className="font-mono font-semibold text-foreground tabular-nums">
+                          {infant.label}
+                        </span>
+                      ) : (
+                        <span className="font-semibold text-gold-text">
+                          On Request
+                        </span>
+                      )}
+                      <span className="text-xs text-muted-foreground">
                         0 bed · 0 seat
                       </span>
                     </div>
                   </td>
 
-                  <td className="px-4 py-4 align-top text-right">
+                  <td className="px-4 py-4 text-right align-top">
                     <div className="flex flex-col items-end gap-1.5">
                       {nextBatch ? (
                         <>
-                          <span className="font-mono tabular-nums text-xs font-semibold text-[#1A1D1A]">
+                          <span className="font-mono text-xs font-semibold text-foreground tabular-nums">
                             {nextBatch.departureDate}
                           </span>
-                          <span className="font-mono tabular-nums text-[11px] text-[#4A5048]">
+                          <span className="text-xs text-muted-foreground tabular-nums">
                             {nextBatch.departureCity?.airportCode ?? "PAK"} ·{" "}
                             {nextBatch.seatsRemaining > 0
                               ? `${nextBatch.seatsRemaining} seats`
@@ -206,10 +242,10 @@ export function UmrahPackageComparisonTable({
                       )}
                       <Link
                         href={`/umrah-packages/${pkg.slug}`}
-                        className="inline-flex min-h-6 items-center gap-1 rounded-lg border border-[#0A3622]/25 bg-[#FAF7F0] px-2.5 py-1 text-xs font-semibold text-[#0A3622] transition-colors hover:bg-[#0A3622] hover:text-white"
+                        className="inline-flex min-h-7 items-center gap-1 rounded-lg border border-primary/25 bg-secondary px-2.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
                       >
                         <span>Details</span>
-                        <ArrowRight className="size-3.5" />
+                        <ArrowRight className="size-3.5" aria-hidden="true" />
                       </Link>
                     </div>
                   </td>

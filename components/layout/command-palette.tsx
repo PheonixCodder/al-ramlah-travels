@@ -25,7 +25,19 @@ import {
   searchPostPackagesCommandAction,
   type CommandLookupItem,
 } from "@/app/actions/command-lookup"
+import { formatCmdkPassengerSummary } from "@/lib/constants/admin-labels"
 import { cn } from "@/lib/utils"
+
+export const COMMAND_PALETTE_OPEN_EVENTS = [
+  "open-command-palette",
+  "open-post-lookup",
+] as const
+
+export function isCommandPaletteShortcut(
+  e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey">
+): boolean {
+  return (e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey)
+}
 
 export interface CommandPaletteProps {
   open?: boolean
@@ -89,10 +101,13 @@ export function CommandPalette({
 
   const [query, setQuery] = React.useState("")
   const [results, setResults] = React.useState<CommandLookupItem[]>([])
-  const [isLoading, setIsLoading] = React.useState(false)
+  const [fetchedKey, setFetchedKey] = React.useState<string | null>(null)
   const [selectedItem, setSelectedItem] =
     React.useState<CommandLookupItem | null>(null)
+  const selectedItemIdRef = React.useRef<string | null>(null)
   const [copiedCode, setCopiedCode] = React.useState<string | null>(null)
+
+  const isLoading = isOpen && fetchedKey !== query.trim()
 
   // Quick 1-Click Conversion Form State
   const [showConvertForm, setShowConvertForm] = React.useState(false)
@@ -117,6 +132,7 @@ export function CommandPalette({
     setChildrenCount(0)
     setInfantsCount(0)
     setConvertError(null)
+    setFetchedKey(null)
   }, [])
 
   const setOpen = React.useCallback(
@@ -140,10 +156,10 @@ export function CommandPalette({
     [setOpen]
   )
 
-  // Global Cmd+K / Ctrl+K listener + custom event `open-command-palette`
+  // Global Cmd+K / Ctrl+K listener + custom open events (`open-command-palette`, `open-post-lookup`)
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+      if (isCommandPaletteShortcut(e)) {
         e.preventDefault()
         setOpen(!isOpen)
       } else if (e.key === "Escape" && isOpen) {
@@ -151,8 +167,8 @@ export function CommandPalette({
       }
     }
 
-    const handleCustomOpen = (e: Event) => {
-      const customEvent = e as CustomEvent<{ query?: string }>
+    const handleOpen = (e: Event) => {
+      const customEvent = e as CustomEvent<{ query?: string } | undefined>
       if (customEvent.detail?.query) {
         setQuery(customEvent.detail.query)
       }
@@ -160,10 +176,14 @@ export function CommandPalette({
     }
 
     document.addEventListener("keydown", down)
-    window.addEventListener("open-command-palette", handleCustomOpen)
+    for (const evt of COMMAND_PALETTE_OPEN_EVENTS) {
+      window.addEventListener(evt, handleOpen)
+    }
     return () => {
       document.removeEventListener("keydown", down)
-      window.removeEventListener("open-command-palette", handleCustomOpen)
+      for (const evt of COMMAND_PALETTE_OPEN_EVENTS) {
+        window.removeEventListener(evt, handleOpen)
+      }
     }
   }, [isOpen, setOpen])
 
@@ -172,26 +192,28 @@ export function CommandPalette({
     if (!isOpen) return
 
     let active = true
-    setIsLoading(true)
+    const currentKey = query.trim()
 
     const timer = setTimeout(async () => {
       try {
         const items = await searchPostPackagesCommandAction(query)
         if (active) {
+          const prevSelectedId = selectedItemIdRef.current
+          const nextSel =
+            items.find((it) => it.id === prevSelectedId) ?? items[0] ?? null
+          selectedItemIdRef.current = nextSel?.id ?? null
           setResults(items)
-          setSelectedItem((prev) => {
-            const nextSel =
-              items.find((it) => it.id === prev?.id) ?? items[0] ?? null
-            if (nextSel && nextSel.id !== prev?.id) {
-              setRoomType(firstAvailableTier(nextSel))
-            }
-            return nextSel
-          })
+          setFetchedKey(currentKey)
+          setSelectedItem(nextSel)
+          if (nextSel && nextSel.id !== prevSelectedId) {
+            setRoomType(firstAvailableTier(nextSel))
+          }
         }
       } catch {
-        if (active) setResults([])
-      } finally {
-        if (active) setIsLoading(false)
+        if (active) {
+          setResults([])
+          setFetchedKey(currentKey)
+        }
       }
     }, 180)
 
@@ -236,9 +258,7 @@ export function CommandPalette({
         setConvertError(res.error || "Failed to convert package to quotation")
       }
     } catch (err) {
-      setConvertError(
-        err instanceof Error ? err.message : "Conversion failed"
-      )
+      setConvertError(err instanceof Error ? err.message : "Conversion failed")
     } finally {
       setIsConverting(false)
     }
@@ -262,20 +282,23 @@ export function CommandPalette({
 
       {!isOpen ? null : (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-black/55 p-3 pt-[8vh] backdrop-blur-xs sm:p-6 sm:pt-[10vh]"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-foreground/45 p-3 pt-[8vh] sm:p-6 sm:pt-[10vh]"
           onClick={() => setOpen(false)}
         >
           <div
-            className="w-full max-w-4xl overflow-hidden rounded-2xl border border-gold/40 bg-card shadow-2xl"
+            className="w-full max-w-4xl overflow-hidden rounded-2xl bg-card shadow-2xl ring-1 ring-gold-border/60"
             onClick={(e) => e.stopPropagation()}
           >
             <Command
               shouldFilter={false}
-              className="flex h-full max-h-[78vh] flex-col bg-card text-foreground"
+              className="flex h-full max-h-[78vh] flex-col bg-background text-foreground"
             >
               {/* Search Input Header */}
-              <div className="flex items-center gap-3 border-b border-border bg-secondary/35 px-4 py-3">
-                <Search className="size-4 shrink-0 text-primary" />
+              <div className="flex items-center gap-3 border-b border-border bg-secondary/45 px-4 py-3">
+                <Search
+                  className="size-4 shrink-0 text-primary"
+                  aria-hidden="true"
+                />
                 <Command.Input
                   autoFocus
                   value={query}
@@ -284,22 +307,25 @@ export function CommandPalette({
                     setShowConvertForm(false)
                     setConvertError(null)
                   }}
-                  placeholder="Instant Reverse-Lookup: Type Post Ref (ART-UPSKY-15D-04), hotel name, airline, date, or PKR price..."
-                  className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                  placeholder="Instant Reverse-Lookup: Type Post Ref (ART-UPSKY-15D-04), hotel name, airline, date, or PKR price…"
+                  className="flex-1 rounded bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 />
                 {isLoading && (
-                  <Loader2 className="size-4 animate-spin text-gold" />
+                  <Loader2
+                    className="size-4 animate-spin text-gold-text motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 )}
-                <kbd className="hidden rounded border border-border bg-card px-2 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground sm:inline-block">
+                <kbd className="hidden rounded border border-border bg-secondary px-2 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground sm:inline-block">
                   ESC
                 </kbd>
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
                   aria-label="Close Reverse-Lookup Modal"
-                  className="rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
-                  <X className="size-4" />
+                  <X className="size-4" aria-hidden="true" />
                 </button>
               </div>
 
@@ -309,7 +335,7 @@ export function CommandPalette({
                 <Command.List className="max-h-[340px] overflow-y-auto p-2 md:col-span-5 md:max-h-[62vh]">
                   <Command.Empty className="py-12 text-center text-xs text-muted-foreground">
                     {isLoading
-                      ? "Searching supplier flyers & published group packages..."
+                      ? "Searching supplier flyers & published group packages…"
                       : "No matching active post codes or packages found."}
                   </Command.Empty>
 
@@ -320,23 +346,24 @@ export function CommandPalette({
                         key={item.id}
                         value={item.postCode}
                         onSelect={() => {
+                          selectedItemIdRef.current = item.id
                           setSelectedItem(item)
                           setRoomType(firstAvailableTier(item))
                           setShowConvertForm(false)
                           setConvertError(null)
                         }}
                         className={cn(
-                          "mb-1 flex cursor-pointer flex-col gap-1 rounded-xl border p-2.5 text-left transition-all",
+                          "mb-1 flex cursor-pointer flex-col gap-1 rounded-xl border p-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                           isSelected
-                            ? "border-gold/60 bg-primary/8 shadow-2xs"
+                            ? "border-gold-border bg-primary/8 shadow-2xs"
                             : "border-transparent hover:bg-secondary/60"
                         )}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-xs font-bold text-primary">
+                          <span className="font-mono text-xs font-bold text-primary tabular-nums">
                             {item.postCode}
                           </span>
-                          <span className="font-mono text-xs font-bold text-foreground">
+                          <span className="font-mono text-xs font-bold text-foreground tabular-nums">
                             PKR{" "}
                             {(
                               item.retailSharingPkr ||
@@ -361,19 +388,19 @@ export function CommandPalette({
                 </Command.List>
 
                 {/* Right Detail & 1-Click Quote Conversion (7 cols) */}
-                <div className="flex flex-col justify-between overflow-y-auto bg-background/50 p-4 md:col-span-7 md:max-h-[62vh]">
+                <div className="flex flex-col justify-between overflow-y-auto bg-background/60 p-4 md:col-span-7 md:max-h-[62vh]">
                   {selectedItem ? (
                     <>
-                      <div className="space-y-3">
+                      <div className="flex flex-col gap-3">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div>
                             <div className="flex items-center gap-2">
-                              <Badge className="bg-primary text-primary-foreground font-mono text-xs">
+                              <Badge className="bg-primary font-mono text-xs text-primary-foreground tabular-nums">
                                 {selectedItem.postCode}
                               </Badge>
                               <Badge
                                 variant="outline"
-                                className="border-gold/40 bg-gold/10 text-[11px] font-semibold text-foreground"
+                                className="border-gold-border/60 bg-accent/60 text-[11px] font-semibold text-foreground"
                               >
                                 Supplier: {selectedItem.supplierName}
                               </Badge>
@@ -388,19 +415,25 @@ export function CommandPalette({
                               href={selectedItem.spotlightPosterUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-medium text-primary hover:border-gold"
+                              className="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary px-2.5 py-1 text-[11px] font-medium text-primary transition-colors hover:border-gold-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             >
                               <span>View Poster</span>
-                              <ExternalLink className="size-3" />
+                              <ExternalLink
+                                className="size-3"
+                                aria-hidden="true"
+                              />
                             </a>
                           )}
                         </div>
 
                         {/* Flights & Hotels Grid */}
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                          <div className="rounded-xl border border-border bg-card p-3">
+                          <div className="rounded-xl bg-secondary/70 p-3">
                             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
-                              <Plane className="size-3.5 text-primary" />
+                              <Plane
+                                className="size-3.5 text-primary"
+                                aria-hidden="true"
+                              />
                               <span>Flight Schedule</span>
                             </div>
                             <p className="mt-1 text-xs font-bold text-foreground">
@@ -417,9 +450,12 @@ export function CommandPalette({
                             </p>
                           </div>
 
-                          <div className="rounded-xl border border-border bg-card p-3">
+                          <div className="rounded-xl bg-secondary/70 p-3">
                             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
-                              <Building2 className="size-3.5 text-gold" />
+                              <Building2
+                                className="size-3.5 text-gold-text"
+                                aria-hidden="true"
+                              />
                               <span>Haramain Hotels</span>
                             </div>
                             <p className="mt-1 truncate text-xs font-bold text-foreground">
@@ -470,18 +506,18 @@ export function CommandPalette({
                                 disabled={isUnpriced}
                                 onClick={() => setRoomType(tier.key)}
                                 className={cn(
-                                  "rounded-xl border p-2 text-center transition-all",
+                                  "rounded-xl border p-2 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                                   isUnpriced
                                     ? "cursor-not-allowed border-border/50 bg-muted/40 opacity-50"
                                     : roomType === tier.key
                                       ? "border-primary bg-primary/8 ring-1 ring-primary/30"
-                                      : "border-border bg-card hover:border-gold/50"
+                                      : "border-border bg-background hover:border-gold-border"
                                 )}
                               >
-                                <div className="text-[10px] font-semibold uppercase text-muted-foreground">
+                                <div className="text-[11px] font-semibold text-muted-foreground">
                                   {tier.label}
                                 </div>
-                                <div className="mt-0.5 font-mono text-xs font-bold text-foreground">
+                                <div className="mt-0.5 font-mono text-xs font-bold text-foreground tabular-nums">
                                   {isUnpriced
                                     ? "N/A"
                                     : tier.val.toLocaleString()}
@@ -494,15 +530,15 @@ export function CommandPalette({
                         {/* Internal Supplier Net & Margin Strip (super_admin only; zeroed for staff) */}
                         {(selectedItem.netSharingPkr > 0 ||
                           selectedItem.commissionPkr > 0) && (
-                          <div className="flex items-center justify-between rounded-lg border border-dashed border-gold/40 bg-gold/8 px-3 py-1.5 text-[11px]">
+                          <div className="flex items-center justify-between rounded-lg border border-dashed border-gold-border/60 bg-accent/40 px-3 py-1.5 text-[11px]">
                             <span className="text-muted-foreground">
                               Wholesale Net (Sharing):{" "}
-                              <strong className="font-mono text-foreground">
+                              <strong className="font-mono text-foreground tabular-nums">
                                 PKR{" "}
                                 {selectedItem.netSharingPkr.toLocaleString()}
                               </strong>
                             </span>
-                            <span className="text-emerald-800 font-semibold">
+                            <span className="font-semibold text-status-success tabular-nums">
                               Margin: PKR{" "}
                               {selectedItem.commissionPkr.toLocaleString()}/pax
                             </span>
@@ -513,17 +549,22 @@ export function CommandPalette({
                         {showConvertForm && (
                           <form
                             onSubmit={handleOneClickConvert}
-                            className="space-y-2.5 rounded-xl border border-primary/30 bg-card p-3 shadow-xs"
+                            className="flex flex-col gap-2.5 rounded-xl bg-secondary/75 p-3.5 ring-1 ring-primary/25"
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1.5 text-xs font-bold text-primary">
-                                <Sparkles className="size-3.5 text-gold" />
+                                <Sparkles
+                                  className="size-3.5 text-gold-text"
+                                  aria-hidden="true"
+                                />
                                 <span>
                                   1-Click Convert to Official Quotation (
-                                  {roomType.toUpperCase()})
+                                  {roomType.charAt(0).toUpperCase() +
+                                    roomType.slice(1)}
+                                  )
                                 </span>
                               </div>
-                              <span className="font-mono text-[11px] font-bold text-foreground">
+                              <span className="font-mono text-[11px] font-bold text-foreground tabular-nums">
                                 Est: PKR{" "}
                                 {estimatedGrandTotalPkr.toLocaleString()}
                               </span>
@@ -534,8 +575,10 @@ export function CommandPalette({
                                 required
                                 placeholder="Pilgrim Full Name *"
                                 value={customerName}
-                                onChange={(e) => setCustomerName(e.target.value)}
-                                className="h-8 text-xs"
+                                onChange={(e) =>
+                                  setCustomerName(e.target.value)
+                                }
+                                className="h-8 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               />
                               <Input
                                 required
@@ -544,13 +587,15 @@ export function CommandPalette({
                                 onChange={(e) =>
                                   setCustomerPhone(e.target.value)
                                 }
-                                className="h-8 text-xs"
+                                className="h-8 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               />
                               <Input
                                 placeholder="City (e.g. Lahore)"
                                 value={customerCity}
-                                onChange={(e) => setCustomerCity(e.target.value)}
-                                className="h-8 text-xs"
+                                onChange={(e) =>
+                                  setCustomerCity(e.target.value)
+                                }
+                                className="h-8 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               />
                             </div>
 
@@ -558,7 +603,7 @@ export function CommandPalette({
                               <div>
                                 <label
                                   htmlFor="cmd-adults"
-                                  className="block text-[10px] font-semibold text-muted-foreground mb-0.5"
+                                  className="mb-0.5 block text-[11px] font-semibold text-muted-foreground"
                                 >
                                   Adults (12+ yrs)
                                 </label>
@@ -573,15 +618,15 @@ export function CommandPalette({
                                       Math.max(1, Number(e.target.value) || 1)
                                     )
                                   }
-                                  className="h-8 text-xs font-mono"
+                                  className="h-8 font-mono text-xs tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                 />
                               </div>
                               <div>
                                 <label
                                   htmlFor="cmd-children"
-                                  className="block text-[10px] font-semibold text-muted-foreground mb-0.5"
+                                  className="mb-0.5 block text-[11px] font-semibold text-muted-foreground"
                                 >
-                                  Children (2–11 yrs)
+                                  Children (2-11 yrs)
                                 </label>
                                 <Input
                                   id="cmd-children"
@@ -594,13 +639,13 @@ export function CommandPalette({
                                       Math.max(0, Number(e.target.value) || 0)
                                     )
                                   }
-                                  className="h-8 text-xs font-mono"
+                                  className="h-8 font-mono text-xs tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                 />
                               </div>
                               <div>
                                 <label
                                   htmlFor="cmd-infants"
-                                  className="block text-[10px] font-semibold text-muted-foreground mb-0.5"
+                                  className="mb-0.5 block text-[11px] font-semibold text-muted-foreground"
                                 >
                                   Infants (&lt;2 yrs)
                                 </label>
@@ -615,18 +660,20 @@ export function CommandPalette({
                                       Math.max(0, Number(e.target.value) || 0)
                                     )
                                   }
-                                  className="h-8 text-xs font-mono"
+                                  className="h-8 font-mono text-xs tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                 />
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                               <span>
-                                {bedAndSeatCount} Beds/Seats (Adults + Children)
-                                • {totalPassportCount} Total Passports
+                                {formatCmdkPassengerSummary(
+                                  bedAndSeatCount,
+                                  totalPassportCount
+                                )}
                               </span>
                               {infantsCount > 0 && (
-                                <span>
+                                <span className="tabular-nums">
                                   Infant Visa/Ticket: PKR{" "}
                                   {estimatedInfantRate.toLocaleString()}/inf
                                 </span>
@@ -634,7 +681,7 @@ export function CommandPalette({
                             </div>
 
                             {convertError && (
-                              <p className="text-[11px] font-medium text-destructive">
+                              <p className="text-[11px] font-medium text-status-danger">
                                 {convertError}
                               </p>
                             )}
@@ -645,22 +692,26 @@ export function CommandPalette({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setShowConvertForm(false)}
-                                className="h-7 text-xs"
+                                className="h-7 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               >
                                 Cancel
                               </Button>
                               <Button
                                 type="submit"
                                 size="sm"
-                                disabled={
-                                  isConverting || selectedTierRate <= 0
-                                }
-                                className="h-7 gap-1.5 text-xs"
+                                disabled={isConverting || selectedTierRate <= 0}
+                                className="h-7 gap-1.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               >
                                 {isConverting ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
+                                  <Loader2
+                                    className="size-3.5 animate-spin motion-reduce:animate-none"
+                                    aria-hidden="true"
+                                  />
                                 ) : (
-                                  <ArrowRight className="size-3.5" />
+                                  <ArrowRight
+                                    className="size-3.5"
+                                    aria-hidden="true"
+                                  />
                                 )}
                                 <span>Create Dossier &amp; Open Quote</span>
                               </Button>
@@ -676,16 +727,19 @@ export function CommandPalette({
                           variant="outline"
                           size="sm"
                           onClick={() => handleCopyDetails(selectedItem)}
-                          className="gap-1.5 text-xs"
+                          className="gap-1.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           {copiedCode === selectedItem.postCode ? (
                             <>
-                              <Check className="size-3.5 text-emerald-600" />
+                              <Check
+                                className="size-3.5 text-status-success"
+                                aria-hidden="true"
+                              />
                               <span>Copied WhatsApp Reply!</span>
                             </>
                           ) : (
                             <>
-                              <Copy className="size-3.5" />
+                              <Copy className="size-3.5" aria-hidden="true" />
                               <span>Copy WhatsApp Reply</span>
                             </>
                           )}
@@ -697,9 +751,9 @@ export function CommandPalette({
                             size="sm"
                             disabled={selectedTierRate <= 0}
                             onClick={() => setShowConvertForm(true)}
-                            className="gap-1.5 text-xs"
+                            className="gap-1.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           >
-                            <UserPlus className="size-3.5" />
+                            <UserPlus className="size-3.5" aria-hidden="true" />
                             <span>1-Click Convert to Quote</span>
                           </Button>
                         )}

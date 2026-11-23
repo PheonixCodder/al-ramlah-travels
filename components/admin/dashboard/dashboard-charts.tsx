@@ -122,21 +122,21 @@ export function DashboardCharts({
                     <CartesianGrid
                       strokeDasharray="3 3"
                       vertical={false}
-                      stroke="#E6DEC8"
+                      stroke="var(--border)"
                       opacity={0.6}
                     />
                     <XAxis
                       dataKey="name"
                       tickLine={false}
-                      axisLine={{ stroke: "#E6DEC8" }}
-                      tick={{ fill: "#686E65", fontSize: 11 }}
+                      axisLine={{ stroke: "var(--border)" }}
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
                     />
                     <YAxis
                       yAxisId="left"
                       orientation="left"
                       tickLine={false}
-                      axisLine={{ stroke: "#E6DEC8" }}
-                      tick={{ fill: "#686E65", fontSize: 10 }}
+                      axisLine={{ stroke: "var(--border)" }}
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
                       tickFormatter={formatPkrCompact}
                     />
                     <YAxis
@@ -144,7 +144,7 @@ export function DashboardCharts({
                       orientation="right"
                       tickLine={false}
                       axisLine={false}
-                      tick={{ fill: "#686E65", fontSize: 10 }}
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
                       allowDecimals={false}
                     />
                     <Tooltip
@@ -162,10 +162,9 @@ export function DashboardCharts({
                         return [`${numeric} Inquiries`, "Dossiers"]
                       }}
                       contentStyle={{
-                        backgroundColor: "#FFFFFF",
+                        backgroundColor: "var(--card)",
                         borderRadius: "8px",
-                        border: "1px solid #E6DEC8",
-                        boxShadow: "0 4px 12px rgba(10,54,34,0.08)",
+                        border: "1px solid var(--border)",
                         fontSize: "12px",
                       }}
                     />
@@ -184,7 +183,7 @@ export function DashboardCharts({
                       yAxisId="right"
                       dataKey="count"
                       name="count"
-                      fill="#C5A059"
+                      fill="var(--chart-2)"
                       opacity={0.35}
                       radius={[4, 4, 0, 0]}
                       maxBarSize={18}
@@ -192,7 +191,7 @@ export function DashboardCharts({
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-[280px] w-full animate-pulse rounded-lg bg-muted/30" />
+                <div className="h-[280px] w-full animate-pulse rounded-lg bg-muted/30 motion-reduce:animate-none" />
               )}
             </div>
             <div className="flex flex-wrap items-center justify-center gap-4 pt-2 text-xs text-muted-foreground">
@@ -239,22 +238,22 @@ export function DashboardCharts({
                     <CartesianGrid
                       strokeDasharray="3 3"
                       horizontal={false}
-                      stroke="#E6DEC8"
+                      stroke="var(--border)"
                       opacity={0.6}
                     />
                     <XAxis
                       type="number"
                       tickLine={false}
-                      axisLine={{ stroke: "#E6DEC8" }}
-                      tick={{ fill: "#686E65", fontSize: 10 }}
+                      axisLine={{ stroke: "var(--border)" }}
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
                       allowDecimals={false}
                     />
                     <YAxis
                       type="category"
                       dataKey="pillar"
                       tickLine={false}
-                      axisLine={{ stroke: "#E6DEC8" }}
-                      tick={{ fill: "#1A1D1A", fontSize: 11, fontWeight: 500 }}
+                      axisLine={{ stroke: "var(--border)" }}
+                      tick={{ fill: "var(--foreground)", fontSize: 11, fontWeight: 500 }}
                       width={75}
                     />
                     <Tooltip
@@ -263,9 +262,9 @@ export function DashboardCharts({
                         "Demand",
                       ]}
                       contentStyle={{
-                        backgroundColor: "#FFFFFF",
+                        backgroundColor: "var(--card)",
                         borderRadius: "8px",
-                        border: "1px solid #E6DEC8",
+                        border: "1px solid var(--border)",
                         fontSize: "12px",
                       }}
                     />
@@ -281,7 +280,7 @@ export function DashboardCharts({
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-[280px] w-full animate-pulse rounded-lg bg-muted/30" />
+                <div className="h-[280px] w-full animate-pulse rounded-lg bg-muted/30 motion-reduce:animate-none" />
               )}
             </div>
           </CardContent>
@@ -316,19 +315,19 @@ export function DashboardCharts({
                       <CartesianGrid
                         strokeDasharray="3 3"
                         vertical={false}
-                        stroke="#E6DEC8"
+                        stroke="var(--border)"
                         opacity={0.6}
                       />
                       <XAxis
                         dataKey="monthLabel"
                         tickLine={false}
-                        axisLine={{ stroke: "#E6DEC8" }}
-                        tick={{ fill: "#686E65", fontSize: 11 }}
+                        axisLine={{ stroke: "var(--border)" }}
+                        tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
                       />
                       <YAxis
                         tickLine={false}
-                        axisLine={{ stroke: "#E6DEC8" }}
-                        tick={{ fill: "#686E65", fontSize: 10 }}
+                        axisLine={{ stroke: "var(--border)" }}
+                        tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
                         tickFormatter={formatPkrCompact}
                       />
                       <Tooltip
@@ -349,9 +348,9 @@ export function DashboardCharts({
                           ]
                         }}
                         contentStyle={{
-                          backgroundColor: "#FFFFFF",
+                          backgroundColor: "var(--card)",
                           borderRadius: "8px",
-                          border: "1px solid #E6DEC8",
+                          border: "1px solid var(--border)",
                           fontSize: "12px",
                         }}
                       />
@@ -367,20 +366,20 @@ export function DashboardCharts({
                       />
                       <Bar
                         dataKey="collectedPkr"
-                        fill="#0F4C31"
+                        fill="var(--chart-1)"
                         radius={[4, 4, 0, 0]}
                         maxBarSize={26}
                       />
                       <Bar
                         dataKey="approvedPkr"
-                        fill="#C5A059"
+                        fill="var(--chart-2)"
                         radius={[4, 4, 0, 0]}
                         maxBarSize={26}
                       />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-[260px] w-full animate-pulse rounded-lg bg-muted/30" />
+                  <div className="h-[260px] w-full animate-pulse rounded-lg bg-muted/30 motion-reduce:animate-none" />
                 )}
               </div>
             </CardContent>
@@ -412,22 +411,22 @@ export function DashboardCharts({
                       <CartesianGrid
                         strokeDasharray="3 3"
                         horizontal={false}
-                        stroke="#E6DEC8"
+                        stroke="var(--border)"
                         opacity={0.6}
                       />
                       <XAxis
                         type="number"
                         tickLine={false}
-                        axisLine={{ stroke: "#E6DEC8" }}
-                        tick={{ fill: "#686E65", fontSize: 10 }}
+                        axisLine={{ stroke: "var(--border)" }}
+                        tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
                         allowDecimals={false}
                       />
                       <YAxis
                         type="category"
                         dataKey="source"
                         tickLine={false}
-                        axisLine={{ stroke: "#E6DEC8" }}
-                        tick={{ fill: "#1A1D1A", fontSize: 11, fontWeight: 500 }}
+                        axisLine={{ stroke: "var(--border)" }}
+                        tick={{ fill: "var(--foreground)", fontSize: 11, fontWeight: 500 }}
                         width={95}
                       />
                       <Tooltip
@@ -439,9 +438,9 @@ export function DashboardCharts({
                           name === "approvedCount" ? "Approved" : "Total Leads",
                         ]}
                         contentStyle={{
-                          backgroundColor: "#FFFFFF",
+                          backgroundColor: "var(--card)",
                           borderRadius: "8px",
-                          border: "1px solid #E6DEC8",
+                          border: "1px solid var(--border)",
                           fontSize: "12px",
                         }}
                       />
@@ -457,7 +456,7 @@ export function DashboardCharts({
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-[260px] w-full animate-pulse rounded-lg bg-muted/30" />
+                  <div className="h-[260px] w-full animate-pulse rounded-lg bg-muted/30 motion-reduce:animate-none" />
                 )}
               </div>
             </CardContent>

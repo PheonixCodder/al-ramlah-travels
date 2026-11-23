@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import {
   AlertTriangle,
   Bookmark,
@@ -9,6 +10,7 @@ import {
   ChevronRight,
   Disc,
   ExternalLink,
+  FileText,
   Film,
   Globe,
   Heart,
@@ -88,36 +90,42 @@ const PLATFORM_TABS: Array<{
     id: "instagram",
     label: "Instagram",
     shortLabel: "IG",
-    badgeClass: "bg-pink-100 text-pink-800 border-pink-300",
-    activeBorderClass: "border-pink-500 bg-pink-50/70 text-pink-950",
+    badgeClass: "bg-accent text-accent-foreground border-gold-border",
+    activeBorderClass: "border-gold bg-accent/70 text-primary",
   },
   {
     id: "facebook",
     label: "Facebook",
     shortLabel: "FB",
-    badgeClass: "bg-blue-100 text-blue-800 border-blue-300",
-    activeBorderClass: "border-blue-600 bg-blue-50/70 text-blue-950",
+    badgeClass:
+      "bg-status-info-bg text-status-info border-status-info-border",
+    activeBorderClass:
+      "border-status-info bg-status-info-bg text-status-info",
   },
   {
     id: "tiktok",
     label: "TikTok",
     shortLabel: "TT",
-    badgeClass: "bg-slate-200 text-slate-900 border-slate-400",
-    activeBorderClass: "border-slate-800 bg-slate-100 text-slate-950",
+    badgeClass: "bg-secondary text-foreground border-border",
+    activeBorderClass: "border-foreground bg-secondary text-foreground",
   },
   {
     id: "youtube",
     label: "YouTube Shorts",
     shortLabel: "YT",
-    badgeClass: "bg-red-100 text-red-800 border-red-300",
-    activeBorderClass: "border-red-600 bg-red-50/70 text-red-950",
+    badgeClass:
+      "bg-status-danger-bg text-status-danger border-status-danger-border",
+    activeBorderClass:
+      "border-status-danger bg-status-danger-bg text-status-danger",
   },
   {
     id: "gmb",
     label: "Google Business",
     shortLabel: "GMB",
-    badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300",
-    activeBorderClass: "border-emerald-700 bg-emerald-50/70 text-emerald-950",
+    badgeClass:
+      "bg-status-success-bg text-status-success border-status-success-border",
+    activeBorderClass:
+      "border-status-success bg-status-success-bg text-status-success",
   },
 ]
 
@@ -127,16 +135,45 @@ const FORMAT_PILLS: Array<{
   ratio: string
   icon: React.ComponentType<{ className?: string }>
 }> = [
-  { id: "FEED", label: "FEED", ratio: CORE5_ASPECT_RATIOS.FEED, icon: ImageIcon },
-  { id: "REEL", label: "REEL", ratio: CORE5_ASPECT_RATIOS.REEL, icon: Film },
-  { id: "STORY", label: "STORY", ratio: CORE5_ASPECT_RATIOS.STORY, icon: Smartphone },
+  { id: "FEED", label: "Feed", ratio: CORE5_ASPECT_RATIOS.FEED, icon: ImageIcon },
+  { id: "REEL", label: "Reel", ratio: CORE5_ASPECT_RATIOS.REEL, icon: Film },
+  { id: "STORY", label: "Story", ratio: CORE5_ASPECT_RATIOS.STORY, icon: Smartphone },
 ]
+
+function getRenderableImagePreviewUrl(
+  url: string | null | undefined
+): string | null {
+  if (!url) return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+  const pathname = trimmed.split(/[?#]/)[0]?.toLowerCase() || ""
+  if (
+    pathname.endsWith(".mp4") ||
+    pathname.endsWith(".mov") ||
+    pathname.endsWith(".webm") ||
+    pathname.endsWith(".m4v") ||
+    pathname.endsWith(".pdf")
+  ) {
+    return null
+  }
+  return trimmed
+}
+
+function isPdfAssetUrl(url: string): boolean {
+  const pathname = url.trim().split(/[?#]/)[0]?.toLowerCase() || ""
+  return pathname.endsWith(".pdf")
+}
 
 function renderFormattedCaptionText(text: string, isDark = false) {
   if (!text) {
     return (
-      <span className={cn("italic", isDark ? "text-white/50" : "text-muted-foreground")}>
-        Start typing your Umrah campaign caption...
+      <span
+        className={cn(
+          "italic",
+          isDark ? "text-sidebar-foreground/70" : "text-muted-foreground"
+        )}
+      >
+        Start typing your Umrah campaign caption…
       </span>
     )
   }
@@ -149,7 +186,7 @@ function renderFormattedCaptionText(text: string, isDark = false) {
           key={idx}
           className={cn(
             "font-semibold",
-            isDark ? "text-sky-300" : "text-[#0A3622] underline decoration-[#C5A059]/60"
+            isDark ? "text-gold" : "text-primary underline decoration-gold/60"
           )}
         >
           {token}
@@ -161,10 +198,10 @@ function renderFormattedCaptionText(text: string, isDark = false) {
         <span
           key={idx}
           className={cn(
-            "rounded px-1 py-0.2 font-mono font-bold text-[10px]",
+            "rounded px-1 py-0.5 font-mono text-[10px] font-bold",
             isDark
-              ? "bg-[#C5A059] text-slate-950"
-              : "bg-[#C5A059]/20 text-[#0A3622] border border-[#C5A059]/50"
+              ? "bg-gold text-gold-foreground"
+              : "border border-gold-border bg-accent text-primary"
           )}
         >
           {token}
@@ -176,8 +213,8 @@ function renderFormattedCaptionText(text: string, isDark = false) {
         <span
           key={idx}
           className={cn(
-            "underline break-all font-mono text-[10px]",
-            isDark ? "text-emerald-300" : "text-emerald-700"
+            "break-all font-mono text-[10px] underline",
+            isDark ? "text-gold" : "text-status-success"
           )}
         >
           {token}
@@ -230,12 +267,6 @@ export function SocialPlatformPreview({
 
   const effectiveFormat: SocialPostFormat =
     postFormat || postType || internalFormat
-
-  React.useEffect(() => {
-    if (postFormat || postType) {
-      setInternalFormat(postFormat || postType || "FEED")
-    }
-  }, [postFormat, postType])
 
   const handleFormatSelect = (fmt: SocialPostFormat) => {
     setInternalFormat(fmt)
@@ -295,20 +326,20 @@ export function SocialPlatformPreview({
 
   const snapshot = allSnapshots[activeProvider]
 
-  // Clamp frame index if mediaFrames change
-  React.useEffect(() => {
-    if (activeFrameIdx >= snapshot.mediaFrames.length) {
-      setActiveFrameIdx(0)
-    }
-  }, [snapshot.mediaFrames.length, activeFrameIdx])
+  const safeActiveFrameIdx =
+    snapshot.mediaFrames.length > 0
+      ? Math.min(activeFrameIdx, snapshot.mediaFrames.length - 1)
+      : 0
 
-  const currentFrame = snapshot.mediaFrames[activeFrameIdx] || {
+  const currentFrame = snapshot.mediaFrames[safeActiveFrameIdx] || {
     index: 0,
     label: "Frame 1: Spotlight Hook",
     url: "",
     stage: "spotlight" as const,
     isVideo: false,
   }
+
+  const currentFrameImageUrl = getRenderableImagePreviewUrl(currentFrame.url)
 
   const isTwoStepMode =
     publishMode === "SPOTLIGHT_THEN_SHEET" ||
@@ -331,23 +362,24 @@ export function SocialPlatformPreview({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-[#C5A059]/40 bg-card shadow-xs overflow-hidden flex flex-col",
+        "flex flex-col overflow-hidden rounded-xl bg-secondary/40",
         className
       )}
     >
       {/* Top Header Bar */}
-      <div className="bg-[#0A3622] text-white px-4 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-[#C5A059]/30">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gold/30 bg-primary px-4 py-3 text-primary-foreground">
         <div className="flex items-center gap-2">
-          <Smartphone className="size-4 text-[#C5A059]" />
+          <Smartphone className="size-4 text-gold" aria-hidden="true" />
           <div>
-            <h3 className="text-xs font-bold tracking-wide uppercase flex items-center gap-1.5">
+            <h3 className="flex items-center gap-1.5 text-xs font-bold">
               <span>Live Core 5 Device Post Previewer</span>
-              <Badge className="bg-[#C5A059] text-slate-950 text-[9px] font-mono px-1.5 py-0">
+              <Badge className="bg-gold px-1.5 py-0 font-mono text-[10px] text-gold-foreground tabular-nums">
                 {snapshot.aspectRatio}
               </Badge>
             </h3>
-            <p className="text-[10px] text-emerald-100/80">
-              Real-time mobile frame, fold truncation &amp; pinned ART-... First-Comment simulation
+            <p className="text-[11px] text-primary-foreground/80">
+              Real-time mobile frame, fold truncation &amp; pinned ART code
+              First-Comment simulation
             </p>
           </div>
         </div>
@@ -355,24 +387,32 @@ export function SocialPlatformPreview({
         {/* Character Counter Badge */}
         <div
           className={cn(
-            "rounded-lg px-2.5 py-1 text-[11px] font-mono font-bold border flex items-center gap-1.5",
+            "flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-bold",
             snapshot.isOverLimit
-              ? "bg-rose-950/90 text-rose-200 border-rose-400"
+              ? "border-status-danger-border bg-status-danger-bg text-status-danger"
               : snapshot.isNearCaptionLimit
-              ? "bg-amber-950/90 text-amber-200 border-amber-400"
-              : "bg-emerald-950/70 text-emerald-100 border-[#C5A059]/40"
+                ? "border-status-warning-border bg-status-warning-bg text-status-warning"
+                : "border-gold/40 bg-sidebar-accent text-sidebar-foreground"
           )}
         >
           <span>
-            {snapshot.charCount.toLocaleString()} /{" "}
-            {CORE5_CHARACTER_LIMITS[activeProvider].toLocaleString()} chars
+            <span className="font-mono tabular-nums">
+              {snapshot.charCount.toLocaleString()} /{" "}
+              {CORE5_CHARACTER_LIMITS[activeProvider].toLocaleString()}
+            </span>{" "}
+            chars
           </span>
-          {snapshot.isOverLimit && <AlertTriangle className="size-3 text-rose-400" />}
+          {snapshot.isOverLimit && (
+            <AlertTriangle
+              className="size-3 text-status-danger"
+              aria-hidden="true"
+            />
+          )}
         </div>
       </div>
 
       {/* Interactive 5-Platform Tab Bar */}
-      <div className="border-b border-border bg-muted/40 p-2 flex flex-col gap-2">
+      <div className="flex flex-col gap-2 border-b border-border bg-secondary/60 p-2">
         <div className="grid grid-cols-5 gap-1">
           {PLATFORM_TABS.map((tab) => {
             const isActive = activeProvider === tab.id
@@ -389,16 +429,19 @@ export function SocialPlatformPreview({
                   setIsCaptionExpanded(false)
                 }}
                 className={cn(
-                  "relative flex flex-col items-center justify-center rounded-lg border px-1.5 py-1.5 text-center transition-all cursor-pointer select-none",
+                  "relative flex cursor-pointer select-none flex-col items-center justify-center rounded-lg border px-1.5 py-1.5 text-center transition-colors active:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                   isActive
-                    ? tab.activeBorderClass + " ring-1 ring-[#0A3622]/30 font-bold shadow-2xs"
-                    : "border-border bg-white/80 text-muted-foreground hover:bg-white hover:text-foreground"
+                    ? cn(
+                        tab.activeBorderClass,
+                        "font-bold ring-1 ring-primary/30 shadow-2xs"
+                      )
+                    : "border-border bg-background/90 text-muted-foreground hover:bg-background hover:text-foreground"
                 )}
               >
                 <div className="flex items-center gap-1">
                   <span
                     className={cn(
-                      "rounded px-1 py-0.2 font-mono text-[9px] font-bold border",
+                      "rounded border px-1 py-0.5 font-mono text-[10px] font-bold",
                       tab.badgeClass
                     )}
                   >
@@ -406,18 +449,18 @@ export function SocialPlatformPreview({
                   </span>
                   {isTargeted && (
                     <span
-                      className="size-1.5 rounded-full bg-emerald-600"
+                      className="size-1.5 rounded-full bg-status-success"
                       title="Selected in composer target channels"
                     />
                   )}
                   {hasWarning && (
                     <span
-                      className="size-1.5 rounded-full bg-amber-500"
+                      className="size-1.5 rounded-full bg-status-warning"
                       title={tabSnap.warnings[0]}
                     />
                   )}
                 </div>
-                <span className="text-[10px] truncate max-w-full mt-0.5 hidden sm:inline">
+                <span className="mt-0.5 hidden max-w-full truncate text-[10px] sm:inline">
                   {tab.label}
                 </span>
               </button>
@@ -425,7 +468,7 @@ export function SocialPlatformPreview({
           })}
         </div>
 
-        {/* Format Pill Selector (FEED 4:5, REEL 9:16, STORY 9:16) & 2-Step Frame Toggle */}
+        {/* Format Pill Selector (Feed 4:5, Reel 9:16, Story 9:16) & 2-Step Frame Toggle */}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <div className="flex items-center gap-1">
             {FORMAT_PILLS.map((pill) => {
@@ -437,15 +480,15 @@ export function SocialPlatformPreview({
                   type="button"
                   onClick={() => handleFormatSelect(pill.id)}
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-bold transition-all cursor-pointer",
+                    "inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-bold transition-colors active:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none",
                     active
-                      ? "border-[#0A3622] bg-[#0A3622] text-white"
-                      : "border-border bg-white text-muted-foreground hover:text-foreground"
+                      ? "border-primary bg-primary text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   )}
                 >
-                  <Icon className="size-3" />
+                  <Icon className="size-3" aria-hidden="true" />
                   <span>{pill.label}</span>
-                  <span className="font-mono text-[9px] opacity-80">
+                  <span className="font-mono text-[10px] opacity-80 tabular-nums">
                     ({pill.ratio})
                   </span>
                 </button>
@@ -455,16 +498,16 @@ export function SocialPlatformPreview({
 
           {/* 2-Step Frame Switcher (Frame 1: Spotlight vs Frame 2: Rate Sheet) */}
           {(isTwoStepMode || snapshot.mediaFrames.length > 1) && (
-            <div className="flex items-center gap-1 bg-white rounded-md border border-[#C5A059]/50 p-0.5">
+            <div className="flex items-center gap-1 rounded-md border border-gold-border bg-background p-0.5">
               {isTwoStepMode ? (
                 <>
                   <button
                     type="button"
                     onClick={() => setActiveFrameIdx(0)}
                     className={cn(
-                      "rounded px-2 py-0.5 text-[10px] font-bold transition-all cursor-pointer",
-                      activeFrameIdx === 0
-                        ? "bg-[#C5A059] text-slate-950"
+                      "cursor-pointer rounded px-2 py-0.5 text-[10px] font-bold transition-colors active:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
+                      safeActiveFrameIdx === 0
+                        ? "bg-gold text-gold-foreground"
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
@@ -474,9 +517,9 @@ export function SocialPlatformPreview({
                     type="button"
                     onClick={() => setActiveFrameIdx(1)}
                     className={cn(
-                      "rounded px-2 py-0.5 text-[10px] font-bold transition-all cursor-pointer",
-                      activeFrameIdx === 1
-                        ? "bg-[#C5A059] text-slate-950"
+                      "cursor-pointer rounded px-2 py-0.5 text-[10px] font-bold transition-colors active:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
+                      safeActiveFrameIdx === 1
+                        ? "bg-gold text-gold-foreground"
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
@@ -484,31 +527,36 @@ export function SocialPlatformPreview({
                   </button>
                 </>
               ) : (
-                <div className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono">
+                <div className="flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
                   <button
                     type="button"
+                    aria-label="Previous frame"
                     onClick={() =>
                       setActiveFrameIdx((prev) =>
                         prev > 0 ? prev - 1 : snapshot.mediaFrames.length - 1
                       )
                     }
-                    className="hover:text-primary cursor-pointer"
+                    className="cursor-pointer rounded hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <ChevronLeft className="size-3.5" />
+                    <ChevronLeft className="size-3.5" aria-hidden="true" />
                   </button>
                   <span>
-                    Slide {activeFrameIdx + 1}/{snapshot.mediaFrames.length}
+                    Slide{" "}
+                    <span className="font-mono tabular-nums">
+                      {safeActiveFrameIdx + 1}/{snapshot.mediaFrames.length}
+                    </span>
                   </span>
                   <button
                     type="button"
+                    aria-label="Next frame"
                     onClick={() =>
                       setActiveFrameIdx((prev) =>
                         prev + 1 < snapshot.mediaFrames.length ? prev + 1 : 0
                       )
                     }
-                    className="hover:text-primary cursor-pointer"
+                    className="cursor-pointer rounded hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <ChevronRight className="size-3.5" />
+                    <ChevronRight className="size-3.5" aria-hidden="true" />
                   </button>
                 </div>
               )}
@@ -519,13 +567,16 @@ export function SocialPlatformPreview({
 
       {/* Warnings Banner */}
       {snapshot.warnings.length > 0 && (
-        <div className="bg-amber-50 border-b border-amber-300 px-3.5 py-2 space-y-1">
+        <div className="flex flex-col gap-1 border-b border-status-warning-border bg-status-warning-bg px-3.5 py-2">
           {snapshot.warnings.map((warn, i) => (
             <div
               key={i}
-              className="flex items-start gap-1.5 text-[11px] font-medium text-amber-900"
+              className="flex items-start gap-1.5 text-[11px] font-medium text-status-warning"
             >
-              <AlertTriangle className="size-3.5 text-amber-600 shrink-0 mt-0.5" />
+              <AlertTriangle
+                className="mt-0.5 size-3.5 shrink-0 text-status-warning"
+                aria-hidden="true"
+              />
               <span>{warn}</span>
             </div>
           ))}
@@ -533,46 +584,55 @@ export function SocialPlatformPreview({
       )}
 
       {/* Device Frame Container */}
-      <div className="p-4 bg-gradient-to-b from-secondary/30 to-secondary/10 flex flex-col items-center justify-center">
-        <div className="w-full max-w-[340px] rounded-[28px] border-[6px] border-slate-900 bg-white shadow-xl overflow-hidden">
+      <div className="flex flex-col items-center justify-center bg-secondary/30 p-4">
+        <div className="w-full max-w-[340px] overflow-hidden rounded-[28px] border-[6px] border-sidebar bg-card shadow-md">
           {/* Mobile Status Bar */}
           <div
             className={cn(
-              "px-4 py-1.5 flex items-center justify-between text-[10px] font-semibold",
+              "flex items-center justify-between px-4 py-1.5 text-[10px] font-semibold",
               snapshot.layoutMode === "vertical_reel" ||
                 snapshot.layoutMode === "ephemeral_story"
-                ? "bg-slate-950 text-white"
-                : "bg-white text-slate-900 border-b border-slate-100"
+                ? "bg-sidebar text-sidebar-foreground"
+                : "border-b border-border text-foreground"
             )}
           >
-            <span>9:41</span>
-            <div className="h-2.5 w-14 rounded-full bg-slate-800/80" />
-            <span className="font-mono text-[9px] uppercase">5G • 100%</span>
+            <span className="font-mono tabular-nums">9:41</span>
+            <div className="h-2.5 w-14 rounded-full bg-muted-foreground/30" />
+            <span className="flex items-center gap-1 font-mono text-[10px] tabular-nums">
+              <span>5G</span>
+              <span>100%</span>
+            </span>
           </div>
 
           {/* 1. INSTAGRAM MOCKUP */}
           {activeProvider === "instagram" &&
             snapshot.layoutMode === "feed_card" && (
-              <div className="bg-white text-slate-900 text-xs">
+              <div className="text-xs text-foreground">
                 {/* IG Header */}
-                <div className="px-3 py-2 flex items-center justify-between">
+                <div className="flex items-center justify-between px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <div className="size-7 rounded-full bg-gradient-to-tr from-amber-500 via-pink-500 to-purple-600 p-0.5">
-                      <div className="h-full w-full rounded-full bg-[#0A3622] text-[#C5A059] flex items-center justify-center font-bold text-[10px]">
+                    <div className="size-7 rounded-full border border-gold bg-gold-gradient p-0.5">
+                      <div className="flex h-full w-full items-center justify-center rounded-full bg-primary text-[10px] font-bold text-gold">
                         AR
                       </div>
                     </div>
                     <div>
-                      <div className="flex items-center gap-1 font-bold text-[11px]">
+                      <div className="flex items-center gap-1 text-[11px] font-bold">
                         <span>{accountHandle}</span>
-                        <CheckCircle2 className="size-3 text-sky-500 fill-sky-500/20" />
+                        <CheckCircle2
+                          className="size-3 fill-status-info/20 text-status-info"
+                          aria-hidden="true"
+                        />
                       </div>
-                      <p className="text-[9px] text-slate-500">
+                      <p className="text-[10px] text-muted-foreground">
                         {officeLocationLabel}
                       </p>
                     </div>
                   </div>
-                  <MoreHorizontal className="size-4 text-slate-500" />
+                  <MoreHorizontal
+                    className="size-4 text-muted-foreground"
+                    aria-hidden="true"
+                  />
                 </div>
 
                 {/* 4:5 Media Frame */}
@@ -582,16 +642,25 @@ export function SocialPlatformPreview({
                   isVideo={currentFrame.isVideo}
                   aspectRatio="4:5"
                   totalFrames={snapshot.mediaFrames.length}
-                  activeFrameIdx={activeFrameIdx}
+                  activeFrameIdx={safeActiveFrameIdx}
                   onSelectFrame={setActiveFrameIdx}
                 />
 
                 {/* IG Action Bar */}
-                <div className="px-3 pt-2.5 pb-1 flex items-center justify-between">
+                <div className="flex items-center justify-between px-3 pt-2.5 pb-1">
                   <div className="flex items-center gap-3">
-                    <Heart className="size-4 text-rose-500 fill-rose-500" />
-                    <MessageCircle className="size-4 text-slate-800" />
-                    <Send className="size-4 text-slate-800" />
+                    <Heart
+                      className="size-4 fill-status-danger text-status-danger"
+                      aria-hidden="true"
+                    />
+                    <MessageCircle
+                      className="size-4 text-foreground"
+                      aria-hidden="true"
+                    />
+                    <Send
+                      className="size-4 text-foreground"
+                      aria-hidden="true"
+                    />
                   </div>
                   {snapshot.mediaFrames.length > 1 && (
                     <div className="flex items-center gap-1">
@@ -599,27 +668,34 @@ export function SocialPlatformPreview({
                         <span
                           key={f.index}
                           className={cn(
-                            "size-1.5 rounded-full transition-all",
-                            idx === activeFrameIdx ? "bg-sky-500 scale-110" : "bg-slate-300"
+                            "size-1.5 rounded-full transition-transform motion-reduce:transition-none motion-reduce:transform-none",
+                            idx === safeActiveFrameIdx
+                              ? "scale-110 bg-status-info"
+                              : "bg-border"
                           )}
                         />
                       ))}
                     </div>
                   )}
-                  <Bookmark className="size-4 text-slate-800" />
+                  <Bookmark
+                    className="size-4 text-foreground"
+                    aria-hidden="true"
+                  />
                 </div>
 
                 {/* IG Likes & Caption with Fold Toggle */}
-                <div className="px-3 pb-3 space-y-1.5 text-[11px]">
-                  <p className="font-bold text-[11px]">Liked by lahore_pilgrims and others</p>
-                  <div className="leading-snug whitespace-pre-line break-words">
-                    <span className="font-bold mr-1.5">{accountHandle}</span>
+                <div className="flex flex-col gap-1.5 px-3 pb-3 text-[11px]">
+                  <p className="text-[11px] font-bold">
+                    Liked by lahore_pilgrims and others
+                  </p>
+                  <div className="leading-snug break-words whitespace-pre-line">
+                    <span className="mr-1.5 font-bold">{accountHandle}</span>
                     {renderFormattedCaptionText(displayedCaption)}
                     {snapshot.isTruncatedAtFold && (
                       <button
                         type="button"
                         onClick={() => setIsCaptionExpanded((v) => !v)}
-                        className="ml-1 text-slate-500 font-semibold hover:underline cursor-pointer"
+                        className="ml-1 cursor-pointer rounded font-semibold text-muted-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
                         {isCaptionExpanded ? "less" : "more"}
                       </button>
@@ -640,38 +716,42 @@ export function SocialPlatformPreview({
           {/* 2. FACEBOOK PAGE MOCKUP */}
           {activeProvider === "facebook" &&
             snapshot.layoutMode === "feed_card" && (
-              <div className="bg-white text-slate-900 text-xs">
+              <div className="text-xs text-foreground">
                 {/* FB Page Header */}
-                <div className="px-3 py-2.5 flex items-center justify-between">
+                <div className="flex items-center justify-between px-3 py-2.5">
                   <div className="flex items-center gap-2">
-                    <div className="size-8 rounded-full bg-[#0A3622] text-[#C5A059] flex items-center justify-center font-bold text-xs border border-[#C5A059]">
+                    <div className="flex size-8 items-center justify-center rounded-full border border-gold bg-primary text-xs font-bold text-gold">
                       AR
                     </div>
                     <div>
-                      <div className="flex items-center gap-1 font-bold text-[11px]">
+                      <div className="flex items-center gap-1 text-[11px] font-bold">
                         <span>{accountName}</span>
-                        <CheckCircle2 className="size-3 text-blue-600 fill-blue-600/20" />
+                        <CheckCircle2
+                          className="size-3 fill-status-info/20 text-status-info"
+                          aria-hidden="true"
+                        />
                       </div>
-                      <div className="flex items-center gap-1 text-[9px] text-slate-500">
-                        <span>Just now</span>
-                        <span>•</span>
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                        <span>Just now,</span>
                         <span>{officeLocationLabel}</span>
-                        <span>•</span>
-                        <Globe className="size-2.5" />
+                        <Globe className="size-2.5" aria-hidden="true" />
                       </div>
                     </div>
                   </div>
-                  <MoreHorizontal className="size-4 text-slate-500" />
+                  <MoreHorizontal
+                    className="size-4 text-muted-foreground"
+                    aria-hidden="true"
+                  />
                 </div>
 
                 {/* FB Caption Above Media with `...See more` fold */}
-                <div className="px-3 pb-2 text-[11px] leading-snug whitespace-pre-line break-words">
+                <div className="px-3 pb-2 text-[11px] leading-snug break-words whitespace-pre-line">
                   {renderFormattedCaptionText(displayedCaption)}
                   {snapshot.isTruncatedAtFold && (
                     <button
                       type="button"
                       onClick={() => setIsCaptionExpanded((v) => !v)}
-                      className="ml-1 text-blue-600 font-semibold hover:underline cursor-pointer"
+                      className="ml-1 cursor-pointer rounded font-semibold text-status-info hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       {isCaptionExpanded ? "See less" : "See more"}
                     </button>
@@ -685,26 +765,31 @@ export function SocialPlatformPreview({
                   isVideo={currentFrame.isVideo}
                   aspectRatio="4:5"
                   totalFrames={snapshot.mediaFrames.length}
-                  activeFrameIdx={activeFrameIdx}
+                  activeFrameIdx={safeActiveFrameIdx}
                   onSelectFrame={setActiveFrameIdx}
                 />
 
                 {/* FB Like / Comment / Share Footer */}
-                <div className="px-3 py-2 border-t border-b border-slate-100 flex items-center justify-around text-[11px] font-semibold text-slate-600">
+                <div className="flex items-center justify-around border-y border-border px-3 py-2 text-[11px] font-semibold text-muted-foreground">
                   <span className="flex items-center gap-1">
-                    <ThumbsUp className="size-3.5 text-blue-600" /> Like
+                    <ThumbsUp
+                      className="size-3.5 text-status-info"
+                      aria-hidden="true"
+                    />{" "}
+                    Like
                   </span>
                   <span className="flex items-center gap-1">
-                    <MessageSquare className="size-3.5" /> Comment
+                    <MessageSquare className="size-3.5" aria-hidden="true" />{" "}
+                    Comment
                   </span>
                   <span className="flex items-center gap-1">
-                    <Share2 className="size-3.5" /> Share
+                    <Share2 className="size-3.5" aria-hidden="true" /> Share
                   </span>
                 </div>
 
                 {/* FB Pinned First Comment (`ART-...`) */}
                 {snapshot.pinnedFirstComment && (
-                  <div className="p-2.5 bg-slate-50">
+                  <div className="bg-secondary/50 p-2.5">
                     <PinnedFirstCommentCard
                       handle={accountName}
                       commentText={snapshot.pinnedFirstComment}
@@ -716,47 +801,62 @@ export function SocialPlatformPreview({
 
           {/* 3. VERTICAL REEL / TIKTOK / YOUTUBE SHORTS MOCKUP (9:16) */}
           {snapshot.layoutMode === "vertical_reel" && (
-            <div className="relative bg-slate-950 text-white aspect-[9/16] w-full overflow-hidden flex flex-col justify-between">
+            <div className="relative flex aspect-[9/16] w-full flex-col justify-between overflow-hidden bg-sidebar text-sidebar-foreground">
               {/* Background Poster / Video */}
-              {currentFrame.url ? (
-                <img
-                  src={currentFrame.url}
+              {currentFrameImageUrl ? (
+                <Image
+                  src={currentFrameImageUrl}
                   alt={currentFrame.label}
-                  className="absolute inset-0 h-full w-full object-cover opacity-85"
+                  fill
+                  unoptimized
+                  sizes="340px"
+                  className="object-cover opacity-85"
                 />
               ) : (
-                <div className="absolute inset-0 bg-gradient-to-b from-[#0A3622] via-slate-900 to-slate-950 flex items-center justify-center p-6 text-center">
-                  <div className="space-y-1">
-                    <Film className="size-8 text-[#C5A059] mx-auto" />
-                    <p className="text-xs font-bold text-[#C5A059]">
-                      9:16 Vertical Video / Reel Frame
+                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-primary via-sidebar-accent to-sidebar p-6 text-center">
+                  <div className="flex flex-col gap-1">
+                    {currentFrame.url && isPdfAssetUrl(currentFrame.url) ? (
+                      <FileText
+                        className="mx-auto size-8 text-gold"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Film
+                        className="mx-auto size-8 text-gold"
+                        aria-hidden="true"
+                      />
+                    )}
+                    <p className="text-xs font-bold text-gold">
+                      {currentFrame.url?.trim()
+                        ? "9:16 Video / Media Frame Ready"
+                        : "9:16 Vertical Video / Reel Frame"}
                     </p>
                   </div>
                 </div>
               )}
 
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/40 pointer-events-none" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-sidebar/95 via-sidebar/25 to-sidebar/45" />
 
               {/* Top Overlay Header */}
-              <div className="relative z-10 p-3 flex items-center justify-between text-[11px] font-bold">
+              <div className="relative z-10 flex items-center justify-between p-3 text-[11px] font-bold">
                 <span className="drop-shadow">
                   {activeProvider === "tiktok"
-                    ? "Following  |  For You"
+                    ? "Following | For You"
                     : activeProvider === "youtube"
-                    ? "Shorts"
-                    : `${snapshot.label} Reels`}
+                      ? "Shorts"
+                      : `${snapshot.label} Reels`}
                 </span>
-                <Badge className="bg-black/60 text-[#C5A059] border border-[#C5A059]/40 text-[9px] font-mono">
+                <Badge className="border border-gold/40 bg-sidebar/80 font-mono text-[10px] text-gold">
                   {currentFrame.label}
                 </Badge>
               </div>
 
               {/* Right-Rail Action Icons + Bottom Caption & Audio Overlay */}
-              <div className="relative z-10 p-3 flex items-end justify-between gap-2">
+              <div className="relative z-10 flex items-end justify-between gap-2 p-3">
                 {/* Bottom-Left Handle, Title, Caption & Sound Marquee */}
-                <div className="min-w-0 flex-1 space-y-1.5 text-[11px]">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <div className="size-6 rounded-full bg-[#0A3622] border border-[#C5A059] text-[#C5A059] flex items-center justify-center text-[9px] font-bold">
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-[11px]">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <div className="flex size-6 items-center justify-center rounded-full border border-gold bg-primary text-[9px] font-bold text-gold">
                       AR
                     </div>
                     <span className="font-bold">
@@ -764,70 +864,94 @@ export function SocialPlatformPreview({
                         ? "@AlRamlahTravels"
                         : `@${accountHandle}`}
                     </span>
-                    <span className="rounded-full bg-red-600 text-white px-2 py-0.5 text-[9px] font-bold">
+                    <span className="rounded-full bg-status-danger px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
                       {activeProvider === "youtube" ? "Subscribe" : "Follow"}
                     </span>
                   </div>
 
                   {activeProvider === "youtube" && (
-                    <p className="font-bold text-xs text-white line-clamp-2">
+                    <p className="line-clamp-2 text-xs font-bold text-sidebar-foreground">
                       {snapshot.titleText}
                     </p>
                   )}
 
-                  <div className="text-[10px] text-white/90 leading-snug line-clamp-3 whitespace-pre-line">
+                  <div className="line-clamp-3 text-[10px] leading-snug whitespace-pre-line text-sidebar-foreground/90">
                     {renderFormattedCaptionText(displayedCaption, true)}
                   </div>
 
                   {/* Pinned Comment Badge for YouTube Shorts / IG / FB Reels */}
                   {snapshot.pinnedFirstComment && (
-                    <div className="rounded-lg bg-black/75 border border-[#C5A059]/50 p-2 text-[10px] space-y-0.5">
-                      <div className="flex items-center gap-1 text-[#C5A059] font-bold">
-                        <Pin className="size-2.5" />
-                        <span>Pinned Comment • {postCode || "ART-UMRAH"}</span>
+                    <div className="flex flex-col gap-0.5 rounded-lg border border-gold/50 bg-sidebar/85 p-2 text-[10px]">
+                      <div className="flex items-center gap-1 font-bold text-gold">
+                        <Pin className="size-2.5" aria-hidden="true" />
+                        <span>
+                          Pinned Comment:{" "}
+                          <span className="font-mono">
+                            {postCode || "ART-UMRAH"}
+                          </span>
+                        </span>
                       </div>
-                      <p className="text-white/90 line-clamp-2 font-mono text-[9px]">
+                      <p className="line-clamp-2 font-mono text-[10px] text-sidebar-foreground/90">
                         {snapshot.pinnedFirstComment}
                       </p>
                     </div>
                   )}
 
-                  <div className="flex items-center gap-1.5 text-[10px] text-emerald-200 pt-0.5">
-                    <Music className="size-3 shrink-0" />
+                  <div className="flex items-center gap-1.5 pt-0.5 text-[10px] text-sidebar-foreground/85">
+                    <Music className="size-3 shrink-0" aria-hidden="true" />
                     <span className="truncate">
-                      Original Audio — Al Ramlah Travels Lahore • Makkah &amp; Madinah
+                      Original Audio: Al Ramlah Travels Lahore, Makkah &amp;
+                      Madinah
                     </span>
                   </div>
                 </div>
 
                 {/* Right-Rail Vertical Icons */}
-                <div className="flex flex-col items-center gap-3 text-[10px] shrink-0 pb-1">
+                <div className="flex shrink-0 flex-col items-center gap-3 pb-1 text-[10px]">
                   <div className="flex flex-col items-center">
-                    <Heart className="size-5 text-rose-500 fill-rose-500" />
-                    <span>1.4K</span>
+                    <Heart
+                      className="size-5 fill-status-danger text-status-danger"
+                      aria-hidden="true"
+                    />
+                    <span className="font-mono tabular-nums">1.4K</span>
                   </div>
                   {activeProvider === "youtube" && (
                     <div className="flex flex-col items-center">
-                      <ThumbsDown className="size-4 text-white" />
+                      <ThumbsDown
+                        className="size-4 text-sidebar-foreground"
+                        aria-hidden="true"
+                      />
                       <span>Dislike</span>
                     </div>
                   )}
                   <div className="flex flex-col items-center">
-                    <MessageCircle className="size-5 text-white" />
-                    <span>84</span>
+                    <MessageCircle
+                      className="size-5 text-sidebar-foreground"
+                      aria-hidden="true"
+                    />
+                    <span className="font-mono tabular-nums">84</span>
                   </div>
                   {activeProvider === "tiktok" && (
                     <div className="flex flex-col items-center">
-                      <Bookmark className="size-5 text-amber-400 fill-amber-400" />
-                      <span>312</span>
+                      <Bookmark
+                        className="size-5 fill-gold text-gold"
+                        aria-hidden="true"
+                      />
+                      <span className="font-mono tabular-nums">312</span>
                     </div>
                   )}
                   <div className="flex flex-col items-center">
-                    <Share2 className="size-5 text-white" />
+                    <Share2
+                      className="size-5 text-sidebar-foreground"
+                      aria-hidden="true"
+                    />
                     <span>Share</span>
                   </div>
-                  <div className="size-7 rounded-full bg-slate-900 border-2 border-[#C5A059] flex items-center justify-center">
-                    <Disc className="size-4 text-[#C5A059] animate-spin" />
+                  <div className="flex size-7 items-center justify-center rounded-full border-2 border-gold bg-sidebar-accent">
+                    <Disc
+                      className="size-4 animate-spin text-gold motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                   </div>
                 </div>
               </div>
@@ -836,18 +960,40 @@ export function SocialPlatformPreview({
 
           {/* 4. 24-HOUR STORY MOCKUP (9:16) */}
           {snapshot.layoutMode === "ephemeral_story" && (
-            <div className="relative bg-slate-950 text-white aspect-[9/16] w-full overflow-hidden flex flex-col justify-between">
-              {currentFrame.url ? (
-                <img
-                  src={currentFrame.url}
+            <div className="relative flex aspect-[9/16] w-full flex-col justify-between overflow-hidden bg-sidebar text-sidebar-foreground">
+              {currentFrameImageUrl ? (
+                <Image
+                  src={currentFrameImageUrl}
                   alt={currentFrame.label}
-                  className="absolute inset-0 h-full w-full object-cover"
+                  fill
+                  unoptimized
+                  sizes="340px"
+                  className="object-cover"
                 />
+              ) : currentFrame.url.trim() ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-primary via-sidebar-accent to-sidebar p-6 text-center">
+                  <div className="flex flex-col gap-1">
+                    {isPdfAssetUrl(currentFrame.url) ? (
+                      <FileText
+                        className="mx-auto size-8 text-gold"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Film
+                        className="mx-auto size-8 text-gold"
+                        aria-hidden="true"
+                      />
+                    )}
+                    <p className="text-xs font-bold text-gold">
+                      Story Media Preview
+                    </p>
+                  </div>
+                </div>
               ) : null}
-              <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-sidebar/70 via-transparent to-sidebar/85" />
 
               {/* Story Segmented Progress Bars & Header */}
-              <div className="relative z-10 p-3 space-y-2">
+              <div className="relative z-10 flex flex-col gap-2 p-3">
                 <div className="flex items-center gap-1">
                   {(snapshot.mediaFrames.length > 0
                     ? snapshot.mediaFrames
@@ -855,12 +1001,12 @@ export function SocialPlatformPreview({
                   ).map((f, idx) => (
                     <div
                       key={f.index}
-                      className="h-1 flex-1 rounded-full bg-white/30 overflow-hidden"
+                      className="h-1 flex-1 overflow-hidden rounded-full bg-sidebar-foreground/30"
                     >
                       <div
                         className={cn(
-                          "h-full bg-white",
-                          idx <= activeFrameIdx ? "w-full" : "w-0"
+                          "h-full bg-sidebar-foreground",
+                          idx <= safeActiveFrameIdx ? "w-full" : "w-0"
                         )}
                       />
                     </div>
@@ -868,31 +1014,39 @@ export function SocialPlatformPreview({
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
                   <div className="flex items-center gap-2">
-                    <div className="size-6 rounded-full bg-[#0A3622] border border-[#C5A059] text-[#C5A059] flex items-center justify-center font-bold text-[9px]">
+                    <div className="flex size-6 items-center justify-center rounded-full border border-gold bg-primary text-[9px] font-bold text-gold">
                       AR
                     </div>
                     <span className="font-bold">{accountHandle}</span>
-                    <span className="text-white/70 text-[10px]">2h</span>
+                    <span className="text-[10px] text-sidebar-foreground/75 tabular-nums">
+                      2h
+                    </span>
                   </div>
-                  <Badge className="bg-[#C5A059] text-slate-950 text-[9px] font-bold">
+                  <Badge className="bg-gold text-[10px] font-bold text-gold-foreground">
                     24h Story
                   </Badge>
                 </div>
               </div>
 
               {/* Story Bottom Send Message Pill */}
-              <div className="relative z-10 p-3 space-y-2">
+              <div className="relative z-10 flex flex-col gap-2 p-3">
                 {caption && (
-                  <div className="rounded-xl bg-black/65 backdrop-blur-xs p-2.5 text-[10px] text-center text-white line-clamp-3">
+                  <div className="line-clamp-3 rounded-xl bg-sidebar/85 p-2.5 text-center text-[10px] text-sidebar-foreground">
                     {caption}
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 rounded-full border border-white/50 bg-black/40 px-3 py-1.5 text-[10px] text-white/80">
-                    Send message to {accountHandle}...
+                  <div className="flex-1 rounded-full border border-sidebar-foreground/40 bg-sidebar/60 px-3 py-1.5 text-[10px] text-sidebar-foreground/85">
+                    Send message to {accountHandle}…
                   </div>
-                  <Heart className="size-5 text-white" />
-                  <Send className="size-5 text-white" />
+                  <Heart
+                    className="size-5 text-sidebar-foreground"
+                    aria-hidden="true"
+                  />
+                  <Send
+                    className="size-5 text-sidebar-foreground"
+                    aria-hidden="true"
+                  />
                 </div>
               </div>
             </div>
@@ -901,30 +1055,36 @@ export function SocialPlatformPreview({
           {/* 5. GOOGLE BUSINESS PROFILE (GMB) LOCAL UPDATE CARD */}
           {activeProvider === "gmb" &&
             snapshot.layoutMode === "gmb_local_card" && (
-              <div className="bg-white text-slate-900 p-3 space-y-2.5 text-xs">
+              <div className="flex flex-col gap-2.5 p-3 text-xs text-foreground">
                 {/* Google Search Local Header */}
-                <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
+                <div className="flex items-start justify-between gap-2 border-b border-border pb-2">
                   <div className="flex items-center gap-2">
-                    <div className="size-8 rounded-lg bg-[#0A3622] text-[#C5A059] flex items-center justify-center font-bold text-xs">
+                    <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-xs font-bold text-gold">
                       G
                     </div>
                     <div>
-                      <div className="flex items-center gap-1 font-bold text-[11px]">
-                        <span>From Al Ramlah Travels · Lahore</span>
-                        <ShieldCheck className="size-3.5 text-emerald-600" />
+                      <div className="flex items-center gap-1 text-[11px] font-bold">
+                        <span>From Al Ramlah Travels, Lahore</span>
+                        <ShieldCheck
+                          className="size-3.5 text-status-success"
+                          aria-hidden="true"
+                        />
                       </div>
-                      <p className="text-[10px] text-slate-500 flex items-center gap-1">
-                        <MapPin className="size-2.5 text-emerald-700" />
+                      <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <MapPin
+                          className="size-2.5 text-status-success"
+                          aria-hidden="true"
+                        />
                         <span>
                           {snapshot.gmbCallToAction?.verifiedBadgeLabel ||
-                            `Verified • ${officeLocationLabel}`}
+                            `Verified (${officeLocationLabel})`}
                         </span>
                       </p>
                     </div>
                   </div>
                   <Badge
                     variant="outline"
-                    className="text-[9px] border-emerald-300 bg-emerald-50 text-emerald-800"
+                    className="border-status-success-border bg-status-success-bg text-[10px] text-status-success"
                   >
                     Local Update
                   </Badge>
@@ -937,18 +1097,18 @@ export function SocialPlatformPreview({
                   isVideo={currentFrame.isVideo}
                   aspectRatio="4:5"
                   totalFrames={snapshot.mediaFrames.length}
-                  activeFrameIdx={activeFrameIdx}
+                  activeFrameIdx={safeActiveFrameIdx}
                   onSelectFrame={setActiveFrameIdx}
                 />
 
                 {/* GMB Summary Text */}
-                <div className="text-[11px] text-slate-800 leading-snug whitespace-pre-line break-words">
+                <div className="text-[11px] leading-snug break-words whitespace-pre-line text-foreground">
                   {renderFormattedCaptionText(displayedCaption)}
                   {snapshot.isTruncatedAtFold && (
                     <button
                       type="button"
                       onClick={() => setIsCaptionExpanded((v) => !v)}
-                      className="ml-1 text-emerald-700 font-semibold hover:underline cursor-pointer"
+                      className="ml-1 cursor-pointer rounded font-semibold text-status-success hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       {isCaptionExpanded ? "Less" : "More"}
                     </button>
@@ -957,7 +1117,7 @@ export function SocialPlatformPreview({
 
                 {/* GMB CTA Selector & WhatsApp Action Button */}
                 {snapshot.gmbCallToAction && (
-                  <div className="pt-1 space-y-2">
+                  <div className="flex flex-col gap-2 pt-1">
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                       <span>Google Business CTA Button:</span>
                       <div className="flex items-center gap-1">
@@ -967,10 +1127,10 @@ export function SocialPlatformPreview({
                             type="button"
                             onClick={() => setGmbCtaType(type)}
                             className={cn(
-                              "rounded px-1.5 py-0.5 text-[9px] font-bold border cursor-pointer",
+                              "cursor-pointer rounded border px-1.5 py-0.5 text-[10px] font-bold transition-colors active:opacity-90 motion-reduce:transition-none",
                               gmbCtaType === type
-                                ? "bg-[#0A3622] text-white border-[#0A3622]"
-                                : "bg-slate-100 text-slate-700 border-slate-200"
+                                ? "border-primary bg-primary text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
+                                : "border-border bg-secondary text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             )}
                           >
                             {type === "BOOK" ? "Book" : "Learn More"}
@@ -983,10 +1143,13 @@ export function SocialPlatformPreview({
                       href={snapshot.gmbCallToAction.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-1.5 w-full rounded-lg bg-[#0A3622] hover:bg-[#0A3622]/90 text-white font-bold text-xs py-2 px-3 shadow-xs border border-[#C5A059]/50 transition-all"
+                      className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-gold/50 bg-primary px-3 py-2 text-xs font-bold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 active:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
                     >
                       <span>{snapshot.gmbCallToAction.label}</span>
-                      <ExternalLink className="size-3 text-[#C5A059]" />
+                      <ExternalLink
+                        className="size-3 text-gold"
+                        aria-hidden="true"
+                      />
                     </a>
                   </div>
                 )}
@@ -996,34 +1159,41 @@ export function SocialPlatformPreview({
       </div>
 
       {/* Bottom Diagnostics Footer */}
-      <div className="border-t border-border bg-secondary/20 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-muted-foreground">
-        <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-secondary/60 px-4 py-2.5 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>
-            Hashtags: <strong className="text-foreground">{snapshot.hashtagCount}</strong>
+            Hashtags:{" "}
+            <strong className="font-mono text-foreground tabular-nums">
+              {snapshot.hashtagCount}
+            </strong>
             {activeProvider === "instagram" ? " / 30" : ""}
           </span>
-          <span>•</span>
-          <span>
-            Fold Limit: <strong className="text-foreground">{snapshot.foldLimit} chars</strong>
+          <span className="border-l border-border pl-3">
+            Fold Limit:{" "}
+            <strong className="text-foreground">
+              <span className="font-mono tabular-nums">
+                {snapshot.foldLimit}
+              </span>{" "}
+              chars
+            </strong>
           </span>
-          <span>•</span>
-          <span>
+          <span className="border-l border-border pl-3">
             First Comment:{" "}
             <strong className="text-foreground">
               {snapshot.pinnedFirstComment
                 ? "Active (Pinned)"
                 : snapshot.firstCommentPreview.unsupportedReason
-                ? "N/A on Platform"
-                : "None"}
+                  ? "N/A on Platform"
+                  : "None"}
             </strong>
           </span>
         </div>
         {postCode && (
           <Badge
             variant="outline"
-            className="text-[9px] font-mono border-[#C5A059]/60 text-[#0A3622]"
+            className="border-gold-border text-[10px] text-primary"
           >
-            Ref: {postCode}
+            Ref: <span className="font-mono tabular-nums">{postCode}</span>
           </Badge>
         )}
       </div>
@@ -1052,26 +1222,55 @@ function MediaViewport({
   activeFrameIdx: number
   onSelectFrame: (idx: number) => void
 }) {
+  const previewImageUrl = getRenderableImagePreviewUrl(frameUrl)
+  const isPdf = Boolean(frameUrl && isPdfAssetUrl(frameUrl))
+
   return (
     <div
       className={cn(
-        "relative w-full bg-slate-100 overflow-hidden",
+        "relative w-full overflow-hidden bg-secondary",
         aspectRatio === "9:16" ? "aspect-[9/16]" : "aspect-[4/5]"
       )}
     >
-      {frameUrl ? (
-        <img
-          src={frameUrl}
+      {previewImageUrl ? (
+        <Image
+          src={previewImageUrl}
           alt={frameLabel}
-          className="h-full w-full object-cover"
+          fill
+          unoptimized
+          sizes="340px"
+          className="object-cover"
         />
+      ) : frameUrl.trim().length > 0 ? (
+        <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-primary/10 to-accent/60 p-6 text-center">
+          {isPdf ? (
+            <FileText
+              className="mb-1.5 size-7 text-gold-text"
+              aria-hidden="true"
+            />
+          ) : (
+            <Film
+              className="mb-1.5 size-7 text-gold-text"
+              aria-hidden="true"
+            />
+          )}
+          <p className="text-xs font-bold text-primary">
+            {isPdf ? "Vector PDF Asset Ready" : "Video Reel Asset Ready"}
+          </p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">
+            {frameLabel}
+          </p>
+        </div>
       ) : (
-        <div className="h-full w-full flex flex-col items-center justify-center p-6 text-center bg-gradient-to-br from-[#0A3622]/10 to-[#C5A059]/15">
-          <Sparkles className="size-7 text-[#C5A059] mb-1.5" />
-          <p className="text-xs font-bold text-[#0A3622]">
+        <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-primary/10 to-accent/60 p-6 text-center">
+          <Sparkles
+            className="mb-1.5 size-7 text-gold-text"
+            aria-hidden="true"
+          />
+          <p className="text-xs font-bold text-primary">
             Al Ramlah 4K Poster Preview
           </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
+          <p className="mt-0.5 text-[10px] text-muted-foreground">
             {frameLabel}
           </p>
         </div>
@@ -1080,11 +1279,15 @@ function MediaViewport({
       {/* Top-Right Frame / Carousel Badge */}
       <div className="absolute top-2 right-2 flex items-center gap-1">
         {isVideo && (
-          <span className="rounded-full bg-black/75 text-white px-2 py-0.5 text-[9px] font-bold flex items-center gap-1">
-            <Play className="size-2.5 fill-white" /> Video
+          <span className="flex items-center gap-1 rounded-full bg-sidebar/85 px-2 py-0.5 text-[10px] font-bold text-sidebar-foreground">
+            <Play
+              className="size-2.5 fill-sidebar-foreground"
+              aria-hidden="true"
+            />{" "}
+            Video
           </span>
         )}
-        <span className="rounded-full bg-black/75 text-[#C5A059] border border-[#C5A059]/40 px-2 py-0.5 text-[9px] font-mono font-bold">
+        <span className="rounded-full border border-gold/40 bg-sidebar/85 px-2 py-0.5 font-mono text-[10px] font-bold text-gold">
           {frameLabel}
         </span>
       </div>
@@ -1094,23 +1297,29 @@ function MediaViewport({
         <>
           <button
             type="button"
+            aria-label="Previous frame"
             onClick={() =>
-              onSelectFrame(activeFrameIdx > 0 ? activeFrameIdx - 1 : totalFrames - 1)
+              onSelectFrame(
+                activeFrameIdx > 0 ? activeFrameIdx - 1 : totalFrames - 1
+              )
             }
-            className="absolute left-2 top-1/2 -translate-y-1/2 size-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 cursor-pointer"
+            className="absolute top-1/2 left-2 flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-sidebar/80 text-sidebar-foreground hover:bg-sidebar focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
             title="Previous Frame"
           >
-            <ChevronLeft className="size-3.5" />
+            <ChevronLeft className="size-3.5" aria-hidden="true" />
           </button>
           <button
             type="button"
+            aria-label="Next frame"
             onClick={() =>
-              onSelectFrame(activeFrameIdx + 1 < totalFrames ? activeFrameIdx + 1 : 0)
+              onSelectFrame(
+                activeFrameIdx + 1 < totalFrames ? activeFrameIdx + 1 : 0
+              )
             }
-            className="absolute right-2 top-1/2 -translate-y-1/2 size-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 cursor-pointer"
+            className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-sidebar/80 text-sidebar-foreground hover:bg-sidebar focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
             title="Next Frame"
           >
-            <ChevronRight className="size-3.5" />
+            <ChevronRight className="size-3.5" aria-hidden="true" />
           </button>
         </>
       )}
@@ -1126,18 +1335,18 @@ function PinnedFirstCommentCard({
   commentText: string
 }) {
   return (
-    <div className="mt-2 rounded-lg border border-[#C5A059]/50 bg-[#C5A059]/10 p-2 space-y-1">
-      <div className="flex items-center justify-between text-[9px] font-bold text-[#0A3622]">
+    <div className="mt-2 flex flex-col gap-1 rounded-lg bg-accent/60 p-2">
+      <div className="flex items-center justify-between text-[10px] font-bold text-primary">
         <span className="flex items-center gap-1">
-          <Pin className="size-2.5 text-[#C5A059]" />
-          <span>PINNED FIRST COMMENT • AUTO-PLUG</span>
+          <Pin className="size-2.5 text-gold-text" aria-hidden="true" />
+          <span>Pinned First Comment (Auto-Plug)</span>
         </span>
-        <span className="font-mono text-[8px] uppercase bg-white/80 px-1.5 py-0.2 rounded border border-[#C5A059]/30">
+        <span className="rounded bg-background px-1.5 py-0.5 text-[10px] font-semibold text-primary">
           Zero Link Penalty
         </span>
       </div>
-      <div className="text-[10px] leading-snug whitespace-pre-line break-words text-slate-800 font-mono">
-        <span className="font-bold text-[#0A3622] mr-1">{handle}</span>
+      <div className="font-mono text-[10px] leading-snug break-words whitespace-pre-line text-foreground">
+        <span className="mr-1 font-bold text-primary">{handle}</span>
         {renderFormattedCaptionText(commentText)}
       </div>
     </div>

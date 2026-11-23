@@ -106,7 +106,12 @@ describe("F-PLAT: Security Primitives & Transactional Mailer (T-008, T-043)", ()
           timeoutMs: 40,
           fetchImpl: (_url, init) =>
             new Promise<Response>((_resolve, reject) => {
+              // Keep Node 22 event loop active while waiting for unref'd AbortSignal.timeout()
+              const keepAlive = setTimeout(() => {
+                reject(new Error("Timed out without AbortSignal"))
+              }, 2_000)
               init?.signal?.addEventListener("abort", () => {
+                clearTimeout(keepAlive)
                 reject(init.signal?.reason ?? new Error("Aborted"))
               })
             }),

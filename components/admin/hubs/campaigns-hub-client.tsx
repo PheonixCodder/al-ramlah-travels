@@ -1,9 +1,13 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import {
+  ArrowRight,
   Calendar,
+  Camera,
+  Globe,
   MessageSquare,
   Send,
   Sparkles,
@@ -37,6 +41,9 @@ import {
   MousePointerClick,
   Film,
   Image as ImageIcon,
+  MapPin,
+  Play,
+  Share2,
   UploadCloud,
   Lock,
 } from "lucide-react"
@@ -308,7 +315,8 @@ export function isValidSocialComposerMediaUrl(rawUrl: string): {
   if (/^(file|data|javascript|vbscript):/i.test(trimmed)) {
     return {
       valid: false,
-      error: "Local file: and data: URIs are not permitted for social publishing.",
+      error:
+        "Local file: and data: URIs are not permitted for social publishing.",
     }
   }
   try {
@@ -390,9 +398,7 @@ export interface PostAssetRecord {
   id: string
   postCode: string
   kind:
-    | "multi_package_sheet"
-    | "single_package_spotlight"
-    | "custom_quotation_pdf"
+    "multi_package_sheet" | "single_package_spotlight" | "custom_quotation_pdf"
   title: string
   supplierId: string
   flyerId: string
@@ -515,12 +521,7 @@ export interface WhatsappBroadcastRecord {
   templateName: string
   templateLanguage: string
   status:
-    | "draft"
-    | "scheduled"
-    | "processing"
-    | "completed"
-    | "failed"
-    | "cancelled"
+    "draft" | "scheduled" | "processing" | "completed" | "failed" | "cancelled"
   totalRecipients: number
   sentCount: number
   deliveredCount: number
@@ -536,6 +537,7 @@ export interface WhatsappBroadcastRecord {
 export interface CampaignsHubClientProps {
   initialTab?: string
   initialAssetId?: string
+  initialNowMs?: number
   userRole?: "super_admin" | "staff"
   companyInfo?: CampaignsCompanyInfo
   tiktokDirectPostApproved?: boolean
@@ -594,38 +596,89 @@ const CORE_5_PLATFORMS: Array<{
     id: "instagram",
     name: "Instagram Business",
     badge: "IG",
-    color: "bg-pink-100 text-pink-800 border-pink-300",
+    color: "bg-accent text-accent-foreground border-gold-border",
   },
   {
     id: "facebook",
     name: "Facebook Pages",
     badge: "FB",
-    color: "bg-blue-100 text-blue-800 border-blue-300",
+    color: "bg-status-info-bg text-status-info border-status-info-border",
   },
   {
     id: "tiktok",
     name: "TikTok Business",
     badge: "TikTok",
-    color: "bg-slate-100 text-slate-900 border-slate-300",
+    color: "bg-secondary text-foreground border-border",
   },
   {
     id: "youtube",
     name: "YouTube Channel",
     badge: "YT",
-    color: "bg-red-100 text-red-800 border-red-300",
+    color: "bg-status-danger-bg text-status-danger border-status-danger-border",
   },
   {
     id: "gmb",
     name: "Google Business Profile",
     badge: "GMB",
-    color: "bg-emerald-100 text-emerald-800 border-emerald-300",
+    color:
+      "bg-status-success-bg text-status-success border-status-success-border",
   },
 ]
 
+const PLATFORM_DISPLAY_NAMES: Record<SocialProviderId, string> = {
+  instagram: "Instagram",
+  facebook: "Facebook",
+  tiktok: "TikTok",
+  youtube: "YouTube",
+  gmb: "Google Business",
+}
+
+const FORMAT_DISPLAY_NAMES: Record<SocialPostFormat, string> = {
+  FEED: "Feed",
+  REEL: "Reel",
+  STORY: "Story",
+}
+
+function getRenderableImagePreviewUrl(
+  url: string | null | undefined
+): string | null {
+  if (!url) return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+  const pathname = trimmed.split(/[?#]/)[0]?.toLowerCase() || ""
+  if (
+    pathname.endsWith(".mp4") ||
+    pathname.endsWith(".mov") ||
+    pathname.endsWith(".webm") ||
+    pathname.endsWith(".m4v") ||
+    pathname.endsWith(".pdf")
+  ) {
+    return null
+  }
+  return trimmed
+}
+
+function isPdfAssetUrl(url: string): boolean {
+  const pathname = url.trim().split(/[?#]/)[0]?.toLowerCase() || ""
+  return pathname.endsWith(".pdf")
+}
+
+function hasVideoMediaUrl(urls: string[]): boolean {
+  return urls.some((url) => {
+    const pathname = url.trim().split(/[?#]/)[0]?.toLowerCase() || ""
+    return (
+      pathname.endsWith(".mp4") ||
+      pathname.endsWith(".mov") ||
+      pathname.endsWith(".webm") ||
+      pathname.endsWith(".m4v")
+    )
+  })
+}
+
 function formatDateSafe(val: Date | string | null | undefined): string {
-  if (!val) return "—"
+  if (!val) return "-"
   const d = typeof val === "string" ? new Date(val) : val
-  if (isNaN(d.getTime())) return "—"
+  if (isNaN(d.getTime())) return "-"
   return d.toLocaleDateString("en-PK", {
     timeZone: "Asia/Karachi",
     month: "short",
@@ -648,6 +701,7 @@ function isRealTriggerRunId(runId: string | null | undefined): runId is string {
 export function CampaignsHubClient({
   initialTab = "social",
   initialAssetId = "",
+  initialNowMs,
   userRole = "staff",
   companyInfo,
   tiktokDirectPostApproved = false,
@@ -729,14 +783,17 @@ export function CampaignsHubClient({
       {degradedWarnings.length > 0 && (
         <div
           role="alert"
-          className="rounded-xl border border-amber-400 bg-amber-50 px-4 py-3 text-xs text-amber-950 flex items-start gap-2.5"
+          className="flex items-start gap-2.5 rounded-xl border border-status-warning-border bg-status-warning-bg px-4 py-3 text-xs text-status-warning"
         >
-          <AlertTriangle className="size-4 text-amber-700 shrink-0 mt-0.5" />
-          <div className="space-y-0.5">
+          <AlertTriangle
+            className="mt-0.5 size-4 shrink-0 text-status-warning"
+            aria-hidden="true"
+          />
+          <div className="flex flex-col gap-0.5">
             <p className="font-bold">
               Some campaign datasets loaded in degraded mode:
             </p>
-            <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
+            <ul className="list-disc pl-4 text-[11px]">
               {degradedWarnings.map((w, idx) => (
                 <li key={idx}>{w}</li>
               ))}
@@ -746,38 +803,56 @@ export function CampaignsHubClient({
       )}
 
       {/* Hub Header */}
-      <div className="flex flex-col gap-2 border-b border-border/80 pb-5">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gold-text">
-            Campaigns &amp; Multi-Channel Marketing
-          </span>
-          <Badge
-            variant="outline"
-            className="text-[10px] font-mono tabular-nums border-primary/30 text-primary bg-primary/5"
-          >
-            {activeSocialAccountsCount} Social Channels • {whatsappChannelsCount}{" "}
-            WhatsApp Channels • {totalVipContactsCount} VIP Contacts
-          </Badge>
-          {scheduledCount > 0 && (
-            <Badge className="text-[10px] bg-emerald-600 text-white font-mono tabular-nums">
-              {scheduledCount} Posts Active in Queue
-            </Badge>
-          )}
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-col gap-3 border-b border-border/80 pb-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
               Campaigns &amp; Multi-Channel Outreach
             </h1>
-            <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-3xl">
+            <p className="mt-1 max-w-3xl text-xs text-muted-foreground sm:text-sm">
               {activeMeta.description}
             </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Badge
+              variant="outline"
+              className="border-primary/30 bg-primary/5 text-[11px] font-medium text-primary tabular-nums"
+            >
+              <span className="font-mono font-semibold">
+                {activeSocialAccountsCount}
+              </span>{" "}
+              Social Channels
+            </Badge>
+            <Badge
+              variant="outline"
+              className="border-primary/30 bg-primary/5 text-[11px] font-medium text-primary tabular-nums"
+            >
+              <span className="font-mono font-semibold">
+                {whatsappChannelsCount}
+              </span>{" "}
+              WhatsApp Channels
+            </Badge>
+            <Badge
+              variant="outline"
+              className="border-primary/30 bg-primary/5 text-[11px] font-medium text-primary tabular-nums"
+            >
+              <span className="font-mono font-semibold">
+                {totalVipContactsCount}
+              </span>{" "}
+              VIP Contacts
+            </Badge>
+            {scheduledCount > 0 && (
+              <Badge className="bg-status-success text-[11px] font-semibold text-primary-foreground tabular-nums">
+                <span className="font-mono font-bold">{scheduledCount}</span>{" "}
+                Posts Active in Queue
+              </Badge>
+            )}
           </div>
         </div>
 
         {/* Tab Navigation Pill Bar */}
-        <div className="mt-4 flex overflow-x-auto rounded-xl border border-border/80 bg-muted/40 p-1.5 gap-1.5 no-scrollbar">
+        <div className="mt-2 no-scrollbar flex gap-1.5 overflow-x-auto rounded-xl border border-border/80 bg-secondary/60 p-1.5">
           {CAMPAIGN_TABS.map((tab) => {
             const Icon = tab.icon
             const isActive = activeTab === tab.key
@@ -788,31 +863,32 @@ export function CampaignsHubClient({
                 type="button"
                 onClick={() => handleTabChange(tab.key)}
                 className={cn(
-                  "flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all cursor-pointer select-none",
+                  "flex shrink-0 cursor-pointer items-center gap-2 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-colors select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-90 motion-reduce:transition-none",
                   isActive
-                    ? "bg-card text-foreground shadow-xs border border-[#C5A059]/50 text-primary"
+                    ? "border border-gold-border bg-card text-primary shadow-xs"
                     : "text-muted-foreground hover:bg-card/60 hover:text-foreground"
                 )}
               >
                 <Icon
                   className={cn(
-                    "size-4 shrink-0 transition-colors",
-                    isActive ? "text-[#C5A059]" : "text-muted-foreground"
+                    "size-4 shrink-0 transition-colors motion-reduce:transition-none",
+                    isActive ? "text-gold-text" : "text-muted-foreground"
                   )}
+                  aria-hidden="true"
                 />
                 <span>{tab.label}</span>
                 {tab.key === "social" && (
-                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.2 text-[10px] font-mono tabular-nums">
+                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
                     {totalScheduledPostsCount}
                   </span>
                 )}
                 {tab.key === "whatsapp" && (
-                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.2 text-[10px] font-mono tabular-nums">
+                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
                     {whatsappChannelsCount}
                   </span>
                 )}
                 {tab.key === "outreach" && (
-                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.2 text-[10px] font-mono tabular-nums">
+                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
                     {totalVipContactsCount}
                   </span>
                 )}
@@ -826,6 +902,7 @@ export function CampaignsHubClient({
       {activeTab === "social" && (
         <SocialCalendarTab
           initialAssetId={initialAssetId}
+          initialNowMs={initialNowMs}
           userRole={userRole}
           officeLocationLabel={officeLocationLabel}
           primaryWhatsappDigits={primaryWhatsappDigits}
@@ -844,6 +921,7 @@ export function CampaignsHubClient({
       {activeTab === "whatsapp" && (
         <WhatsAppQueueTab
           initialAssetId={initialAssetId}
+          initialNowMs={initialNowMs}
           postAssets={postAssets}
           marketingChannels={marketingChannels}
           dailyDistributions={dailyDistributions}
@@ -853,6 +931,7 @@ export function CampaignsHubClient({
       {/* Tab 3: Official Meta Broadcasts & VIP Outreach */}
       {activeTab === "outreach" && (
         <BroadcastsAndOutreachTab
+          initialNowMs={initialNowMs}
           userRole={userRole}
           officeLocationLabel={officeLocationLabel}
           summaryCounts={summaryCounts}
@@ -877,6 +956,7 @@ export function CampaignsHubClient({
 
 function SocialCalendarTab({
   initialAssetId,
+  initialNowMs,
   userRole,
   officeLocationLabel,
   primaryWhatsappDigits,
@@ -890,6 +970,7 @@ function SocialCalendarTab({
   supplierFlyers,
 }: {
   initialAssetId: string
+  initialNowMs?: number
   userRole: "super_admin" | "staff"
   officeLocationLabel: string
   primaryWhatsappDigits: string
@@ -918,21 +999,9 @@ function SocialCalendarTab({
 
   const [caption, setCaption] = React.useState<string>(() => {
     return (
-      selectedAsset?.captionInstagram ||
-      selectedAsset?.captionWhatsapp ||
-      ""
+      selectedAsset?.captionInstagram || selectedAsset?.captionWhatsapp || ""
     )
   })
-
-  React.useEffect(() => {
-    if (selectedAsset) {
-      setCaption(
-        selectedAsset.captionInstagram ||
-          selectedAsset.captionWhatsapp ||
-          ""
-      )
-    }
-  }, [selectedAsset])
 
   const matchingFlyer = React.useMemo(
     () => supplierFlyers.find((f) => f.id === selectedAsset?.flyerId),
@@ -953,21 +1022,8 @@ function SocialCalendarTab({
     return preferredAssetMediaUrl ? [preferredAssetMediaUrl] : []
   })
 
-  React.useEffect(() => {
-    if (preferredAssetMediaUrl) {
-      setMediaUrls([preferredAssetMediaUrl])
-    }
-  }, [preferredAssetMediaUrl])
-
   const isVideoMedia = React.useMemo(() => {
-    return mediaUrls.some((url) => {
-      const lower = url.toLowerCase()
-      return (
-        lower.endsWith(".mp4") ||
-        lower.endsWith(".mov") ||
-        lower.endsWith(".webm")
-      )
-    })
+    return hasVideoMediaUrl(mediaUrls)
   }, [mediaUrls])
 
   const activeIntegrations = React.useMemo(
@@ -986,16 +1042,65 @@ function SocialCalendarTab({
         .map((i) => i.id)
   )
 
-  React.useEffect(() => {
-    if (!isVideoMedia && mediaUrls.length > 0) {
-      setSelectedTargetIds((prev) =>
-        prev.filter((id) => {
-          const found = activeIntegrations.find((i) => i.id === id)
-          return found?.provider !== "youtube"
-        })
-      )
+  const effectiveSelectedTargetIds = React.useMemo(
+    () =>
+      selectedTargetIds.filter((id) => {
+        const integration = activeIntegrations.find((i) => i.id === id)
+        if (!integration) return false
+        if (
+          integration.provider === "youtube" &&
+          !isVideoMedia &&
+          mediaUrls.length > 0
+        ) {
+          return false
+        }
+        if (integration.provider === "gmb" && !gbpApiApproved) {
+          return false
+        }
+        return true
+      }),
+    [
+      selectedTargetIds,
+      activeIntegrations,
+      isVideoMedia,
+      mediaUrls.length,
+      gbpApiApproved,
+    ]
+  )
+
+  const handleSelectComposerAsset = (
+    nextAssetId: string,
+    overrideMediaUrl?: string
+  ) => {
+    setSelectedAssetId(nextAssetId)
+    const nextAsset = postAssets.find((a) => a.id === nextAssetId)
+    if (nextAsset) {
+      setCaption(nextAsset.captionInstagram || nextAsset.captionWhatsapp || "")
     }
-  }, [isVideoMedia, mediaUrls.length, activeIntegrations])
+    const nextFlyer = nextAsset
+      ? supplierFlyers.find((f) => f.id === nextAsset.flyerId)
+      : undefined
+    const nextMediaUrl =
+      overrideMediaUrl ||
+      (nextAsset
+        ? nextAsset.kind === "multi_package_sheet"
+          ? nextFlyer?.socialReadySheetJpegUrl || nextAsset.imageUrl
+          : nextAsset.imageUrl
+        : "")
+
+    if (nextMediaUrl) {
+      const nextUrls = [nextMediaUrl]
+      setMediaUrls(nextUrls)
+      if (!hasVideoMediaUrl(nextUrls)) {
+        setSelectedTargetIds((prev) =>
+          prev.filter((id) => {
+            const found = activeIntegrations.find((i) => i.id === id)
+            return found?.provider !== "youtube"
+          })
+        )
+      }
+    }
+  }
 
   const toggleTargetIntegration = (id: string) => {
     const integration = activeIntegrations.find((i) => i.id === id)
@@ -1012,9 +1117,10 @@ function SocialCalendarTab({
   const selectedTikTokIntegration = React.useMemo(
     () =>
       activeIntegrations.find(
-        (i) => i.provider === "tiktok" && selectedTargetIds.includes(i.id)
+        (i) =>
+          i.provider === "tiktok" && effectiveSelectedTargetIds.includes(i.id)
       ) || null,
-    [activeIntegrations, selectedTargetIds]
+    [activeIntegrations, effectiveSelectedTargetIds]
   )
 
   const [tiktokCreatorInfo, setTiktokCreatorInfo] =
@@ -1051,9 +1157,9 @@ function SocialCalendarTab({
   const hasSelectedGmb = React.useMemo(
     () =>
       activeIntegrations.some(
-        (i) => i.provider === "gmb" && selectedTargetIds.includes(i.id)
+        (i) => i.provider === "gmb" && effectiveSelectedTargetIds.includes(i.id)
       ),
-    [activeIntegrations, selectedTargetIds]
+    [activeIntegrations, effectiveSelectedTargetIds]
   )
   const [gmbCallToActionType, setGmbCallToActionType] = React.useState<
     "BOOK" | "LEARN_MORE"
@@ -1068,7 +1174,9 @@ function SocialCalendarTab({
   // PKT-anchored `datetime-local` state (`T-089`)
   const [publishNow, setPublishNow] = React.useState(true)
   const [scheduledDateTime, setScheduledDateTime] = React.useState<string>(() =>
-    formatPktDateTimeLocal(new Date(Date.now() + 2 * 60 * 60 * 1000))
+    formatPktDateTimeLocal(
+      new Date((initialNowMs ?? Date.now()) + 2 * 60 * 60 * 1000)
+    )
   )
 
   const [isTwoStepEnabled, setIsTwoStepEnabled] = React.useState(false)
@@ -1087,21 +1195,19 @@ function SocialCalendarTab({
   )
   const [followUpCaption, setFollowUpCaption] = React.useState<string>(() => {
     return (
-      followUpAsset?.captionInstagram ||
-      followUpAsset?.captionWhatsapp ||
-      ""
+      followUpAsset?.captionInstagram || followUpAsset?.captionWhatsapp || ""
     )
   })
 
-  React.useEffect(() => {
-    if (followUpAsset) {
+  const handleSelectFollowUpAsset = (nextId: string) => {
+    setFollowUpAssetId(nextId)
+    const nextAsset = postAssets.find((a) => a.id === nextId)
+    if (nextAsset) {
       setFollowUpCaption(
-        followUpAsset.captionInstagram ||
-          followUpAsset.captionWhatsapp ||
-          ""
+        nextAsset.captionInstagram || nextAsset.captionWhatsapp || ""
       )
     }
-  }, [followUpAsset])
+  }
 
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [composerNotice, setComposerNotice] = React.useState<{
@@ -1158,7 +1264,7 @@ function SocialCalendarTab({
   const [engagementMinViews, setEngagementMinViews] = React.useState(500)
   const [engagementPlugText, setEngagementPlugText] = React.useState<string>(
     () =>
-      `🕋 Urgent Update: Limited seats remaining for this package! WhatsApp our Lahore pilgrims desk directly for immediate confirmation: https://wa.me/${primaryWhatsappDigits}?text=Salam%20Al%20Ramlah%20Travels!%20Inquiring%20about%20booking.`
+      `Urgent Update: Limited seats remaining for this package! WhatsApp our Lahore pilgrims desk directly for immediate confirmation: https://wa.me/${primaryWhatsappDigits}?text=Salam%20Al%20Ramlah%20Travels!%20Inquiring%20about%20booking.`
   )
 
   const matchedComposerPackage = React.useMemo(
@@ -1173,14 +1279,14 @@ function SocialCalendarTab({
     const chosen = Array.from(
       new Set(
         activeIntegrations
-          .filter((i) => selectedTargetIds.includes(i.id))
+          .filter((i) => effectiveSelectedTargetIds.includes(i.id))
           .map((i) => i.provider)
       )
     )
     return chosen.length > 0
       ? chosen
       : ["instagram", "facebook", "tiktok", "youtube", "gmb"]
-  }, [activeIntegrations, selectedTargetIds])
+  }, [activeIntegrations, effectiveSelectedTargetIds])
 
   // Honest Cross-Channel Analytics Rollup (`T-036`)
   const campaignAnalyticsOverview = React.useMemo(() => {
@@ -1270,9 +1376,7 @@ function SocialCalendarTab({
 
       const fallbackComment = buildArtFirstCommentPlug({
         postCode:
-          matchedPackage?.postCode ||
-          selectedAsset?.postCode ||
-          "ART-UMRAH-01",
+          matchedPackage?.postCode || selectedAsset?.postCode || "ART-UMRAH-01",
         title: selectedAsset?.title,
         sharingPricePkr: matchedPackage?.retailSharingPkr,
         quadPricePkr: matchedPackage?.retailQuadPkr,
@@ -1365,7 +1469,7 @@ function SocialCalendarTab({
         })
         setComposerNotice({
           type: "success",
-          message: `✨ AI generated 5 platform-optimized captions & hooks (${res.result.modelUsed}).`,
+          message: `AI generated 5 platform-optimized captions & hooks (${res.result.modelUsed}).`,
         })
       } else {
         setComposerNotice({
@@ -1394,7 +1498,7 @@ function SocialCalendarTab({
         setScheduledDateTime(formatPktDateTimeLocal(new Date(res.nextSlotUtc)))
         setComposerNotice({
           type: "success",
-          message: `⚡ Queued in next open PKT peak window: ${res.pktLabel}`,
+          message: `Queued in next open PKT peak window: ${res.pktLabel}`,
         })
       } else {
         setComposerNotice({
@@ -1455,7 +1559,7 @@ function SocialCalendarTab({
       setComposerNotice({
         type: "error",
         message:
-          "Cloudflare R2 media upload failed. Verify R2 storage configuration and retry — local browser blob: URLs are blocked.",
+          "Cloudflare R2 media upload failed. Verify R2 storage configuration and retry; local browser blob: URLs are blocked.",
       })
     } catch (uploadErr: unknown) {
       setComposerNotice({
@@ -1489,7 +1593,7 @@ function SocialCalendarTab({
 
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (selectedTargetIds.length === 0) {
+    if (effectiveSelectedTargetIds.length === 0) {
       setComposerNotice({
         type: "error",
         message: "Please select at least one connected social channel target.",
@@ -1571,12 +1675,12 @@ function SocialCalendarTab({
         postFormat === "REEL"
           ? ("video" as const)
           : postFormat === "STORY"
-          ? ("story" as const)
-          : isVideoMedia
-          ? ("video" as const)
-          : finalMediaUrls.length > 1
-          ? ("carousel" as const)
-          : ("single_image" as const)
+            ? ("story" as const)
+            : isVideoMedia
+              ? ("video" as const)
+              : finalMediaUrls.length > 1
+                ? ("carousel" as const)
+                : ("single_image" as const)
 
       const res = await createScheduledSocialPostAction({
         postAssetId: selectedAssetId || undefined,
@@ -1602,7 +1706,7 @@ function SocialCalendarTab({
           : ("standalone" as const),
         scheduledFor: scheduledDate,
         scheduledForPktLocal: publishNow ? undefined : scheduledDateTime,
-        targetIntegrationIds: selectedTargetIds,
+        targetIntegrationIds: effectiveSelectedTargetIds,
         twoStepDelayMinutes: isTwoStepEnabled ? twoStepDelayMinutes : 180,
         publishNow,
         title: selectedAsset?.title,
@@ -1647,8 +1751,8 @@ function SocialCalendarTab({
         setComposerNotice({
           type: "success",
           message: publishNow
-            ? `Post (${postFormat}) processed across ${selectedTargetIds.length} channel target(s).`
-            : `Post (${postFormat}) scheduled for ${formatDateSafe(scheduledDate)} (PKT) across ${selectedTargetIds.length} channel(s).`,
+            ? `Post (${postFormat}) processed across ${effectiveSelectedTargetIds.length} channel target(s).`
+            : `Post (${postFormat}) scheduled for ${formatDateSafe(scheduledDate)} (PKT) across ${effectiveSelectedTargetIds.length} channel(s).`,
         })
         router.refresh()
       } else {
@@ -1742,26 +1846,34 @@ function SocialCalendarTab({
       )}
 
       {/* 0. Honest Core 5 Analytics Overview Bar (`T-036`) */}
-      <Card className="border-[#C5A059]/50 bg-gradient-to-r from-[#0A3622]/[0.04] via-card to-[#C5A059]/[0.06] shadow-xs">
-        <CardHeader className="pb-3 border-b border-border/80">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <Card className="border-gold-border bg-card shadow-xs">
+        <CardHeader className="border-b border-border/80 bg-secondary/25 pb-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="font-display text-base font-bold flex items-center gap-2 flex-wrap">
-                <BarChart3 className="size-4 text-[#C5A059]" />
+              <CardTitle className="flex flex-wrap items-center gap-2 font-display text-base font-bold">
+                <BarChart3
+                  className="size-4 text-gold-text"
+                  aria-hidden="true"
+                />
                 <span>Core 5 Cross-Channel Analytics Overview</span>
                 <Badge
                   variant="outline"
-                  className="text-[10px] font-mono tabular-nums border-[#C5A059]/60 text-[#0A3622]"
+                  className="border-gold-border text-[10px] font-semibold text-primary tabular-nums"
                 >
-                  {campaignAnalyticsOverview.liveSyncedTargetsCount} Live Synced
+                  <span className="font-mono font-bold">
+                    {campaignAnalyticsOverview.liveSyncedTargetsCount}
+                  </span>{" "}
+                  Live Synced
                 </Badge>
                 {campaignAnalyticsOverview.unavailableTargetsCount > 0 && (
                   <Badge
                     variant="outline"
-                    className="text-[10px] font-mono tabular-nums border-amber-400 bg-amber-50 text-amber-900"
+                    className="border-status-warning-border bg-status-warning-bg text-[10px] font-semibold text-status-warning tabular-nums"
                   >
-                    {campaignAnalyticsOverview.unavailableTargetsCount} Awaiting
-                    Live Sync
+                    <span className="font-mono font-bold">
+                      {campaignAnalyticsOverview.unavailableTargetsCount}
+                    </span>{" "}
+                    Awaiting Live Sync
                   </Badge>
                 )}
               </CardTitle>
@@ -1772,15 +1884,18 @@ function SocialCalendarTab({
               </CardDescription>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setIsComposerModalOpen(true)}
-                className="h-8 text-xs font-bold border-[#C5A059]/60 text-[#0A3622] hover:bg-[#C5A059]/10 gap-1.5 cursor-pointer"
+                className="h-8 cursor-pointer gap-1.5 border-gold-border text-xs font-bold text-primary transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
               >
-                <Smartphone className="size-3.5 text-[#C5A059]" />
+                <Smartphone
+                  className="size-3.5 text-gold-text"
+                  aria-hidden="true"
+                />
                 <span>Open Studio Split Preview</span>
               </Button>
 
@@ -1789,12 +1904,18 @@ function SocialCalendarTab({
                 size="sm"
                 disabled={isSyncingAllAnalytics}
                 onClick={handleSyncAllAnalytics}
-                className="h-8 text-xs font-bold bg-[#0A3622] text-white hover:bg-[#0A3622]/90 gap-1.5 cursor-pointer"
+                className="h-8 cursor-pointer gap-1.5 bg-primary text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
               >
                 {isSyncingAllAnalytics ? (
-                  <Loader2 className="size-3.5 animate-spin text-[#C5A059]" />
+                  <Loader2
+                    className="size-3.5 animate-spin text-gold motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <RefreshCw className="size-3.5 text-[#C5A059]" />
+                  <RefreshCw
+                    className="size-3.5 text-gold"
+                    aria-hidden="true"
+                  />
                 )}
                 <span>Sync Live Analytics</span>
               </Button>
@@ -1802,68 +1923,80 @@ function SocialCalendarTab({
           </div>
         </CardHeader>
 
-        <CardContent className="p-4 space-y-4">
+        <CardContent className="space-y-4 p-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <div className="rounded-xl border border-border bg-white p-3 space-y-1">
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+            <div className="space-y-1 rounded-xl bg-secondary/50 p-3">
+              <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
                 <span>Verified Views</span>
-                <Eye className="size-3.5 text-primary" />
+                <Eye className="size-3.5 text-primary" aria-hidden="true" />
               </div>
-              <p className="font-mono tabular-nums text-lg font-bold text-foreground">
+              <p className="font-mono text-lg font-bold text-foreground tabular-nums">
                 {campaignAnalyticsOverview.liveSyncedTargetsCount > 0
                   ? campaignAnalyticsOverview.totalViews.toLocaleString()
-                  : "—"}
+                  : "-"}
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-white p-3 space-y-1">
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+            <div className="space-y-1 rounded-xl bg-secondary/50 p-3">
+              <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
                 <span>Verified Likes</span>
-                <Heart className="size-3.5 text-rose-600" />
+                <Heart
+                  className="size-3.5 text-status-danger"
+                  aria-hidden="true"
+                />
               </div>
-              <p className="font-mono tabular-nums text-lg font-bold text-foreground">
+              <p className="font-mono text-lg font-bold text-foreground tabular-nums">
                 {campaignAnalyticsOverview.liveSyncedTargetsCount > 0
                   ? campaignAnalyticsOverview.totalLikes.toLocaleString()
-                  : "—"}
+                  : "-"}
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-white p-3 space-y-1">
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+            <div className="space-y-1 rounded-xl bg-secondary/50 p-3">
+              <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
                 <span>Verified Comments</span>
-                <MessageSquare className="size-3.5 text-blue-600" />
+                <MessageSquare
+                  className="size-3.5 text-status-info"
+                  aria-hidden="true"
+                />
               </div>
-              <p className="font-mono tabular-nums text-lg font-bold text-foreground">
+              <p className="font-mono text-lg font-bold text-foreground tabular-nums">
                 {campaignAnalyticsOverview.liveSyncedTargetsCount > 0
                   ? campaignAnalyticsOverview.totalComments.toLocaleString()
-                  : "—"}
+                  : "-"}
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-white p-3 space-y-1">
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+            <div className="space-y-1 rounded-xl bg-secondary/50 p-3">
+              <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
                 <span>Shares &amp; Clicks</span>
-                <MousePointerClick className="size-3.5 text-[#C5A059]" />
+                <MousePointerClick
+                  className="size-3.5 text-gold-text"
+                  aria-hidden="true"
+                />
               </div>
-              <p className="font-mono tabular-nums text-lg font-bold text-foreground">
+              <p className="font-mono text-lg font-bold text-foreground tabular-nums">
                 {campaignAnalyticsOverview.liveSyncedTargetsCount > 0
                   ? (
                       campaignAnalyticsOverview.totalShares +
                       campaignAnalyticsOverview.totalClicks
                     ).toLocaleString()
-                  : "—"}
+                  : "-"}
               </p>
             </div>
 
-            <div className="rounded-xl border border-[#C5A059]/50 bg-[#0A3622]/5 p-3 space-y-1 col-span-2 sm:col-span-1">
-              <div className="flex items-center justify-between text-[11px] text-[#0A3622] font-bold">
+            <div className="col-span-2 space-y-1 rounded-xl bg-accent/60 p-3 sm:col-span-1">
+              <div className="flex items-center justify-between text-[11px] font-bold text-primary">
                 <span>Avg Engagement</span>
-                <TrendingUp className="size-3.5 text-[#C5A059]" />
+                <TrendingUp
+                  className="size-3.5 text-gold-text"
+                  aria-hidden="true"
+                />
               </div>
-              <p className="font-mono tabular-nums text-lg font-bold text-[#0A3622]">
+              <p className="font-mono text-lg font-bold text-primary tabular-nums">
                 {campaignAnalyticsOverview.liveSyncedTargetsCount > 0
                   ? `${campaignAnalyticsOverview.engagementRatePct.toFixed(2)}%`
-                  : "—"}
+                  : "-"}
               </p>
             </div>
           </div>
@@ -1874,39 +2007,65 @@ function SocialCalendarTab({
               return (
                 <div
                   key={plat.id}
-                  className="rounded-lg border border-border bg-white/90 px-3 py-2 flex items-center justify-between gap-2 text-xs"
+                  className="flex items-center justify-between gap-2 rounded-lg bg-secondary/45 px-3 py-2 text-xs"
                 >
-                  <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="flex min-w-0 items-center gap-1.5">
                     <span
                       className={cn(
-                        "rounded px-1.5 py-0.5 font-mono text-[9px] font-bold border shrink-0",
+                        "shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold",
                         plat.color
                       )}
                     >
                       {plat.badge}
                     </span>
                     <div className="min-w-0">
-                      <p className="font-semibold text-[11px] truncate tabular-nums">
+                      <p className="truncate text-[11px] font-semibold tabular-nums">
                         {summary.liveSyncedTargetsCount > 0
                           ? `${summary.views.toLocaleString()} views`
                           : "No live sync"}
                       </p>
-                      <p className="text-[10px] text-muted-foreground font-mono tabular-nums">
-                        {summary.liveSyncedTargetsCount > 0
-                          ? `${summary.likes}♥ · ${summary.comments}💬 · ${summary.clicks}⚡`
-                          : summary.unavailableTargetsCount > 0
-                          ? `${summary.unavailableTargetsCount} unsynced`
-                          : "—"}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground tabular-nums">
+                        {summary.liveSyncedTargetsCount > 0 ? (
+                          <>
+                            <span className="inline-flex items-center gap-0.5 font-mono">
+                              {summary.likes}
+                              <Heart
+                                className="size-2.5 text-status-danger"
+                                aria-hidden="true"
+                              />
+                            </span>
+                            <span className="inline-flex items-center gap-0.5 font-mono">
+                              {summary.comments}
+                              <MessageSquare
+                                className="size-2.5 text-status-info"
+                                aria-hidden="true"
+                              />
+                            </span>
+                            <span className="inline-flex items-center gap-0.5 font-mono">
+                              {summary.clicks}
+                              <MousePointerClick
+                                className="size-2.5 text-gold-text"
+                                aria-hidden="true"
+                              />
+                            </span>
+                          </>
+                        ) : summary.unavailableTargetsCount > 0 ? (
+                          <span>
+                            {summary.unavailableTargetsCount} unsynced
+                          </span>
+                        ) : (
+                          <span>-</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <Badge
                     variant="outline"
-                    className="font-mono tabular-nums text-[10px] border-[#C5A059]/40 text-[#0A3622] shrink-0"
+                    className="shrink-0 border-gold-border font-mono text-[10px] text-primary tabular-nums"
                   >
                     {summary.liveSyncedTargetsCount > 0
                       ? `${summary.engagementRatePct.toFixed(1)}%`
-                      : "—"}
+                      : "-"}
                   </Badge>
                 </div>
               )
@@ -1916,12 +2075,15 @@ function SocialCalendarTab({
       </Card>
 
       {/* 1. Post Composer Card */}
-      <Card className="border-[#C5A059]/40 bg-card shadow-sm">
-        <CardHeader className="bg-secondary/20 border-b border-border pb-4">
+      <Card className="border-gold-border bg-card shadow-sm">
+        <CardHeader className="border-b border-border bg-secondary/35 pb-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="font-display text-lg font-bold flex items-center gap-2">
-                <Sparkles className="size-4 text-[#C5A059]" />
+              <CardTitle className="flex items-center gap-2 font-display text-lg font-bold">
+                <Sparkles
+                  className="size-4 text-gold-text"
+                  aria-hidden="true"
+                />
                 <span>Core 5 Social Post Composer</span>
               </CardTitle>
               <CardDescription className="text-xs">
@@ -1933,30 +2095,33 @@ function SocialCalendarTab({
             <div className="flex items-center gap-1.5">
               <Badge
                 variant="outline"
-                className="text-[11px] font-mono tabular-nums border-primary/30 text-primary"
+                className="border-primary/30 text-[11px] font-medium text-primary tabular-nums"
               >
-                {activeIntegrations.length} Active Account(s) Connected
+                <span className="font-mono font-semibold">
+                  {activeIntegrations.length}
+                </span>{" "}
+                Active Account(s) Connected
               </Badge>
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="p-4 sm:p-6 space-y-6">
+        <CardContent className="space-y-6 p-4 sm:p-6">
           {composerNotice && (
             <div
               role="alert"
               className={cn(
-                "rounded-xl border p-3.5 text-xs font-semibold flex items-center justify-between gap-2",
+                "flex items-center justify-between gap-2 rounded-xl border p-3.5 text-xs font-semibold",
                 composerNotice.type === "success"
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-950"
-                  : "border-rose-300 bg-rose-50 text-rose-950"
+                  ? "border-status-success-border bg-status-success-bg text-status-success"
+                  : "border-status-danger-border bg-status-danger-bg text-status-danger"
               )}
             >
               <span>{composerNotice.message}</span>
               <button
                 type="button"
                 onClick={() => setComposerNotice(null)}
-                className="underline cursor-pointer shrink-0"
+                className="shrink-0 cursor-pointer underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 Dismiss
               </button>
@@ -1966,19 +2131,19 @@ function SocialCalendarTab({
           <form onSubmit={handleCreatePost} className="space-y-6">
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
               {/* Left Column: Asset, Format & Media Selection */}
-              <div className="lg:col-span-5 space-y-4">
+              <div className="space-y-4 lg:col-span-5">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-primary flex items-center justify-between">
+                  <Label className="flex items-center justify-between text-xs font-bold text-primary">
                     <span>1. Select 4K Poster / Spotlight Asset</span>
-                    <span className="text-[10px] text-muted-foreground font-normal tabular-nums">
+                    <span className="text-[11px] font-normal text-muted-foreground tabular-nums">
                       {postAssets.length} Available
                     </span>
                   </Label>
                   <select
                     aria-label="Select 4K Poster or Spotlight Asset"
                     value={selectedAssetId}
-                    onChange={(e) => setSelectedAssetId(e.target.value)}
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs font-mono"
+                    onChange={(e) => handleSelectComposerAsset(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     {postAssets.map((a) => (
                       <option key={a.id} value={a.id}>
@@ -1991,9 +2156,12 @@ function SocialCalendarTab({
                     variant="outline"
                     size="sm"
                     onClick={() => setIsStudioPickerOpen(true)}
-                    className="w-full text-xs font-semibold border-[#C5A059]/60 text-[#0A3622] hover:bg-[#C5A059]/10 gap-1.5 cursor-pointer mt-1"
+                    className="mt-1 w-full cursor-pointer gap-1.5 border-gold-border text-xs font-semibold text-primary transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                   >
-                    <Sparkles className="size-3.5 text-[#C5A059]" />
+                    <Sparkles
+                      className="size-3.5 text-gold-text"
+                      aria-hidden="true"
+                    />
                     <span>
                       Pick from Studio Library (4K Posters &amp; Flyers)
                     </span>
@@ -2008,34 +2176,32 @@ function SocialCalendarTab({
                     </Label>
                     <Badge
                       variant="outline"
-                      className="text-[9px] font-mono border-[#C5A059]/50 text-[#0A3622]"
+                      className="border-gold-border text-[10px] font-semibold text-primary"
                     >
-                      {postFormat}
+                      {FORMAT_DISPLAY_NAMES[postFormat]}
                     </Badge>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
-                    {(
-                      [
-                        {
-                          id: "FEED" as const,
-                          label: "Feed Post",
-                          desc: "4K Image / Carousel",
-                          icon: ImageIcon,
-                        },
-                        {
-                          id: "REEL" as const,
-                          label: "Reel / Short",
-                          desc: "9:16 Vertical Video",
-                          icon: Film,
-                        },
-                        {
-                          id: "STORY" as const,
-                          label: "24h Story",
-                          desc: "IG & FB Stories",
-                          icon: Smartphone,
-                        },
-                      ]
-                    ).map((fmt) => {
+                    {[
+                      {
+                        id: "FEED" as const,
+                        label: "Feed Post",
+                        desc: "4K Image / Carousel",
+                        icon: ImageIcon,
+                      },
+                      {
+                        id: "REEL" as const,
+                        label: "Reel / Short",
+                        desc: "9:16 Vertical Video",
+                        icon: Film,
+                      },
+                      {
+                        id: "STORY" as const,
+                        label: "24h Story",
+                        desc: "IG & FB Stories",
+                        icon: Smartphone,
+                      },
+                    ].map((fmt) => {
                       const FmtIcon = fmt.icon
                       const active = postFormat === fmt.id
                       return (
@@ -2044,10 +2210,10 @@ function SocialCalendarTab({
                           type="button"
                           onClick={() => setPostFormat(fmt.id)}
                           className={cn(
-                            "flex flex-col items-start rounded-lg border p-2.5 text-left transition-all cursor-pointer",
+                            "flex cursor-pointer flex-col items-start rounded-lg p-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                             active
-                              ? "border-[#0A3622] bg-[#0A3622]/5 ring-1 ring-[#0A3622]"
-                              : "border-border bg-white hover:border-[#C5A059]"
+                              ? "bg-primary/10 ring-1 ring-primary"
+                              : "bg-secondary/50 hover:bg-accent/60"
                           )}
                         >
                           <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
@@ -2055,13 +2221,14 @@ function SocialCalendarTab({
                               className={cn(
                                 "size-3.5",
                                 active
-                                  ? "text-[#C5A059]"
+                                  ? "text-gold-text"
                                   : "text-muted-foreground"
                               )}
+                              aria-hidden="true"
                             />
                             <span>{fmt.label}</span>
                           </div>
-                          <span className="text-[10px] text-muted-foreground mt-0.5">
+                          <span className="mt-0.5 text-[10px] text-muted-foreground">
                             {fmt.desc}
                           </span>
                         </button>
@@ -2069,43 +2236,83 @@ function SocialCalendarTab({
                     })}
                   </div>
                   {postFormat === "REEL" && !isVideoMedia && (
-                    <p className="text-[10px] font-medium text-amber-900 bg-amber-50 border border-amber-300 rounded-md px-2.5 py-1.5">
+                    <p className="rounded-md border border-status-warning-border bg-status-warning-bg px-2.5 py-1.5 text-[11px] font-medium text-status-warning">
                       Reel / Short format requires an `.mp4` or `.mov` video URL
                       in Attached Media URLs below.
                     </p>
                   )}
                 </div>
 
-                {/* Poster Preview Card */}
+                {/* Poster Preview Well */}
                 {selectedAsset ? (
-                  <div className="rounded-xl border border-border bg-secondary/15 p-3 space-y-2.5">
+                  <div className="space-y-2.5 rounded-xl bg-secondary/45 p-3">
                     <div className="flex items-start gap-3">
-                      <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
-                        {selectedAsset.imageUrl ? (
-                          <img
-                            src={selectedAsset.imageUrl}
-                            alt={selectedAsset.title}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
-                            No Image
-                          </div>
-                        )}
+                      <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-lg bg-muted">
+                        {(() => {
+                          const assetImageUrl = getRenderableImagePreviewUrl(
+                            selectedAsset.imageUrl
+                          )
+                          if (assetImageUrl) {
+                            return (
+                              <Image
+                                src={assetImageUrl}
+                                alt={selectedAsset.title}
+                                fill
+                                unoptimized
+                                sizes="80px"
+                                className="object-cover"
+                              />
+                            )
+                          }
+                          if (
+                            selectedAsset.imageUrl &&
+                            isPdfAssetUrl(selectedAsset.imageUrl)
+                          ) {
+                            return (
+                              <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-accent/60 text-primary">
+                                <FileText
+                                  className="size-5 text-gold-text"
+                                  aria-hidden="true"
+                                />
+                                <span className="text-[10px] font-semibold">
+                                  PDF
+                                </span>
+                              </div>
+                            )
+                          }
+                          if (selectedAsset.imageUrl) {
+                            return (
+                              <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-secondary text-primary">
+                                <Film
+                                  className="size-5 text-gold-text"
+                                  aria-hidden="true"
+                                />
+                                <span className="text-[10px] font-semibold">
+                                  Video
+                                </span>
+                              </div>
+                            )
+                          }
+                          return (
+                            <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                              No Image
+                            </div>
+                          )
+                        })()}
                       </div>
                       <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-mono text-xs font-bold text-primary">
                             {selectedAsset.postCode}
                           </span>
                           <Badge
                             variant="outline"
-                            className="text-[9px] px-1.5 py-0 border-[#C5A059]/40 text-[#0A3622] uppercase font-semibold"
+                            className="border-gold-border px-1.5 py-0 text-[10px] font-semibold text-primary capitalize"
                           >
                             {selectedAsset.kind.replace(/_/g, " ")}
                           </Badge>
                         </div>
-                        <h4 className="text-xs font-semibold text-foreground line-clamp-2">
+                        <h4 className="line-clamp-2 text-xs font-semibold text-foreground">
                           {selectedAsset.title}
                         </h4>
                         <div className="flex items-center gap-2 pt-1 text-[11px]">
@@ -2114,9 +2321,9 @@ function SocialCalendarTab({
                               href={selectedAsset.imageUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-primary hover:underline flex items-center gap-1 font-semibold"
+                              className="flex items-center gap-1 font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             >
-                              <Eye className="size-3" />
+                              <Eye className="size-3" aria-hidden="true" />
                               <span>View 4K Asset</span>
                             </a>
                           )}
@@ -2125,9 +2332,9 @@ function SocialCalendarTab({
                               href={selectedAsset.pdfUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-muted-foreground hover:underline flex items-center gap-1"
+                              className="flex items-center gap-1 text-muted-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             >
-                              <FileText className="size-3" />
+                              <FileText className="size-3" aria-hidden="true" />
                               <span>PDF</span>
                             </a>
                           )}
@@ -2151,16 +2358,16 @@ function SocialCalendarTab({
                       placeholder="https://... Cloudflare R2 image or MP4 URL"
                       value={customMediaInput}
                       onChange={(e) => setCustomMediaInput(e.target.value)}
-                      className="h-8 text-xs bg-white"
+                      className="h-8 bg-background text-xs"
                     />
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={handleAddCustomMediaUrl}
-                      className="h-8 text-xs shrink-0"
+                      className="h-8 shrink-0 cursor-pointer text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <Plus className="size-3 mr-1" />
+                      <Plus className="mr-1 size-3" aria-hidden="true" />
                       Add URL
                     </Button>
                   </div>
@@ -2169,9 +2376,9 @@ function SocialCalendarTab({
                       {mediaUrls.map((url, idx) => (
                         <span
                           key={idx}
-                          className="inline-flex items-center gap-1 rounded bg-secondary px-2 py-0.5 text-[10px] font-mono text-muted-foreground"
+                          className="inline-flex items-center gap-1 rounded bg-secondary px-2 py-0.5 font-mono text-[10px] text-muted-foreground"
                         >
-                          <span className="truncate max-w-[160px]">{url}</span>
+                          <span className="max-w-[160px] truncate">{url}</span>
                           <button
                             type="button"
                             onClick={() =>
@@ -2179,34 +2386,40 @@ function SocialCalendarTab({
                                 prev.filter((_, i) => i !== idx)
                               )
                             }
-                            className="hover:text-rose-600"
+                            className="cursor-pointer hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             aria-label="Remove media URL"
                           >
-                            <X className="size-3" />
+                            <X className="size-3" aria-hidden="true" />
                           </button>
                         </span>
                       ))}
                     </div>
                   )}
 
-                  <div className="relative rounded-xl border border-dashed border-[#C5A059]/50 bg-[#C5A059]/5 p-3 text-center transition-all hover:bg-[#C5A059]/10 mt-2">
+                  <div className="relative mt-2 rounded-xl border border-dashed border-gold-border bg-accent/35 p-3 text-center transition-colors hover:bg-accent/60 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary motion-reduce:transition-none">
                     <input
                       type="file"
                       aria-label="Upload campaign media file"
                       accept="image/*,video/mp4,video/quicktime"
                       onChange={handleFileUpload}
                       disabled={isUploadingR2}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                     />
-                    <div className="flex flex-col items-center justify-center gap-1 pointer-events-none">
+                    <div className="pointer-events-none flex flex-col items-center justify-center gap-1">
                       {isUploadingR2 ? (
-                        <Loader2 className="size-5 animate-spin text-[#C5A059]" />
+                        <Loader2
+                          className="size-5 animate-spin text-gold-text motion-reduce:animate-none"
+                          aria-hidden="true"
+                        />
                       ) : (
-                        <UploadCloud className="size-5 text-[#C5A059]" />
+                        <UploadCloud
+                          className="size-5 text-gold-text"
+                          aria-hidden="true"
+                        />
                       )}
                       <span className="text-xs font-semibold text-foreground">
                         {isUploadingR2
-                          ? "Uploading to Cloudflare R2..."
+                          ? "Uploading to Cloudflare R2…"
                           : "Drag & Drop or Click to Upload Media"}
                       </span>
                       <span className="text-[10px] text-muted-foreground">
@@ -2218,17 +2431,17 @@ function SocialCalendarTab({
               </div>
 
               {/* Right Column: Captions, Multi-Account Channels & Compliance Controls */}
-              <div className="lg:col-span-7 space-y-4">
+              <div className="space-y-4 lg:col-span-7">
                 <div className="space-y-2.5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <Label className="text-xs font-bold text-foreground flex items-center gap-2">
+                  <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                    <Label className="flex items-center gap-2 text-xs font-bold text-foreground">
                       <span>2. Social Captions &amp; Platform Overrides</span>
                       {activeCaptionTab !== "global" && (
                         <Badge
                           variant="outline"
-                          className="text-[9px] font-mono border-[#C5A059]/60 text-[#0A3622] uppercase"
+                          className="border-gold-border text-[10px] font-semibold text-primary"
                         >
-                          Customizing {activeCaptionTab}
+                          Customizing {PLATFORM_DISPLAY_NAMES[activeCaptionTab]}
                         </Badge>
                       )}
                     </Label>
@@ -2239,27 +2452,54 @@ function SocialCalendarTab({
                       size="xs"
                       disabled={isGeneratingAiCaptions}
                       onClick={handleGenerateAiCaptions}
-                      className="h-7 text-[11px] font-bold border-[#C5A059]/60 bg-gradient-to-r from-[#0A3622]/5 to-[#C5A059]/10 hover:bg-[#C5A059]/20 text-[#0A3622] shrink-0 cursor-pointer gap-1.5 shadow-xs"
+                      className="h-7 shrink-0 cursor-pointer gap-1.5 border-gold-border bg-accent/55 text-[11px] font-bold text-primary shadow-xs transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                     >
                       {isGeneratingAiCaptions ? (
-                        <Loader2 className="size-3 animate-spin text-[#C5A059]" />
+                        <Loader2
+                          className="size-3 animate-spin text-gold-text motion-reduce:animate-none"
+                          aria-hidden="true"
+                        />
                       ) : (
-                        <Sparkles className="size-3 text-[#C5A059]" />
+                        <Sparkles
+                          className="size-3 text-gold-text"
+                          aria-hidden="true"
+                        />
                       )}
-                      <span>✨ AI Generate All 5 Platform Captions</span>
+                      <span>AI Generate All 5 Platform Captions</span>
                     </Button>
                   </div>
 
                   {/* Platform Tabs Bar */}
-                  <div className="flex items-center gap-1 overflow-x-auto pb-1 border-b border-border">
+                  <div className="flex items-center gap-1 overflow-x-auto border-b border-border pb-1">
                     {[
-                      { id: "global" as const, label: "Global Default", icon: "🌐" },
-                      { id: "instagram" as const, label: "Instagram", icon: "📸" },
-                      { id: "facebook" as const, label: "Facebook", icon: "📘" },
-                      { id: "tiktok" as const, label: "TikTok", icon: "🎵" },
-                      { id: "youtube" as const, label: "YouTube", icon: "▶️" },
-                      { id: "gmb" as const, label: "Google Biz", icon: "📍" },
+                      {
+                        id: "global" as const,
+                        label: "Global Default",
+                        icon: Globe,
+                      },
+                      {
+                        id: "instagram" as const,
+                        label: "Instagram",
+                        icon: Camera,
+                      },
+                      {
+                        id: "facebook" as const,
+                        label: "Facebook",
+                        icon: Share2,
+                      },
+                      { id: "tiktok" as const, label: "TikTok", icon: Film },
+                      {
+                        id: "youtube" as const,
+                        label: "YouTube",
+                        icon: Play,
+                      },
+                      {
+                        id: "gmb" as const,
+                        label: "Google Biz",
+                        icon: MapPin,
+                      },
                     ].map((tab) => {
+                      const TabIcon = tab.icon
                       const isActive = activeCaptionTab === tab.id
                       const hasOverride =
                         tab.id !== "global" &&
@@ -2271,16 +2511,22 @@ function SocialCalendarTab({
                           type="button"
                           onClick={() => setActiveCaptionTab(tab.id)}
                           className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition-all cursor-pointer",
+                            "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                             isActive
-                              ? "bg-[#0A3622] text-white shadow-xs"
+                              ? "bg-primary text-primary-foreground shadow-xs"
                               : "bg-secondary text-muted-foreground hover:text-foreground"
                           )}
                         >
-                          <span className="text-[11px]">{tab.icon}</span>
+                          <TabIcon
+                            className="size-3.5 shrink-0"
+                            aria-hidden="true"
+                          />
                           <span>{tab.label}</span>
                           {hasOverride && (
-                            <span className="size-1.5 rounded-full bg-[#C5A059]" />
+                            <span
+                              className="size-1.5 rounded-full bg-gold"
+                              aria-hidden="true"
+                            />
                           )}
                         </button>
                       )
@@ -2303,35 +2549,40 @@ function SocialCalendarTab({
                           rows={5}
                           value={caption}
                           onChange={(e) => setCaption(e.target.value)}
-                          placeholder="Write global caption with #AlRamlahTravels, contact lines and package overview..."
-                          className="text-xs font-mono leading-relaxed bg-white"
+                          placeholder="Write global caption with #AlRamlahTravels, contact lines and package overview…"
+                          className="bg-background font-mono text-xs leading-relaxed"
                         />
                       </div>
 
                       {postFormat !== "STORY" && (
                         <div className="space-y-1">
                           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                            <span className="font-semibold text-foreground flex items-center gap-1">
-                              <MessageSquare className="size-3 text-[#C5A059]" />
-                              <span>Global First Comment (IG, FB &amp; YT)</span>
+                            <span className="flex items-center gap-1 font-semibold text-foreground">
+                              <MessageSquare
+                                className="size-3 text-gold-text"
+                                aria-hidden="true"
+                              />
+                              <span>
+                                Global First Comment (IG, FB &amp; YT)
+                              </span>
                             </span>
                             <button
                               type="button"
                               disabled={isGeneratingFirstComment}
                               onClick={handleGenerateFirstComment}
-                              className="inline-flex min-h-6 items-center px-1 text-[10px] font-semibold text-primary hover:underline cursor-pointer"
+                              className="inline-flex min-h-6 cursor-pointer items-center px-1 text-[11px] font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             >
                               {isGeneratingFirstComment
-                                ? "Generating..."
-                                : "Auto-Generate ART-... CTA"}
+                                ? "Generating…"
+                                : "Auto-Generate ART CTA"}
                             </button>
                           </div>
                           <Textarea
                             rows={2}
                             value={firstComment}
                             onChange={(e) => setFirstComment(e.target.value)}
-                            placeholder="Optional pinned first comment with ART-... WhatsApp booking link..."
-                            className="text-xs font-mono leading-relaxed bg-white"
+                            placeholder="Optional pinned first comment with ART WhatsApp booking link…"
+                            className="bg-background font-mono text-xs leading-relaxed"
                           />
                         </div>
                       )}
@@ -2341,7 +2592,8 @@ function SocialCalendarTab({
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                           <span>
-                            Custom {activeCaptionTab.toUpperCase()} override{" "}
+                            Custom {PLATFORM_DISPLAY_NAMES[activeCaptionTab]}{" "}
+                            override{" "}
                             {!platformCaptions[activeCaptionTab]?.caption &&
                               "(inheriting Global Default)"}
                           </span>
@@ -2356,16 +2608,20 @@ function SocialCalendarTab({
                                     return next
                                   })
                                 }
-                                className="text-[10px] text-rose-600 hover:underline"
+                                className="cursor-pointer text-[11px] text-status-danger hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               >
                                 Reset to Global
                               </button>
                             )}
-                            <span className="font-mono tabular-nums">
-                              {(
-                                platformCaptions[activeCaptionTab]?.caption ||
-                                caption
-                              ).length}{" "}
+                            <span className="tabular-nums">
+                              <span className="font-mono font-medium">
+                                {
+                                  (
+                                    platformCaptions[activeCaptionTab]
+                                      ?.caption || caption
+                                  ).length
+                                }
+                              </span>{" "}
                               chars
                             </span>
                           </div>
@@ -2388,8 +2644,8 @@ function SocialCalendarTab({
                               },
                             }))
                           }}
-                          placeholder={`Custom ${activeCaptionTab} caption...`}
-                          className="text-xs font-mono leading-relaxed bg-white"
+                          placeholder={`Custom ${PLATFORM_DISPLAY_NAMES[activeCaptionTab]} caption…`}
+                          className="bg-background font-mono text-xs leading-relaxed"
                         />
                       </div>
 
@@ -2398,18 +2654,25 @@ function SocialCalendarTab({
                       ) && (
                         <div className="space-y-1">
                           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                            <span className="font-semibold text-foreground flex items-center gap-1">
-                              <MessageSquare className="size-3 text-[#C5A059]" />
+                            <span className="flex items-center gap-1 font-semibold text-foreground">
+                              <MessageSquare
+                                className="size-3 text-gold-text"
+                                aria-hidden="true"
+                              />
                               <span>
-                                {activeCaptionTab.toUpperCase()} Pinned First
-                                Comment
+                                {PLATFORM_DISPLAY_NAMES[activeCaptionTab]}{" "}
+                                Pinned First Comment
                               </span>
                             </span>
-                            <span className="font-mono tabular-nums">
-                              {(
-                                platformCaptions[activeCaptionTab]
-                                  ?.firstComment ?? firstComment
-                              ).length}{" "}
+                            <span className="tabular-nums">
+                              <span className="font-mono font-medium">
+                                {
+                                  (
+                                    platformCaptions[activeCaptionTab]
+                                      ?.firstComment ?? firstComment
+                                  ).length
+                                }
+                              </span>{" "}
                               chars
                             </span>
                           </div>
@@ -2432,8 +2695,8 @@ function SocialCalendarTab({
                                 },
                               }))
                             }}
-                            placeholder={`Custom ${activeCaptionTab} first comment...`}
-                            className="text-xs font-mono leading-relaxed bg-white"
+                            placeholder={`Custom ${PLATFORM_DISPLAY_NAMES[activeCaptionTab]} first comment…`}
+                            className="bg-background font-mono text-xs leading-relaxed"
                           />
                         </div>
                       )}
@@ -2442,7 +2705,7 @@ function SocialCalendarTab({
                 </div>
 
                 {/* 3. Multi-Account Target Social Channels (`T-069`, `T-071`, `OD-07`, `OD-11`) */}
-                <div className="space-y-2 pt-2 border-t border-border">
+                <div className="space-y-2 border-t border-border pt-2">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-bold text-foreground">
                       3. Target Social Accounts
@@ -2460,15 +2723,15 @@ function SocialCalendarTab({
                           })
                           setSelectedTargetIds(eligible.map((i) => i.id))
                         }}
-                        className="inline-flex min-h-6 items-center px-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                        className="inline-flex min-h-6 cursor-pointer items-center px-1 text-[11px] font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
                         Select Eligible
                       </button>
-                      <span className="text-border">•</span>
+                      <span className="h-3 w-px bg-border" aria-hidden="true" />
                       <button
                         type="button"
                         onClick={() => setSelectedTargetIds([])}
-                        className="inline-flex min-h-6 items-center px-1 text-[11px] font-medium text-muted-foreground hover:underline cursor-pointer"
+                        className="inline-flex min-h-6 cursor-pointer items-center px-1 text-[11px] font-medium text-muted-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
                         Clear
                       </button>
@@ -2476,26 +2739,34 @@ function SocialCalendarTab({
                   </div>
 
                   {activeIntegrations.length === 0 ? (
-                    <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-3 text-xs text-amber-950 flex items-start gap-2.5">
-                      <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex items-start gap-2.5 rounded-xl border border-status-warning-border bg-status-warning-bg p-3 text-xs text-status-warning">
+                      <AlertTriangle
+                        className="mt-0.5 size-4 shrink-0 text-status-warning"
+                        aria-hidden="true"
+                      />
                       <div>
                         <p className="font-bold">
                           No Social Channels Connected Yet
                         </p>
                         {userRole === "super_admin" ? (
-                          <p className="text-[11px] text-amber-900 mt-0.5">
+                          <p className="mt-0.5 text-[11px] text-status-warning">
                             Link Instagram, Facebook Pages, TikTok, YouTube, or
                             Google Business in{" "}
                             <a
                               href="/admin/settings?tab=social"
-                              className="underline font-bold"
+                              className="inline-flex items-center gap-1 font-bold underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             >
-                              Settings &rarr; Social OAuth
+                              <span>Settings</span>
+                              <ArrowRight
+                                className="size-3"
+                                aria-hidden="true"
+                              />
+                              <span>Social OAuth</span>
                             </a>{" "}
                             to publish automatically.
                           </p>
                         ) : (
-                          <p className="text-[11px] text-amber-900 mt-0.5">
+                          <p className="mt-0.5 text-[11px] text-status-warning">
                             Ask a Super Administrator to connect official OAuth
                             social channels in Settings.
                           </p>
@@ -2515,58 +2786,55 @@ function SocialCalendarTab({
                         const canSelect = !isYouTubeBlocked && !isGmbBlocked
                         const isSelected =
                           canSelect &&
-                          selectedTargetIds.includes(integration.id)
+                          effectiveSelectedTargetIds.includes(integration.id)
 
                         return (
-                          <div
+                          <label
                             key={integration.id}
-                            onClick={() => {
-                              if (canSelect) {
-                                toggleTargetIntegration(integration.id)
-                              }
-                            }}
                             className={cn(
-                              "flex items-center justify-between rounded-lg border p-2.5 text-xs transition-all",
+                              "flex items-center justify-between rounded-lg p-2.5 text-xs transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary motion-reduce:transition-none",
                               canSelect
-                                ? "cursor-pointer hover:border-[#C5A059]"
-                                : "bg-muted/40 cursor-not-allowed",
+                                ? "cursor-pointer"
+                                : "cursor-not-allowed bg-muted/60 opacity-75",
                               isSelected
-                                ? "border-primary bg-primary/5 ring-1 ring-primary"
-                                : "border-border bg-white"
+                                ? "bg-primary/10 ring-1 ring-primary"
+                                : canSelect
+                                  ? "bg-secondary/50 hover:bg-accent/60"
+                                  : ""
                             )}
                           >
-                            <div className="flex items-center gap-2 min-w-0">
+                            <div className="flex min-w-0 items-center gap-2">
                               <span
                                 className={cn(
-                                  "rounded px-1.5 py-0.5 font-mono text-[9px] font-bold border shrink-0",
+                                  "shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold",
                                   platformMeta.color
                                 )}
                               >
                                 {platformMeta.badge}
                               </span>
                               <div className="min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <p className="font-semibold text-foreground truncate text-[11px]">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <p className="truncate text-[11px] font-semibold text-foreground">
                                     {integration.name}
                                   </p>
                                   {isYouTubeBlocked && (
-                                    <span className="rounded px-1 py-0.2 text-[9px] font-medium bg-amber-500/10 text-amber-900 border border-amber-500/30">
-                                      Requires MP4
+                                    <span className="rounded border border-status-warning-border bg-status-warning-bg px-1 py-0.5 text-[10px] font-medium text-status-warning">
+                                      Requires Video
                                     </span>
                                   )}
                                   {isGmbBlocked && (
-                                    <span className="rounded px-1 py-0.2 text-[9px] font-medium bg-amber-500/10 text-amber-900 border border-amber-500/30">
-                                      GBP API Pending
+                                    <span className="rounded border border-status-warning-border bg-status-warning-bg px-1 py-0.5 text-[10px] font-medium text-status-warning">
+                                      Google Pending
                                     </span>
                                   )}
                                   {integration.provider === "tiktok" &&
                                     !tiktokDirectPostApproved && (
-                                      <span className="rounded px-1 py-0.2 text-[9px] font-medium bg-slate-100 text-slate-800 border border-slate-300">
-                                        Sandbox: SELF_ONLY
+                                      <span className="rounded border border-border bg-secondary px-1 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                        Sandbox: Self Only
                                       </span>
                                     )}
                                 </div>
-                                <p className="text-[10px] text-muted-foreground truncate">
+                                <p className="truncate text-[10px] text-muted-foreground">
                                   {integration.handle || platformMeta.name}
                                 </p>
                               </div>
@@ -2576,10 +2844,14 @@ function SocialCalendarTab({
                               aria-label={`Select ${integration.name}`}
                               disabled={!canSelect}
                               checked={Boolean(isSelected)}
-                              onChange={() => {}}
-                              className="size-3.5 rounded border-input text-primary accent-[#0A3622]"
+                              onChange={() => {
+                                if (canSelect) {
+                                  toggleTargetIntegration(integration.id)
+                                }
+                              }}
+                              className="size-3.5 rounded border-input accent-primary"
                             />
-                          </div>
+                          </label>
                         )
                       })}
                     </div>
@@ -2588,17 +2860,20 @@ function SocialCalendarTab({
 
                 {/* TikTok Direct Post Compliance & Privacy UX (`T-070`, `OD-11`) */}
                 {selectedTikTokIntegration && (
-                  <div className="rounded-xl border border-slate-300 bg-slate-50/70 p-3.5 space-y-3 text-xs">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="space-y-3 rounded-xl bg-secondary/55 p-3.5 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <ShieldCheck className="size-4 text-[#0A3622]" />
+                        <ShieldCheck
+                          className="size-4 text-primary"
+                          aria-hidden="true"
+                        />
                         <span className="font-bold text-foreground">
                           TikTok Direct Post Privacy &amp; Disclosure Controls
                         </span>
                       </div>
                       <Badge
                         variant="outline"
-                        className="text-[10px] font-mono border-slate-300 text-slate-800"
+                        className="border-border text-[10px] font-medium text-foreground"
                       >
                         {tiktokCreatorInfo?.creatorNickname ||
                           selectedTikTokIntegration.handle ||
@@ -2607,12 +2882,14 @@ function SocialCalendarTab({
                     </div>
 
                     {!tiktokDirectPostApproved && (
-                      <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded-md px-2.5 py-1.5">
-                        TikTok Direct Post audit is pending (`TIKTOK_DIRECT_POST_APPROVED=false`): uploads are restricted to Private (`SELF_ONLY`) visibility until approved.
+                      <p className="rounded-md border border-status-warning-border bg-status-warning-bg px-2.5 py-1.5 text-[11px] text-status-warning">
+                        TikTok Direct Post audit is pending: uploads are
+                        restricted to Private (Only Me) visibility until
+                        approved.
                       </p>
                     )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-[11px] font-semibold">
                           Who Can View This Post (Required)
@@ -2625,9 +2902,9 @@ function SocialCalendarTab({
                               e.target.value as TikTokPrivacyLevel | ""
                             )
                           }
-                          className="flex h-8 w-full rounded-md border border-input bg-white px-2 text-xs"
+                          className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
-                          <option value="">Select TikTok privacy...</option>
+                          <option value="">Select TikTok privacy…</option>
                           {(
                             tiktokCreatorInfo?.privacyLevelOptions || [
                               "SELF_ONLY",
@@ -2639,16 +2916,12 @@ function SocialCalendarTab({
                             const locked =
                               !tiktokDirectPostApproved && opt !== "SELF_ONLY"
                             return (
-                              <option
-                                key={opt}
-                                value={opt}
-                                disabled={locked}
-                              >
+                              <option key={opt} value={opt} disabled={locked}>
                                 {opt === "SELF_ONLY"
                                   ? "Only Me (Private)"
                                   : opt === "PUBLIC_TO_EVERYONE"
-                                  ? "Public to Everyone"
-                                  : opt.replace(/_/g, " ")}
+                                    ? "Public to Everyone"
+                                    : opt.replace(/_/g, " ")}
                                 {locked ? " (Requires TikTok Audit)" : ""}
                               </option>
                             )
@@ -2671,7 +2944,7 @@ function SocialCalendarTab({
                               onChange={(e) =>
                                 setTiktokAllowComment(e.target.checked)
                               }
-                              className="accent-[#0A3622]"
+                              className="accent-primary"
                             />
                             <span>Comment</span>
                           </label>
@@ -2685,7 +2958,7 @@ function SocialCalendarTab({
                               onChange={(e) =>
                                 setTiktokAllowDuet(e.target.checked)
                               }
-                              className="accent-[#0A3622]"
+                              className="accent-primary"
                             />
                             <span>Duet</span>
                           </label>
@@ -2694,13 +2967,13 @@ function SocialCalendarTab({
                               type="checkbox"
                               disabled={Boolean(
                                 tiktokCreatorInfo?.stitchDisabled ||
-                                  !isVideoMedia
+                                !isVideoMedia
                               )}
                               checked={tiktokAllowStitch}
                               onChange={(e) =>
                                 setTiktokAllowStitch(e.target.checked)
                               }
-                              className="accent-[#0A3622]"
+                              className="accent-primary"
                             />
                             <span>Stitch</span>
                           </label>
@@ -2708,15 +2981,15 @@ function SocialCalendarTab({
                       </div>
                     </div>
 
-                    <div className="pt-2 border-t border-slate-200 space-y-2">
-                      <label className="inline-flex items-center gap-2 font-semibold text-[11px] cursor-pointer">
+                    <div className="space-y-2 border-t border-border pt-2">
+                      <label className="inline-flex cursor-pointer items-center gap-2 text-[11px] font-semibold">
                         <input
                           type="checkbox"
                           checked={tiktokCommercialToggle}
                           onChange={(e) =>
                             setTiktokCommercialToggle(e.target.checked)
                           }
-                          className="accent-[#0A3622]"
+                          className="accent-primary"
                         />
                         <span>
                           Disclose Commercial Content (Promotional / Branded)
@@ -2732,7 +3005,7 @@ function SocialCalendarTab({
                               onChange={(e) =>
                                 setTiktokBrandOrganic(e.target.checked)
                               }
-                              className="accent-[#0A3622]"
+                              className="accent-primary"
                             />
                             <span>Your Brand (Al Ramlah Travels)</span>
                           </label>
@@ -2744,7 +3017,7 @@ function SocialCalendarTab({
                               onChange={(e) =>
                                 setTiktokBrandContent(e.target.checked)
                               }
-                              className="accent-[#0A3622]"
+                              className="accent-primary"
                             />
                             <span>Branded Content (Paid Partnership)</span>
                           </label>
@@ -2756,7 +3029,7 @@ function SocialCalendarTab({
 
                 {/* Google Business Profile CTA Controls (`T-070`) */}
                 {hasSelectedGmb && (
-                  <div className="rounded-xl border border-emerald-300 bg-emerald-50/50 p-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="grid grid-cols-1 gap-3 rounded-xl bg-status-success-bg/65 p-3 text-xs sm:grid-cols-2">
                     <div className="space-y-1">
                       <Label className="text-[11px] font-semibold">
                         Google Business CTA Button
@@ -2769,7 +3042,7 @@ function SocialCalendarTab({
                             e.target.value as "BOOK" | "LEARN_MORE"
                           )
                         }
-                        className="flex h-8 w-full rounded-md border border-input bg-white px-2 text-xs"
+                        className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
                         <option value="BOOK">Book</option>
                         <option value="LEARN_MORE">Learn More</option>
@@ -2783,7 +3056,7 @@ function SocialCalendarTab({
                         value={gmbCallToActionUrl}
                         onChange={(e) => setGmbCallToActionUrl(e.target.value)}
                         placeholder={`https://wa.me/${primaryWhatsappDigits}`}
-                        className="h-8 text-xs bg-white font-mono"
+                        className="h-8 bg-background font-mono text-xs"
                       />
                     </div>
                   </div>
@@ -2792,38 +3065,41 @@ function SocialCalendarTab({
             </div>
 
             {/* 2-Step Attention-Grabber Funnel */}
-            <div className="rounded-xl border border-[#C5A059]/40 bg-[#C5A059]/5 p-4 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="space-y-3 rounded-xl bg-accent/45 p-4">
+              <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                 <div className="flex items-center gap-2.5">
-                  <Layers className="size-4 text-[#C5A059]" />
+                  <Layers
+                    className="size-4 text-gold-text"
+                    aria-hidden="true"
+                  />
                   <div>
-                    <h4 className="text-xs font-bold text-foreground flex items-center gap-2">
+                    <h4 className="flex items-center gap-2 text-xs font-bold text-foreground">
                       <span>2-Step Attention-Grabber Funnel</span>
-                      <Badge className="text-[9px] bg-[#C5A059] text-slate-950 font-bold">
+                      <Badge className="bg-gold text-[10px] font-bold text-gold-foreground">
                         Algorithmic Boost
                       </Badge>
                     </h4>
                     <p className="text-[11px] text-muted-foreground">
-                      Hook the feed with a Single Spotlight first &rarr;
+                      Hook the feed with a Single Spotlight first, then
                       auto-publish the complete Multi-Package Sheet after a
                       configurable delay.
                     </p>
                   </div>
                 </div>
 
-                <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-primary">
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-bold text-primary select-none">
                   <input
                     type="checkbox"
                     checked={isTwoStepEnabled}
                     onChange={(e) => setIsTwoStepEnabled(e.target.checked)}
-                    className="size-4 rounded text-primary accent-[#0A3622]"
+                    className="size-4 rounded accent-primary"
                   />
                   <span>Enable 2-Step Funnel</span>
                 </label>
               </div>
 
               {isTwoStepEnabled && (
-                <div className="mt-3 pt-3 border-t border-[#C5A059]/20 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="mt-3 grid grid-cols-1 gap-4 border-t border-gold-border/35 pt-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">
                       Step 2: Paired Follow-Up Sheet
@@ -2831,8 +3107,10 @@ function SocialCalendarTab({
                     <select
                       aria-label="Step 2 Paired Follow-Up Sheet"
                       value={followUpAssetId}
-                      onChange={(e) => setFollowUpAssetId(e.target.value)}
-                      className="flex h-8 w-full rounded-md border border-input bg-white px-2 text-xs font-mono"
+                      onChange={(e) =>
+                        handleSelectFollowUpAsset(e.target.value)
+                      }
+                      className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       {sheetAssets.map((a) => (
                         <option key={a.id} value={a.id}>
@@ -2843,9 +3121,9 @@ function SocialCalendarTab({
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold flex items-center justify-between">
+                    <Label className="flex items-center justify-between text-xs font-semibold">
                       <span>Step 2 Automated Delay</span>
-                      <span className="font-mono tabular-nums text-primary font-bold">
+                      <span className="font-mono font-bold text-primary tabular-nums">
                         {twoStepDelayMinutes} Minutes (
                         {Math.round((twoStepDelayMinutes / 60) * 10) / 10}h)
                       </span>
@@ -2857,10 +3135,10 @@ function SocialCalendarTab({
                           type="button"
                           onClick={() => setTwoStepDelayMinutes(mins)}
                           className={cn(
-                            "rounded border px-2 py-1 text-[10px] font-bold transition-all cursor-pointer",
+                            "cursor-pointer rounded border px-2 py-1 text-[10px] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                             twoStepDelayMinutes === mins
-                              ? "border-primary bg-primary text-white"
-                              : "border-border bg-white text-foreground hover:border-[#C5A059]"
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background text-foreground hover:border-gold"
                           )}
                         >
                           {mins}m
@@ -2874,7 +3152,7 @@ function SocialCalendarTab({
                         onChange={(e) =>
                           setTwoStepDelayMinutes(Number(e.target.value) || 180)
                         }
-                        className="h-7 w-20 text-xs font-mono bg-white ml-auto"
+                        className="ml-auto h-7 w-20 bg-background font-mono text-xs tabular-nums"
                       />
                     </div>
                   </div>
@@ -2883,14 +3161,17 @@ function SocialCalendarTab({
             </div>
 
             {/* Reactive Engagement Auto-Plug Card (`T-036`) */}
-            <div className="rounded-xl border border-border bg-card p-3.5 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="space-y-3 rounded-xl bg-secondary/50 p-3.5">
+              <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="size-4 text-[#C5A059]" />
+                  <Sparkles
+                    className="size-4 text-gold-text"
+                    aria-hidden="true"
+                  />
                   <div>
-                    <h4 className="text-xs font-bold text-foreground flex items-center gap-2">
+                    <h4 className="flex items-center gap-2 text-xs font-bold text-foreground">
                       <span>Reactive Engagement Auto-Plug</span>
-                      <Badge className="text-[9px] bg-[#0A3622] text-white">
+                      <Badge className="bg-primary text-[10px] font-semibold text-primary-foreground">
                         Verified Live Metrics Only
                       </Badge>
                     </h4>
@@ -2902,21 +3183,21 @@ function SocialCalendarTab({
                   </div>
                 </div>
 
-                <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-primary">
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-bold text-primary select-none">
                   <input
                     type="checkbox"
                     checked={isEngagementPlugEnabled}
                     onChange={(e) =>
                       setIsEngagementPlugEnabled(e.target.checked)
                     }
-                    className="size-4 rounded text-primary accent-[#0A3622]"
+                    className="size-4 rounded accent-primary"
                   />
                   <span>Enable Auto-Plug</span>
                 </label>
               </div>
 
               {isEngagementPlugEnabled && (
-                <div className="pt-2 border-t border-border space-y-3">
+                <div className="space-y-3 border-t border-border pt-2">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-[11px] font-semibold text-muted-foreground">
@@ -2929,7 +3210,7 @@ function SocialCalendarTab({
                         onChange={(e) =>
                           setEngagementMinLikes(Number(e.target.value) || 25)
                         }
-                        className="h-7 text-xs font-mono bg-white"
+                        className="h-7 bg-background font-mono text-xs tabular-nums"
                       />
                     </div>
                     <div className="space-y-1">
@@ -2943,7 +3224,7 @@ function SocialCalendarTab({
                         onChange={(e) =>
                           setEngagementMinViews(Number(e.target.value) || 500)
                         }
-                        className="h-7 text-xs font-mono bg-white"
+                        className="h-7 bg-background font-mono text-xs tabular-nums"
                       />
                     </div>
                   </div>
@@ -2956,7 +3237,7 @@ function SocialCalendarTab({
                       rows={2}
                       value={engagementPlugText}
                       onChange={(e) => setEngagementPlugText(e.target.value)}
-                      className="text-xs font-mono leading-relaxed bg-white"
+                      className="bg-background font-mono text-xs leading-relaxed"
                     />
                   </div>
                 </div>
@@ -2964,7 +3245,7 @@ function SocialCalendarTab({
             </div>
 
             {/* Embedded Live Core 5 Interactive Device Previewer */}
-            <div className="pt-2 border-t border-border">
+            <div className="border-t border-border pt-2">
               <SocialPlatformPreview
                 caption={currentTabCaption}
                 title={selectedAsset?.title}
@@ -3008,26 +3289,26 @@ function SocialCalendarTab({
             </div>
 
             {/* Publication Timing & Submit Bar (`T-089` PKT-locked) */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-border">
+            <div className="flex flex-col justify-between gap-4 border-t border-border pt-4 sm:flex-row sm:items-center">
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium">
                     <input
                       type="radio"
                       name="pubTiming"
                       checked={publishNow}
                       onChange={() => setPublishNow(true)}
-                      className="accent-[#0A3622]"
+                      className="accent-primary"
                     />
                     <span>Publish Immediately</span>
                   </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium ml-2">
+                  <label className="ml-2 flex cursor-pointer items-center gap-1.5 text-xs font-medium">
                     <input
                       type="radio"
                       name="pubTiming"
                       checked={!publishNow}
                       onChange={() => setPublishNow(false)}
-                      className="accent-[#0A3622]"
+                      className="accent-primary"
                     />
                     <span>Schedule for Later (PKT)</span>
                   </label>
@@ -3035,16 +3316,19 @@ function SocialCalendarTab({
 
                 {!publishNow && (
                   <div className="flex items-center gap-2">
-                    <Calendar className="size-3.5 text-muted-foreground" />
+                    <Calendar
+                      className="size-3.5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
                     <Input
                       type="datetime-local"
                       value={scheduledDateTime}
                       onChange={(e) => setScheduledDateTime(e.target.value)}
-                      className="h-8 text-xs font-mono bg-white w-48"
+                      className="h-8 w-48 bg-background font-mono text-xs"
                     />
                     <Badge
                       variant="outline"
-                      className="text-[10px] font-mono border-[#C5A059]/60 text-[#0A3622]"
+                      className="border-gold-border font-mono text-[10px] text-primary"
                     >
                       PKT +05:00
                     </Badge>
@@ -3057,12 +3341,18 @@ function SocialCalendarTab({
                   size="sm"
                   disabled={isQueueingNextSlot}
                   onClick={handleQueueNextFreeSlot}
-                  className="h-8 text-xs font-bold border-[#C5A059]/60 text-[#0A3622] hover:bg-[#C5A059]/10 gap-1.5 cursor-pointer"
+                  className="h-8 cursor-pointer gap-1.5 border-gold-border text-xs font-bold text-primary transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                 >
                   {isQueueingNextSlot ? (
-                    <Loader2 className="size-3 animate-spin text-[#C5A059]" />
+                    <Loader2
+                      className="size-3 animate-spin text-gold-text motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Clock className="size-3 text-[#C5A059]" />
+                    <Clock
+                      className="size-3 text-gold-text"
+                      aria-hidden="true"
+                    />
                   )}
                   <span>Queue in Next Free PKT Slot</span>
                 </Button>
@@ -3070,18 +3360,23 @@ function SocialCalendarTab({
 
               <Button
                 type="submit"
-                disabled={isSubmitting || selectedTargetIds.length === 0}
-                className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-bold text-xs gap-2 cursor-pointer shrink-0"
+                disabled={
+                  isSubmitting || effectiveSelectedTargetIds.length === 0
+                }
+                className="shrink-0 cursor-pointer gap-2 bg-primary text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
               >
                 {isSubmitting ? (
-                  <Loader2 className="size-4 animate-spin text-[#C5A059]" />
+                  <Loader2
+                    className="size-4 animate-spin text-gold motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Send className="size-4 text-[#C5A059]" />
+                  <Send className="size-4 text-gold" aria-hidden="true" />
                 )}
                 <span>
                   {publishNow
-                    ? `Publish ${postFormat} Immediately (${selectedTargetIds.length} Account${selectedTargetIds.length === 1 ? "" : "s"})`
-                    : `Schedule ${postFormat} (${selectedTargetIds.length} Account${selectedTargetIds.length === 1 ? "" : "s"})`}
+                    ? `Publish ${FORMAT_DISPLAY_NAMES[postFormat]} Immediately (${effectiveSelectedTargetIds.length} Account${effectiveSelectedTargetIds.length === 1 ? "" : "s"})`
+                    : `Schedule ${FORMAT_DISPLAY_NAMES[postFormat]} (${effectiveSelectedTargetIds.length} Account${effectiveSelectedTargetIds.length === 1 ? "" : "s"})`}
                 </span>
               </Button>
             </div>
@@ -3091,11 +3386,11 @@ function SocialCalendarTab({
 
       {/* 2. Live Scheduled & Published Queue / Visual PKT Calendar */}
       <Card className="border-border bg-card shadow-xs">
-        <CardHeader className="pb-3 border-b border-border">
+        <CardHeader className="border-b border-border pb-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="font-display text-base font-bold flex items-center gap-2">
-                <Calendar className="size-4 text-primary" />
+              <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
+                <Calendar className="size-4 text-primary" aria-hidden="true" />
                 <span>
                   {activeSocialSubView === "calendar"
                     ? "PKT Social Publishing Calendar"
@@ -3109,15 +3404,15 @@ function SocialCalendarTab({
               </CardDescription>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center bg-secondary p-0.5 rounded-lg border border-border">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center rounded-lg border border-border bg-secondary p-0.5">
                 <button
                   type="button"
                   onClick={() => setActiveSocialSubView("calendar")}
                   className={cn(
-                    "px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer",
+                    "cursor-pointer rounded-md px-3 py-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                     activeSocialSubView === "calendar"
-                      ? "bg-[#0A3622] text-white shadow-xs"
+                      ? "bg-primary text-primary-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
@@ -3127,9 +3422,9 @@ function SocialCalendarTab({
                   type="button"
                   onClick={() => setActiveSocialSubView("queue")}
                   className={cn(
-                    "px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer",
+                    "cursor-pointer rounded-md px-3 py-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                     activeSocialSubView === "queue"
-                      ? "bg-[#0A3622] text-white shadow-xs"
+                      ? "bg-primary text-primary-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
@@ -3152,9 +3447,9 @@ function SocialCalendarTab({
                       type="button"
                       onClick={() => setQueueFilter(f.id)}
                       className={cn(
-                        "rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer",
+                        "cursor-pointer rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                         queueFilter === f.id
-                          ? "bg-[#0A3622] text-white font-bold"
+                          ? "bg-primary font-bold text-primary-foreground"
                           : "bg-secondary text-muted-foreground hover:text-foreground"
                       )}
                     >
@@ -3167,10 +3462,11 @@ function SocialCalendarTab({
           </div>
         </CardHeader>
 
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="space-y-3 p-4">
           {activeSocialSubView === "calendar" ? (
             <SocialCalendarView
               scheduledPosts={scheduledPosts}
+              initialNowMs={initialNowMs}
               onSelectSlot={(dateKey, slot) => {
                 const newUtc = parsePktSlotToUtc(dateKey, slot)
                 setScheduledDateTime(formatPktDateTimeLocal(newUtc))
@@ -3245,29 +3541,51 @@ function SocialCalendarTab({
                 clicks: aggregatedMetrics.clicks,
               })
 
+              const postThumbUrl =
+                post.postAsset?.imageUrl || post.mediaUrls[0] || ""
+              const postThumbImageUrl =
+                getRenderableImagePreviewUrl(postThumbUrl)
+
               return (
                 <div
                   key={post.id}
-                  className="rounded-xl border border-border bg-white p-3.5 space-y-3 hover:border-[#C5A059]/60 transition-colors"
+                  className="space-y-3 rounded-xl bg-secondary/45 p-3.5 transition-colors hover:bg-secondary/65 motion-reduce:transition-none"
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
-                        {post.postAsset?.imageUrl || post.mediaUrls[0] ? (
-                          <img
-                            src={post.postAsset?.imageUrl || post.mediaUrls[0]}
-                            alt="Media Preview"
-                            className="h-full w-full object-cover"
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted">
+                        {postThumbImageUrl ? (
+                          <Image
+                            src={postThumbImageUrl}
+                            alt={post.postAsset?.title || "Campaign preview"}
+                            fill
+                            unoptimized
+                            sizes="56px"
+                            className="object-cover"
                           />
+                        ) : postThumbUrl && isPdfAssetUrl(postThumbUrl) ? (
+                          <div className="flex h-full w-full items-center justify-center bg-accent/60 text-primary">
+                            <FileText
+                              className="size-4 text-gold-text"
+                              aria-hidden="true"
+                            />
+                          </div>
+                        ) : postThumbUrl ? (
+                          <div className="flex h-full w-full items-center justify-center bg-secondary text-primary">
+                            <Film
+                              className="size-4 text-gold-text"
+                              aria-hidden="true"
+                            />
+                          </div>
                         ) : (
-                          <div className="flex h-full w-full items-center justify-center text-[9px] text-muted-foreground">
+                          <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
                             Post
                           </div>
                         )}
                       </div>
 
                       <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex flex-wrap items-center gap-2">
                           {post.postAsset && (
                             <span className="font-mono text-xs font-bold text-primary">
                               [{post.postAsset.postCode}]
@@ -3275,30 +3593,30 @@ function SocialCalendarTab({
                           )}
                           <Badge
                             variant="outline"
-                            className="text-[10px] font-mono border-[#C5A059]/50 text-[#0A3622] uppercase"
+                            className="border-gold-border text-[10px] font-semibold text-primary"
                           >
-                            {post.postFormat || "FEED"}
+                            {FORMAT_DISPLAY_NAMES[post.postFormat || "FEED"]}
                           </Badge>
                           <Badge
                             variant="outline"
-                            className="text-[10px] font-mono capitalize"
+                            className="text-[10px] font-medium capitalize"
                           >
                             {post.campaignStage.replace(/_/g, " ")}
                           </Badge>
                           <Badge
                             className={cn(
-                              "text-[10px] font-bold capitalize",
+                              "border text-[10px] font-bold capitalize",
                               post.status === "completed" &&
-                                "bg-emerald-600 text-white",
+                                "border-status-success-border bg-status-success-bg text-status-success",
                               post.status === "scheduled" &&
-                                "bg-amber-600 text-white",
+                                "border-status-warning-border bg-status-warning-bg text-status-warning",
                               post.status === "publishing" &&
-                                "bg-blue-600 text-white",
+                                "border-status-info-border bg-status-info-bg text-status-info",
                               (post.status === "failed" ||
                                 post.status === "partially_failed") &&
-                                "bg-rose-600 text-white",
+                                "border-status-danger-border bg-status-danger-bg text-status-danger",
                               post.status === "cancelled" &&
-                                "bg-slate-500 text-white"
+                                "border-border bg-secondary text-muted-foreground"
                             )}
                           >
                             {post.status.replace(/_/g, " ")}
@@ -3306,9 +3624,9 @@ function SocialCalendarTab({
                           {post.firstComment && (
                             <Badge
                               variant="outline"
-                              className="text-[9px] font-mono border-emerald-500/40 text-emerald-800 bg-emerald-50"
+                              className="border-status-success-border bg-status-success-bg text-[10px] font-medium text-status-success"
                             >
-                              + First-Comment CTA
+                              + First-Comment Link
                               {aggregatedMetrics.firstCommentCount > 0
                                 ? ` (${aggregatedMetrics.firstCommentCount} Posted)`
                                 : ""}
@@ -3316,20 +3634,20 @@ function SocialCalendarTab({
                           )}
                         </div>
 
-                        <p className="text-xs text-foreground line-clamp-2 font-mono">
+                        <p className="line-clamp-2 font-mono text-xs text-foreground">
                           {post.caption}
                         </p>
 
-                        <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5 flex-wrap">
+                        <div className="flex flex-wrap items-center gap-3 pt-0.5 text-[10px] text-muted-foreground tabular-nums">
                           <span>
                             Scheduled (PKT): {formatDateSafe(post.scheduledFor)}
                           </span>
                           {post.twoStepDelayMinutes && (
-                            <span>• Delay: {post.twoStepDelayMinutes}m</span>
+                            <span>Delay: {post.twoStepDelayMinutes}m</span>
                           )}
                           {aggregatedMetrics.lastSyncedAt && (
                             <span>
-                              • Synced:{" "}
+                              Synced:{" "}
                               {formatDateSafe(aggregatedMetrics.lastSyncedAt)}
                             </span>
                           )}
@@ -3337,15 +3655,18 @@ function SocialCalendarTab({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         onClick={() => setPreviewModalPost(post)}
-                        className="h-7 text-[11px] font-semibold border-border text-foreground hover:border-[#C5A059] cursor-pointer gap-1"
+                        className="h-7 cursor-pointer gap-1 border-border text-[11px] font-semibold text-foreground transition-colors hover:border-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                       >
-                        <Smartphone className="size-3 text-[#C5A059]" />
+                        <Smartphone
+                          className="size-3 text-gold-text"
+                          aria-hidden="true"
+                        />
                         <span>Preview</span>
                       </Button>
 
@@ -3356,12 +3677,18 @@ function SocialCalendarTab({
                           size="sm"
                           disabled={isSyncingAnalytics}
                           onClick={() => handleSyncPostAnalytics(post.id)}
-                          className="h-7 text-[11px] font-semibold border-[#C5A059]/60 text-[#0A3622] hover:bg-[#C5A059]/10 cursor-pointer gap-1"
+                          className="h-7 cursor-pointer gap-1 border-gold-border text-[11px] font-semibold text-primary transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                         >
                           {isSyncingAnalytics ? (
-                            <Loader2 className="size-3 animate-spin text-[#C5A059]" />
+                            <Loader2
+                              className="size-3 animate-spin text-gold-text motion-reduce:animate-none"
+                              aria-hidden="true"
+                            />
                           ) : (
-                            <BarChart3 className="size-3 text-[#C5A059]" />
+                            <BarChart3
+                              className="size-3 text-gold-text"
+                              aria-hidden="true"
+                            />
                           )}
                           <span>Sync Metrics</span>
                         </Button>
@@ -3375,12 +3702,15 @@ function SocialCalendarTab({
                           size="sm"
                           disabled={isBusy}
                           onClick={() => handleCancelPost(post.id)}
-                          className="h-7 text-[11px] text-rose-700 border-rose-300 hover:bg-rose-50 cursor-pointer"
+                          className="h-7 cursor-pointer border-status-danger-border text-[11px] text-status-danger transition-colors hover:bg-status-danger-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                         >
                           {isBusy ? (
-                            <Loader2 className="size-3 animate-spin mr-1" />
+                            <Loader2
+                              className="mr-1 size-3 animate-spin motion-reduce:animate-none"
+                              aria-hidden="true"
+                            />
                           ) : (
-                            <X className="size-3 mr-1" />
+                            <X className="mr-1 size-3" aria-hidden="true" />
                           )}
                           Cancel Post
                         </Button>
@@ -3391,48 +3721,63 @@ function SocialCalendarTab({
                   {/* Honest Analytics Strip (`T-036`) */}
                   {(aggregatedMetrics.hasMetrics || hasPublishedTargets) && (
                     <div className="space-y-2">
-                      <div className="rounded-lg border border-border/70 bg-secondary/20 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                        <div className="flex items-center gap-1.5 font-semibold text-foreground flex-wrap">
-                          <BarChart3 className="size-3.5 text-[#C5A059]" />
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background/85 px-3 py-2 text-[11px]">
+                        <div className="flex flex-wrap items-center gap-1.5 font-semibold text-foreground">
+                          <BarChart3
+                            className="size-3.5 text-gold-text"
+                            aria-hidden="true"
+                          />
                           <span>Live Engagement Metrics:</span>
                           {aggregatedMetrics.hasMetrics ? (
                             <Badge
                               variant="outline"
-                              className="text-[9px] font-mono tabular-nums border-[#C5A059]/50 text-[#0A3622]"
+                              className="border-gold-border text-[10px] font-medium text-primary tabular-nums"
                             >
-                              {postEngagementRatePct.toFixed(2)}% Eng. Rate
+                              <span className="font-mono font-semibold">
+                                {postEngagementRatePct.toFixed(2)}%
+                              </span>{" "}
+                              Eng. Rate
                             </Badge>
                           ) : (
                             <Badge
                               variant="outline"
-                              className="text-[9px] font-mono border-amber-400 bg-amber-50 text-amber-900"
+                              className="border-status-warning-border bg-status-warning-bg text-[10px] font-medium text-status-warning"
                             >
-                              Analytics unavailable — click Sync Metrics
+                              Analytics unavailable. Click Sync Metrics
                             </Badge>
                           )}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2 font-mono tabular-nums text-[11px]">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] tabular-nums">
                           {aggregatedMetrics.hasMetrics && (
                             <>
-                              <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
-                                <Eye className="size-3 text-primary" />
+                              <span className="inline-flex items-center gap-1 rounded bg-secondary/60 px-2 py-0.5">
+                                <Eye
+                                  className="size-3 text-primary"
+                                  aria-hidden="true"
+                                />
                                 <span>Views:</span>
-                                <strong>
+                                <strong className="font-mono">
                                   {aggregatedMetrics.impressions.toLocaleString()}
                                 </strong>
                               </span>
-                              <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
-                                <Heart className="size-3 text-rose-600" />
+                              <span className="inline-flex items-center gap-1 rounded bg-secondary/60 px-2 py-0.5">
+                                <Heart
+                                  className="size-3 text-status-danger"
+                                  aria-hidden="true"
+                                />
                                 <span>Likes:</span>
-                                <strong>
+                                <strong className="font-mono">
                                   {aggregatedMetrics.likes.toLocaleString()}
                                 </strong>
                               </span>
-                              <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 border border-border">
-                                <MessageSquare className="size-3 text-blue-600" />
+                              <span className="inline-flex items-center gap-1 rounded bg-secondary/60 px-2 py-0.5">
+                                <MessageSquare
+                                  className="size-3 text-status-info"
+                                  aria-hidden="true"
+                                />
                                 <span>Comments:</span>
-                                <strong>
+                                <strong className="font-mono">
                                   {aggregatedMetrics.comments.toLocaleString()}
                                 </strong>
                               </span>
@@ -3442,7 +3787,7 @@ function SocialCalendarTab({
                           <button
                             type="button"
                             onClick={() => toggleBreakdownExpand(post.id)}
-                            className="inline-flex items-center gap-1 rounded bg-[#0A3622] text-white px-2 py-0.5 text-[10px] font-sans font-bold cursor-pointer hover:bg-[#0A3622]/90"
+                            className="inline-flex cursor-pointer items-center gap-1 rounded bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
                           >
                             <span>
                               {isBreakdownExpanded
@@ -3450,16 +3795,22 @@ function SocialCalendarTab({
                                 : "Per-Platform Breakdown"}
                             </span>
                             {isBreakdownExpanded ? (
-                              <ChevronUp className="size-3 text-[#C5A059]" />
+                              <ChevronUp
+                                className="size-3 text-gold"
+                                aria-hidden="true"
+                              />
                             ) : (
-                              <ChevronDown className="size-3 text-[#C5A059]" />
+                              <ChevronDown
+                                className="size-3 text-gold"
+                                aria-hidden="true"
+                              />
                             )}
                           </button>
                         </div>
                       </div>
 
                       {isBreakdownExpanded && (
-                        <div className="rounded-xl border border-[#C5A059]/40 bg-[#C5A059]/5 p-3 space-y-2">
+                        <div className="space-y-2 rounded-xl bg-accent/45 p-3">
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                             {post.targets.map((target) => {
                               const data = target.analyticsData
@@ -3467,16 +3818,20 @@ function SocialCalendarTab({
                                 return (
                                   <div
                                     key={target.id}
-                                    className="rounded-lg border border-border bg-white p-2.5 space-y-1.5 text-[11px]"
+                                    className="space-y-1.5 rounded-lg bg-background p-2.5 text-[11px]"
                                   >
                                     <div className="flex items-center justify-between gap-2">
                                       <Badge
                                         variant="outline"
-                                        className="text-[9px] font-mono uppercase border-primary/30 text-primary"
+                                        className="border-primary/30 text-[10px] font-semibold text-primary"
                                       >
-                                        {target.integration.provider}
+                                        {
+                                          PLATFORM_DISPLAY_NAMES[
+                                            target.integration.provider
+                                          ]
+                                        }
                                       </Badge>
-                                      <span className="text-[10px] text-amber-800 font-medium">
+                                      <span className="text-[10px] font-medium text-status-warning">
                                         Unavailable
                                       </span>
                                     </div>
@@ -3504,31 +3859,35 @@ function SocialCalendarTab({
                               return (
                                 <div
                                   key={target.id}
-                                  className="rounded-lg border border-border bg-white p-2.5 space-y-2 text-[11px]"
+                                  className="space-y-2 rounded-lg bg-background p-2.5 text-[11px]"
                                 >
                                   <div className="flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-1.5 min-w-0">
+                                    <div className="flex min-w-0 items-center gap-1.5">
                                       <Badge
                                         variant="outline"
-                                        className="text-[9px] font-mono uppercase border-primary/30 text-primary"
+                                        className="border-primary/30 text-[10px] font-semibold text-primary"
                                       >
-                                        {target.integration.provider}
+                                        {
+                                          PLATFORM_DISPLAY_NAMES[
+                                            target.integration.provider
+                                          ]
+                                        }
                                       </Badge>
-                                      <span className="font-semibold truncate text-foreground">
+                                      <span className="truncate font-semibold text-foreground">
                                         {target.integration.name}
                                       </span>
                                     </div>
-                                    <span className="font-mono tabular-nums text-[10px] font-bold text-[#0A3622]">
+                                    <span className="font-mono text-[10px] font-bold text-primary tabular-nums">
                                       {ratePct.toFixed(2)}%
                                     </span>
                                   </div>
 
-                                  <div className="grid grid-cols-5 gap-1 text-center font-mono tabular-nums text-[10px] bg-secondary/30 rounded p-1.5">
+                                  <div className="grid grid-cols-5 gap-1 rounded bg-secondary/45 p-1.5 text-center text-[10px] tabular-nums">
                                     <div>
                                       <p className="text-[9px] text-muted-foreground">
                                         Views
                                       </p>
-                                      <p className="font-bold">
+                                      <p className="font-mono font-bold">
                                         {views.toLocaleString()}
                                       </p>
                                     </div>
@@ -3536,7 +3895,7 @@ function SocialCalendarTab({
                                       <p className="text-[9px] text-muted-foreground">
                                         Likes
                                       </p>
-                                      <p className="font-bold">
+                                      <p className="font-mono font-bold">
                                         {likes.toLocaleString()}
                                       </p>
                                     </div>
@@ -3544,7 +3903,7 @@ function SocialCalendarTab({
                                       <p className="text-[9px] text-muted-foreground">
                                         Cmts
                                       </p>
-                                      <p className="font-bold">
+                                      <p className="font-mono font-bold">
                                         {comments.toLocaleString()}
                                       </p>
                                     </div>
@@ -3552,7 +3911,7 @@ function SocialCalendarTab({
                                       <p className="text-[9px] text-muted-foreground">
                                         Shares
                                       </p>
-                                      <p className="font-bold">
+                                      <p className="font-mono font-bold">
                                         {shares.toLocaleString()}
                                       </p>
                                     </div>
@@ -3560,7 +3919,7 @@ function SocialCalendarTab({
                                       <p className="text-[9px] text-muted-foreground">
                                         Clicks
                                       </p>
-                                      <p className="font-bold">
+                                      <p className="font-mono font-bold">
                                         {clicks.toLocaleString()}
                                       </p>
                                     </div>
@@ -3585,10 +3944,13 @@ function SocialCalendarTab({
                                           href={target.publishedUrl}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="text-primary hover:underline inline-flex items-center gap-0.5 font-semibold"
+                                          className="inline-flex items-center gap-0.5 font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                         >
                                           <span>Open Post</span>
-                                          <ExternalLink className="size-2.5" />
+                                          <ExternalLink
+                                            className="size-2.5"
+                                            aria-hidden="true"
+                                          />
                                         </a>
                                       )}
                                     </div>
@@ -3603,7 +3965,7 @@ function SocialCalendarTab({
                   )}
 
                   {/* Targets Status Strip */}
-                  <div className="pt-2 border-t border-border/70 flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-2">
                     <span className="text-[10px] font-bold text-muted-foreground">
                       Channel Targets ({post.targets.length}):
                     </span>
@@ -3616,39 +3978,54 @@ function SocialCalendarTab({
                           className={cn(
                             "inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]",
                             target.status === "published" &&
-                              "bg-emerald-50 border-emerald-300 text-emerald-900",
+                              "border-status-success-border bg-status-success-bg text-status-success",
                             target.status === "pending" &&
-                              "bg-amber-50 border-amber-300 text-amber-900",
+                              "border-status-warning-border bg-status-warning-bg text-status-warning",
                             target.status === "publishing" &&
-                              "bg-blue-50 border-blue-300 text-blue-900",
+                              "border-status-info-border bg-status-info-bg text-status-info",
                             target.status === "failed" &&
-                              "bg-rose-50 border-rose-300 text-rose-900",
+                              "border-status-danger-border bg-status-danger-bg text-status-danger",
                             target.status === "skipped" &&
-                              "bg-slate-50 border-slate-300 text-slate-700"
+                              "border-border bg-secondary text-muted-foreground"
                           )}
                         >
-                          <span className="font-bold uppercase text-[9px]">
-                            {target.integration.provider}
+                          <span className="text-[10px] font-bold">
+                            {
+                              PLATFORM_DISPLAY_NAMES[
+                                target.integration.provider
+                              ]
+                            }
                           </span>
-                          <span className="text-muted-foreground">·</span>
-                          <span className="capitalize text-[10px]">
+                          <span className="text-[10px] capitalize">
                             {target.status}
                           </span>
 
                           {targetAnalytics && (
-                            <span className="font-mono tabular-nums text-[10px] text-emerald-800 bg-white/80 rounded px-1">
-                              {targetAnalytics.impressions}v ·{" "}
-                              {targetAnalytics.likes}♥
+                            <span className="inline-flex items-center gap-1 rounded bg-background/90 px-1.5 py-0.5 text-[10px] text-status-success tabular-nums">
+                              <span>
+                                <span className="font-mono">
+                                  {targetAnalytics.impressions}
+                                </span>{" "}
+                                views
+                              </span>
+                              <span className="inline-flex items-center gap-0.5 font-mono">
+                                {targetAnalytics.likes}
+                                <Heart
+                                  className="size-2.5 text-status-danger"
+                                  aria-hidden="true"
+                                />
+                              </span>
                             </span>
                           )}
 
                           {(target.firstCommentExternalId ||
                             targetAnalytics?.firstCommentId) && (
                             <span
-                              className="text-[9px] font-mono text-[#0A3622] bg-[#C5A059]/20 rounded px-1"
+                              className="inline-flex items-center gap-0.5 rounded bg-accent px-1.5 py-0.5 text-[10px] font-medium text-primary"
                               title="First-Comment Auto-Plug Posted"
                             >
-                              1st-Cmt ✓
+                              <Check className="size-2.5" aria-hidden="true" />
+                              <span>1st Comment</span>
                             </span>
                           )}
 
@@ -3657,9 +4034,13 @@ function SocialCalendarTab({
                               href={target.publishedUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-emerald-700 hover:underline"
+                              aria-label={`Open published ${PLATFORM_DISPLAY_NAMES[target.integration.provider]} post`}
+                              className="text-status-success hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             >
-                              <ExternalLink className="size-3" />
+                              <ExternalLink
+                                className="size-3"
+                                aria-hidden="true"
+                              />
                             </a>
                           )}
 
@@ -3668,12 +4049,18 @@ function SocialCalendarTab({
                               type="button"
                               disabled={isTargetBusy}
                               onClick={() => handleRetryTarget(target.id)}
-                              className="ml-1 inline-flex items-center gap-1 font-bold text-rose-700 hover:underline cursor-pointer"
+                              className="ml-1 inline-flex cursor-pointer items-center gap-1 font-bold text-status-danger hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             >
                               {isTargetBusy ? (
-                                <Loader2 className="size-3 animate-spin" />
+                                <Loader2
+                                  className="size-3 animate-spin motion-reduce:animate-none"
+                                  aria-hidden="true"
+                                />
                               ) : (
-                                <RefreshCw className="size-3" />
+                                <RefreshCw
+                                  className="size-3"
+                                  aria-hidden="true"
+                                />
                               )}
                               Retry
                             </button>
@@ -3689,7 +4076,7 @@ function SocialCalendarTab({
 
           {/* Pagination Bar for Scheduled Posts (`T-071`) */}
           {totalPostsPages > 1 && (
-            <div className="pt-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+            <div className="flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
               <span className="tabular-nums">
                 Page {postsPage} of {totalPostsPages} ({totalScheduledPosts}{" "}
                 total posts)
@@ -3701,9 +4088,9 @@ function SocialCalendarTab({
                   size="sm"
                   disabled={postsPage <= 1}
                   onClick={() => onPostsPageChange(postsPage - 1)}
-                  className="h-7 text-xs gap-1"
+                  className="h-7 cursor-pointer gap-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
-                  <ChevronLeft className="size-3.5" />
+                  <ChevronLeft className="size-3.5" aria-hidden="true" />
                   Previous
                 </Button>
                 <Button
@@ -3712,10 +4099,10 @@ function SocialCalendarTab({
                   size="sm"
                   disabled={postsPage >= totalPostsPages}
                   onClick={() => onPostsPageChange(postsPage + 1)}
-                  className="h-7 text-xs gap-1"
+                  className="h-7 cursor-pointer gap-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   Next
-                  <ChevronRight className="size-3.5" />
+                  <ChevronRight className="size-3.5" aria-hidden="true" />
                 </Button>
               </div>
             </div>
@@ -3730,14 +4117,17 @@ function SocialCalendarTab({
           if (!open) setPreviewModalPost(null)
         }}
       >
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-display text-base font-bold flex items-center gap-2">
-              <Smartphone className="size-4 text-[#C5A059]" />
+            <DialogTitle className="flex items-center gap-2 font-display text-base font-bold">
+              <Smartphone
+                className="size-4 text-gold-text"
+                aria-hidden="true"
+              />
               <span>
                 Core 5 Platform Preview{" "}
                 {previewModalPost?.postAsset
-                  ? `• [${previewModalPost.postAsset.postCode}]`
+                  ? `(${previewModalPost.postAsset.postCode})`
                   : ""}
               </span>
             </DialogTitle>
@@ -3792,6 +4182,7 @@ function SocialCalendarTab({
               variant="outline"
               size="sm"
               onClick={() => setPreviewModalPost(null)}
+              className="cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               Close Preview
             </Button>
@@ -3801,10 +4192,10 @@ function SocialCalendarTab({
 
       {/* Split Studio Composer Modal */}
       <Dialog open={isComposerModalOpen} onOpenChange={setIsComposerModalOpen}>
-        <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-display text-base font-bold flex items-center gap-2">
-              <Sparkles className="size-4 text-[#C5A059]" />
+            <DialogTitle className="flex items-center gap-2 font-display text-base font-bold">
+              <Sparkles className="size-4 text-gold-text" aria-hidden="true" />
               <span>
                 Core 5 Split Studio Composer &amp; Live Device Previewer
               </span>
@@ -3816,16 +4207,17 @@ function SocialCalendarTab({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold">
-                  Linked 4K Poster Asset (`ART-...`)
+                  Linked 4K Poster Asset
                 </Label>
                 <select
+                  aria-label="Linked 4K Poster Asset"
                   value={selectedAssetId}
-                  onChange={(e) => setSelectedAssetId(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs font-mono"
+                  onChange={(e) => handleSelectComposerAsset(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {postAssets.map((a) => (
                     <option key={a.id} value={a.id}>
@@ -3843,34 +4235,34 @@ function SocialCalendarTab({
                   rows={6}
                   value={caption}
                   onChange={(e) => setCaption(e.target.value)}
-                  className="text-xs font-mono"
+                  className="bg-background font-mono text-xs"
                 />
               </div>
 
-              <div className="flex items-center justify-between rounded-lg border border-[#C5A059]/40 bg-[#C5A059]/5 p-3">
+              <label className="flex cursor-pointer items-center justify-between rounded-lg bg-accent/50 p-3">
                 <span className="text-xs font-bold text-foreground">
-                  2-Step Mode (`SPOTLIGHT_THEN_SHEET`)
+                  2-Step Funnel Mode (Spotlight then Sheet)
                 </span>
                 <input
                   type="checkbox"
                   checked={isTwoStepEnabled}
                   onChange={(e) => setIsTwoStepEnabled(e.target.checked)}
-                  className="size-4 accent-[#0A3622]"
+                  className="size-4 accent-primary"
                 />
-              </div>
+              </label>
 
               {postFormat !== "STORY" && (
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-bold">
-                      Pinned First Comment (`ART-...`)
+                      Pinned First Comment
                     </Label>
                     <Button
                       type="button"
                       variant="outline"
                       size="xs"
                       onClick={handleGenerateFirstComment}
-                      className="h-6 text-[10px]"
+                      className="h-6 cursor-pointer text-[10px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       Auto-Generate CTA
                     </Button>
@@ -3879,7 +4271,7 @@ function SocialCalendarTab({
                     rows={3}
                     value={firstComment}
                     onChange={(e) => setFirstComment(e.target.value)}
-                    className="text-xs font-mono"
+                    className="bg-background font-mono text-xs"
                   />
                 </div>
               )}
@@ -3891,9 +4283,7 @@ function SocialCalendarTab({
               postType={postFormat}
               postFormat={postFormat}
               onPostTypeChange={(fmt) => setPostFormat(fmt)}
-              publishMode={
-                isTwoStepEnabled ? "SPOTLIGHT_THEN_SHEET" : "SINGLE"
-              }
+              publishMode={isTwoStepEnabled ? "SPOTLIGHT_THEN_SHEET" : "SINGLE"}
               mediaUrls={mediaUrls}
               spotlightMediaUrl={
                 preferredAssetMediaUrl || selectedAsset?.imageUrl || null
@@ -3931,6 +4321,7 @@ function SocialCalendarTab({
               variant="outline"
               size="sm"
               onClick={() => setIsComposerModalOpen(false)}
+              className="cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               Done
             </Button>
@@ -3943,8 +4334,7 @@ function SocialCalendarTab({
         isOpen={isStudioPickerOpen}
         onClose={() => setIsStudioPickerOpen(false)}
         onSelectAsset={(asset) => {
-          setSelectedAssetId(asset.id)
-          setMediaUrls([asset.imageUrl])
+          handleSelectComposerAsset(asset.id, asset.imageUrl)
         }}
         currentAssetId={selectedAssetId}
       />
@@ -3958,18 +4348,22 @@ function SocialCalendarTab({
 
 function WhatsAppQueueTab({
   initialAssetId,
+  initialNowMs,
   postAssets,
   marketingChannels,
   dailyDistributions,
 }: {
   initialAssetId: string
+  initialNowMs?: number
   postAssets: PostAssetRecord[]
   marketingChannels: MarketingChannelRecord[]
   dailyDistributions: DistributionRecord[]
 }) {
   const router = useRouter()
 
-  const todayPktKey = React.useMemo(() => formatPktDateKey(new Date()), [])
+  const [todayPktKey] = React.useState<string>(() =>
+    formatPktDateKey(new Date(initialNowMs ?? Date.now()))
+  )
   const [selectedDate, setSelectedDate] = React.useState(todayPktKey)
 
   const [selectedAssetId, setSelectedAssetId] = React.useState<string>(() => {
@@ -3988,11 +4382,13 @@ function WhatsAppQueueTab({
     return selectedAsset?.captionWhatsapp || ""
   })
 
-  React.useEffect(() => {
-    if (selectedAsset?.captionWhatsapp) {
-      setWhatsappCaption(selectedAsset.captionWhatsapp)
+  const handleSelectWhatsappAsset = (nextAssetId: string) => {
+    setSelectedAssetId(nextAssetId)
+    const nextAsset = postAssets.find((a) => a.id === nextAssetId)
+    if (nextAsset?.captionWhatsapp) {
+      setWhatsappCaption(nextAsset.captionWhatsapp)
     }
-  }, [selectedAsset])
+  }
 
   const [areaFilter, setAreaFilter] = React.useState("all")
   const [selectedLineFilter, setSelectedLineFilter] = React.useState("all")
@@ -4181,28 +4577,31 @@ function WhatsAppQueueTab({
   return (
     <div className="flex flex-col gap-6">
       {/* 1. 100% Ban-Safe Compliance Banner (`OD-01`) */}
-      <div className="rounded-xl border border-emerald-300 bg-emerald-50/70 p-4 text-xs text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+      <div className="flex flex-col justify-between gap-3 rounded-xl border border-status-success-border bg-status-success-bg p-4 text-xs text-status-success shadow-xs sm:flex-row sm:items-center">
         <div className="flex items-start gap-3">
-          <ShieldCheck className="size-5 text-emerald-700 shrink-0 mt-0.5" />
+          <ShieldCheck
+            className="mt-0.5 size-5 shrink-0 text-status-success"
+            aria-hidden="true"
+          />
           <div className="space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h4 className="font-bold text-sm text-emerald-950">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-sm font-bold text-status-success">
                 100% Ban-Safe Manual Assisted WhatsApp Group &amp; Status Queue
               </h4>
               <Badge
                 variant="outline"
-                className="text-[10px] bg-white border-emerald-400 text-emerald-900 font-semibold"
+                className="border-status-success-border bg-background text-[10px] font-semibold text-status-success"
               >
                 Zero Unofficial Bot Risk
               </Badge>
               {failedCountToday > 0 && (
-                <Badge className="text-[10px] bg-rose-600 text-white font-semibold">
+                <Badge className="bg-status-danger text-[10px] font-semibold text-primary-foreground">
                   {failedCountToday} Failed Dispatch
                   {failedCountToday > 1 ? "es" : ""} Need Manual Share
                 </Badge>
               )}
             </div>
-            <p className="text-emerald-900 text-[11px] max-w-3xl">
+            <p className="max-w-3xl text-[11px] text-status-success">
               Protect official Al Ramlah WhatsApp numbers from automated group
               bans: copy the formatted caption in 1 tap, download the 4K poster,
               share via WhatsApp Web / Desktop, and log completion below.
@@ -4210,7 +4609,7 @@ function WhatsAppQueueTab({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="outline"
@@ -4222,9 +4621,12 @@ function WhatsAppQueueTab({
                 "noopener,noreferrer"
               )
             }
-            className="border-emerald-300 bg-white hover:bg-emerald-100 text-emerald-950 text-xs font-semibold gap-1.5 h-8 cursor-pointer"
+            className="h-8 cursor-pointer gap-1.5 border-status-success-border bg-background text-xs font-semibold text-status-success transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
           >
-            <Smartphone className="size-3.5 text-[#C5A059]" />
+            <Smartphone
+              className="size-3.5 text-gold-text"
+              aria-hidden="true"
+            />
             <span>Open WhatsApp Web</span>
           </Button>
         </div>
@@ -4234,24 +4636,30 @@ function WhatsAppQueueTab({
         <div
           role="alert"
           className={cn(
-            "rounded-xl border p-3.5 text-xs font-semibold flex items-center justify-between gap-2 shadow-xs",
+            "flex items-center justify-between gap-2 rounded-xl border p-3.5 text-xs font-semibold shadow-xs",
             actionNotice.type === "success"
-              ? "border-emerald-400 bg-emerald-50 text-emerald-950"
-              : "border-rose-400 bg-rose-50 text-rose-950"
+              ? "border-status-success-border bg-status-success-bg text-status-success"
+              : "border-status-danger-border bg-status-danger-bg text-status-danger"
           )}
         >
           <div className="flex items-center gap-2">
             {actionNotice.type === "success" ? (
-              <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+              <CheckCircle2
+                className="size-4 shrink-0 text-status-success"
+                aria-hidden="true"
+              />
             ) : (
-              <AlertCircle className="size-4 text-rose-600 shrink-0" />
+              <AlertCircle
+                className="size-4 shrink-0 text-status-danger"
+                aria-hidden="true"
+              />
             )}
             <span>{actionNotice.message}</span>
           </div>
           <button
             type="button"
             onClick={() => setActionNotice(null)}
-            className="underline cursor-pointer text-[11px] shrink-0"
+            className="shrink-0 cursor-pointer text-[11px] underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             Dismiss
           </button>
@@ -4259,12 +4667,15 @@ function WhatsAppQueueTab({
       )}
 
       {/* 2. Active 4K Poster & 1-Tap Manual Assisted Bar */}
-      <Card className="border-[#C5A059]/40 bg-card shadow-sm">
-        <CardHeader className="bg-secondary/20 border-b border-border pb-4">
+      <Card className="border-gold-border bg-card shadow-sm">
+        <CardHeader className="border-b border-border bg-secondary/35 pb-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="font-display text-base font-bold flex items-center gap-2">
-                <Sparkles className="size-4 text-[#C5A059]" />
+              <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
+                <Sparkles
+                  className="size-4 text-gold-text"
+                  aria-hidden="true"
+                />
                 <span>
                   Today&apos;s Active Poster &amp; 1-Tap Assisted Share Controls
                 </span>
@@ -4276,28 +4687,30 @@ function WhatsAppQueueTab({
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Calendar className="size-4 text-[#C5A059]" />
+              <Calendar className="size-4 text-gold-text" aria-hidden="true" />
               <Input
                 type="date"
+                aria-label="Distribution Date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="h-8 w-36 font-mono text-xs bg-white"
+                className="h-8 w-36 bg-background font-mono text-xs"
               />
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="p-4 sm:p-6 space-y-4">
+        <CardContent className="space-y-4 p-4 sm:p-6">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-            <div className="lg:col-span-4 space-y-3">
+            <div className="space-y-3 lg:col-span-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-primary">
                   Select Poster Asset to Share
                 </Label>
                 <select
+                  aria-label="Select Poster Asset to Share"
                   value={selectedAssetId}
-                  onChange={(e) => setSelectedAssetId(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs font-mono"
+                  onChange={(e) => handleSelectWhatsappAsset(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {postAssets.map((a) => (
                     <option key={a.id} value={a.id}>
@@ -4308,34 +4721,76 @@ function WhatsAppQueueTab({
               </div>
 
               {selectedAsset && (
-                <div className="rounded-xl border border-border bg-secondary/20 p-3 space-y-3">
-                  <div
-                    className="relative aspect-[3/4] w-full overflow-hidden rounded-lg border border-border bg-muted group cursor-pointer"
+                <div className="space-y-3 rounded-xl bg-secondary/45 p-3">
+                  <button
+                    type="button"
+                    aria-label={`Preview 4K poster: ${selectedAsset.title}`}
                     onClick={() => setPreviewPosterUrl(selectedAsset.imageUrl)}
+                    className="group relative block aspect-[3/4] w-full cursor-pointer overflow-hidden rounded-lg bg-muted whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    {selectedAsset.imageUrl ? (
-                      <img
-                        src={selectedAsset.imageUrl}
-                        alt={selectedAsset.title}
-                        className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-                        No Preview
-                      </div>
-                    )}
-                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="rounded-md bg-white/90 px-2 py-1 text-[11px] font-bold text-foreground">
-                        Click to Preview 4K
+                    {(() => {
+                      const waPosterImageUrl = getRenderableImagePreviewUrl(
+                        selectedAsset.imageUrl
+                      )
+                      if (waPosterImageUrl) {
+                        return (
+                          <Image
+                            src={waPosterImageUrl}
+                            alt={selectedAsset.title}
+                            fill
+                            unoptimized
+                            sizes="(max-width: 1024px) 100vw, 320px"
+                            className="object-cover"
+                          />
+                        )
+                      }
+                      if (
+                        selectedAsset.imageUrl &&
+                        isPdfAssetUrl(selectedAsset.imageUrl)
+                      ) {
+                        return (
+                          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-accent/60 text-primary">
+                            <FileText
+                              className="size-8 text-gold-text"
+                              aria-hidden="true"
+                            />
+                            <span className="text-xs font-semibold whitespace-nowrap">
+                              PDF
+                            </span>
+                          </div>
+                        )
+                      }
+                      if (selectedAsset.imageUrl) {
+                        return (
+                          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-secondary text-primary">
+                            <Film
+                              className="size-8 text-gold-text"
+                              aria-hidden="true"
+                            />
+                            <span className="text-xs font-semibold whitespace-nowrap">
+                              Video
+                            </span>
+                          </div>
+                        )
+                      }
+                      return (
+                        <div className="flex h-full w-full items-center justify-center text-xs whitespace-nowrap text-muted-foreground">
+                          Empty
+                        </div>
+                      )
+                    })()}
+                    <div className="absolute inset-0 flex items-center justify-center bg-sidebar/70 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none">
+                      <span className="rounded-md bg-background/95 px-2.5 py-1 text-[11px] font-bold whitespace-nowrap text-foreground">
+                        Zoom
                       </span>
                     </div>
-                  </div>
+                  </button>
 
                   <div className="space-y-1 text-center">
                     <p className="font-mono text-xs font-bold text-primary">
                       {selectedAsset.postCode}
                     </p>
-                    <p className="text-[11px] text-muted-foreground truncate font-medium">
+                    <p className="truncate text-[11px] font-medium text-muted-foreground">
                       {selectedAsset.title}
                     </p>
                   </div>
@@ -4343,24 +4798,30 @@ function WhatsAppQueueTab({
               )}
             </div>
 
-            <div className="lg:col-span-8 space-y-4">
+            <div className="space-y-4 lg:col-span-8">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Label className="flex items-center gap-1.5 text-xs font-bold text-foreground">
                     <span>Formatted WhatsApp Caption</span>
-                    <Badge variant="outline" className="text-[9px] font-mono">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-medium"
+                    >
                       WhatsApp Markdown Ready
                     </Badge>
                   </Label>
-                  <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
-                    {whatsappCaption.length} chars
+                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                    <span className="font-mono font-medium">
+                      {whatsappCaption.length}
+                    </span>{" "}
+                    chars
                   </span>
                 </div>
                 <Textarea
                   rows={7}
                   value={whatsappCaption}
                   onChange={(e) => setWhatsappCaption(e.target.value)}
-                  className="text-xs font-mono leading-relaxed bg-white"
+                  className="bg-background font-mono text-xs leading-relaxed"
                 />
               </div>
 
@@ -4369,16 +4830,16 @@ function WhatsAppQueueTab({
                   type="button"
                   onClick={handleCopyCaption}
                   className={cn(
-                    "h-9 text-xs font-bold gap-1.5 cursor-pointer transition-all",
+                    "h-9 cursor-pointer gap-1.5 text-xs font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none",
                     copiedCaption
-                      ? "bg-emerald-600 text-white"
-                      : "bg-[#0A3622] text-white hover:bg-[#0A3622]/90"
+                      ? "bg-status-success text-primary-foreground"
+                      : "bg-primary text-primary-foreground hover:bg-primary/90"
                   )}
                 >
                   {copiedCaption ? (
-                    <Check className="size-3.5" />
+                    <Check className="size-3.5" aria-hidden="true" />
                   ) : (
-                    <Copy className="size-3.5 text-[#C5A059]" />
+                    <Copy className="size-3.5 text-gold" aria-hidden="true" />
                   )}
                   <span>
                     {copiedCaption ? "Caption Copied!" : "1-Tap Copy Caption"}
@@ -4389,9 +4850,12 @@ function WhatsAppQueueTab({
                   type="button"
                   variant="outline"
                   onClick={() => handleDownloadPoster()}
-                  className="h-9 text-xs font-semibold gap-1.5 border-border hover:bg-white cursor-pointer"
+                  className="h-9 cursor-pointer gap-1.5 border-border text-xs font-semibold transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                 >
-                  <Download className="size-3.5 text-[#C5A059]" />
+                  <Download
+                    className="size-3.5 text-gold-text"
+                    aria-hidden="true"
+                  />
                   <span>1-Tap Download 4K Poster</span>
                 </Button>
 
@@ -4401,12 +4865,18 @@ function WhatsAppQueueTab({
                     variant="outline"
                     disabled={isBulkLogging || !selectedAsset}
                     onClick={handleBulkMarkShared}
-                    className="h-9 text-xs font-bold border-emerald-400 bg-emerald-50 text-emerald-950 hover:bg-emerald-100 gap-1.5 cursor-pointer"
+                    className="h-9 cursor-pointer gap-1.5 border-status-success-border bg-status-success-bg text-xs font-bold text-status-success transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                   >
                     {isBulkLogging ? (
-                      <Loader2 className="size-3.5 animate-spin" />
+                      <Loader2
+                        className="size-3.5 animate-spin motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
                     ) : (
-                      <CheckCircle2 className="size-3.5 text-emerald-700" />
+                      <CheckCircle2
+                        className="size-3.5 text-status-success"
+                        aria-hidden="true"
+                      />
                     )}
                     <span>
                       Mark Selected Shared ({selectedChannelIds.length})
@@ -4416,10 +4886,13 @@ function WhatsAppQueueTab({
               </div>
 
               {/* Daily Progress Bar */}
-              <div className="rounded-xl border border-border bg-secondary/15 p-3.5 space-y-2">
-                <div className="flex items-center justify-between text-xs flex-wrap gap-2">
-                  <span className="font-bold text-foreground flex items-center gap-1.5">
-                    <CheckCircle2 className="size-4 text-emerald-600" />
+              <div className="space-y-2 rounded-xl bg-secondary/45 p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="flex items-center gap-1.5 font-bold text-foreground">
+                    <CheckCircle2
+                      className="size-4 text-status-success"
+                      aria-hidden="true"
+                    />
                     <span>
                       Daily Community Distribution Progress ({selectedDate})
                     </span>
@@ -4430,13 +4903,16 @@ function WhatsAppQueueTab({
                       {progressPercent}%)
                     </span>
                     {failedCountToday > 0 && (
-                      <span className="text-rose-700 font-bold">
-                        • {failedCountToday} Failed
+                      <span className="font-bold text-status-danger">
+                        {failedCountToday} Failed
                       </span>
                     )}
                   </div>
                 </div>
-                <Progress value={progressPercent} className="h-2 bg-secondary" />
+                <Progress
+                  value={progressPercent}
+                  className="h-2 bg-secondary"
+                />
               </div>
             </div>
           </div>
@@ -4445,11 +4921,11 @@ function WhatsAppQueueTab({
 
       {/* 3. WhatsApp Groups & Status Channel Matrix */}
       <Card className="border-border bg-card shadow-xs">
-        <CardHeader className="pb-3 border-b border-border">
+        <CardHeader className="border-b border-border pb-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="font-display text-base font-bold flex items-center gap-2">
-                <Users className="size-4 text-primary" />
+              <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
+                <Users className="size-4 text-primary" aria-hidden="true" />
                 <span>
                   WhatsApp Community Groups &amp; Status Queue (
                   {whatsappChannels.length})
@@ -4457,26 +4933,30 @@ function WhatsAppQueueTab({
               </CardTitle>
               <CardDescription className="text-xs">
                 Track daily assisted shares across community groups and official
-                WhatsApp Status lines. Failed dispatches are highlighted in red
-                and excluded from completed share counts.
+                WhatsApp Status lines. Failed dispatches are highlighted and
+                excluded from completed share counts.
               </CardDescription>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
-                <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Search
+                  className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
                 <Input
-                  placeholder="Search WhatsApp groups..."
+                  placeholder="Search WhatsApp groups…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-8 pl-8 text-xs w-44 bg-white"
+                  className="h-8 w-44 bg-background pl-8 text-xs"
                 />
               </div>
 
               <select
+                aria-label="Filter WhatsApp Channels"
                 value={areaFilter}
                 onChange={(e) => setAreaFilter(e.target.value)}
-                className="flex h-8 rounded-md border border-input bg-background px-2.5 text-xs"
+                className="flex h-8 rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 <option value="all">
                   All WhatsApp Channels ({whatsappChannels.length})
@@ -4488,18 +4968,18 @@ function WhatsAppQueueTab({
         </CardHeader>
 
         {distinctPhoneLines.length > 0 && (
-          <div className="bg-secondary/25 border-b border-border px-4 py-2.5 flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mr-1">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border bg-secondary/35 px-4 py-2.5">
+            <span className="mr-1 text-[11px] font-semibold text-muted-foreground">
               Filter by Phone Line:
             </span>
             <button
               type="button"
               onClick={() => setSelectedLineFilter("all")}
               className={cn(
-                "px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer",
+                "cursor-pointer rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                 selectedLineFilter === "all"
-                  ? "bg-[#0A3622] text-white border-[#C5A059]"
-                  : "bg-white text-muted-foreground hover:text-foreground border-border"
+                  ? "border-gold-border bg-primary text-primary-foreground"
+                  : "border-border bg-background text-muted-foreground hover:text-foreground"
               )}
             >
               All Lines ({whatsappChannels.length})
@@ -4514,15 +4994,23 @@ function WhatsAppQueueTab({
                   type="button"
                   onClick={() => setSelectedLineFilter(line)}
                   className={cn(
-                    "px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5",
+                    "flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
                     selectedLineFilter === line
-                      ? "bg-[#0A3622] text-white border-[#C5A059]"
-                      : "bg-white text-muted-foreground hover:text-foreground border-border"
+                      ? "border-gold-border bg-primary text-primary-foreground"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <span>📱</span>
+                  <Smartphone
+                    className={cn(
+                      "size-3 shrink-0",
+                      selectedLineFilter === line
+                        ? "text-gold"
+                        : "text-gold-text"
+                    )}
+                    aria-hidden="true"
+                  />
                   <span>{line}</span>
-                  <span className="text-[10px] opacity-80 font-mono tabular-nums">
+                  <span className="font-mono text-[10px] tabular-nums opacity-85">
                     ({count})
                   </span>
                 </button>
@@ -4533,14 +5021,14 @@ function WhatsAppQueueTab({
 
         <CardContent className="p-4">
           {whatsappChannels.length === 0 ? (
-            <div className="rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/40 p-8 sm:p-12 text-center space-y-3">
-              <div className="size-12 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center mx-auto text-emerald-800">
-                <Users className="size-6" />
+            <div className="space-y-3 rounded-2xl border-2 border-dashed border-status-success-border bg-status-success-bg/50 p-8 text-center sm:p-12">
+              <div className="mx-auto flex size-12 items-center justify-center rounded-full border border-status-success-border bg-background text-status-success">
+                <Users className="size-6" aria-hidden="true" />
               </div>
-              <h4 className="font-bold text-base text-emerald-950">
+              <h4 className="text-base font-bold text-status-success">
                 No WhatsApp Groups or Status Channels Registered Yet
               </h4>
-              <p className="text-xs text-emerald-900 max-w-md mx-auto">
+              <p className="mx-auto max-w-md text-xs text-status-success">
                 Add your community WhatsApp groups and Status lines to track
                 daily ban-safe manual assisted poster shares.
               </p>
@@ -4560,103 +5048,118 @@ function WhatsAppQueueTab({
                 return (
                   <div
                     key={ch.id}
-                    onClick={() => handleToggleChannel(ch.id)}
                     className={cn(
-                      "rounded-xl border p-3.5 space-y-2.5 transition-all bg-white cursor-pointer select-none",
+                      "space-y-2.5 rounded-xl p-3.5 transition-colors motion-reduce:transition-none",
                       isSelected
-                        ? "border-[#0A3622] ring-2 ring-[#0A3622]/20 bg-emerald-50/20"
+                        ? "bg-status-success-bg ring-2 ring-primary/35"
                         : isFailed
-                        ? "border-rose-300 bg-rose-50/30"
-                        : isShared
-                        ? "border-emerald-300 bg-emerald-50/10"
-                        : "border-border hover:border-[#C5A059]"
+                          ? "bg-status-danger-bg"
+                          : isShared
+                            ? "bg-status-success-bg/55"
+                            : "bg-secondary/45 hover:bg-accent/45"
                     )}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2.5 min-w-0">
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 select-none has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary">
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          onChange={(e) => {
-                            e.stopPropagation()
-                            handleToggleChannel(ch.id)
-                          }}
-                          className="size-4 mt-0.5 rounded border-border text-[#0A3622] accent-[#0A3622] cursor-pointer"
+                          onChange={() => handleToggleChannel(ch.id)}
+                          className="mt-0.5 size-4 cursor-pointer rounded border-border accent-primary"
                         />
                         <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <Badge
                               variant="outline"
-                              className="text-[9px] px-1.5 py-0 border-[#C5A059]/50 text-[#0A3622] uppercase font-bold"
+                              className="border-gold-border px-1.5 py-0 text-[10px] font-bold text-primary capitalize"
                             >
-                              {ch.areaTag}
+                              {ch.areaTag.toLowerCase()}
                             </Badge>
                             {ch.senderWhatsappNumber && (
                               <Badge
                                 variant="outline"
-                                className="text-[10px] font-mono px-2 py-0 border-emerald-500/50 bg-emerald-50 text-emerald-900 font-bold"
+                                className="inline-flex items-center gap-1 border-status-success-border bg-status-success-bg px-2 py-0 font-mono text-[10px] font-bold text-status-success tabular-nums"
                               >
-                                📱 {ch.senderWhatsappNumber}
+                                <Smartphone
+                                  className="size-2.5 shrink-0"
+                                  aria-hidden="true"
+                                />
+                                <span>{ch.senderWhatsappNumber}</span>
                               </Badge>
                             )}
                           </div>
 
-                          <h4 className="text-xs font-bold text-foreground mt-1 truncate">
+                          <h4 className="mt-1 truncate text-xs font-bold text-foreground">
                             {ch.name}
                           </h4>
 
-                          <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                            <MessageSquare className="size-3 text-emerald-600" />
+                          <p className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+                            <MessageSquare
+                              className="size-3 text-status-success"
+                              aria-hidden="true"
+                            />
                             <span className="capitalize">
                               {ch.platform.replace(/_/g, " ")}
                             </span>
                             {ch.memberCount
-                              ? ` · ~${ch.memberCount} members`
+                              ? ` (${ch.memberCount} members)`
                               : ""}
                           </p>
                         </div>
-                      </div>
+                      </label>
 
                       {isShared ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-800 shrink-0">
-                          <CheckCircle2 className="size-3 text-emerald-600" />
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-status-success-border bg-status-success-bg px-2 py-0.5 text-[10px] font-bold text-status-success">
+                          <CheckCircle2
+                            className="size-3 text-status-success"
+                            aria-hidden="true"
+                          />
                           <span>Shared</span>
                         </span>
                       ) : isFailed ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 border border-rose-300 px-2 py-0.5 text-[10px] font-bold text-rose-800 shrink-0">
-                          <XCircle className="size-3 text-rose-600" />
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-status-danger-border bg-status-danger-bg px-2 py-0.5 text-[10px] font-bold text-status-danger">
+                          <XCircle
+                            className="size-3 text-status-danger"
+                            aria-hidden="true"
+                          />
                           <span>Failed</span>
                         </span>
                       ) : isQueued ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 border border-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-900 shrink-0">
-                          <Clock className="size-3 text-amber-700" />
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-status-warning-border bg-status-warning-bg px-2 py-0.5 text-[10px] font-bold text-status-warning">
+                          <Clock
+                            className="size-3 text-status-warning"
+                            aria-hidden="true"
+                          />
                           <span>Queued</span>
                         </span>
                       ) : (
-                        <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground shrink-0">
+                        <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                           Pending
                         </span>
                       )}
                     </div>
 
                     {distributionLog?.postAsset && (
-                      <div className="text-[10px] text-muted-foreground font-mono bg-secondary/40 p-1.5 rounded">
-                        Ref: {distributionLog.postAsset.postCode}
+                      <div className="rounded bg-background/80 p-1.5 text-[10px] text-muted-foreground">
+                        Ref:{" "}
+                        <span className="font-mono">
+                          {distributionLog.postAsset.postCode}
+                        </span>
                       </div>
                     )}
 
-                    <div
-                      className="flex items-center justify-between gap-2 pt-2 border-t border-border/70"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <div className="flex items-center justify-between gap-2 border-t border-border/70 pt-2">
                       {ch.inviteLinkOrUrl && (
                         <a
                           href={ch.inviteLinkOrUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] font-semibold text-foreground hover:border-[#C5A059]"
+                          className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-semibold text-foreground transition-colors hover:border-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                         >
-                          <ExternalLink className="size-3 text-[#C5A059]" />
+                          <ExternalLink
+                            className="size-3 text-gold-text"
+                            aria-hidden="true"
+                          />
                           <span>Open</span>
                         </a>
                       )}
@@ -4667,25 +5170,34 @@ function WhatsAppQueueTab({
                         disabled={isBusy || !selectedAsset}
                         onClick={() => handleMarkSharedToday(ch.id)}
                         className={cn(
-                          "h-7 text-[11px] font-bold gap-1 cursor-pointer flex-1",
+                          "h-7 flex-1 cursor-pointer gap-1 text-[11px] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 motion-reduce:transition-none",
                           isShared
-                            ? "border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
-                            : "bg-[#0A3622] text-white hover:bg-[#0A3622]/90"
+                            ? "border border-status-success-border bg-status-success-bg text-status-success hover:bg-accent focus-visible:outline-primary"
+                            : "bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-gold"
                         )}
                       >
                         {isBusy ? (
-                          <Loader2 className="size-3 animate-spin" />
+                          <Loader2
+                            className="size-3 animate-spin motion-reduce:animate-none"
+                            aria-hidden="true"
+                          />
                         ) : isShared ? (
-                          <Check className="size-3 text-emerald-600" />
+                          <Check
+                            className="size-3 text-status-success"
+                            aria-hidden="true"
+                          />
                         ) : (
-                          <CheckCircle2 className="size-3 text-[#C5A059]" />
+                          <CheckCircle2
+                            className="size-3 text-gold"
+                            aria-hidden="true"
+                          />
                         )}
                         <span>
                           {isShared
                             ? "Logged (Re-mark)"
                             : isFailed
-                            ? "Mark Manually Shared"
-                            : "1-Tap Mark Shared"}
+                              ? "Mark Manually Shared"
+                              : "1-Tap Mark Shared"}
                         </span>
                       </Button>
                     </div>
@@ -4702,27 +5214,50 @@ function WhatsAppQueueTab({
         open={Boolean(previewPosterUrl)}
         onOpenChange={(open) => !open && setPreviewPosterUrl(null)}
       >
-        <DialogContent className="max-w-2xl p-2 bg-black/95 text-white border-[#C5A059]/40">
+        <DialogContent className="max-w-2xl border-gold/40 bg-sidebar p-2 text-sidebar-foreground">
+          <DialogHeader className="sr-only">
+            <DialogTitle>4K Poster Preview</DialogTitle>
+          </DialogHeader>
           <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg">
-            {previewPosterUrl && (
-              <img
-                src={previewPosterUrl}
-                alt="4K Poster Preview"
-                className="h-full w-full object-contain"
-              />
-            )}
+            {(() => {
+              const modalPosterImageUrl =
+                getRenderableImagePreviewUrl(previewPosterUrl)
+              if (modalPosterImageUrl) {
+                return (
+                  <Image
+                    src={modalPosterImageUrl}
+                    alt="4K Poster Preview"
+                    fill
+                    unoptimized
+                    sizes="(max-width: 768px) 95vw, 672px"
+                    className="object-contain"
+                  />
+                )
+              }
+              if (previewPosterUrl) {
+                return (
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-xs text-sidebar-foreground/80">
+                    <Film className="size-8 text-gold" aria-hidden="true" />
+                    <span>Media Asset Ready for Download</span>
+                  </div>
+                )
+              }
+              return null
+            })()}
           </div>
           <div className="flex items-center justify-between p-3">
-            <span className="text-xs font-mono text-[#C5A059]">
+            <span className="text-xs font-semibold text-gold">
               Al Ramlah Travels 4K Ultra-High-Resolution Poster
             </span>
             <Button
               type="button"
               size="sm"
-              onClick={() => handleDownloadPoster(previewPosterUrl || undefined)}
-              className="bg-[#C5A059] text-black font-bold text-xs"
+              onClick={() =>
+                handleDownloadPoster(previewPosterUrl || undefined)
+              }
+              className="cursor-pointer bg-gold text-xs font-bold text-gold-foreground hover:bg-gold/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
             >
-              <Download className="size-3.5 mr-1" />
+              <Download className="mr-1 size-3.5" aria-hidden="true" />
               Download Full Res
             </Button>
           </div>
@@ -4737,6 +5272,7 @@ function WhatsAppQueueTab({
 // ==========================================
 
 function BroadcastsAndOutreachTab({
+  initialNowMs,
   userRole,
   officeLocationLabel,
   summaryCounts,
@@ -4748,6 +5284,7 @@ function BroadcastsAndOutreachTab({
   postAssets,
   outreachLogs,
 }: {
+  initialNowMs?: number
   userRole: "super_admin" | "staff"
   officeLocationLabel: string
   summaryCounts?: CampaignsSummaryCounts
@@ -4785,16 +5322,16 @@ function BroadcastsAndOutreachTab({
     () => approvedTemplates[0]?.id || ""
   )
 
-  // Reset `selectedTemplateId` whenever WABA account changes (`T-071`)
-  React.useEffect(() => {
-    if (!approvedTemplates.some((t) => t.id === selectedTemplateId)) {
-      setSelectedTemplateId(approvedTemplates[0]?.id || "")
+  const effectiveSelectedTemplateId = React.useMemo(() => {
+    if (approvedTemplates.some((t) => t.id === selectedTemplateId)) {
+      return selectedTemplateId
     }
+    return approvedTemplates[0]?.id || ""
   }, [approvedTemplates, selectedTemplateId])
 
   const selectedTemplate = React.useMemo(() => {
-    return approvedTemplates.find((t) => t.id === selectedTemplateId)
-  }, [approvedTemplates, selectedTemplateId])
+    return approvedTemplates.find((t) => t.id === effectiveSelectedTemplateId)
+  }, [approvedTemplates, effectiveSelectedTemplateId])
 
   const [broadcastName, setBroadcastName] = React.useState(
     "Ramadan 2027 Umrah Spotlight Announcement"
@@ -4901,8 +5438,10 @@ function BroadcastsAndOutreachTab({
     string | null
   >(null)
 
+  const [mountNowMs] = React.useState<number>(() => initialNowMs ?? Date.now())
+
   const computedRecipientPhones = React.useMemo(() => {
-    const now = new Date()
+    const now = new Date(mountNowMs)
 
     if (recipientSegment === "custom_phones") {
       if (parsedCsv.recipients.length > 0) {
@@ -4942,7 +5481,13 @@ function BroadcastsAndOutreachTab({
         return state.isEligibleToday
       })
       .map((c) => c.whatsappNumber)
-  }, [recipientSegment, customPhonesText, outreachContacts, parsedCsv])
+  }, [
+    recipientSegment,
+    customPhonesText,
+    outreachContacts,
+    parsedCsv,
+    mountNowMs,
+  ])
 
   const handleLaunchBroadcast = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -4962,8 +5507,8 @@ function BroadcastsAndOutreachTab({
       return
     }
     if (
-      !selectedTemplateId ||
-      !approvedTemplates.some((t) => t.id === selectedTemplateId)
+      !effectiveSelectedTemplateId ||
+      !approvedTemplates.some((t) => t.id === effectiveSelectedTemplateId)
     ) {
       setBroadcastNotice({
         type: "error",
@@ -5002,7 +5547,7 @@ function BroadcastsAndOutreachTab({
       } = {
         accountId: selectedAccountId,
         name: broadcastName.trim(),
-        templateId: selectedTemplateId,
+        templateId: effectiveSelectedTemplateId,
         recipientPhones: computedRecipientPhones,
         defaultTemplateParams,
         headerMediaUrl: headerMediaUrl.trim() || null,
@@ -5085,12 +5630,12 @@ function BroadcastsAndOutreachTab({
       )}
 
       {/* 1. Official Meta Template Broadcast Launch Card */}
-      <Card className="border-[#C5A059]/40 bg-card shadow-sm">
-        <CardHeader className="bg-secondary/20 border-b border-border pb-4">
+      <Card className="border-gold-border bg-card shadow-sm">
+        <CardHeader className="border-b border-border bg-secondary/35 pb-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="font-display text-base font-bold flex items-center gap-2">
-                <Send className="size-4 text-[#C5A059]" />
+              <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
+                <Send className="size-4 text-gold-text" aria-hidden="true" />
                 <span>
                   Official Meta WhatsApp Cloud API Template Broadcasts
                 </span>
@@ -5103,17 +5648,23 @@ function BroadcastsAndOutreachTab({
             </div>
             <Badge
               variant="outline"
-              className="text-[11px] font-mono tabular-nums border-primary/30 text-primary"
+              className="border-primary/30 text-[11px] font-medium text-primary tabular-nums"
             >
-              {approvedTemplates.length} Approved Templates on Selected Line
+              <span className="font-mono font-semibold">
+                {approvedTemplates.length}
+              </span>{" "}
+              Approved Templates on Selected Line
             </Badge>
           </div>
         </CardHeader>
 
-        <CardContent className="p-4 sm:p-6 space-y-6">
+        <CardContent className="space-y-6 p-4 sm:p-6">
           {!isSuperAdmin && (
-            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs text-amber-950 flex items-center gap-2.5">
-              <Lock className="size-4 text-amber-700 shrink-0" />
+            <div className="flex items-center gap-2.5 rounded-xl border border-status-warning-border bg-status-warning-bg p-3.5 text-xs text-status-warning">
+              <Lock
+                className="size-4 shrink-0 text-status-warning"
+                aria-hidden="true"
+              />
               <span>
                 <strong>Super Administrator Required:</strong> Paid bulk Meta
                 Cloud API broadcast launches and mass retries are restricted to{" "}
@@ -5127,17 +5678,17 @@ function BroadcastsAndOutreachTab({
             <div
               role="alert"
               className={cn(
-                "rounded-xl border p-3.5 text-xs font-semibold flex items-center justify-between gap-2",
+                "flex items-center justify-between gap-2 rounded-xl border p-3.5 text-xs font-semibold",
                 broadcastNotice.type === "success"
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-950"
-                  : "border-rose-300 bg-rose-50 text-rose-950"
+                  ? "border-status-success-border bg-status-success-bg text-status-success"
+                  : "border-status-danger-border bg-status-danger-bg text-status-danger"
               )}
             >
               <span>{broadcastNotice.message}</span>
               <button
                 type="button"
                 onClick={() => setBroadcastNotice(null)}
-                className="underline cursor-pointer shrink-0"
+                className="shrink-0 cursor-pointer underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 Dismiss
               </button>
@@ -5146,16 +5697,17 @@ function BroadcastsAndOutreachTab({
 
           <form onSubmit={handleLaunchBroadcast} className="space-y-6">
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-              <div className="lg:col-span-7 space-y-4">
+              <div className="space-y-4 lg:col-span-7">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">
                       WhatsApp Business Account
                     </Label>
                     <select
+                      aria-label="WhatsApp Business Account"
                       value={selectedAccountId}
                       onChange={(e) => setSelectedAccountId(e.target.value)}
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs"
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       {whatsappAccounts.map((acc) => (
                         <option key={acc.id} value={acc.id}>
@@ -5175,32 +5727,35 @@ function BroadcastsAndOutreachTab({
                       value={broadcastName}
                       onChange={(e) => setBroadcastName(e.target.value)}
                       placeholder="e.g. Ramadan 2027 Announcement"
-                      className="h-9 text-xs bg-white"
+                      className="h-9 bg-background text-xs"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold flex items-center justify-between">
-                    <span>Approved Meta Template (Scoped to Selected WABA)</span>
-                    <span className="text-[10px] text-muted-foreground font-normal">
-                      Only &apos;APPROVED&apos; templates on this line
+                  <Label className="flex items-center justify-between text-xs font-semibold">
+                    <span>
+                      Approved Meta Template (Scoped to Selected WABA)
+                    </span>
+                    <span className="text-[11px] font-normal text-muted-foreground">
+                      Only approved templates on this line
                     </span>
                   </Label>
                   <select
-                    value={selectedTemplateId}
+                    aria-label="Approved Meta Template"
+                    value={effectiveSelectedTemplateId}
                     onChange={(e) => setSelectedTemplateId(e.target.value)}
                     disabled={!isSuperAdmin || approvedTemplates.length === 0}
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs font-mono"
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     {approvedTemplates.length === 0 ? (
                       <option value="">
-                        No APPROVED templates on selected WABA account
+                        No approved templates on selected WABA account
                       </option>
                     ) : (
                       approvedTemplates.map((t) => (
                         <option key={t.id} value={t.id}>
-                          {t.name} [{t.language}] — {t.category}
+                          {t.name} [{t.language}] ({t.category.toLowerCase()})
                         </option>
                       ))
                     )}
@@ -5208,28 +5763,31 @@ function BroadcastsAndOutreachTab({
                 </div>
 
                 {selectedTemplate && (
-                  <div className="rounded-xl border border-border bg-secondary/15 p-3.5 space-y-2">
+                  <div className="space-y-2 rounded-xl bg-secondary/45 p-3.5">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-mono font-bold text-primary">
-                        Template Preview: {selectedTemplate.name}
+                      <span className="font-bold text-primary">
+                        Template Preview:{" "}
+                        <span className="font-mono">
+                          {selectedTemplate.name}
+                        </span>
                       </span>
-                      <Badge className="text-[9px] bg-emerald-600 text-white font-mono">
-                        {selectedTemplate.category}
+                      <Badge className="border border-status-success-border bg-status-success-bg text-[10px] font-semibold text-status-success capitalize">
+                        {selectedTemplate.category.toLowerCase()}
                       </Badge>
                     </div>
 
                     {selectedTemplate.headerContent && (
-                      <p className="font-bold text-xs text-foreground">
+                      <p className="text-xs font-bold text-foreground">
                         {selectedTemplate.headerContent}
                       </p>
                     )}
 
-                    <p className="text-xs font-mono text-muted-foreground whitespace-pre-wrap bg-white p-2.5 rounded-lg border border-border leading-relaxed">
+                    <p className="rounded-lg bg-background p-2.5 font-mono text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
                       {selectedTemplate.bodyText}
                     </p>
 
                     {selectedTemplate.footerText && (
-                      <p className="text-[10px] text-muted-foreground italic">
+                      <p className="text-[11px] text-muted-foreground italic">
                         {selectedTemplate.footerText}
                       </p>
                     )}
@@ -5240,9 +5798,7 @@ function BroadcastsAndOutreachTab({
                   <div className="pt-2">
                     <WhatsappBroadcastPersonalizerFields
                       templateBodyText={selectedTemplate.bodyText || ""}
-                      templateHeaderType={
-                        selectedTemplate.headerType || "NONE"
-                      }
+                      templateHeaderType={selectedTemplate.headerType || "NONE"}
                       headerMediaUrl={headerMediaUrl}
                       onHeaderMediaUrlChange={setHeaderMediaUrl}
                       templateParams={defaultTemplateParams}
@@ -5261,14 +5817,17 @@ function BroadcastsAndOutreachTab({
                 )}
               </div>
 
-              <div className="lg:col-span-5 space-y-4">
+              <div className="space-y-4 lg:col-span-5">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-semibold">
                       Target Recipient Segment
                     </Label>
-                    <span className="font-mono tabular-nums text-xs font-bold text-primary">
-                      {computedRecipientPhones.length} Recipients
+                    <span className="text-xs font-bold text-primary tabular-nums">
+                      <span className="font-mono">
+                        {computedRecipientPhones.length}
+                      </span>{" "}
+                      Recipients
                     </span>
                   </div>
 
@@ -5287,7 +5846,7 @@ function BroadcastsAndOutreachTab({
                       {
                         id: "all_vip",
                         label: "All VIP Outreach Contacts",
-                        desc: "All contacts excluding do_not_contact",
+                        desc: "All contacts excluding opted-out leads",
                       },
                       {
                         id: "custom_phones",
@@ -5298,10 +5857,10 @@ function BroadcastsAndOutreachTab({
                       <label
                         key={seg.id}
                         className={cn(
-                          "flex items-start gap-2.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-all",
+                          "flex cursor-pointer items-start gap-2.5 rounded-lg p-2.5 text-xs transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary motion-reduce:transition-none",
                           recipientSegment === seg.id
-                            ? "border-primary bg-primary/5 ring-1 ring-primary"
-                            : "border-border bg-white hover:border-[#C5A059]"
+                            ? "bg-primary/10 ring-1 ring-primary"
+                            : "bg-secondary/50 hover:bg-accent/55"
                         )}
                       >
                         <input
@@ -5314,10 +5873,10 @@ function BroadcastsAndOutreachTab({
                               seg.id as typeof recipientSegment
                             )
                           }
-                          className="mt-0.5 accent-[#0A3622]"
+                          className="mt-0.5 accent-primary"
                         />
                         <div>
-                          <p className="font-semibold text-foreground text-[11px]">
+                          <p className="text-[11px] font-semibold text-foreground">
                             {seg.label}
                           </p>
                           <p className="text-[10px] text-muted-foreground">
@@ -5335,12 +5894,12 @@ function BroadcastsAndOutreachTab({
                       placeholder="e.g. 923001234567, 923219876543"
                       value={customPhonesText}
                       onChange={(e) => setCustomPhonesText(e.target.value)}
-                      className="text-xs font-mono bg-white mt-2"
+                      className="mt-2 bg-background font-mono text-xs"
                     />
                   )}
                 </div>
 
-                <div className="space-y-1.5 pt-2 border-t border-border">
+                <div className="space-y-1.5 border-t border-border pt-2">
                   <Label className="text-xs font-semibold">
                     Schedule Timing in PKT (Optional)
                   </Label>
@@ -5349,7 +5908,7 @@ function BroadcastsAndOutreachTab({
                     disabled={!isSuperAdmin}
                     value={scheduledBroadcastTime}
                     onChange={(e) => setScheduledBroadcastTime(e.target.value)}
-                    className="h-9 text-xs font-mono bg-white"
+                    className="h-9 bg-background font-mono text-xs"
                   />
                   <p className="text-[10px] text-muted-foreground">
                     Interpreted in Asia/Karachi (+05:00). Leave blank to
@@ -5360,20 +5919,23 @@ function BroadcastsAndOutreachTab({
             </div>
 
             {isSuperAdmin && (
-              <div className="flex items-center justify-end pt-3 border-t border-border">
+              <div className="flex items-center justify-end border-t border-border pt-3">
                 <Button
                   type="submit"
                   disabled={
                     isLaunchingBroadcast ||
                     computedRecipientPhones.length === 0 ||
-                    !selectedTemplateId
+                    !effectiveSelectedTemplateId
                   }
-                  className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 font-bold text-xs gap-2 cursor-pointer"
+                  className="cursor-pointer gap-2 bg-primary text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
                 >
                   {isLaunchingBroadcast ? (
-                    <Loader2 className="size-4 animate-spin text-[#C5A059]" />
+                    <Loader2
+                      className="size-4 animate-spin text-gold motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Send className="size-4 text-[#C5A059]" />
+                    <Send className="size-4 text-gold" aria-hidden="true" />
                   )}
                   <span>
                     {scheduledBroadcastTime
@@ -5387,7 +5949,7 @@ function BroadcastsAndOutreachTab({
 
           {/* Recent Broadcasts Audit Strip (Scoped to Selected WABA `T-071`) */}
           {accountBroadcasts.length > 0 && (
-            <div className="pt-4 border-t border-border space-y-3">
+            <div className="space-y-3 border-t border-border pt-4">
               <h4 className="text-xs font-bold text-foreground">
                 Recent Broadcast Dispatches on Selected Line (
                 {accountBroadcasts.length})
@@ -5404,49 +5966,58 @@ function BroadcastsAndOutreachTab({
                   return (
                     <div
                       key={bc.id}
-                      className="rounded-lg border border-border bg-white p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                      className="flex flex-col justify-between gap-2 rounded-lg bg-secondary/45 p-3 text-xs sm:flex-row sm:items-center"
                     >
                       <div>
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex flex-wrap items-center gap-2">
                           <strong className="text-foreground">{bc.name}</strong>
                           <Badge
                             variant="outline"
-                            className="text-[9px] font-mono border-primary/30"
+                            className="border-primary/30 font-mono text-[10px]"
                           >
                             {bc.templateName}
                           </Badge>
                           <Badge
                             className={cn(
-                              "text-[9px] capitalize",
+                              "border text-[10px] capitalize",
                               bc.status === "completed" &&
-                                "bg-emerald-600 text-white",
+                                "border-status-success-border bg-status-success-bg text-status-success",
                               bc.status === "processing" &&
-                                "bg-blue-600 text-white",
+                                "border-status-info-border bg-status-info-bg text-status-info",
                               bc.status === "scheduled" &&
-                                "bg-amber-600 text-white",
+                                "border-status-warning-border bg-status-warning-bg text-status-warning",
                               bc.status === "failed" &&
-                                "bg-rose-600 text-white"
+                                "border-status-danger-border bg-status-danger-bg text-status-danger"
                             )}
                           >
                             {bc.status}
                           </Badge>
                         </div>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          Started: {formatDateSafe(bc.startedAt || bc.createdAt)}
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          Started:{" "}
+                          {formatDateSafe(bc.startedAt || bc.createdAt)}
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums flex-wrap">
-                        <span>Total: {bc.totalRecipients}</span>
-                        <span className="text-emerald-700">
-                          Sent: {bc.sentCount}
+                      <div className="flex flex-wrap items-center gap-3 text-[11px] tabular-nums">
+                        <span>
+                          Total:{" "}
+                          <span className="font-mono">
+                            {bc.totalRecipients}
+                          </span>
                         </span>
-                        <span className="text-primary font-bold">
-                          Delivered: {deliveryRate}%
+                        <span className="text-status-success">
+                          Sent:{" "}
+                          <span className="font-mono">{bc.sentCount}</span>
+                        </span>
+                        <span className="font-bold text-primary">
+                          Delivered:{" "}
+                          <span className="font-mono">{deliveryRate}%</span>
                         </span>
                         {bc.failedCount > 0 && (
-                          <span className="text-rose-600">
-                            Failed: {bc.failedCount}
+                          <span className="text-status-danger">
+                            Failed:{" "}
+                            <span className="font-mono">{bc.failedCount}</span>
                           </span>
                         )}
                         <Button
@@ -5454,9 +6025,9 @@ function BroadcastsAndOutreachTab({
                           variant="outline"
                           size="xs"
                           onClick={() => handleOpenBroadcastDetails(bc)}
-                          className="h-7 text-[10px] gap-1 border-primary/30 text-primary hover:bg-primary/5 cursor-pointer ml-1"
+                          className="ml-1 h-7 cursor-pointer gap-1 border-primary/30 text-[10px] text-primary transition-colors hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                         >
-                          <Eye className="size-3" />
+                          <Eye className="size-3" aria-hidden="true" />
                           <span>Funnel &amp; Recipients</span>
                         </Button>
                       </div>
@@ -5483,15 +6054,15 @@ function BroadcastsAndOutreachTab({
 
       {/* 2. 14-Day VIP Outreach CRM Section */}
       <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
+        <div className="flex flex-col justify-between gap-2 border-b border-border pb-3 sm:flex-row sm:items-center">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="font-display text-lg font-bold text-foreground">
                 1-on-1 VIP Personal Outreach CRM
               </h2>
               <Badge
                 variant="outline"
-                className="text-[10px] font-mono border-emerald-400 text-emerald-900 bg-emerald-50"
+                className="border-status-success-border bg-status-success-bg text-[10px] font-semibold text-status-success"
               >
                 14-Day Safeguard Active
               </Badge>
@@ -5500,12 +6071,13 @@ function BroadcastsAndOutreachTab({
               Personal high-touch relationship cultivation for prospective
               pilgrims served from our {officeLocationLabel} headquarters. Every
               personal package share triggers an automatic 14-day cooldown
-              timer, unlocking automatically upon inbound customer reply.
+              timer, re-opening outreach automatically upon inbound customer
+              reply.
             </p>
           </div>
 
           {totalContactsPages > 1 && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+            <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
               <span className="tabular-nums">
                 Contacts Page {contactsPage}/{totalContactsPages}
               </span>
@@ -5513,21 +6085,23 @@ function BroadcastsAndOutreachTab({
                 type="button"
                 variant="outline"
                 size="sm"
+                aria-label="Previous contacts page"
                 disabled={contactsPage <= 1}
                 onClick={() => onContactsPageChange(contactsPage - 1)}
-                className="h-7 text-xs px-2"
+                className="h-7 cursor-pointer px-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <ChevronLeft className="size-3.5" />
+                <ChevronLeft className="size-3.5" aria-hidden="true" />
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
+                aria-label="Next contacts page"
                 disabled={contactsPage >= totalContactsPages}
                 onClick={() => onContactsPageChange(contactsPage + 1)}
-                className="h-7 text-xs px-2"
+                className="h-7 cursor-pointer px-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <ChevronRight className="size-3.5" />
+                <ChevronRight className="size-3.5" aria-hidden="true" />
               </Button>
             </div>
           )}

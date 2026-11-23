@@ -21,6 +21,10 @@ export const metadata = {
   title: "Pilgrim Inbox & Quote Desk | Al Ramlah Travels Admin",
 }
 
+function getServerNowMs(): number {
+  return Date.now()
+}
+
 interface AdminDeskPageProps {
   searchParams: Promise<{
     tab?: string
@@ -352,6 +356,7 @@ export default async function AdminDeskPage({
   return (
     <DeskHubClient
       initialTab={activeTab}
+      initialNowMs={getServerNowMs()}
       applications={applicationsList}
       slaHours={slaHours}
       whatsappAccounts={whatsappAccounts}

@@ -87,7 +87,14 @@ function applySecurityHeaders(
   )
   response.headers.set("X-Frame-Options", "DENY")
   response.headers.set("X-Content-Type-Options", "nosniff")
-  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
+
+  const isDocumentsSurface =
+    pathname === "/documents" || pathname.startsWith("/documents/")
+
+  response.headers.set(
+    "Referrer-Policy",
+    isDocumentsSurface ? "no-referrer" : "strict-origin-when-cross-origin"
+  )
   response.headers.set(
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
@@ -102,7 +109,8 @@ function applySecurityHeaders(
     pathname === "/voucher" ||
     pathname.startsWith("/voucher/") ||
     pathname === "/quote" ||
-    pathname.startsWith("/quote/")
+    pathname.startsWith("/quote/") ||
+    isDocumentsSurface
 
   if (isPrivateEdgeSurface) {
     response.headers.set(

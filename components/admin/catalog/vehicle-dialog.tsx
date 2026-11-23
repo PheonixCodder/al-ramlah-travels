@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
@@ -40,9 +40,14 @@ interface VehicleDialogProps {
   trigger?: React.ReactNode
 }
 
-export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
+function VehicleFormBody({
+  vehicle,
+  onSuccess,
+}: {
+  vehicle?: VehicleData
+  onSuccess: () => void
+}) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -79,29 +84,6 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
   const [isActive, setIsActive] = useState(vehicle?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(vehicle?.sortOrder ?? 0)
 
-  useEffect(() => {
-    if (!open) return
-    setError(null)
-    setName(vehicle?.name ?? "")
-    setCategory(vehicle?.category ?? "suv")
-    setBookingMode(vehicle?.bookingMode ?? "private_only")
-    setSeatCapacity(vehicle?.seatCapacity ?? 7)
-    setLuggageCapacity(vehicle?.luggageCapacity ?? 5)
-    setAllowsCustomPickupTime(vehicle?.allowsCustomPickupTime ?? true)
-    setDefaultRateSar(vehicle?.defaultRateSar ?? 250)
-    setZiyaratRateSar(vehicle?.ziyaratRateSar ?? 200)
-    setImageUrl(
-      vehicle?.imageUrl ??
-        "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=600"
-    )
-    setDescription(
-      vehicle?.description ??
-        "Private GMC Yukon / Toyota Fortuner with English & Urdu speaking drivers."
-    )
-    setIsActive(vehicle?.isActive ?? true)
-    setSortOrder(vehicle?.sortOrder ?? 0)
-  }, [open, vehicle])
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -124,7 +106,7 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
         sortOrder,
       })
       if (res.success) {
-        setOpen(false)
+        onSuccess()
         router.refresh()
       } else {
         setError(res.error || "Failed to save vehicle.")
@@ -141,230 +123,247 @@ export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <>
+      <DialogHeader>
+        <DialogTitle>
+          {vehicle ? `Edit ${vehicle.name}` : "Add Fleet Vehicle"}
+        </DialogTitle>
+        <DialogDescription>
+          Configure vehicle category, seat/luggage limits, default SAR rates,
+          and booking modes.
+        </DialogDescription>
+      </DialogHeader>
+
+      {error && (
+        <div className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2.5 text-xs text-status-danger">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-3.5 py-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="v-name">Vehicle Model / Name</Label>
+          <Input
+            id="v-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. GMC Yukon / Toyota Fortuner"
+            required
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="v-category">Category</Label>
+            <select
+              id="v-category"
+              value={category}
+              onChange={(e) =>
+                setCategory(
+                  e.target.value as
+                    "sedan" | "suv" | "van" | "minibus" | "bus" | "train"
+                )
+              }
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <option value="sedan">Sedan (Camry/Sonata)</option>
+              <option value="suv">Luxury SUV (GMC/Fortuner)</option>
+              <option value="van">Family Van (HiAce/Staria)</option>
+              <option value="minibus">Minibus (Coaster)</option>
+              <option value="bus">Luxury Coach Bus</option>
+              <option value="train">Haramain High-Speed Train</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="v-mode">Booking Mode</Label>
+            <select
+              id="v-mode"
+              value={bookingMode}
+              onChange={(e) =>
+                setBookingMode(
+                  e.target.value as
+                    "private_only" | "shared_and_private" | "shared_only"
+                )
+              }
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <option value="private_only">Private Only</option>
+              <option value="shared_and_private">Shared &amp; Private</option>
+              <option value="shared_only">Shared Only</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="v-seats">Seat Capacity (Adults/Kids)</Label>
+            <Input
+              id="v-seats"
+              type="number"
+              min={1}
+              value={seatCapacity}
+              onChange={(e) => setSeatCapacity(Number(e.target.value))}
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="v-luggage">Luggage Capacity (Pieces)</Label>
+            <Input
+              id="v-luggage"
+              type="number"
+              min={0}
+              value={luggageCapacity}
+              onChange={(e) => setLuggageCapacity(Number(e.target.value))}
+              required
+            />
+          </div>
+        </div>
+
+        {/* SAR Rate Defaults */}
+        <div className="space-y-2.5 rounded-lg bg-secondary/55 p-3">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+            <Coins className="size-3.5 text-gold-text" aria-hidden="true" />
+            <span>Base SAR Rates</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="v-default-rate" className="text-xs">
+                Default Route Rate (SAR)
+              </Label>
+              <Input
+                id="v-default-rate"
+                type="number"
+                min={0}
+                value={defaultRateSar}
+                onChange={(e) => setDefaultRateSar(Number(e.target.value))}
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="v-ziyarat-rate" className="text-xs">
+                Ziyarat Trip Rate (SAR)
+              </Label>
+              <Input
+                id="v-ziyarat-rate"
+                type="number"
+                min={0}
+                value={ziyaratRateSar}
+                onChange={(e) => setZiyaratRateSar(Number(e.target.value))}
+                required
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="v-image">Image URL</Label>
+          <Input
+            id="v-image"
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            placeholder="https://example.com/vehicle.jpg"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="v-desc">Description</Label>
+          <Input
+            id="v-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Driver service details, AC, luggage handling"
+          />
+        </div>
+
+        <div className="flex items-center justify-between border-t border-border pt-3">
+          <div className="flex items-center gap-4">
+            <label className="flex cursor-pointer items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={allowsCustomPickupTime}
+                onChange={(e) => setAllowsCustomPickupTime(e.target.checked)}
+                className="rounded text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              />
+              <span>Custom Pickup Time</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+                className="rounded text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              />
+              <span className="font-medium">Active in Fleet</span>
+            </label>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="v-sort" className="text-xs">
+              Sort:
+            </Label>
+            <Input
+              id="v-sort"
+              type="number"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(Number(e.target.value))}
+              className="h-7 w-14 font-mono text-xs"
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="pt-2">
+          <DialogClose render={<Button variant="outline" type="button" />}>
+            Cancel
+          </DialogClose>
+          <Button
+            type="submit"
+            disabled={loading}
+            className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            {loading && (
+              <Loader2
+                className="size-4 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+            )}
+            <span>{vehicle ? "Save Changes" : "Create Vehicle"}</span>
+          </Button>
+        </DialogFooter>
+      </form>
+    </>
+  )
+}
+
+export function VehicleDialog({ vehicle, trigger }: VehicleDialogProps) {
+  const [open, setOpen] = useState(false)
+  const [formSession, setFormSession] = useState(0)
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (nextOpen) {
+      setFormSession((prev) => prev + 1)
+    }
+    setOpen(nextOpen)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
         render={
           trigger ? (
             (trigger as React.ReactElement)
           ) : (
-            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
-              <Plus className="size-4" />
+            <Button className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+              <Plus className="size-4" aria-hidden="true" />
               <span>Add Vehicle</span>
             </Button>
           )
         }
       />
-      <DialogContent
-        key={open ? (vehicle?.id ?? "new") : "closed"}
-        className="sm:max-w-md"
-      >
-        <DialogHeader>
-          <DialogTitle>
-            {vehicle ? `Edit ${vehicle.name}` : "Add Fleet Vehicle"}
-          </DialogTitle>
-          <DialogDescription>
-            Configure vehicle category, seat/luggage limits, default SAR rates,
-            and booking modes.
-          </DialogDescription>
-        </DialogHeader>
-
-        {error && (
-          <div className="rounded-lg border border-red-300 bg-red-50 p-2.5 text-xs text-red-800">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-3.5 py-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="v-name">Vehicle Model / Name</Label>
-            <Input
-              id="v-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. GMC Yukon / Toyota Fortuner"
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="v-category">Category</Label>
-              <select
-                id="v-category"
-                value={category}
-                onChange={(e) =>
-                  setCategory(
-                    e.target.value as
-                      | "sedan"
-                      | "suv"
-                      | "van"
-                      | "minibus"
-                      | "bus"
-                      | "train"
-                  )
-                }
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
-              >
-                <option value="sedan">Sedan (Camry/Sonata)</option>
-                <option value="suv">Luxury SUV (GMC/Fortuner)</option>
-                <option value="van">Family Van (HiAce/Staria)</option>
-                <option value="minibus">Minibus (Coaster)</option>
-                <option value="bus">Luxury Coach Bus</option>
-                <option value="train">Haramain High-Speed Train</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="v-mode">Booking Mode</Label>
-              <select
-                id="v-mode"
-                value={bookingMode}
-                onChange={(e) =>
-                  setBookingMode(
-                    e.target.value as
-                      | "private_only"
-                      | "shared_and_private"
-                      | "shared_only"
-                  )
-                }
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
-              >
-                <option value="private_only">Private Only</option>
-                <option value="shared_and_private">Shared &amp; Private</option>
-                <option value="shared_only">Shared Only</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="v-seats">Seat Capacity (Adults/Kids)</Label>
-              <Input
-                id="v-seats"
-                type="number"
-                min={1}
-                value={seatCapacity}
-                onChange={(e) => setSeatCapacity(Number(e.target.value))}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="v-luggage">Luggage Capacity (Pieces)</Label>
-              <Input
-                id="v-luggage"
-                type="number"
-                min={0}
-                value={luggageCapacity}
-                onChange={(e) => setLuggageCapacity(Number(e.target.value))}
-                required
-              />
-            </div>
-          </div>
-
-          {/* SAR Rate Defaults */}
-          <div className="rounded-lg border border-gold/40 bg-card p-3 space-y-2.5">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <Coins className="size-3.5 text-gold" />
-              <span>Base SAR Rates</span>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="v-default-rate" className="text-xs">
-                  Default Route Rate (SAR)
-                </Label>
-                <Input
-                  id="v-default-rate"
-                  type="number"
-                  min={0}
-                  value={defaultRateSar}
-                  onChange={(e) => setDefaultRateSar(Number(e.target.value))}
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="v-ziyarat-rate" className="text-xs">
-                  Ziyarat Trip Rate (SAR)
-                </Label>
-                <Input
-                  id="v-ziyarat-rate"
-                  type="number"
-                  min={0}
-                  value={ziyaratRateSar}
-                  onChange={(e) => setZiyaratRateSar(Number(e.target.value))}
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="v-image">Image URL</Label>
-            <Input
-              id="v-image"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://..."
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="v-desc">Description</Label>
-            <Input
-              id="v-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Driver service details, AC, luggage handling..."
-            />
-          </div>
-
-          <div className="flex items-center justify-between border-t border-border pt-3">
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-xs cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={allowsCustomPickupTime}
-                  onChange={(e) => setAllowsCustomPickupTime(e.target.checked)}
-                  className="rounded text-primary"
-                />
-                <span>Custom Pickup Time</span>
-              </label>
-              <label className="flex items-center gap-2 text-xs cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                  className="rounded text-primary"
-                />
-                <span className="font-medium">Active in Fleet</span>
-              </label>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="v-sort" className="text-xs">
-                Sort:
-              </Label>
-              <Input
-                id="v-sort"
-                type="number"
-                value={sortOrder}
-                onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="w-14 h-7 text-xs font-mono"
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="pt-2">
-            <DialogClose render={<Button variant="outline" type="button" />}>
-              Cancel
-            </DialogClose>
-            <Button
-              type="submit"
-              disabled={loading}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
-            >
-              {loading && <Loader2 className="size-4 animate-spin" />}
-              <span>{vehicle ? "Save Changes" : "Create Vehicle"}</span>
-            </Button>
-          </DialogFooter>
-        </form>
+      <DialogContent className="sm:max-w-md">
+        <VehicleFormBody
+          key={`${vehicle?.id ?? "new"}-${formSession}`}
+          vehicle={vehicle}
+          onSuccess={() => setOpen(false)}
+        />
       </DialogContent>
     </Dialog>
   )

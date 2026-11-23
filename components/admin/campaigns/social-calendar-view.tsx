@@ -4,13 +4,21 @@ import * as React from "react"
 import Image from "next/image"
 import {
   Calendar as CalendarIcon,
+  Camera,
   ChevronLeft,
   ChevronRight,
   Clock,
+  FileText,
+  Film,
+  Globe,
+  Image as ImageIcon,
   Plus,
   AlertCircle,
   Loader2,
   List,
+  MapPin,
+  Play,
+  Smartphone,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -62,28 +70,79 @@ export function navigateCalendarDate(
 
 interface SocialCalendarViewProps {
   scheduledPosts: ScheduledPostItem[]
+  initialNowMs?: number
   onSelectSlot?: (dateKey: string, timeSlot: string) => void
   onSelectPost?: (post: ScheduledPostItem) => void
   onRefresh?: () => void
 }
 
-const PROVIDER_ICONS: Record<SocialProviderId, string> = {
-  instagram: "📸",
-  facebook: "📘",
-  tiktok: "🎵",
-  youtube: "▶️",
-  gmb: "📍",
+const PROVIDER_ICON_MAP: Record<
+  SocialProviderId,
+  React.ComponentType<{ className?: string }>
+> = {
+  instagram: Camera,
+  facebook: Globe,
+  tiktok: Film,
+  youtube: Play,
+  gmb: MapPin,
+}
+
+function getRenderableImagePreviewUrl(
+  url: string | null | undefined
+): string | null {
+  if (!url) return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+  const pathname = trimmed.split(/[?#]/)[0]?.toLowerCase() || ""
+  if (
+    pathname.endsWith(".mp4") ||
+    pathname.endsWith(".mov") ||
+    pathname.endsWith(".webm") ||
+    pathname.endsWith(".m4v") ||
+    pathname.endsWith(".pdf")
+  ) {
+    return null
+  }
+  return trimmed
+}
+
+function isPdfAssetUrl(url: string): boolean {
+  const pathname = url.trim().split(/[?#]/)[0]?.toLowerCase() || ""
+  return pathname.endsWith(".pdf")
+}
+
+function renderProviderIcon(provider: SocialProviderId, className = "size-3") {
+  const IconComponent = PROVIDER_ICON_MAP[provider] || Smartphone
+  return <IconComponent className={className} aria-hidden="true" />
 }
 
 export function SocialCalendarView({
   scheduledPosts,
+  initialNowMs,
   onSelectSlot,
   onSelectPost,
   onRefresh,
 }: SocialCalendarViewProps) {
   const [viewMode, setViewMode] =
     React.useState<SocialCalendarViewMode>("month")
-  const [currentDate, setCurrentDate] = React.useState<Date>(() => new Date())
+  const [seedNowMs, setSeedNowMs] = React.useState<number>(
+    () => initialNowMs ?? Date.now()
+  )
+  const [currentDate, setCurrentDate] = React.useState<Date>(
+    () => new Date(initialNowMs ?? Date.now())
+  )
+
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      setSeedNowMs(Date.now())
+    }, 60_000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  const todayPktKey = React.useMemo(
+    () => formatPktDateKey(new Date(seedNowMs)),
+    [seedNowMs]
+  )
 
   // Reschedule dialog state
   const [reschedulingPost, setReschedulingPost] =
@@ -108,7 +167,9 @@ export function SocialCalendarView({
   }
 
   const handleToday = () => {
-    setCurrentDate(new Date())
+    const nowMs = Date.now()
+    setSeedNowMs(nowMs)
+    setCurrentDate(new Date(nowMs))
   }
 
   // Generate cells
@@ -193,7 +254,7 @@ export function SocialCalendarView({
     const firstCell = dayCells[0]
     const lastCell = dayCells[dayCells.length - 1]
     if (firstCell && lastCell) {
-      return `${firstCell.dayNumber} ${formatPktDate(firstCell.dateUtcStart, "short")} — ${lastCell.dayNumber} ${formatPktDate(lastCell.dateUtcStart, "short")} (PKT)`
+      return `${firstCell.dayNumber} ${formatPktDate(firstCell.dateUtcStart, "short")} to ${lastCell.dayNumber} ${formatPktDate(lastCell.dateUtcStart, "short")} (PKT)`
     }
     return "Weekly Calendar (PKT)"
   }, [viewMode, currentMonth, currentYear, dayCells])
@@ -202,25 +263,26 @@ export function SocialCalendarView({
 
   const renderAgendaList = (className?: string) => (
     <div className={className}>
-      <div className="space-y-2.5">
+      <div className="flex flex-col gap-2.5">
         {agendaCells.map((cell) => {
           const postsForDay = postsByDate.get(cell.dateKey) || []
+          const isToday = cell.dateKey === todayPktKey
           return (
             <div
               key={`agenda-${cell.dateKey}`}
-              className={`rounded-xl border p-3 space-y-2 ${
-                cell.isToday
-                  ? "border-[#0A3622] bg-[#0A3622]/[0.03] ring-1 ring-[#0A3622]/25"
-                  : "border-border bg-card"
+              className={`flex flex-col gap-2 rounded-xl p-3 ${
+                isToday
+                  ? "bg-primary/5 ring-1 ring-primary/35"
+                  : "bg-secondary/50"
               }`}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span
-                    className={`text-xs font-bold rounded-full size-6 flex items-center justify-center tabular-nums ${
-                      cell.isToday
-                        ? "bg-[#0A3622] text-white"
-                        : "bg-secondary text-foreground"
+                    className={`flex size-6 items-center justify-center rounded-full text-xs font-bold tabular-nums ${
+                      isToday
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-background text-foreground"
                     }`}
                   >
                     {cell.dayNumber}
@@ -228,22 +290,22 @@ export function SocialCalendarView({
                   <span className="text-xs font-semibold text-foreground">
                     {formatPktDate(cell.dateUtcStart, "short")}
                   </span>
-                  {cell.isToday && (
-                    <Badge className="bg-[#0A3622] text-white text-[9px]">
+                  {isToday && (
+                    <Badge className="bg-primary text-[10px] text-primary-foreground">
                       Today (PKT)
                     </Badge>
                   )}
                 </div>
 
-                <div className="flex items-center gap-1 flex-wrap">
+                <div className="flex flex-wrap items-center gap-1">
                   {DEFAULT_PKT_POSTING_SLOTS.map((slot) => {
                     const hourNum = parseInt(slot.split(":")[0] || "11", 10)
                     const label =
                       hourNum === 11
                         ? "11 AM"
                         : hourNum === 16
-                        ? "4 PM"
-                        : "9 PM"
+                          ? "4 PM"
+                          : "9 PM"
                     return (
                       <button
                         key={slot}
@@ -251,9 +313,12 @@ export function SocialCalendarView({
                         onClick={() =>
                           onSelectSlot && onSelectSlot(cell.dateKey, slot)
                         }
-                        className="text-[10px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-[#C5A059]/15 hover:border-[#C5A059]/60 font-mono cursor-pointer inline-flex items-center gap-0.5"
+                        className="inline-flex cursor-pointer items-center gap-0.5 rounded border border-border bg-background px-2 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:border-gold-border hover:bg-accent/50 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-90 motion-reduce:transition-none"
                       >
-                        <Plus className="size-2.5 text-[#C5A059]" />
+                        <Plus
+                          className="size-2.5 text-gold-text"
+                          aria-hidden="true"
+                        />
                         <span>{label}</span>
                       </button>
                     )
@@ -263,10 +328,10 @@ export function SocialCalendarView({
 
               {postsForDay.length === 0 ? (
                 <p className="text-[11px] text-muted-foreground">
-                  No posts queued — tap a peak PKT slot above to schedule.
+                  No posts queued: tap a peak PKT slot above to schedule.
                 </p>
               ) : (
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   {postsForDay.map((post) => {
                     const postTimePkt = formatPktTime12h(
                       new Date(post.scheduledFor)
@@ -278,35 +343,45 @@ export function SocialCalendarView({
                     return (
                       <div
                         key={post.id}
-                        onClick={() => onSelectPost && onSelectPost(post)}
-                        className="rounded-lg border border-border bg-background p-2 flex items-center justify-between gap-2 text-xs cursor-pointer hover:border-[#C5A059]"
+                        className="flex items-center justify-between gap-2 rounded-lg bg-background p-2 text-xs transition-colors hover:bg-accent/30 motion-reduce:transition-none"
                       >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => onSelectPost && onSelectPost(post)}
+                          className="min-w-0 flex-1 cursor-pointer rounded text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        >
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <span className="font-mono text-[11px] font-bold text-primary">
                               {post.postAsset?.postCode || "POST"}
                             </span>
-                            <span className="text-[10px] font-mono text-muted-foreground inline-flex items-center gap-0.5 tabular-nums">
-                              <Clock className="size-2.5" />
+                            <span className="inline-flex items-center gap-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+                              <Clock className="size-2.5" aria-hidden="true" />
                               {postTimePkt}
                             </span>
-                            <span className="text-[11px]">
-                              {targetProviders
-                                .map((p) => PROVIDER_ICONS[p] || "📱")
-                                .join(" ")}
+                            <span className="inline-flex items-center gap-1 text-muted-foreground">
+                              {targetProviders.map((p) => (
+                                <span
+                                  key={p}
+                                  title={p}
+                                  aria-label={p}
+                                  className="inline-flex items-center"
+                                >
+                                  {renderProviderIcon(p, "size-3")}
+                                </span>
+                              ))}
                             </span>
                           </div>
-                          <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                             {post.caption}
                           </p>
-                        </div>
+                        </button>
 
                         {(post.status === "scheduled" ||
                           post.status === "draft") && (
                           <button
                             type="button"
                             onClick={(e) => handleOpenReschedule(post, e)}
-                            className="inline-flex min-h-6 items-center text-[11px] text-primary hover:underline font-semibold shrink-0 cursor-pointer"
+                            className="inline-flex min-h-6 shrink-0 cursor-pointer items-center rounded px-1.5 text-[11px] font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
                           >
                             Move
                           </button>
@@ -324,72 +399,76 @@ export function SocialCalendarView({
   )
 
   return (
-    <div className="flex flex-col gap-4 min-w-0">
+    <div className="flex min-w-0 flex-col gap-4">
       {/* Calendar Header Controls */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-gradient-to-r from-[#0A3622]/5 via-background to-[#C5A059]/5 p-3.5 rounded-xl border border-border shadow-xs">
-        <div className="flex items-center gap-2 min-w-0">
-          <CalendarIcon className="size-5 text-[#C5A059] shrink-0" />
+      <div className="flex flex-col items-stretch justify-between gap-3 rounded-xl bg-secondary/60 p-3.5 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-center gap-2">
+          <CalendarIcon
+            className="size-5 shrink-0 text-gold-text"
+            aria-hidden="true"
+          />
           <div className="min-w-0">
-            <h3 className="font-display text-base font-bold text-foreground truncate">
+            <h3 className="truncate font-display text-base font-bold text-foreground">
               {headerLabel}
             </h3>
             <p className="text-[11px] text-muted-foreground">
-              Peak Umrah windows: 11:00 AM, 4:00 PM &amp; 9:00 PM Asia/Karachi (UTC+5)
+              Peak Umrah windows: 11:00 AM, 4:00 PM &amp; 9:00 PM Asia/Karachi
+              (UTC+5)
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+        <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
           {/* Navigation Controls */}
-          <div className="flex items-center border border-border rounded-lg overflow-hidden bg-background">
+          <div className="flex items-center overflow-hidden rounded-lg border border-border bg-background">
             <button
               type="button"
               onClick={handlePrev}
-              className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              className="cursor-pointer p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
               title="Previous"
               aria-label="Previous period"
             >
-              <ChevronLeft className="size-4" />
+              <ChevronLeft className="size-4" aria-hidden="true" />
             </button>
             <button
               type="button"
               onClick={handleToday}
-              className="px-2.5 py-1 text-xs font-semibold hover:bg-muted text-foreground transition-colors border-x border-border cursor-pointer"
+              className="cursor-pointer border-x border-border px-2.5 py-1 text-xs font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
             >
               Today
             </button>
             <button
               type="button"
               onClick={handleNext}
-              className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              className="cursor-pointer p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
               title="Next"
               aria-label="Next period"
             >
-              <ChevronRight className="size-4" />
+              <ChevronRight className="size-4" aria-hidden="true" />
             </button>
           </div>
 
           {/* View Toggle */}
-          <div className="flex items-center bg-secondary p-0.5 rounded-lg border border-border">
+          <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
             <button
               type="button"
               onClick={() => setViewMode("agenda")}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer inline-flex items-center gap-1 ${
+              className={`inline-flex cursor-pointer items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors active:opacity-90 motion-reduce:transition-none ${
                 viewMode === "agenda"
-                  ? "bg-[#0A3622] text-white shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-primary text-primary-foreground shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
+                  : "text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               }`}
             >
-              <List className="size-3" />
+              <List className="size-3" aria-hidden="true" />
               <span>Agenda</span>
             </button>
             <button
               type="button"
               onClick={() => setViewMode("week")}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+              className={`cursor-pointer rounded-md px-3 py-1 text-xs font-semibold transition-colors active:opacity-90 motion-reduce:transition-none ${
                 viewMode === "week"
-                  ? "bg-[#0A3622] text-white shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-primary text-primary-foreground shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
+                  : "text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               }`}
             >
               Week
@@ -397,10 +476,10 @@ export function SocialCalendarView({
             <button
               type="button"
               onClick={() => setViewMode("month")}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+              className={`cursor-pointer rounded-md px-3 py-1 text-xs font-semibold transition-colors active:opacity-90 motion-reduce:transition-none ${
                 viewMode === "month"
-                  ? "bg-[#0A3622] text-white shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-primary text-primary-foreground shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
+                  : "text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               }`}
             >
               Month
@@ -417,10 +496,14 @@ export function SocialCalendarView({
           {renderAgendaList("md:hidden")}
 
           {/* Desktop / Tablet 7-Column Calendar Grid with Horizontal Overflow Guard */}
-          <div className="hidden md:block overflow-x-auto pb-1">
-            <div className="min-w-[680px] space-y-2">
+          <div
+            tabIndex={0}
+            aria-label="Social publishing calendar grid"
+            className="hidden overflow-x-auto pb-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary md:block"
+          >
+            <div className="flex min-w-[680px] flex-col gap-2">
               {/* Weekday Names Header */}
-              <div className="grid grid-cols-7 gap-1 text-center font-display text-xs font-bold text-muted-foreground py-1 border-b border-border/80">
+              <div className="grid grid-cols-7 gap-1 border-b border-border/80 py-1 text-center font-display text-xs font-bold text-muted-foreground">
                 {weekDayNames.map((name) => (
                   <div key={name}>{name}</div>
                 ))}
@@ -434,25 +517,26 @@ export function SocialCalendarView({
               >
                 {dayCells.map((cell) => {
                   const postsForDay = postsByDate.get(cell.dateKey) || []
+                  const isToday = cell.dateKey === todayPktKey
                   const isDimmed = !cell.isCurrentMonth && viewMode === "month"
 
                   return (
                     <div
                       key={cell.dateKey}
-                      className={`rounded-xl border flex flex-col p-2 transition-all min-w-0 ${
-                        cell.isToday
-                          ? "border-[#0A3622] bg-[#0A3622]/[0.02] ring-1 ring-[#0A3622]/30"
+                      className={`flex min-w-0 flex-col rounded-xl p-2 transition-colors motion-reduce:transition-none ${
+                        isToday
+                          ? "bg-primary/5 ring-1 ring-primary/35"
                           : isDimmed
-                          ? "border-border/40 bg-muted/30"
-                          : "border-border bg-card hover:border-[#C5A059]/40"
+                            ? "bg-muted/40"
+                            : "bg-secondary/45 hover:bg-secondary/70"
                       }`}
                     >
                       {/* Day Header */}
-                      <div className="flex items-center justify-between pb-1.5 border-b border-border/40">
+                      <div className="flex items-center justify-between border-b border-border/40 pb-1.5">
                         <span
-                          className={`text-xs font-bold rounded-full size-6 flex items-center justify-center tabular-nums ${
-                            cell.isToday
-                              ? "bg-[#0A3622] text-white shadow-xs"
+                          className={`flex size-6 items-center justify-center rounded-full text-xs font-bold tabular-nums ${
+                            isToday
+                              ? "bg-primary text-primary-foreground shadow-xs"
                               : "text-foreground"
                           }`}
                         >
@@ -462,7 +546,7 @@ export function SocialCalendarView({
                         {postsForDay.length > 0 && (
                           <Badge
                             variant="outline"
-                            className="text-[9px] px-1.5 py-0 border-[#C5A059]/60 text-[#0A3622] font-mono tabular-nums"
+                            className="border-gold-border px-1.5 py-0 font-sans text-[10px] font-semibold text-primary tabular-nums"
                           >
                             {postsForDay.length} post
                             {postsForDay.length > 1 ? "s" : ""}
@@ -471,7 +555,7 @@ export function SocialCalendarView({
                       </div>
 
                       {/* Day Posts List */}
-                      <div className="flex-1 overflow-y-auto space-y-1.5 py-1.5 min-h-[90px]">
+                      <div className="flex min-h-[90px] flex-1 flex-col gap-1.5 overflow-y-auto py-1.5">
                         {postsForDay.map((post) => {
                           const postTimePkt = formatPktTime12h(
                             new Date(post.scheduledFor)
@@ -484,28 +568,38 @@ export function SocialCalendarView({
 
                           const statusColor =
                             post.status === "completed"
-                              ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30"
+                              ? "bg-status-success-bg text-status-success border-status-success-border"
                               : post.status === "publishing"
-                              ? "bg-amber-500/10 text-amber-700 border-amber-500/30 animate-pulse"
-                              : post.status === "failed"
-                              ? "bg-rose-500/10 text-rose-700 border-rose-500/30"
-                              : "bg-[#0A3622]/10 text-[#0A3622] border-[#0A3622]/30"
+                                ? "bg-status-warning-bg text-status-warning border-status-warning-border animate-pulse motion-reduce:animate-none"
+                                : post.status === "failed"
+                                  ? "bg-status-danger-bg text-status-danger border-status-danger-border"
+                                  : "bg-background text-primary border-border"
 
                           const thumbnail =
                             post.mediaUrls[0] || post.postAsset?.imageUrl || ""
+                          const thumbnailImageUrl =
+                            getRenderableImagePreviewUrl(thumbnail)
 
                           return (
                             <div
                               key={post.id}
-                              onClick={() => onSelectPost && onSelectPost(post)}
-                              className={`group/card rounded-lg border p-1.5 text-left text-xs bg-background shadow-xs hover:shadow-md transition-all cursor-pointer ${statusColor}`}
+                              className={`group/post flex items-center gap-1 rounded-lg border p-1.5 text-left text-xs shadow-2xs transition-colors motion-reduce:transition-none ${statusColor}`}
                             >
-                              <div className="flex items-center gap-1.5">
-                                {thumbnail ? (
-                                  <div className="relative size-7 shrink-0 rounded overflow-hidden bg-muted">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onSelectPost && onSelectPost(post)
+                                }
+                                className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                              >
+                                {thumbnailImageUrl ? (
+                                  <div className="relative size-7 shrink-0 overflow-hidden rounded bg-muted">
                                     <Image
-                                      src={thumbnail}
-                                      alt="thumb"
+                                      src={thumbnailImageUrl}
+                                      alt={
+                                        post.postAsset?.title ||
+                                        "Scheduled post media"
+                                      }
                                       fill
                                       sizes="28px"
                                       className="object-cover"
@@ -513,54 +607,73 @@ export function SocialCalendarView({
                                     />
                                   </div>
                                 ) : (
-                                  <div className="size-7 shrink-0 rounded bg-muted flex items-center justify-center text-[10px]">
-                                    📸
+                                  <div className="flex size-7 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+                                    {thumbnail && isPdfAssetUrl(thumbnail) ? (
+                                      <FileText
+                                        className="size-3.5"
+                                        aria-hidden="true"
+                                      />
+                                    ) : thumbnail ? (
+                                      <Film
+                                        className="size-3.5"
+                                        aria-hidden="true"
+                                      />
+                                    ) : (
+                                      <ImageIcon
+                                        className="size-3.5"
+                                        aria-hidden="true"
+                                      />
+                                    )}
                                   </div>
                                 )}
 
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-mono text-[10px] font-bold truncate">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="truncate font-mono text-[10px] font-bold">
                                       {post.postAsset?.postCode || "POST"}
                                     </span>
-                                    <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-0.5 tabular-nums">
-                                      <Clock className="size-2.5" />
+                                    <span className="flex shrink-0 items-center gap-0.5 text-[9px] font-medium text-muted-foreground tabular-nums">
+                                      <Clock
+                                        className="size-2.5"
+                                        aria-hidden="true"
+                                      />
                                       {postTimePkt}
                                     </span>
                                   </div>
 
-                                  <div className="flex items-center justify-between mt-0.5">
-                                    <div className="flex items-center gap-0.5 text-[10px]">
-                                      {targetProviders.map((p) => (
-                                        <span key={p} title={p}>
-                                          {PROVIDER_ICONS[p] || "📱"}
-                                        </span>
-                                      ))}
-                                    </div>
-
-                                    {(post.status === "scheduled" ||
-                                      post.status === "draft") && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) =>
-                                          handleOpenReschedule(post, e)
-                                        }
-                                        className="opacity-0 group-hover/card:opacity-100 text-[10px] text-primary hover:underline font-semibold"
-                                        title="Reschedule Post"
+                                  <div className="mt-0.5 flex items-center gap-1">
+                                    {targetProviders.map((p) => (
+                                      <span
+                                        key={p}
+                                        title={p}
+                                        aria-label={p}
+                                        className="inline-flex items-center"
                                       >
-                                        Move
-                                      </button>
-                                    )}
+                                        {renderProviderIcon(p, "size-2.5")}
+                                      </span>
+                                    ))}
                                   </div>
                                 </div>
-                              </div>
+                              </button>
+
+                              {(post.status === "scheduled" ||
+                                post.status === "draft") && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleOpenReschedule(post, e)}
+                                  className="shrink-0 cursor-pointer rounded px-1 text-[10px] font-semibold text-primary opacity-100 transition-opacity hover:underline focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none sm:opacity-0 sm:group-focus-within/post:opacity-100 sm:group-hover/post:opacity-100"
+                                  title="Reschedule Post"
+                                >
+                                  Move
+                                </button>
+                              )}
                             </div>
                           )
                         })}
                       </div>
 
                       {/* Peak Slot Buttons */}
-                      <div className="pt-1 border-t border-border/40 flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1.5 border-t border-border/40 pt-1">
                         {DEFAULT_PKT_POSTING_SLOTS.map((slot) => {
                           const [h] = slot.split(":")
                           const hourNum = parseInt(h || "11", 10)
@@ -568,21 +681,23 @@ export function SocialCalendarView({
                             hourNum === 11
                               ? "11 AM"
                               : hourNum === 16
-                              ? "4 PM"
-                              : "9 PM"
+                                ? "4 PM"
+                                : "9 PM"
 
                           return (
                             <button
                               key={slot}
                               type="button"
                               onClick={() =>
-                                onSelectSlot &&
-                                onSelectSlot(cell.dateKey, slot)
+                                onSelectSlot && onSelectSlot(cell.dateKey, slot)
                               }
-                              className="min-h-6 min-w-6 text-[10px] px-2 py-1 rounded border border-border/60 text-muted-foreground hover:text-foreground hover:bg-[#C5A059]/15 hover:border-[#C5A059]/60 transition-all font-mono cursor-pointer inline-flex items-center gap-0.5"
+                              className="inline-flex min-h-6 min-w-6 cursor-pointer items-center gap-0.5 rounded border border-border/70 bg-background px-2 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:border-gold-border hover:bg-accent/50 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-90 motion-reduce:transition-none"
                               title={`Queue new post on ${cell.dateKey} at ${slot} PKT`}
                             >
-                              <Plus className="size-2.5 text-gold-text" />
+                              <Plus
+                                className="size-2.5 text-gold-text"
+                                aria-hidden="true"
+                              />
                               <span>{label}</span>
                             </button>
                           )
@@ -603,10 +718,10 @@ export function SocialCalendarView({
           open={Boolean(reschedulingPost)}
           onOpenChange={(open) => !open && setReschedulingPost(null)}
         >
-          <DialogContent className="max-w-md bg-card border-[#C5A059]/50 shadow-xl">
+          <DialogContent className="max-w-md border-gold-border bg-card shadow-xl">
             <DialogHeader>
-              <DialogTitle className="font-display text-base font-bold flex items-center gap-2">
-                <Clock className="size-4 text-[#C5A059]" />
+              <DialogTitle className="flex items-center gap-2 font-display text-base font-bold">
+                <Clock className="size-4 text-gold-text" aria-hidden="true" />
                 <span>Reschedule Post</span>
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
@@ -618,8 +733,8 @@ export function SocialCalendarView({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-3">
-              <div className="space-y-1.5">
+            <div className="flex flex-col gap-4 py-3">
+              <div className="flex flex-col gap-1.5">
                 <Label
                   htmlFor="reschedule-date"
                   className="text-xs font-semibold"
@@ -631,11 +746,11 @@ export function SocialCalendarView({
                   type="date"
                   value={newDateInput}
                   onChange={(e) => setNewDateInput(e.target.value)}
-                  className="h-8 text-xs border-border bg-background"
+                  className="h-8 border-border bg-background text-xs"
                 />
               </div>
 
-              <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold">
                   Peak Time Slot (PKT)
                 </Label>
@@ -649,10 +764,10 @@ export function SocialCalendarView({
                       key={s.slot}
                       type="button"
                       onClick={() => setNewSlotInput(s.slot)}
-                      className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                      className={`cursor-pointer rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors active:opacity-90 motion-reduce:transition-none ${
                         newSlotInput === s.slot
-                          ? "bg-[#0A3622] text-white border-[#0A3622] shadow-xs"
-                          : "border-border bg-background text-muted-foreground hover:text-foreground"
+                          ? "border-primary bg-primary text-primary-foreground shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
+                          : "border-border bg-background text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       }`}
                     >
                       {s.label}
@@ -661,7 +776,7 @@ export function SocialCalendarView({
                 </div>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 <Label
                   htmlFor="reschedule-time"
                   className="text-xs font-semibold"
@@ -673,13 +788,13 @@ export function SocialCalendarView({
                   type="time"
                   value={newSlotInput}
                   onChange={(e) => setNewSlotInput(e.target.value)}
-                  className="h-8 text-xs border-border bg-background font-mono"
+                  className="h-8 border-border bg-background font-mono text-xs"
                 />
               </div>
 
               {rescheduleError && (
-                <div className="rounded-lg bg-destructive/10 text-destructive text-xs p-2.5 font-medium flex items-center gap-1.5">
-                  <AlertCircle className="size-4 shrink-0" />
+                <div className="flex items-center gap-1.5 rounded-lg bg-status-danger-bg p-2.5 text-xs font-medium text-status-danger">
+                  <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
                   <span>{rescheduleError}</span>
                 </div>
               )}
@@ -691,7 +806,7 @@ export function SocialCalendarView({
                 variant="outline"
                 size="sm"
                 onClick={() => setReschedulingPost(null)}
-                className="text-xs h-8"
+                className="h-8 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 Cancel
               </Button>
@@ -700,10 +815,13 @@ export function SocialCalendarView({
                 size="sm"
                 disabled={isRescheduling}
                 onClick={handleConfirmReschedule}
-                className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 text-xs h-8 font-semibold cursor-pointer gap-1.5"
+                className="h-8 cursor-pointer gap-1.5 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isRescheduling && (
-                  <Loader2 className="size-3.5 animate-spin text-[#C5A059]" />
+                  <Loader2
+                    className="size-3.5 animate-spin text-gold motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 )}
                 <span>Confirm Reschedule</span>
               </Button>

@@ -1,6 +1,7 @@
 import { logger, schedules } from "@trigger.dev/sdk"
 import {
   and,
+  asc,
   desc,
   eq,
   inArray,
@@ -9,14 +10,18 @@ import {
   lt,
   lte,
   ne,
+  or,
   sql,
 } from "drizzle-orm"
 import { db } from "@/db"
 import {
+  applicationDocuments,
   applicationPayments,
   applicationQuotes,
   applications,
+  applicationTravellers,
 } from "@/db/schema/applications"
+import { groupDepartures } from "@/db/schema/packages"
 import {
   session as sessionTable,
   user as userTable,
@@ -29,6 +34,7 @@ import {
   whatsappLinkedDeviceSessions,
   whatsappMessages,
 } from "@/db/schema/whatsapp-crm"
+import { resolveAnchorReturnDateIso } from "@/lib/domain/pilgrim-documents"
 import { sendTransactionalEmail } from "@/lib/security/mailer"
 import { syncAllPublishedPostsAnalytics } from "@/lib/social/analytics"
 import { refreshExpiringSocialTokens } from "@/lib/social/token-refresh"
@@ -630,6 +636,66 @@ function normalizeDeleteStorageResult(
   return { count, errorMessages }
 }
 
+function analyzePortalDeleteResult(
+  raw:
+    | DeleteR2ObjectsResult
+    | {
+        deletedCount: number
+        errors: Array<string | { key: string; message: string }>
+      },
+  attemptedKeys: readonly string[]
+): {
+  deletedCount: number
+  deletedKeys: string[]
+  failedKeys: Set<string>
+  errorMessages: string[]
+} {
+  const failedKeys = new Set<string>()
+  const errorMessages: string[] = []
+
+  for (const err of raw.errors) {
+    if (typeof err === "string") {
+      errorMessages.push(err)
+      for (const key of attemptedKeys) {
+        if (err.includes(key)) {
+          failedKeys.add(key)
+        }
+      }
+    } else {
+      errorMessages.push(`${err.key}: ${err.message}`)
+      if (err.key) {
+        failedKeys.add(err.key)
+      }
+    }
+  }
+
+  if ("deleted" in raw) {
+    const deletedSet = new Set(raw.deleted)
+    if (raw.errors.length > 0) {
+      for (const key of attemptedKeys) {
+        if (!deletedSet.has(key)) {
+          failedKeys.add(key)
+        }
+      }
+    }
+    const deletedKeys = raw.deleted.filter((k) => !failedKeys.has(k))
+    return {
+      deletedCount: deletedKeys.length,
+      deletedKeys,
+      failedKeys,
+      errorMessages,
+    }
+  }
+
+  const deletedKeys = attemptedKeys.filter((k) => !failedKeys.has(k))
+  return {
+    deletedCount: Math.max(0, Math.min(raw.deletedCount, deletedKeys.length)),
+    deletedKeys,
+    failedKeys,
+    errorMessages,
+  }
+}
+
 /**
  * Enforces Owner Decision **`OD-06` Option A** PII & Media Retention Schedule (`T-074`, `A25-008`):
  *
@@ -828,6 +894,210 @@ export async function runPiiAndMediaRetentionPurge(
     )
     passportMediaObjectsPurged = res.count
     r2DeleteErrors.push(...res.errorMessages)
+  }
+
+  // ---------------------------------------------------------------------------
+  // 1b. Spec 0029: 60-day post-return `application_travellers` & `application_documents` purge (`AC-9`)
+  // ---------------------------------------------------------------------------
+  if (canQueryApps) {
+    const decisionFallbackCutoffDate = new Date(now.getTime() - 150 * DAY_MS)
+    const portalPurgeConditions = [
+      sql`(
+        EXISTS (
+          SELECT 1 FROM ${applicationDocuments} ad
+          WHERE ad.application_id = ${applications.id}
+            AND ad.pii_purged_at IS NULL
+        )
+        OR EXISTS (
+          SELECT 1 FROM ${applicationTravellers} atv
+          WHERE atv.application_id = ${applications.id}
+            AND atv.pii_purged_at IS NULL
+        )
+      )`,
+      or(
+        and(
+          isNotNull(applications.ksaDepartureDate),
+          lte(applications.ksaDepartureDate, passportReturnCutoffIso)
+        ),
+        and(
+          isNull(applications.ksaDepartureDate),
+          isNotNull(groupDepartures.returnDate),
+          lte(groupDepartures.returnDate, passportReturnCutoffIso)
+        ),
+        and(
+          isNull(applications.ksaDepartureDate),
+          isNull(groupDepartures.returnDate),
+          isNotNull(applications.ksaArrivalDate),
+          lte(applications.ksaArrivalDate, passportReturnCutoffIso)
+        ),
+        and(
+          isNull(applications.ksaDepartureDate),
+          isNull(groupDepartures.returnDate),
+          isNull(applications.ksaArrivalDate),
+          sql`${applications.status}::text = 'approved'`,
+          isNotNull(applications.decisionAt),
+          lte(applications.decisionAt, decisionFallbackCutoffDate)
+        )
+      ),
+    ]
+    if (options?.scopedApplicationIds?.length) {
+      portalPurgeConditions.push(
+        inArray(applications.id, options.scopedApplicationIds)
+      )
+    }
+
+    const candidatePortalApps = await db
+      .select({
+        id: applications.id,
+        status: sql<string>`${applications.status}::text`,
+        decisionAt: applications.decisionAt,
+        ksaArrivalDate: applications.ksaArrivalDate,
+        ksaDepartureDate: applications.ksaDepartureDate,
+        totalKsaDays: applications.totalKsaDays,
+        groupReturnDate: groupDepartures.returnDate,
+      })
+      .from(applications)
+      .leftJoin(
+        groupDepartures,
+        eq(applications.groupDepartureId, groupDepartures.id)
+      )
+      .where(and(...portalPurgeConditions))
+      .orderBy(asc(applications.ksaDepartureDate), asc(applications.createdAt))
+      .limit(500)
+
+    const eligiblePortalAppIds: string[] = []
+    for (const app of candidatePortalApps) {
+      const anchorReturnDateIso = resolveAnchorReturnDateIso({
+        ksaDepartureDate: app.ksaDepartureDate,
+        groupReturnDate: app.groupReturnDate,
+        ksaArrivalDate: app.ksaArrivalDate,
+        totalKsaDays: app.totalKsaDays,
+      })
+      const isReturnExpired =
+        anchorReturnDateIso !== null &&
+        anchorReturnDateIso <= passportReturnCutoffIso
+      const isNullDateDecisionExpired =
+        anchorReturnDateIso === null &&
+        app.status === "approved" &&
+        app.decisionAt !== null &&
+        app.decisionAt <= decisionFallbackCutoffDate
+
+      if (isReturnExpired || isNullDateDecisionExpired) {
+        eligiblePortalAppIds.push(app.id)
+      }
+    }
+
+    if (eligiblePortalAppIds.length > 0) {
+      const unpurgedDocs = await db
+        .select({
+          id: applicationDocuments.id,
+          travellerId: applicationDocuments.travellerId,
+          storageKey: applicationDocuments.storageKey,
+        })
+        .from(applicationDocuments)
+        .where(
+          and(
+            inArray(applicationDocuments.applicationId, eligiblePortalAppIds),
+            isNull(applicationDocuments.piiPurgedAt)
+          )
+        )
+
+      const portalStorageKeys = Array.from(
+        new Set(
+          unpurgedDocs
+            .map((d) => d.storageKey?.trim() ?? "")
+            .filter((k) => k.length > 0)
+        )
+      )
+
+      const failedPortalKeys = new Set<string>()
+      if (portalStorageKeys.length > 0) {
+        try {
+          const rawDeleteRes = await deleteStorage(portalStorageKeys)
+          const analyzed = analyzePortalDeleteResult(
+            rawDeleteRes,
+            portalStorageKeys
+          )
+          passportMediaObjectsPurged += analyzed.deletedCount
+          allR2Keys.push(...analyzed.deletedKeys)
+          r2DeleteErrors.push(...analyzed.errorMessages)
+          for (const fk of analyzed.failedKeys) {
+            failedPortalKeys.add(fk)
+          }
+        } catch (deleteErr: unknown) {
+          r2DeleteErrors.push(
+            deleteErr instanceof Error
+              ? deleteErr.message
+              : "Failed to delete pilgrim passport media objects from storage"
+          )
+          for (const key of portalStorageKeys) {
+            failedPortalKeys.add(key)
+          }
+        }
+      }
+
+      // Only scrub DB document rows whose R2 key was absent or deleted cleanly (`AC-9`)
+      const scrubbableDocIds = unpurgedDocs
+        .filter((d) => {
+          const cleanKey = d.storageKey?.trim() ?? ""
+          return !cleanKey || !failedPortalKeys.has(cleanKey)
+        })
+        .map((d) => d.id)
+
+      if (scrubbableDocIds.length > 0) {
+        await db
+          .update(applicationDocuments)
+          .set({
+            storageKey: null,
+            originalFilename: null,
+            status: "purged",
+            piiPurgedAt: now,
+            updatedAt: now,
+          })
+          .where(inArray(applicationDocuments.id, scrubbableDocIds))
+      }
+
+      const [unpurgedTravellers, remainingUnpurgedDocs] = await Promise.all([
+        db
+          .select({ id: applicationTravellers.id })
+          .from(applicationTravellers)
+          .where(
+            and(
+              inArray(applicationTravellers.applicationId, eligiblePortalAppIds),
+              isNull(applicationTravellers.piiPurgedAt)
+            )
+          ),
+        db
+          .select({ travellerId: applicationDocuments.travellerId })
+          .from(applicationDocuments)
+          .where(
+            and(
+              inArray(applicationDocuments.applicationId, eligiblePortalAppIds),
+              isNull(applicationDocuments.piiPurgedAt)
+            )
+          ),
+      ])
+
+      const travellersWithPendingDocs = new Set(
+        remainingUnpurgedDocs.map((d) => d.travellerId)
+      )
+      const scrubbableTravellerIds = unpurgedTravellers
+        .map((t) => t.id)
+        .filter((tid) => !travellersWithPendingDocs.has(tid))
+
+      if (scrubbableTravellerIds.length > 0) {
+        await db
+          .update(applicationTravellers)
+          .set({
+            passportNumber: null,
+            passportExpiryDate: null,
+            nationalIdNumber: null,
+            piiPurgedAt: now,
+            updatedAt: now,
+          })
+          .where(inArray(applicationTravellers.id, scrubbableTravellerIds))
+      }
+    }
   }
 
   if (waMediaKeysToDelete.size > 0) {

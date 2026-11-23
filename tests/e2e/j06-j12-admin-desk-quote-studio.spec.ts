@@ -53,10 +53,7 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
       .locator('input[type="email"]')
       .first()
       .fill(E2E_SUPER_ADMIN_EMAIL)
-    await anonPage
-      .locator('input[type="password"]')
-      .first()
-      .fill(E2E_PASSWORD)
+    await anonPage.locator('input[type="password"]').first().fill(E2E_PASSWORD)
     await anonPage.locator('button[type="submit"]').first().click()
 
     await anonPage.waitForURL(
@@ -191,13 +188,16 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     })
     const page = await adminCtx.newPage()
 
-    // 1. Verify Kanban Pipeline Desk renders the lead
+    // 1. Verify Kanban Pipeline Desk renders the lead & passes WCAG 2.2 AA (covers: AC-5, AC-10)
     await page.goto("/admin/desk?tab=pipeline")
     await expect(page.getByText(refCode).first()).toBeVisible()
+    await assertZeroSeriousOrCriticalAxeViolations(page)
 
     // 2. Open Application Dossier & fill Quote Worksheet
     await page.goto(`/admin/applications/${createdApp!.id}`)
-    await expect(page.getByText("J7 Manual Quote Pilgrim").first()).toBeVisible()
+    await expect(
+      page.getByText("J7 Manual Quote Pilgrim").first()
+    ).toBeVisible()
 
     await page.locator("#visa-total").fill("92000")
     await page.locator("#flights-total").fill("280000")
@@ -216,7 +216,10 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     await page.evaluate(() => {
       window.open = () => null
     })
-    await page.getByRole("button", { name: /3-Page Luxury PDF/i }).first().click()
+    await page
+      .getByRole("button", { name: /3-Page Luxury PDF/i })
+      .first()
+      .click()
     await expect(page.getByRole("link", { name: /Open PDF/i })).toBeVisible({
       timeout: 20_000,
     })
@@ -403,7 +406,9 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     await pilgrimPage
       .getByRole("button", { name: /Track Application Status/i })
       .click()
-    await expect(pilgrimPage.getByText("Official Quotation Ready")).toBeVisible()
+    await expect(
+      pilgrimPage.getByText("Official Quotation Ready")
+    ).toBeVisible()
 
     await pilgrimPage
       .getByRole("button", { name: /Request Revision/i })
@@ -413,7 +418,9 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
       .locator("#tracker-revision-notes")
       .fill("Please include courtesy family discount for 2 passports.")
     await pilgrimPage
-      .getByRole("button", { name: /Submit Revision|Send Revision|Request Revision/i })
+      .getByRole("button", {
+        name: /Submit Revision|Send Revision|Request Revision/i,
+      })
       .last()
       .click()
 
@@ -429,9 +436,7 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     const adminPage = await adminCtx.newPage()
     await adminPage.goto(`/admin/applications/${appRow!.id}`)
     await adminPage.locator("#visa-total").fill("90000")
-    await adminPage
-      .getByRole("button", { name: /Save & Mark Quoted/i })
-      .click()
+    await adminPage.getByRole("button", { name: /Save & Mark Quoted/i }).click()
     await expect(adminPage.getByText(/Success/i).first()).toBeVisible({
       timeout: 15_000,
     })
@@ -464,9 +469,7 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     // 5. Admin records verified manual payment receipt (`+ Record Payment` -> `Commit Verified Receipt`)
     await adminPage.reload()
     await adminPage.getByRole("button", { name: /\+ Record Payment/i }).click()
-    await adminPage
-      .locator('input[placeholder*="250000"]')
-      .fill("50000")
+    await adminPage.locator('input[placeholder*="250000"]').fill("50000")
     await adminPage
       .locator('input[placeholder*="TXN / Slip"]')
       .fill("RAAST-E2E-998877")
@@ -501,10 +504,14 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     const page = await adminCtx.newPage()
 
     await page.goto("/admin/studio")
+    // Verify Studio Hub passes WCAG 2.2 AA form label & target-size rules (covers: AC-7, AC-10)
+    await assertZeroSeriousOrCriticalAxeViolations(page)
 
     // J10: Select Mode B (`Raw B2B Supplier Wholesale Flyer` -> `net_plus_markup`, `25,000` PKR markup)
     await page
-      .getByRole("button", { name: /Mode B — Raw B2B Supplier Wholesale Flyer/i })
+      .getByRole("button", {
+        name: /Mode B — Raw B2B Supplier Wholesale Flyer/i,
+      })
       .click()
     await page
       .locator('input[placeholder*="posters/finished"]')
@@ -522,9 +529,7 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     ).toBeVisible({ timeout: 30_000 })
 
     // Verify Mode B staged as `draft_extracted` ("Draft Review Required") & Card 01 `0` Sharing tier stayed `0`!
-    await expect(
-      page.getByText(/Draft Review Required/i).first()
-    ).toBeVisible()
+    await expect(page.getByText(/Draft Review Required/i).first()).toBeVisible()
 
     const { db } = getE2eDb()
     const latestFlyer = await db.query.supplierFlyers.findFirst({
@@ -542,7 +547,10 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     expect(card01?.retailQuadPkr).toBeGreaterThan(card01!.netQuadPkr)
 
     // Approve Mode B draft
-    await page.getByRole("button", { name: /Approve Draft/i }).first().click()
+    await page
+      .getByRole("button", { name: /Approve Draft/i })
+      .first()
+      .click()
     await expect(page.getByText(/Draft Review Required/i)).toHaveCount(0)
 
     // J11: Multi-sheet (>10 cards) + XSS hotel string HTML-escaping on Gotenberg `/forms/chromium/screenshot/html` via real Studio UI
@@ -562,7 +570,10 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     ).toBeVisible({ timeout: 30_000 })
 
     // Click `Render 4K Sheet` on the newly ingested 12-card flyer batch
-    await page.getByRole("button", { name: /Render 4K Sheet/i }).first().click()
+    await page
+      .getByRole("button", { name: /Render 4K Sheet/i })
+      .first()
+      .click()
     await expect(
       page.getByText(/rendered and uploaded to Cloudflare R2/i).first()
     ).toBeVisible({ timeout: 30_000 })
@@ -601,9 +612,23 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     const page = await adminCtx.newPage()
     await page.goto("/admin")
 
-    // Open Command Palette via Ctrl+K
+    // Open Command Palette via Ctrl+K, verify Escape close + repeat open-post-lookup event
     await page.keyboard.press("Control+k")
-    const searchInput = page.locator('input[cmdk-input], input[placeholder*="ART-"]').first()
+    const searchInput = page
+      .locator('input[cmdk-input], input[placeholder*="ART-"]')
+      .first()
+    await expect(searchInput).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(searchInput).toBeHidden()
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("open-post-lookup"))
+    })
+    await expect(searchInput).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(searchInput).toBeHidden()
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("open-post-lookup"))
+    })
     await expect(searchInput).toBeVisible()
 
     // 1. Search website `group_departures` batch code (`BATCH-E2E-DEC26`)
@@ -635,7 +660,9 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     await page.locator("#cmd-infants").fill("1")
 
     await expect(
-      page.getByText(/3 Beds\/Seats \(Adults \+ Children\) • 4 Total Passports/i)
+      page.getByText(
+        /3 Beds\/Seats \(Adults \+ Children\) • 4 Total Passports/i
+      )
     ).toBeVisible()
 
     await page

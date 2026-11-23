@@ -49,6 +49,13 @@ export const BRAND_DEFAULT_SAR_TO_PKR = 75
 export const BRAND_IBAN_VERIFIED_DEFAULT = false
 
 /**
+ * Locked volatile-pillar pricing status label (`CONST-DOM-03`, `OD-09b`).
+ * Exported from TypeScript so JSX templates never hardcode raw em-dash literals (`sloplint` Gate `19`).
+ */
+export const LIVE_RATE_CONFIRMATION_LABEL =
+  "Live Rate — Confirmed upon submission" as const
+
+/**
  * Single Haramain luxury theme palette tokens (matched to `public/logo.jpg`).
  * Dark mode / theme switching is strictly disallowed across the platform.
  */

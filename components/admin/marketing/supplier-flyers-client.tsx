@@ -402,7 +402,10 @@ export function SupplierFlyersClient({
         })
         router.refresh()
       } else {
-        setNotice({ type: "error", text: res.error || "Failed to save supplier" })
+        setNotice({
+          type: "error",
+          text: res.error || "Failed to save supplier",
+        })
       }
     } finally {
       setBusyKey(null)
@@ -417,19 +420,21 @@ export function SupplierFlyersClient({
           type="button"
           variant={activeTab === "flyer_vault" ? "default" : "outline"}
           onClick={() => setActiveTab("flyer_vault")}
-          className="gap-2 text-xs font-semibold cursor-pointer"
+          className="cursor-pointer gap-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          <Sparkles className="size-3.5 text-gold" />
-          <span>Wrapped Flyers &amp; 4K Spotlight Vault ({initialFlyers.length})</span>
+          <Sparkles className="size-3.5 text-gold" aria-hidden="true" />
+          <span>
+            Wrapped Flyers &amp; 4K Spotlight Vault ({initialFlyers.length})
+          </span>
         </Button>
 
         <Button
           type="button"
           variant={activeTab === "ingest_studio" ? "default" : "outline"}
           onClick={() => setActiveTab("ingest_studio")}
-          className="gap-2 text-xs font-semibold cursor-pointer"
+          className="cursor-pointer gap-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          <Wand2 className="size-3.5 text-gold" />
+          <Wand2 className="size-3.5 text-gold" aria-hidden="true" />
           <span>Ingest &amp; Wrap New Supplier Flyer</span>
         </Button>
 
@@ -437,26 +442,26 @@ export function SupplierFlyersClient({
           type="button"
           variant={activeTab === "suppliers" ? "default" : "outline"}
           onClick={() => setActiveTab("suppliers")}
-          className="gap-2 text-xs font-semibold cursor-pointer"
+          className="cursor-pointer gap-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          <Building2 className="size-3.5 text-gold" />
+          <Building2 className="size-3.5 text-gold" aria-hidden="true" />
           <span>B2B Suppliers Directory ({initialSuppliers.length})</span>
         </Button>
       </div>
 
       {notice && (
         <div
-          className={`rounded-xl border p-3.5 text-xs font-medium flex items-center justify-between ${
+          className={`flex items-center justify-between rounded-xl border p-3.5 text-xs font-medium ${
             notice.type === "error"
-              ? "border-red-300 bg-red-50 text-red-900"
-              : "border-emerald-300 bg-emerald-50 text-emerald-900"
+              ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+              : "border-status-success-border bg-status-success-bg text-status-success"
           }`}
         >
           <span>{notice.text}</span>
           <button
             type="button"
             onClick={() => setNotice(null)}
-            className="text-[11px] underline ml-4"
+            className="ml-4 cursor-pointer text-[11px] underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             Dismiss
           </button>
@@ -471,19 +476,23 @@ export function SupplierFlyersClient({
           {initialFlyers.length === 0 ? (
             <Card className="border-dashed">
               <CardContent className="p-10 text-center">
-                <Sparkles className="mx-auto size-8 text-gold mb-2" />
+                <Sparkles
+                  className="mx-auto mb-2 size-8 text-gold-text"
+                  aria-hidden="true"
+                />
                 <h3 className="font-display text-base font-bold">
                   No Supplier Flyers Ingested Yet
                 </h3>
-                <p className="text-xs text-muted-foreground mt-1 mb-4">
-                  Click &quot;Ingest &amp; Wrap New Supplier Flyer&quot; to wrap your first Ammaar or Upsky Travels flyer.
+                <p className="mt-1 mb-4 text-xs text-muted-foreground">
+                  Click &quot;Ingest &amp; Wrap New Supplier Flyer&quot; to wrap
+                  your first Ammaar or Upsky Travels flyer.
                 </p>
                 <Button
                   type="button"
                   onClick={() => setActiveTab("ingest_studio")}
-                  className="gap-2"
+                  className="cursor-pointer gap-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
-                  <Plus className="size-4" />
+                  <Plus className="size-4" aria-hidden="true" />
                   <span>Ingest First Flyer</span>
                 </Button>
               </CardContent>
@@ -492,25 +501,26 @@ export function SupplierFlyersClient({
             initialFlyers.map((flyer) => (
               <Card
                 key={flyer.id}
-                className="border-border bg-card shadow-sm overflow-hidden"
+                className="overflow-hidden border-border bg-card shadow-sm"
               >
-                <CardHeader className="bg-secondary/30 border-b border-border pb-4">
+                <CardHeader className="border-b border-border bg-secondary/30 pb-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <Badge className="bg-primary text-gold font-bold text-[10px] uppercase">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <Badge className="bg-primary text-[11px] font-bold text-gold">
                           Supplier: {flyer.supplier?.name} (
                           {flyer.supplier?.codePrefix})
                         </Badge>
                         <Badge
                           variant="outline"
-                          className="border-gold/50 bg-gold/10 text-xs font-mono font-bold text-foreground"
+                          className="border-gold-border bg-accent/40 font-mono text-xs font-bold text-foreground"
                         >
-                          {flyer.airlineName} · {flyer.daysTitle} ({flyer.routePill})
+                          {flyer.airlineName} · {flyer.daysTitle} (
+                          {flyer.routePill})
                         </Badge>
                         <Badge
                           variant="outline"
-                          className="border-emerald-600/30 bg-emerald-50 text-emerald-800 text-[11px] font-semibold"
+                          className="border-status-success-border bg-status-success-bg text-[11px] font-semibold text-status-success"
                         >
                           {flyer.commissionMode === "included_in_flyer"
                             ? `Mode A: Commission Included (PKR ${flyer.commissionPkr.toLocaleString()})`
@@ -520,12 +530,16 @@ export function SupplierFlyersClient({
                       <CardTitle className="font-display text-lg font-bold text-foreground">
                         {flyer.title}
                       </CardTitle>
-                      <CardDescription className="text-xs">
-                        Received: {flyer.receivedDate} · {flyer.packages.length}{" "}
-                        Extracted Package Cards · Baggage:{" "}
-                        {flyer.outboundBaggage || "20Kg"} Out /{" "}
-                        {flyer.inboundBaggage || "30Kg + Zamzam"} In
-                      </CardDescription>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground tabular-nums">
+                        <span>Received: {flyer.receivedDate}</span>
+                        <span>
+                          {flyer.packages.length} Extracted Package Cards
+                        </span>
+                        <span>
+                          Baggage: {flyer.outboundBaggage || "20Kg"} Out /{" "}
+                          {flyer.inboundBaggage || "30Kg + Zamzam"} In
+                        </span>
+                      </div>
                     </div>
 
                     {/* 4K Multi-Package Sheet Actions (Skill 2) */}
@@ -534,9 +548,12 @@ export function SupplierFlyersClient({
                         href={flyer.rawFlyerImageUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
-                        <ImageIcon className="size-3.5 text-muted-foreground" />
+                        <ImageIcon
+                          className="size-3.5 text-muted-foreground"
+                          aria-hidden="true"
+                        />
                         <span>View Raw Supplier Flyer</span>
                       </a>
 
@@ -545,12 +562,18 @@ export function SupplierFlyersClient({
                         size="sm"
                         disabled={busyKey === `sheet-${flyer.id}`}
                         onClick={() => handleRenderMultiSheet(flyer.id)}
-                        className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 text-xs font-semibold gap-1.5 cursor-pointer"
+                        className="cursor-pointer gap-1.5 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
                         {busyKey === `sheet-${flyer.id}` ? (
-                          <Loader2 className="size-3.5 animate-spin text-gold" />
+                          <Loader2
+                            className="size-3.5 animate-spin text-gold motion-reduce:animate-none"
+                            aria-hidden="true"
+                          />
                         ) : (
-                          <Sparkles className="size-3.5 text-gold" />
+                          <Sparkles
+                            className="size-3.5 text-gold"
+                            aria-hidden="true"
+                          />
                         )}
                         <span>
                           {flyer.multiSheetImageUrl
@@ -564,10 +587,10 @@ export function SupplierFlyersClient({
                           href={flyer.multiSheetImageUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-lg border border-gold bg-gold/15 px-3 py-1.5 text-xs font-bold text-primary hover:bg-gold/25"
+                          className="inline-flex items-center gap-1 rounded-lg border border-gold bg-accent/50 px-3 py-1.5 text-xs font-bold text-primary hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           <span>4K Sheet PNG</span>
-                          <ExternalLink className="size-3" />
+                          <ExternalLink className="size-3" aria-hidden="true" />
                         </a>
                       )}
                       {flyer.multiSheetPdfUrl && (
@@ -575,9 +598,12 @@ export function SupplierFlyersClient({
                           href={flyer.multiSheetPdfUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-lg border border-border bg-white px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-secondary"
+                          className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
-                          <FileText className="size-3.5 text-gold" />
+                          <FileText
+                            className="size-3.5 text-gold-text"
+                            aria-hidden="true"
+                          />
                           <span>Vector PDF</span>
                         </a>
                       )}
@@ -586,13 +612,18 @@ export function SupplierFlyersClient({
                 </CardHeader>
 
                 <CardContent className="p-4">
-                  <div className="overflow-x-auto">
+                  <div
+                    tabIndex={0}
+                    className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-border text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                        <tr className="border-b border-border text-left text-xs font-bold text-muted-foreground">
                           <th className="py-2 pr-3">Post Ref Code</th>
                           <th className="py-2 pr-3">Flight Schedule</th>
-                          <th className="py-2 pr-3">Makkah &amp; Madinah Hotels</th>
+                          <th className="py-2 pr-3">
+                            Makkah &amp; Madinah Hotels
+                          </th>
                           <th className="py-2 pr-3 text-right">
                             Supplier Net (Sharing)
                           </th>
@@ -608,13 +639,13 @@ export function SupplierFlyersClient({
                         {flyer.packages.map((pkg) => (
                           <tr
                             key={pkg.id}
-                            className="hover:bg-secondary/20 transition-colors"
+                            className="transition-colors hover:bg-secondary/20 motion-reduce:transition-none"
                           >
                             <td className="py-3 pr-3 align-top">
                               <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 font-mono text-xs font-bold text-gold">
                                 {pkg.postCode}
                               </span>
-                              <div className="text-[10px] text-muted-foreground mt-1">
+                              <div className="mt-1 text-[11px] text-muted-foreground">
                                 Card #{pkg.cardNumber} · Margin: PKR{" "}
                                 {pkg.commissionPkr.toLocaleString()}
                               </div>
@@ -628,7 +659,7 @@ export function SupplierFlyersClient({
                                 {pkg.outboundRoute} · {pkg.outboundDepTime}-
                                 {pkg.outboundArrTime}
                               </div>
-                              <div className="font-mono font-semibold text-foreground mt-1">
+                              <div className="mt-1 font-mono font-semibold text-foreground">
                                 {pkg.returnFlightNo} ({pkg.returnDateLabel})
                               </div>
                             </td>
@@ -646,7 +677,7 @@ export function SupplierFlyersClient({
                                 </span>
                               </div>
                               <div className="mt-0.5">
-                                <span className="font-bold text-emerald-800">
+                                <span className="font-bold text-status-success">
                                   Madinah ({pkg.madinahNights}):
                                 </span>{" "}
                                 <span className="font-semibold">
@@ -659,24 +690,24 @@ export function SupplierFlyersClient({
                               <div className="mt-1">
                                 <Badge
                                   variant="outline"
-                                  className="text-[10px] px-1.5 py-0 border-gold/40 text-muted-foreground"
+                                  className="border-gold-border px-1.5 py-0 text-[11px] text-muted-foreground"
                                 >
                                   {pkg.mealPlanLabel || "Room Only"}
                                 </Badge>
                               </div>
                             </td>
 
-                            <td className="py-3 pr-3 text-right align-top font-mono">
+                            <td className="py-3 pr-3 text-right align-top font-mono tabular-nums">
                               <div className="text-muted-foreground">
                                 PKR {pkg.netSharingPkr.toLocaleString()}
                               </div>
-                              <div className="text-[10px] text-emerald-700 font-semibold">
+                              <div className="text-[11px] font-semibold text-status-success">
                                 +PKR {pkg.commissionPkr.toLocaleString()} Comm.
                               </div>
                             </td>
 
-                            <td className="py-3 pr-3 text-right align-top font-mono">
-                              <div className="font-bold text-primary text-sm">
+                            <td className="py-3 pr-3 text-right align-top font-mono tabular-nums">
+                              <div className="text-sm font-bold text-primary">
                                 S: {pkg.retailSharingPkr.toLocaleString()}
                               </div>
                               <div className="text-[11px] text-foreground">
@@ -698,12 +729,18 @@ export function SupplierFlyersClient({
                                   onClick={() =>
                                     handleRenderSpotlight(pkg.id, pkg.postCode)
                                   }
-                                  className="h-7 px-2.5 text-[11px] font-semibold border-primary/30 text-primary hover:bg-primary/10 cursor-pointer"
+                                  className="h-7 cursor-pointer border-primary/30 px-2.5 text-[11px] font-semibold text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                 >
                                   {busyKey === `spot-${pkg.id}` ? (
-                                    <Loader2 className="size-3 animate-spin" />
+                                    <Loader2
+                                      className="size-3 animate-spin motion-reduce:animate-none"
+                                      aria-hidden="true"
+                                    />
                                   ) : (
-                                    <Sparkles className="size-3 text-gold" />
+                                    <Sparkles
+                                      className="size-3 text-gold-text"
+                                      aria-hidden="true"
+                                    />
                                   )}
                                   <span>
                                     {pkg.spotlightPosterUrl
@@ -717,10 +754,13 @@ export function SupplierFlyersClient({
                                     href={pkg.spotlightPosterUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 rounded-md bg-[#0A3622] px-2.5 py-1 text-[11px] font-bold text-gold hover:bg-[#0A3622]/90"
+                                    className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[11px] font-bold text-gold hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                   >
                                     <span>View 4K Poster</span>
-                                    <ExternalLink className="size-2.5" />
+                                    <ExternalLink
+                                      className="size-2.5"
+                                      aria-hidden="true"
+                                    />
                                   </a>
                                 )}
 
@@ -732,14 +772,23 @@ export function SupplierFlyersClient({
                                   onClick={() =>
                                     handlePublishToWebsite(pkg.id, pkg.postCode)
                                   }
-                                  className="h-7 px-2.5 text-[11px] font-semibold border-gold/50 bg-gold/10 text-foreground hover:bg-gold/20 cursor-pointer"
+                                  className="h-7 cursor-pointer border-gold-border bg-accent/35 px-2.5 text-[11px] font-semibold text-foreground hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                 >
                                   {busyKey === `pub-${pkg.id}` ? (
-                                    <Loader2 className="size-3 animate-spin" />
+                                    <Loader2
+                                      className="size-3 animate-spin motion-reduce:animate-none"
+                                      aria-hidden="true"
+                                    />
                                   ) : pkg.publishedGroupPackageId ? (
-                                    <CheckCircle2 className="size-3 text-emerald-700" />
+                                    <CheckCircle2
+                                      className="size-3 text-status-success"
+                                      aria-hidden="true"
+                                    />
                                   ) : (
-                                    <Globe className="size-3 text-gold" />
+                                    <Globe
+                                      className="size-3 text-gold-text"
+                                      aria-hidden="true"
+                                    />
                                   )}
                                   <span>
                                     {pkg.publishedGroupPackageId
@@ -766,14 +815,15 @@ export function SupplierFlyersClient({
       {/* ========================================================= */}
       {activeTab === "ingest_studio" && (
         <Card className="border-border bg-card shadow-sm">
-          <CardHeader className="bg-secondary/30 border-b border-border">
+          <CardHeader className="border-b border-border bg-secondary/30">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle className="font-display text-lg font-bold">
                   AI Supplier Flyer Ingestion &amp; Dual-Commission Workbench
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Upload a raw flyer image from Ammaar or Upsky Travels, extract all package cards, and choose Commission Mode A or Mode B.
+                  Upload a raw flyer image from Ammaar or Upsky Travels, extract
+                  all package cards, and choose Commission Mode A or Mode B.
                 </CardDescription>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -785,9 +835,12 @@ export function SupplierFlyersClient({
                   onClick={() =>
                     handleLoadPresetOrExtract("ammaar_airblue_21d")
                   }
-                  className="text-xs font-semibold gap-1.5 border-gold/50 bg-gold/10 cursor-pointer"
+                  className="cursor-pointer gap-1.5 border-gold-border bg-accent/40 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
-                  <Wand2 className="size-3.5 text-gold" />
+                  <Wand2
+                    className="size-3.5 text-gold-text"
+                    aria-hidden="true"
+                  />
                   <span>Load Ammaar 21D Airblue Flyer</span>
                 </Button>
                 <Button
@@ -796,9 +849,9 @@ export function SupplierFlyersClient({
                   variant="outline"
                   disabled={busyKey === "extract"}
                   onClick={() => handleLoadPresetOrExtract("upsky_saudia_15d")}
-                  className="text-xs font-semibold gap-1.5 border-primary/30 bg-primary/5 cursor-pointer"
+                  className="cursor-pointer gap-1.5 border-primary/30 bg-primary/5 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
-                  <Wand2 className="size-3.5 text-primary" />
+                  <Wand2 className="size-3.5 text-primary" aria-hidden="true" />
                   <span>Load Upsky 15D Saudia Flyer</span>
                 </Button>
               </div>
@@ -815,7 +868,7 @@ export function SupplierFlyersClient({
                 <select
                   value={selectedSupplierId}
                   onChange={(e) => setSelectedSupplierId(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {initialSuppliers.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -844,16 +897,16 @@ export function SupplierFlyersClient({
                   <Input
                     value={rawImageUrl}
                     onChange={(e) => setRawImageUrl(e.target.value)}
-                    className="text-xs font-mono"
+                    className="font-mono text-xs"
                   />
-                  <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-xs font-semibold hover:bg-secondary/80">
-                    <Upload className="size-3.5" />
+                  <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-xs font-semibold focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary hover:bg-secondary/80">
+                    <Upload className="size-3.5" aria-hidden="true" />
                     <span>Upload</span>
                     <input
                       type="file"
                       accept="image/*"
                       onChange={handleUploadFile}
-                      className="hidden"
+                      className="sr-only"
                     />
                   </label>
                 </div>
@@ -875,7 +928,7 @@ export function SupplierFlyersClient({
                 <Input
                   value={airlineIata}
                   onChange={(e) => setAirlineIata(e.target.value)}
-                  className="text-xs font-mono"
+                  className="font-mono text-xs"
                 />
               </div>
               <div className="space-y-1">
@@ -888,7 +941,7 @@ export function SupplierFlyersClient({
                     setDurationDays(d)
                     setDaysTitle(`${d} DAYS`)
                   }}
-                  className="text-xs font-mono"
+                  className="font-mono text-xs"
                 />
               </div>
               <div className="space-y-1">
@@ -896,7 +949,7 @@ export function SupplierFlyersClient({
                 <Input
                   value={routePill}
                   onChange={(e) => setRoutePill(e.target.value)}
-                  className="text-xs font-mono"
+                  className="font-mono text-xs"
                 />
               </div>
               <div className="space-y-1">
@@ -918,12 +971,12 @@ export function SupplierFlyersClient({
             </div>
 
             {/* Row 3: Dual Commission Mode Selector (PKR 20,000 - 25,000) */}
-            <div className="rounded-xl border border-gold/50 bg-gold/5 p-4 space-y-3">
+            <div className="space-y-3 rounded-xl bg-accent/25 p-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2">
-                  <Coins className="size-4 text-gold" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-                    B2B Commission Pricing Mode (PKR 20,000 – 25,000 Target)
+                  <Coins className="size-4 text-gold-text" aria-hidden="true" />
+                  <span className="text-xs font-bold text-foreground">
+                    B2B Commission Pricing Mode (PKR 20,000 to 25,000 Target)
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -936,13 +989,13 @@ export function SupplierFlyersClient({
                     onChange={(e) =>
                       setCommissionPkr(Number(e.target.value) || 0)
                     }
-                    className="w-28 h-8 font-mono text-xs font-bold"
+                    className="h-8 w-28 font-mono text-xs font-bold"
                   />
                   <Input
                     type="date"
                     value={receivedDate}
                     onChange={(e) => setReceivedDate(e.target.value)}
-                    className="w-36 h-8 font-mono text-xs"
+                    className="h-8 w-36 font-mono text-xs"
                   />
                 </div>
               </div>
@@ -951,16 +1004,16 @@ export function SupplierFlyersClient({
                 <button
                   type="button"
                   onClick={() => setCommissionMode("included_in_flyer")}
-                  className={`rounded-xl border p-3 text-left transition-all ${
+                  className={`cursor-pointer rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
                     commissionMode === "included_in_flyer"
                       ? "border-primary bg-primary/10 ring-1 ring-primary"
-                      : "border-border bg-white hover:border-gold"
+                      : "border-border bg-card hover:border-gold"
                   }`}
                 >
                   <div className="text-xs font-bold text-primary">
                     Mode A: Commission Already Included in Supplier Flyer Price
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
                     Posters print the exact flyer price. System deducts PKR{" "}
                     {commissionPkr.toLocaleString()} internally to track net
                     payable to supplier.
@@ -970,17 +1023,17 @@ export function SupplierFlyersClient({
                 <button
                   type="button"
                   onClick={() => setCommissionMode("net_plus_markup")}
-                  className={`rounded-xl border p-3 text-left transition-all ${
+                  className={`cursor-pointer rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none ${
                     commissionMode === "net_plus_markup"
                       ? "border-primary bg-primary/10 ring-1 ring-primary"
-                      : "border-border bg-white hover:border-gold"
+                      : "border-border bg-card hover:border-gold"
                   }`}
                 >
                   <div className="text-xs font-bold text-primary">
-                    Mode B: Net Wholesale Flyer — Add Our PKR{" "}
+                    Mode B: Net Wholesale Flyer, Add Our PKR{" "}
                     {commissionPkr.toLocaleString()} Markup
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
                     Supplier flyer shows net wholesale rates. System auto-adds
                     PKR {commissionPkr.toLocaleString()} to Sharing, Quad,
                     Triple, and Double on generated posters.
@@ -992,7 +1045,7 @@ export function SupplierFlyersClient({
             {/* Row 4: Extracted Package Cards Editable Table */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                <h4 className="text-xs font-bold text-foreground">
                   Extracted Package Tiers ({cards.length} Cards)
                 </h4>
                 <Button
@@ -1028,16 +1081,19 @@ export function SupplierFlyersClient({
                       },
                     ])
                   }
-                  className="h-7 text-xs gap-1"
+                  className="h-7 cursor-pointer gap-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
-                  <Plus className="size-3.5" />
+                  <Plus className="size-3.5" aria-hidden="true" />
                   <span>Add Package Card Row</span>
                 </Button>
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-border">
+              <div
+                tabIndex={0}
+                className="overflow-x-auto rounded-xl border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
                 <table className="w-full text-xs">
-                  <thead className="bg-secondary/40 border-b border-border text-[10px] uppercase font-bold text-muted-foreground">
+                  <thead className="border-b border-border bg-secondary/40 text-[11px] font-bold text-muted-foreground">
                     <tr>
                       <th className="p-2 text-left">#</th>
                       <th className="p-2 text-left">Out / Ret Dates</th>
@@ -1078,7 +1134,7 @@ export function SupplierFlyersClient({
                                   }
                                   setCards(next)
                                 }}
-                                className="h-7 w-20 text-[11px] font-mono"
+                                className="h-7 w-20 font-mono text-[11px]"
                               />
                               <Input
                                 value={card.returnDateLabel}
@@ -1090,7 +1146,7 @@ export function SupplierFlyersClient({
                                   }
                                   setCards(next)
                                 }}
-                                className="h-7 w-20 text-[11px] font-mono"
+                                className="h-7 w-20 font-mono text-[11px]"
                               />
                             </div>
                           </td>
@@ -1182,19 +1238,23 @@ export function SupplierFlyersClient({
                               className="h-7 w-24 font-mono text-[11px]"
                             />
                           </td>
-                          <td className="p-2 text-right font-mono font-bold text-primary">
+                          <td className="p-2 text-right font-mono font-bold text-primary tabular-nums">
                             PKR {computed.retailSharingPkr.toLocaleString()}
                           </td>
                           <td className="p-2 text-right">
                             {cards.length > 1 && (
                               <button
                                 type="button"
+                                aria-label="Remove package card row"
                                 onClick={() =>
                                   setCards(cards.filter((_, i) => i !== idx))
                                 }
-                                className="text-red-600 hover:text-red-800 p-1"
+                                className="cursor-pointer p-1 text-status-danger hover:text-status-danger/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               >
-                                <Trash2 className="size-3.5" />
+                                <Trash2
+                                  className="size-3.5"
+                                  aria-hidden="true"
+                                />
                               </button>
                             )}
                           </td>
@@ -1211,12 +1271,15 @@ export function SupplierFlyersClient({
                 type="button"
                 disabled={busyKey === "save_flyer"}
                 onClick={handleSaveFlyer}
-                className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 gap-2 text-xs font-bold px-6 cursor-pointer"
+                className="cursor-pointer gap-2 bg-primary px-6 text-xs font-bold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 {busyKey === "save_flyer" ? (
-                  <Loader2 className="size-4 animate-spin text-gold" />
+                  <Loader2
+                    className="size-4 animate-spin text-gold motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Sparkles className="size-4 text-gold" />
+                  <Sparkles className="size-4 text-gold" aria-hidden="true" />
                 )}
                 <span>
                   Save Wrapped Supplier Flyer &amp; Generate Post Codes
@@ -1232,23 +1295,26 @@ export function SupplierFlyersClient({
       {/* ========================================================= */}
       {activeTab === "suppliers" && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <div className="lg:col-span-7 space-y-3">
+          <div className="space-y-3 lg:col-span-7">
             {initialSuppliers.map((sup) => (
               <Card key={sup.id} className="border-border bg-card shadow-xs">
-                <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <CardContent className="flex flex-col justify-between gap-3 p-4 sm:flex-row sm:items-center">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold rounded bg-primary px-2 py-0.5 text-gold">
+                      <span className="rounded bg-primary px-2 py-0.5 font-mono text-xs font-bold text-gold">
                         {sup.codePrefix}
                       </span>
                       <h3 className="font-display text-base font-bold text-foreground">
                         {sup.name}
                       </h3>
-                      <Badge variant="outline" className="text-[10px] capitalize">
+                      <Badge
+                        variant="outline"
+                        className="text-[11px] capitalize"
+                      >
                         {sup.category.replace(/_/g, " ")}
                       </Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Default Commission: PKR{" "}
                       {sup.defaultCommissionPkr.toLocaleString()} (
                       {sup.defaultCommissionMode === "included_in_flyer"
@@ -1258,7 +1324,7 @@ export function SupplierFlyersClient({
                       {sup.whatsappNumber ? ` · WA: ${sup.whatsappNumber}` : ""}
                     </p>
                   </div>
-                  <Badge className="bg-emerald-100 text-emerald-900 border border-emerald-300">
+                  <Badge className="border border-status-success-border bg-status-success-bg text-status-success">
                     Active Partner
                   </Badge>
                 </CardContent>
@@ -1273,7 +1339,8 @@ export function SupplierFlyersClient({
                   Add New B2B Wholesale Supplier
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Register a new travel consolidator providing group or custom Umrah packages.
+                  Register a new travel consolidator providing group or custom
+                  Umrah packages.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1285,7 +1352,7 @@ export function SupplierFlyersClient({
                       value={supName}
                       onChange={(e) => setSupName(e.target.value)}
                       placeholder="e.g. Al-Haramain Consolidators"
-                      className="text-xs mt-1"
+                      className="mt-1 text-xs"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -1299,7 +1366,7 @@ export function SupplierFlyersClient({
                           setSupPrefix(e.target.value.toUpperCase())
                         }
                         placeholder="e.g. AHC"
-                        className="text-xs font-mono uppercase mt-1"
+                        className="mt-1 font-mono text-xs"
                       />
                     </div>
                     <div>
@@ -1309,12 +1376,10 @@ export function SupplierFlyersClient({
                         onChange={(e) =>
                           setSupCategory(
                             e.target.value as
-                              | "group_packages"
-                              | "custom_packages"
-                              | "both"
+                              "group_packages" | "custom_packages" | "both"
                           )
                         }
-                        className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs"
+                        className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
                         <option value="group_packages">Group Packages</option>
                         <option value="custom_packages">Custom Packages</option>
@@ -1330,11 +1395,10 @@ export function SupplierFlyersClient({
                         onChange={(e) =>
                           setSupCommMode(
                             e.target.value as
-                              | "included_in_flyer"
-                              | "net_plus_markup"
+                              "included_in_flyer" | "net_plus_markup"
                           )
                         }
-                        className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs"
+                        className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
                         <option value="included_in_flyer">
                           Mode A: Included in Flyer
@@ -1345,14 +1409,16 @@ export function SupplierFlyersClient({
                       </select>
                     </div>
                     <div>
-                      <Label className="text-xs">Default Commission (PKR)</Label>
+                      <Label className="text-xs">
+                        Default Commission (PKR)
+                      </Label>
                       <Input
                         type="number"
                         value={supCommPkr}
                         onChange={(e) =>
                           setSupCommPkr(Number(e.target.value) || 22000)
                         }
-                        className="text-xs font-mono mt-1"
+                        className="mt-1 font-mono text-xs"
                       />
                     </div>
                   </div>
@@ -1362,15 +1428,15 @@ export function SupplierFlyersClient({
                       value={supWhatsapp}
                       onChange={(e) => setSupWhatsapp(e.target.value)}
                       placeholder="0300 1234567"
-                      className="text-xs mt-1"
+                      className="mt-1 text-xs"
                     />
                   </div>
                   <Button
                     type="submit"
                     disabled={busyKey === "create_supplier"}
-                    className="w-full gap-2 text-xs font-bold cursor-pointer"
+                    className="w-full cursor-pointer gap-2 text-xs font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <Plus className="size-3.5" />
+                    <Plus className="size-3.5" aria-hidden="true" />
                     <span>Save B2B Supplier</span>
                   </Button>
                 </form>

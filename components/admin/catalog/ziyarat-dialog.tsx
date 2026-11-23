@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
@@ -37,13 +37,16 @@ interface ZiyaratDialogProps {
   trigger?: React.ReactNode
 }
 
-export function ZiyaratDialog({
+function ZiyaratFormBody({
   place,
-  defaultCity = "makkah",
-  trigger,
-}: ZiyaratDialogProps) {
+  defaultCity,
+  onSuccess,
+}: {
+  place?: ZiyaratData
+  defaultCity: "makkah" | "madinah"
+  onSuccess: () => void
+}) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -56,18 +59,6 @@ export function ZiyaratDialog({
   const [imageUrl, setImageUrl] = useState(place?.imageUrl ?? "")
   const [isActive, setIsActive] = useState(place?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(place?.sortOrder ?? 0)
-
-  useEffect(() => {
-    if (!open) return
-    setError(null)
-    setCity(place?.city ?? defaultCity)
-    setName(place?.name ?? "")
-    setArabicName(place?.arabicName ?? "")
-    setDescription(place?.description ?? "")
-    setImageUrl(place?.imageUrl ?? "")
-    setIsActive(place?.isActive ?? true)
-    setSortOrder(place?.sortOrder ?? 0)
-  }, [open, place, defaultCity])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -86,7 +77,7 @@ export function ZiyaratDialog({
         sortOrder,
       })
       if (res.success) {
-        setOpen(false)
+        onSuccess()
         router.refresh()
       } else {
         setError(res.error || "Failed to save Ziyarat place.")
@@ -103,139 +94,166 @@ export function ZiyaratDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <>
+      <DialogHeader>
+        <DialogTitle>
+          {place ? `Edit ${place.name}` : "Add Sacred Ziyarat Site"}
+        </DialogTitle>
+        <DialogDescription>
+          Include historical significance and authentic Arabic calligraphy.
+        </DialogDescription>
+      </DialogHeader>
+
+      {error && (
+        <div className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2.5 text-xs text-status-danger">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-3.5 py-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="z-city">Holy City</Label>
+          <select
+            id="z-city"
+            value={city}
+            onChange={(e) => setCity(e.target.value as "makkah" | "madinah")}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <option value="makkah">Makkah Al-Mukarramah</option>
+            <option value="madinah">Madinah Al-Munawwarah</option>
+          </select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="z-name">Site Name (English)</Label>
+          <Input
+            id="z-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Cave of Hira (Jabal Al-Nour)"
+            required
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="z-arabic">Arabic Name (الاسم بالعربية)</Label>
+          <Input
+            id="z-arabic"
+            lang="ar"
+            dir="rtl"
+            value={arabicName}
+            onChange={(e) => setArabicName(e.target.value)}
+            placeholder="e.g. غار حراء - جبل النور"
+            className="font-arabic text-base"
+            required
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="z-desc">Historical &amp; Spiritual Description</Label>
+          <Textarea
+            id="z-desc"
+            rows={3}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Where the Prophet ﷺ received the first revelation"
+            required
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="z-image">Cover Image URL</Label>
+          <Input
+            id="z-image"
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            placeholder="https://example.com/site-cover.jpg"
+          />
+        </div>
+
+        <div className="flex items-center justify-between border-t border-border pt-3">
+          <label className="flex cursor-pointer items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+              className="rounded text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            />
+            <span className="font-medium">Active in Ziyarat Tour</span>
+          </label>
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="z-sort" className="text-xs">
+              Sort:
+            </Label>
+            <Input
+              id="z-sort"
+              type="number"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(Number(e.target.value))}
+              className="h-7 w-14 font-mono text-xs"
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="pt-2">
+          <DialogClose render={<Button variant="outline" type="button" />}>
+            Cancel
+          </DialogClose>
+          <Button
+            type="submit"
+            disabled={loading}
+            className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            {loading && (
+              <Loader2
+                className="size-4 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+            )}
+            <span>{place ? "Save Changes" : "Create Site"}</span>
+          </Button>
+        </DialogFooter>
+      </form>
+    </>
+  )
+}
+
+export function ZiyaratDialog({
+  place,
+  defaultCity = "makkah",
+  trigger,
+}: ZiyaratDialogProps) {
+  const [open, setOpen] = useState(false)
+  const [formSession, setFormSession] = useState(0)
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (nextOpen) {
+      setFormSession((prev) => prev + 1)
+    }
+    setOpen(nextOpen)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
         render={
           trigger ? (
             (trigger as React.ReactElement)
           ) : (
-            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
-              <Plus className="size-4" />
+            <Button className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+              <Plus className="size-4" aria-hidden="true" />
               <span>Add Sacred Place</span>
             </Button>
           )
         }
       />
-      <DialogContent
-        key={open ? (place?.id ?? "new") : "closed"}
-        className="sm:max-w-md"
-      >
-        <DialogHeader>
-          <DialogTitle>
-            {place ? `Edit ${place.name}` : "Add Sacred Ziyarat Site"}
-          </DialogTitle>
-          <DialogDescription>
-            Include historical significance and authentic Arabic calligraphy.
-          </DialogDescription>
-        </DialogHeader>
-
-        {error && (
-          <div className="rounded-lg border border-red-300 bg-red-50 p-2.5 text-xs text-red-800">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-3.5 py-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="z-city">Holy City</Label>
-            <select
-              id="z-city"
-              value={city}
-              onChange={(e) => setCity(e.target.value as "makkah" | "madinah")}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
-            >
-              <option value="makkah">Makkah Al-Mukarramah</option>
-              <option value="madinah">Madinah Al-Munawwarah</option>
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="z-name">Site Name (English)</Label>
-            <Input
-              id="z-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Cave of Hira (Jabal Al-Nour)"
-              required
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="z-arabic">Arabic Name (الاسم بالعربية)</Label>
-            <Input
-              id="z-arabic"
-              lang="ar"
-              dir="rtl"
-              value={arabicName}
-              onChange={(e) => setArabicName(e.target.value)}
-              placeholder="e.g. غار حراء - جبل النور"
-              className="font-arabic text-base"
-              required
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="z-desc">
-              Historical &amp; Spiritual Description
-            </Label>
-            <Textarea
-              id="z-desc"
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Where the Prophet ﷺ received the first revelation..."
-              required
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="z-image">Cover Image URL</Label>
-            <Input
-              id="z-image"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://..."
-            />
-          </div>
-
-          <div className="flex items-center justify-between border-t border-border pt-3">
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-                className="rounded text-primary"
-              />
-              <span className="font-medium">Active in Ziyarat Tour</span>
-            </label>
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="z-sort" className="text-xs">
-                Sort:
-              </Label>
-              <Input
-                id="z-sort"
-                type="number"
-                value={sortOrder}
-                onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="w-14 h-7 text-xs font-mono"
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="pt-2">
-            <DialogClose render={<Button variant="outline" type="button" />}>
-              Cancel
-            </DialogClose>
-            <Button
-              type="submit"
-              disabled={loading}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
-            >
-              {loading && <Loader2 className="size-4 animate-spin" />}
-              <span>{place ? "Save Changes" : "Create Site"}</span>
-            </Button>
-          </DialogFooter>
-        </form>
+      <DialogContent className="sm:max-w-md">
+        <ZiyaratFormBody
+          key={`${place?.id ?? "new"}-${defaultCity}-${formSession}`}
+          place={place}
+          defaultCity={defaultCity}
+          onSuccess={() => setOpen(false)}
+        />
       </DialogContent>
     </Dialog>
   )

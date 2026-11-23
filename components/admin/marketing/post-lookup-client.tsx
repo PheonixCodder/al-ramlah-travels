@@ -14,17 +14,13 @@ import {
   CheckCircle2,
   Loader2,
   Image as ImageIcon,
+  ArrowRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   convertPostLookupToApplication,
   generateSingleSpotlightForCard,
@@ -116,7 +112,7 @@ export function PostLookupClient({
   )
   const [customerName, setCustomerName] = React.useState("")
   const [customerPhone, setCustomerPhone] = React.useState("")
-  const [customerCity, setCustomerCity] = React.useState("Lahore")
+  const customerCity = "Lahore"
   const [roomType, setRoomType] = React.useState<
     "sharing" | "quad" | "triple" | "double"
   >("sharing")
@@ -217,32 +213,40 @@ export function PostLookupClient({
   return (
     <div className="flex flex-col gap-5">
       {/* Search Bar & Filters */}
-      <Card className="border-gold/40 bg-card shadow-sm">
+      <Card className="border-gold-border bg-card shadow-sm">
         <CardContent className="p-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-12 items-end">
+          <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-12">
             <div className="md:col-span-8">
               <Label className="text-xs font-bold text-primary">
-                Instant Reverse Lookup (Ref Code, Price, Hotel, Date, Flight, or Group Name)
+                Instant Reverse Lookup (Ref Code, Price, Hotel, Date, Flight, or
+                Group Name)
               </Label>
               <div className="relative mt-1.5">
-                <Search className="absolute left-3 top-2.5 size-4 text-gold" />
+                <Search
+                  className="absolute top-2.5 left-3 size-4 text-gold-text"
+                  aria-hidden="true"
+                />
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Try: ART-AM-21D, 269,899, Dar Al Khalil, Swissotel, 10 NOV, Askari 10, Saudia..."
+                  placeholder="Try: ART-AM-21D, 269,899, Dar Al Khalil, Swissotel, 10 NOV, Askari 10, Saudia…"
                   className="pl-9 font-mono text-xs sm:text-sm"
                 />
               </div>
             </div>
 
             <div className="md:col-span-4">
-              <Label className="text-xs font-semibold">Filter by B2B Supplier</Label>
+              <Label className="text-xs font-semibold">
+                Filter by B2B Supplier
+              </Label>
               <select
                 value={supplierFilter}
                 onChange={(e) => setSupplierFilter(e.target.value)}
-                className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
+                className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <option value="all">All Suppliers ({packages.length} Packages)</option>
+                <option value="all">
+                  All Suppliers ({packages.length} Packages)
+                </option>
                 {suppliersList.map(([id, name]) => (
                   <option key={id} value={id}>
                     {name}
@@ -255,11 +259,16 @@ export function PostLookupClient({
       </Card>
 
       {convertedApp && (
-        <div className="rounded-xl border border-emerald-400 bg-emerald-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 text-emerald-950 text-xs">
-            <CheckCircle2 className="size-5 text-emerald-600 shrink-0" />
+        <div className="flex flex-col justify-between gap-3 rounded-xl border border-status-success-border bg-status-success-bg p-4 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-2.5 text-xs text-status-success">
+            <CheckCircle2
+              className="size-5 shrink-0 text-status-success"
+              aria-hidden="true"
+            />
             <div>
-              <strong>Customer Application &amp; Official Quote Created!</strong>{" "}
+              <strong>
+                Customer Application &amp; Official Quote Created!
+              </strong>{" "}
               Reference Code:{" "}
               <span className="font-mono font-bold">
                 {convertedApp.referenceNumber}
@@ -272,9 +281,10 @@ export function PostLookupClient({
             onClick={() =>
               router.push(`/admin/applications/${convertedApp.applicationId}`)
             }
-            className="bg-[#0A3622] text-white text-xs font-bold cursor-pointer"
+            className="cursor-pointer gap-1.5 bg-primary text-xs font-bold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <span>Open Quote &amp; Generate 3-Page PDF →</span>
+            <span>Open Quote &amp; Generate 3-Page PDF</span>
+            <ArrowRight className="size-3.5" aria-hidden="true" />
           </Button>
         </div>
       )}
@@ -292,9 +302,9 @@ export function PostLookupClient({
           return (
             <Card
               key={pkg.id}
-              className="border-border bg-card shadow-xs hover:border-gold/60 transition-colors"
+              className="border-border bg-card shadow-xs transition-colors hover:border-gold-border motion-reduce:transition-none"
             >
-              <CardHeader className="bg-secondary/25 border-b border-border py-3 px-4">
+              <CardHeader className="border-b border-border bg-secondary/25 px-4 py-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-md bg-primary px-2.5 py-1 font-mono text-xs font-black text-gold">
@@ -302,16 +312,16 @@ export function PostLookupClient({
                     </span>
                     <Badge
                       variant="outline"
-                      className="border-gold/50 bg-gold/10 text-xs font-bold text-foreground"
+                      className="border-gold-border bg-accent/40 text-xs font-bold text-foreground"
                     >
                       Supplier: {pkg.supplier.name}
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="text-xs font-mono font-semibold"
+                      className="font-mono text-xs font-semibold"
                     >
                       {pkg.flyer.airlineName} · {pkg.flyer.daysTitle} (
-                      {pkg.outboundDateLabel} → {pkg.returnDateLabel})
+                      {pkg.outboundDateLabel} to {pkg.returnDateLabel})
                     </Badge>
                   </div>
 
@@ -320,9 +330,12 @@ export function PostLookupClient({
                       href={pkg.flyer.rawFlyerImageUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-medium hover:bg-secondary"
+                      className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1 text-[11px] font-medium hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <ImageIcon className="size-3 text-muted-foreground" />
+                      <ImageIcon
+                        className="size-3 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <span>Original Supplier Flyer</span>
                     </a>
 
@@ -331,11 +344,11 @@ export function PostLookupClient({
                         href={pkg.spotlightPosterUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 rounded-md bg-[#0A3622] px-2.5 py-1 text-[11px] font-bold text-gold hover:bg-[#0A3622]/90"
+                        className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[11px] font-bold text-gold hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
-                        <Sparkles className="size-3" />
+                        <Sparkles className="size-3" aria-hidden="true" />
                         <span>Our 4K Spotlight Poster</span>
-                        <ExternalLink className="size-2.5" />
+                        <ExternalLink className="size-2.5" aria-hidden="true" />
                       </a>
                     ) : (
                       <Button
@@ -344,12 +357,18 @@ export function PostLookupClient({
                         variant="outline"
                         disabled={busyId === `spot-${pkg.id}`}
                         onClick={() => handleQuickSpotlight(pkg.id)}
-                        className="h-7 text-[11px] gap-1 cursor-pointer"
+                        className="h-7 cursor-pointer gap-1 text-[11px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
                         {busyId === `spot-${pkg.id}` ? (
-                          <Loader2 className="size-3 animate-spin" />
+                          <Loader2
+                            className="size-3 animate-spin motion-reduce:animate-none"
+                            aria-hidden="true"
+                          />
                         ) : (
-                          <Sparkles className="size-3 text-gold" />
+                          <Sparkles
+                            className="size-3 text-gold-text"
+                            aria-hidden="true"
+                          />
                         )}
                         <span>Render 4K Spotlight</span>
                       </Button>
@@ -363,29 +382,39 @@ export function PostLookupClient({
                           convertingPkgId === pkg.id ? null : pkg.id
                         )
                       }
-                      className="h-7 bg-primary text-white hover:bg-primary/90 text-[11px] font-bold gap-1 cursor-pointer"
+                      className="h-7 cursor-pointer gap-1 bg-primary text-[11px] font-bold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <UserPlus className="size-3 text-gold" />
+                      <UserPlus
+                        className="size-3 text-gold"
+                        aria-hidden="true"
+                      />
                       <span>Convert to Customer Quote</span>
                     </Button>
                   </div>
                 </div>
               </CardHeader>
 
-              <CardContent className="p-4 space-y-4">
+              <CardContent className="space-y-4 p-4">
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
                   {/* Col 1: Flights & Hotels */}
-                  <div className="lg:col-span-5 space-y-2 text-xs">
+                  <div className="space-y-2 text-xs lg:col-span-5">
                     <div className="flex items-center gap-2 font-semibold text-foreground">
-                      <Plane className="size-3.5 text-primary" />
+                      <Plane
+                        className="size-3.5 text-primary"
+                        aria-hidden="true"
+                      />
                       <span>
-                        Outbound: {pkg.outboundFlightNo} ({pkg.outboundDateLabel}{" "}
-                        · {pkg.outboundDepTime}-{pkg.outboundArrTime}) | Return:{" "}
-                        {pkg.returnFlightNo} ({pkg.returnDateLabel})
+                        Outbound: {pkg.outboundFlightNo} (
+                        {pkg.outboundDateLabel} · {pkg.outboundDepTime}-
+                        {pkg.outboundArrTime}) | Return: {pkg.returnFlightNo} (
+                        {pkg.returnDateLabel})
                       </span>
                     </div>
                     <div className="flex items-start gap-2">
-                      <Building2 className="size-3.5 text-amber-700 mt-0.5 shrink-0" />
+                      <Building2
+                        className="mt-0.5 size-3.5 shrink-0 text-gold-text"
+                        aria-hidden="true"
+                      />
                       <div>
                         <div>
                           <strong className="text-primary">
@@ -394,7 +423,7 @@ export function PostLookupClient({
                           {pkg.makkahHotelName} {pkg.makkahDistanceLabel}
                         </div>
                         <div>
-                          <strong className="text-emerald-800">
+                          <strong className="text-status-success">
                             Madinah ({pkg.madinahNights}):
                           </strong>{" "}
                           {pkg.madinahHotelName} {pkg.madinahDistanceLabel}
@@ -404,52 +433,55 @@ export function PostLookupClient({
                   </div>
 
                   {/* Col 2: Retail vs Supplier Net & Commission */}
-                  <div className="lg:col-span-4 rounded-xl border border-gold/40 bg-gold/5 p-3 text-xs">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-foreground flex items-center gap-1">
-                        <Coins className="size-3.5 text-gold" />
+                  <div className="rounded-xl bg-accent/25 p-3 text-xs lg:col-span-4">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="flex items-center gap-1 font-bold text-foreground">
+                        <Coins
+                          className="size-3.5 text-gold-text"
+                          aria-hidden="true"
+                        />
                         <span>Retail vs Supplier Net (PKR)</span>
                       </span>
-                      <span className="font-mono text-[11px] font-bold text-emerald-800">
+                      <span className="font-mono text-[11px] font-bold text-status-success tabular-nums">
                         Margin: +PKR {pkg.commissionPkr.toLocaleString()}/pax
                       </span>
                     </div>
-                    <div className="grid grid-cols-4 gap-1.5 text-center font-mono text-[11px]">
-                      <div className="rounded bg-white p-1.5 border border-border">
-                        <span className="block text-[9px] text-muted-foreground">
-                          SHARING
+                    <div className="grid grid-cols-4 gap-1.5 text-center font-mono text-[11px] tabular-nums">
+                      <div className="rounded bg-card p-1.5">
+                        <span className="block font-sans text-[10px] text-muted-foreground">
+                          Sharing
                         </span>
                         <strong className="text-primary">
                           {pkg.retailSharingPkr.toLocaleString()}
                         </strong>
-                        <span className="block text-[9px] text-muted-foreground">
+                        <span className="block text-[10px] text-muted-foreground">
                           Net: {pkg.netSharingPkr.toLocaleString()}
                         </span>
                       </div>
-                      <div className="rounded bg-white p-1.5 border border-border">
-                        <span className="block text-[9px] text-muted-foreground">
-                          QUAD
+                      <div className="rounded bg-card p-1.5">
+                        <span className="block font-sans text-[10px] text-muted-foreground">
+                          Quad
                         </span>
                         <strong>{pkg.retailQuadPkr.toLocaleString()}</strong>
-                        <span className="block text-[9px] text-muted-foreground">
+                        <span className="block text-[10px] text-muted-foreground">
                           Net: {pkg.netQuadPkr.toLocaleString()}
                         </span>
                       </div>
-                      <div className="rounded bg-white p-1.5 border border-border">
-                        <span className="block text-[9px] text-muted-foreground">
-                          TRIPLE
+                      <div className="rounded bg-card p-1.5">
+                        <span className="block font-sans text-[10px] text-muted-foreground">
+                          Triple
                         </span>
                         <strong>{pkg.retailTriplePkr.toLocaleString()}</strong>
-                        <span className="block text-[9px] text-muted-foreground">
+                        <span className="block text-[10px] text-muted-foreground">
                           Net: {pkg.netTriplePkr.toLocaleString()}
                         </span>
                       </div>
-                      <div className="rounded bg-white p-1.5 border border-border">
-                        <span className="block text-[9px] text-muted-foreground">
-                          DOUBLE
+                      <div className="rounded bg-card p-1.5">
+                        <span className="block font-sans text-[10px] text-muted-foreground">
+                          Double
                         </span>
                         <strong>{pkg.retailDoublePkr.toLocaleString()}</strong>
-                        <span className="block text-[9px] text-muted-foreground">
+                        <span className="block text-[10px] text-muted-foreground">
                           Net: {pkg.netDoublePkr.toLocaleString()}
                         </span>
                       </div>
@@ -457,9 +489,12 @@ export function PostLookupClient({
                   </div>
 
                   {/* Col 3: Distribution History */}
-                  <div className="lg:col-span-3 rounded-xl border border-border bg-secondary/20 p-3 text-xs">
-                    <div className="font-bold text-foreground flex items-center gap-1.5 mb-1.5">
-                      <Share2 className="size-3.5 text-primary" />
+                  <div className="rounded-xl bg-secondary/50 p-3 text-xs lg:col-span-3">
+                    <div className="mb-1.5 flex items-center gap-1.5 font-bold text-foreground">
+                      <Share2
+                        className="size-3.5 text-primary"
+                        aria-hidden="true"
+                      />
                       <span>
                         Shared Across ({pkgDistributions.length} Channels)
                       </span>
@@ -469,16 +504,16 @@ export function PostLookupClient({
                         Not yet logged in Daily Distribution Matrix.
                       </p>
                     ) : (
-                      <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                      <div className="flex max-h-20 flex-wrap gap-1 overflow-y-auto">
                         {pkgDistributions.map((d) => (
                           <span
                             key={d.id}
-                            className="inline-flex items-center gap-1 rounded bg-white border border-border px-2 py-0.5 text-[10px] font-medium"
+                            className="inline-flex items-center gap-1 rounded bg-card px-2 py-0.5 text-[11px] font-medium"
                           >
                             <span className="font-semibold text-primary">
                               {d.channel.name}
                             </span>
-                            <span className="text-muted-foreground">
+                            <span className="text-muted-foreground tabular-nums">
                               ({d.scheduledDate})
                             </span>
                           </span>
@@ -490,27 +525,32 @@ export function PostLookupClient({
 
                 {/* Expandable 1-Click Convert to Customer Application Drawer */}
                 {convertingPkgId === pkg.id && (
-                  <div className="rounded-xl border-2 border-primary bg-primary/5 p-4 space-y-3">
-                    <CardTitle className="text-xs font-bold uppercase tracking-wider text-primary">
-                      Convert Inquiry on [{pkg.postCode}] into Official Customer Application &amp; Quote
+                  <div className="space-y-3 rounded-xl border-t-2 border-primary bg-primary/5 p-4">
+                    <CardTitle className="text-xs font-bold text-primary">
+                      Convert Inquiry on [{pkg.postCode}] into Official Customer
+                      Application &amp; Quote
                     </CardTitle>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-6 items-end">
+                    <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-6">
                       <div className="sm:col-span-2">
-                        <Label className="text-[11px]">Customer Full Name *</Label>
+                        <Label className="text-[11px]">
+                          Customer Full Name *
+                        </Label>
                         <Input
                           value={customerName}
                           onChange={(e) => setCustomerName(e.target.value)}
                           placeholder="e.g. Brig. Tariq Mahmood"
-                          className="h-8 text-xs bg-white mt-1"
+                          className="mt-1 h-8 bg-background text-xs"
                         />
                       </div>
                       <div>
-                        <Label className="text-[11px]">WhatsApp / Phone *</Label>
+                        <Label className="text-[11px]">
+                          WhatsApp / Phone *
+                        </Label>
                         <Input
                           value={customerPhone}
                           onChange={(e) => setCustomerPhone(e.target.value)}
                           placeholder="0300 4123456"
-                          className="h-8 text-xs bg-white mt-1"
+                          className="mt-1 h-8 bg-background text-xs"
                         />
                       </div>
                       <div>
@@ -520,16 +560,14 @@ export function PostLookupClient({
                           onChange={(e) =>
                             setRoomType(
                               e.target.value as
-                                | "sharing"
-                                | "quad"
-                                | "triple"
-                                | "double"
+                                "sharing" | "quad" | "triple" | "double"
                             )
                           }
-                          className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 text-xs"
+                          className="mt-1 flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           <option value="sharing">
-                            Sharing (PKR {pkg.retailSharingPkr.toLocaleString()})
+                            Sharing (PKR {pkg.retailSharingPkr.toLocaleString()}
+                            )
                           </option>
                           <option value="quad">
                             Quad (PKR {pkg.retailQuadPkr.toLocaleString()})
@@ -543,21 +581,25 @@ export function PostLookupClient({
                         </select>
                       </div>
                       <div>
-                        <Label className="text-[11px]">Passengers &amp; Source</Label>
-                        <div className="flex gap-1.5 mt-1">
+                        <Label className="text-[11px]">
+                          Passengers &amp; Source
+                        </Label>
+                        <div className="mt-1 flex gap-1.5">
                           <Input
                             type="number"
                             min={1}
                             value={adults}
                             onChange={(e) =>
-                              setAdults(Math.max(1, Number(e.target.value) || 1))
+                              setAdults(
+                                Math.max(1, Number(e.target.value) || 1)
+                              )
                             }
-                            className="h-8 w-16 text-xs bg-white font-mono"
+                            className="h-8 w-16 bg-background font-mono text-xs"
                           />
                           <select
                             value={sourceChannelId}
                             onChange={(e) => setSourceChannelId(e.target.value)}
-                            className="flex h-8 w-full rounded-md border border-input bg-white px-2 text-[11px]"
+                            className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-[11px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           >
                             <option value="">Any Channel</option>
                             {channels.map((c) => (
@@ -574,12 +616,21 @@ export function PostLookupClient({
                           size="sm"
                           disabled={busyId === pkg.id}
                           onClick={() => handleConvert(pkg.id)}
-                          className="h-8 w-full bg-[#0A3622] text-white text-xs font-bold cursor-pointer"
+                          className="h-8 w-full cursor-pointer gap-1.5 bg-primary text-xs font-bold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           {busyId === pkg.id ? (
-                            <Loader2 className="size-3.5 animate-spin" />
+                            <Loader2
+                              className="size-3.5 animate-spin motion-reduce:animate-none"
+                              aria-hidden="true"
+                            />
                           ) : (
-                            <span>Create Quote →</span>
+                            <>
+                              <span>Create Quote</span>
+                              <ArrowRight
+                                className="size-3.5"
+                                aria-hidden="true"
+                              />
+                            </>
                           )}
                         </Button>
                       </div>

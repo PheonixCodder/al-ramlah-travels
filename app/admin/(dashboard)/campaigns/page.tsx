@@ -56,6 +56,10 @@ interface AdminCampaignsPageProps {
   }>
 }
 
+function getServerNowMs(): number {
+  return Date.now()
+}
+
 function sanitizeIntegrationMetaForClient(
   rawMeta: Record<string, unknown> | null | undefined
 ): Record<string, unknown> {
@@ -83,7 +87,10 @@ export default async function AdminCampaignsPage({
   const params = await searchParams
   const activeTab = params.tab || "social"
   const activeAssetId = params.assetId || ""
-  const postsPage = Math.max(1, Number.parseInt(params.postsPage || "1", 10) || 1)
+  const postsPage = Math.max(
+    1,
+    Number.parseInt(params.postsPage || "1", 10) || 1
+  )
   const contactsPage = Math.max(
     1,
     Number.parseInt(params.contactsPage || "1", 10) || 1
@@ -125,10 +132,14 @@ export default async function AdminCampaignsPage({
     totalOutreachContactsCount,
     totalBroadcastsCount,
   ] = await Promise.all([
-    safeQuery("Agency Settings", async () => {
-      const [row] = await db.select().from(agencySettings).limit(1)
-      return row ?? null
-    }, null),
+    safeQuery(
+      "Agency Settings",
+      async () => {
+        const [row] = await db.select().from(agencySettings).limit(1)
+        return row ?? null
+      },
+      null
+    ),
 
     // 1. Social Integrations (sanitized of encrypted credentials & pending staging rows)
     safeQuery(
@@ -448,25 +459,43 @@ export default async function AdminCampaignsPage({
     ),
 
     // 12-15. SQL summary counts (`T-071`)
-    safeQuery("Scheduled Posts Count", async () => {
-      const [res] = await db.select({ value: count() }).from(scheduledPosts)
-      return Number(res?.value ?? 0)
-    }, 0),
+    safeQuery(
+      "Scheduled Posts Count",
+      async () => {
+        const [res] = await db.select({ value: count() }).from(scheduledPosts)
+        return Number(res?.value ?? 0)
+      },
+      0
+    ),
 
-    safeQuery("Post Assets Count", async () => {
-      const [res] = await db.select({ value: count() }).from(postAssets)
-      return Number(res?.value ?? 0)
-    }, 0),
+    safeQuery(
+      "Post Assets Count",
+      async () => {
+        const [res] = await db.select({ value: count() }).from(postAssets)
+        return Number(res?.value ?? 0)
+      },
+      0
+    ),
 
-    safeQuery("Outreach Contacts Count", async () => {
-      const [res] = await db.select({ value: count() }).from(outreachContacts)
-      return Number(res?.value ?? 0)
-    }, 0),
+    safeQuery(
+      "Outreach Contacts Count",
+      async () => {
+        const [res] = await db.select({ value: count() }).from(outreachContacts)
+        return Number(res?.value ?? 0)
+      },
+      0
+    ),
 
-    safeQuery("WhatsApp Broadcasts Count", async () => {
-      const [res] = await db.select({ value: count() }).from(whatsappBroadcasts)
-      return Number(res?.value ?? 0)
-    }, 0),
+    safeQuery(
+      "WhatsApp Broadcasts Count",
+      async () => {
+        const [res] = await db
+          .select({ value: count() })
+          .from(whatsappBroadcasts)
+        return Number(res?.value ?? 0)
+      },
+      0
+    ),
   ])
 
   const companyInfo = getCompanyInfo(agencySettingsRow)
@@ -485,6 +514,7 @@ export default async function AdminCampaignsPage({
     <CampaignsHubClient
       initialTab={activeTab}
       initialAssetId={activeAssetId}
+      initialNowMs={getServerNowMs()}
       userRole={session.user.role === "super_admin" ? "super_admin" : "staff"}
       companyInfo={{
         officeAddress: companyInfo.officeAddress,

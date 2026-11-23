@@ -1,7 +1,7 @@
 # 0008. Multimodal Studio R2 Presigned Uploads and Gotenberg Infrastructure
 
 **Date**: 2026-11-02
-**Status**: Approved (Implemented)
+**Status**: Accepted (Implemented)
 
 ## Summary
 

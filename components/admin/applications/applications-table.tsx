@@ -96,7 +96,11 @@ export function ApplicationsTable({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-      <div className="overflow-x-auto">
+      <div
+        tabIndex={0}
+        aria-label="Applications table"
+        className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
         <Table>
           <TableHeader className="bg-secondary/60">
             <TableRow className="hover:bg-transparent">
@@ -159,11 +163,11 @@ export function ApplicationsTable({
                   <TableCell className="font-mono text-xs font-bold text-primary">
                     <Link
                       href={`/admin/applications/${app.id}`}
-                      className="inline-flex items-center gap-1 hover:underline hover:text-primary/80"
+                      className="inline-flex items-center gap-1 rounded hover:text-primary/80 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       {app.referenceNumber}
                     </Link>
-                    <div className="mt-0.5 text-[10px] font-normal text-muted-foreground">
+                    <div className="mt-0.5 text-[11px] font-normal text-muted-foreground">
                       {new Date(app.createdAt).toLocaleDateString("en-PK", {
                         month: "short",
                         day: "numeric",
@@ -181,7 +185,7 @@ export function ApplicationsTable({
                       </span>
                       <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
-                          <MapPin className="size-3 text-muted-foreground" />
+                          <MapPin className="size-3 text-muted-foreground" aria-hidden="true" />
                           {app.customerCity}
                         </span>
                         <span>•</span>
@@ -189,11 +193,11 @@ export function ApplicationsTable({
                           href={waLink}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-emerald-700 hover:underline"
+                          className="inline-flex items-center gap-1 rounded text-status-success hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           title="Open WhatsApp chat"
                         >
-                          <MessageSquare className="size-3" />
-                          <span className="font-mono text-[11px]">
+                          <MessageSquare className="size-3" aria-hidden="true" />
+                          <span className="font-mono text-[11px] tabular-nums">
                             {app.customerPhone}
                           </span>
                         </a>
@@ -214,7 +218,7 @@ export function ApplicationsTable({
                       ) : app.source === "group_booking" ? (
                         <Badge
                           variant="outline"
-                          className="w-fit border-gold/40 bg-gold/10 text-[11px] font-medium text-gold-foreground"
+                          className="w-fit border-gold-border/60 bg-accent text-[11px] font-medium text-gold-foreground"
                         >
                           Group Package
                         </Badge>
@@ -226,7 +230,7 @@ export function ApplicationsTable({
                           Hajj Inquiry
                         </Badge>
                       )}
-                      <span className="text-[11px] text-muted-foreground truncate max-w-[140px]">
+                      <span className="max-w-[140px] truncate text-[11px] text-muted-foreground">
                         {app.groupPackage?.title ||
                           app.presetMode.replace(/_/g, " ")}
                       </span>
@@ -238,23 +242,23 @@ export function ApplicationsTable({
                     <div className="flex flex-col gap-0.5 text-xs">
                       {arrivalStr && departureStr ? (
                         <div className="flex items-center gap-1 font-medium text-foreground">
-                          <Calendar className="size-3 text-muted-foreground" />
+                          <Calendar className="size-3 text-muted-foreground" aria-hidden="true" />
                           <span>
-                            {arrivalStr} – {departureStr}
+                            {arrivalStr} to {departureStr}
                           </span>
                           {app.totalKsaDays && (
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-[11px] text-muted-foreground tabular-nums">
                               ({app.totalKsaDays}d)
                             </span>
                           )}
                         </div>
                       ) : (
-                        <span className="text-muted-foreground text-xs italic">
+                        <span className="text-xs text-muted-foreground italic">
                           Flexible Dates
                         </span>
                       )}
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Users className="size-3" />
+                        <Users className="size-3" aria-hidden="true" />
                         <span>
                           {app.totalPassportCount} Pax ({app.bedAndSeatCount} Beds
                           {app.infants > 0 ? `, ${app.infants} Inf` : ""})
@@ -270,7 +274,7 @@ export function ApplicationsTable({
                         title={app.includeVisa ? "Visa Included" : "No Visa"}
                         className={`rounded-md p-1 ${app.includeVisa ? "bg-primary/10 text-primary" : "text-muted-foreground/30"}`}
                       >
-                        <FileCheck className="size-3.5" />
+                        <FileCheck className="size-3.5" aria-hidden="true" />
                       </span>
                       <span
                         title={
@@ -278,17 +282,17 @@ export function ApplicationsTable({
                             ? "Flights Included"
                             : "No Flights"
                         }
-                        className={`rounded-md p-1 ${app.includeFlights ? "bg-sky-100 text-sky-700" : "text-muted-foreground/30"}`}
+                        className={`rounded-md p-1 ${app.includeFlights ? "bg-status-info-bg text-status-info" : "text-muted-foreground/30"}`}
                       >
-                        <Plane className="size-3.5" />
+                        <Plane className="size-3.5" aria-hidden="true" />
                       </span>
                       <span
                         title={
                           app.includeHotels ? "Hotels Included" : "No Hotels"
                         }
-                        className={`rounded-md p-1 ${app.includeHotels ? "bg-amber-100 text-amber-800" : "text-muted-foreground/30"}`}
+                        className={`rounded-md p-1 ${app.includeHotels ? "bg-status-warning-bg text-status-warning" : "text-muted-foreground/30"}`}
                       >
-                        <Building2 className="size-3.5" />
+                        <Building2 className="size-3.5" aria-hidden="true" />
                       </span>
                       <span
                         title={
@@ -296,9 +300,9 @@ export function ApplicationsTable({
                             ? "Transport Included"
                             : "No Transport"
                         }
-                        className={`rounded-md p-1 ${app.includeTransport ? "bg-emerald-100 text-emerald-800" : "text-muted-foreground/30"}`}
+                        className={`rounded-md p-1 ${app.includeTransport ? "bg-status-success-bg text-status-success" : "text-muted-foreground/30"}`}
                       >
-                        <Car className="size-3.5" />
+                        <Car className="size-3.5" aria-hidden="true" />
                       </span>
                       <span
                         title={
@@ -306,9 +310,9 @@ export function ApplicationsTable({
                             ? "Ziyarat Included"
                             : "No Ziyarat"
                         }
-                        className={`rounded-md p-1 ${app.includeZiyarat ? "bg-purple-100 text-purple-700" : "text-muted-foreground/30"}`}
+                        className={`rounded-md p-1 ${app.includeZiyarat ? "bg-accent text-gold-text" : "text-muted-foreground/30"}`}
                       >
-                        <Compass className="size-3.5" />
+                        <Compass className="size-3.5" aria-hidden="true" />
                       </span>
                     </div>
                   </TableCell>
@@ -331,17 +335,17 @@ export function ApplicationsTable({
                           className="text-sm font-bold text-foreground"
                         />
                         {latestQuote.paymentStatus === "paid_in_full" && (
-                          <span className="text-[10px] font-semibold text-emerald-700">
+                          <span className="text-[11px] font-semibold text-status-success">
                             Paid Full
                           </span>
                         )}
                         {latestQuote.paymentStatus === "deposit_paid" && (
-                          <span className="text-[10px] font-semibold text-sky-700">
+                          <span className="text-[11px] font-semibold text-status-info">
                             Deposit Verified
                           </span>
                         )}
                         {latestQuote.paymentStatus === "partially_paid" && (
-                          <span className="text-[10px] font-semibold text-amber-700">
+                          <span className="text-[11px] font-semibold text-status-warning">
                             Partial Deposit
                           </span>
                         )}
@@ -350,15 +354,15 @@ export function ApplicationsTable({
                       <div className="flex flex-col items-end">
                         <TabularPrice
                           amount={app.calculatedVisaTotalPkr}
-                          className="text-xs text-muted-foreground font-mono"
+                          className="font-mono text-xs text-muted-foreground"
                         />
-                        <span className="text-[10px] text-muted-foreground/80 italic">
+                        <span className="text-[11px] text-muted-foreground/80 italic">
                           Visa Calc
                         </span>
                       </div>
                     ) : (
-                      <span className="font-mono text-xs text-muted-foreground">
-                        —
+                      <span className="text-xs text-muted-foreground">
+                        Pending
                       </span>
                     )}
                   </TableCell>
@@ -368,14 +372,14 @@ export function ApplicationsTable({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-border hover:border-gold hover:bg-gold/10 hover:text-foreground text-xs font-medium"
+                      className="border-border text-xs font-medium hover:border-gold hover:bg-accent/50 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       render={
                         <Link href={`/admin/applications/${app.id}`} />
                       }
                       nativeButton={false}
                     >
                       <span>Worksheet</span>
-                      <ArrowUpRight className="size-3.5" />
+                      <ArrowUpRight className="size-3.5" aria-hidden="true" />
                     </Button>
                   </TableCell>
                 </TableRow>

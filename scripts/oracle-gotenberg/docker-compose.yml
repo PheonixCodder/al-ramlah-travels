@@ -1,0 +1,73 @@
+services:
+  gotenberg:
+    image: gotenberg/gotenberg:8.17.0
+    platform: linux/arm64
+    container_name: gotenberg
+    restart: unless-stopped
+    command:
+      - "gotenberg"
+      - "--chromium-disable-javascript=true"
+      - "--chromium-allow-list=^data:|^https://"
+      - '--chromium-deny-list=^file:|https?://(localhost|127\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.|169\.254\.|0\.|\[::1\]|\[fc|\[fd|\[fe80)'
+      - "--chromium-max-concurrency=2"
+      - "--chromium-restart-after=25"
+      - "--api-timeout=35s"
+      - "--log-level=info"
+    # Internal-only network — port 3000 is never exposed to the public internet
+    # and Gotenberg cannot initiate arbitrary outbound internet connections.
+    expose:
+      - "3000"
+    networks:
+      - gotenberg_internal
+    volumes:
+      - /usr/share/fonts:/usr/local/share/fonts/host-fonts:ro
+    mem_limit: 6g
+    memswap_limit: 6g
+    cpus: 3.0
+    shm_size: 512m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  caddy:
+    image: caddy:2.9-alpine
+    platform: linux/arm64
+    container_name: caddy-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      GOTENBERG_DOMAIN: ${GOTENBERG_DOMAIN:-pdf.alramlahtravels.com}
+      GOTENBERG_API_KEY: ${GOTENBERG_API_KEY:?GOTENBERG_API_KEY must be set in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - caddy_public
+      - gotenberg_internal
+    mem_limit: 512m
+    cpus: 0.5
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      gotenberg:
+        condition: service_healthy
+
+networks:
+  gotenberg_internal:
+    driver: bridge
+    internal: true
+  caddy_public:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

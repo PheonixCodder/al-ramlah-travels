@@ -37,16 +37,20 @@ export function RecentApplicationsTable({
         <Button
           variant="outline"
           size="sm"
-          className="text-xs font-semibold hover:border-gold"
+          className="text-xs font-semibold hover:border-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           render={<Link href="/admin/applications" />}
           nativeButton={false}
         >
           <span>View All Queue</span>
-          <ArrowRight className="size-3.5" />
+          <ArrowRight className="size-3.5" aria-hidden="true" />
         </Button>
       </div>
 
-      <div className="overflow-x-auto">
+      <div
+        tabIndex={0}
+        aria-label="Recent inquiry feed table"
+        className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
         <Table>
           <TableHeader className="bg-secondary/40">
             <TableRow>
@@ -91,7 +95,7 @@ export function RecentApplicationsTable({
                     <Link
                       href={`/admin/applications/${app.id}`}
                       title={formatPktDateTimeLabel(app.createdAt)}
-                      className="hover:underline"
+                      className="rounded hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       {app.referenceNumber}
                     </Link>
@@ -138,7 +142,7 @@ export function RecentApplicationsTable({
                     {total > 0 ? (
                       <TabularPrice amount={total} className="text-xs" />
                     ) : (
-                      <span className="text-muted-foreground text-xs">—</span>
+                      <span className="text-xs text-muted-foreground">Pending</span>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
@@ -148,9 +152,9 @@ export function RecentApplicationsTable({
                       aria-label={`Open quoting worksheet for ${app.referenceNumber}`}
                       render={<Link href={`/admin/applications/${app.id}`} />}
                       nativeButton={false}
-                      className="hover:text-primary"
+                      className="hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <ArrowUpRight className="size-4" />
+                      <ArrowUpRight className="size-4" aria-hidden="true" />
                     </Button>
                   </TableCell>
                 </TableRow>

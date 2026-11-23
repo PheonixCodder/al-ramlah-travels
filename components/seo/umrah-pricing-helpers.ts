@@ -1,9 +1,7 @@
 import type { Metadata } from "next"
 import { formatPkr } from "@/components/public/public-utils"
-import {
-  ORGANIZATION_JSONLD_ID,
-  WEBSITE_JSONLD_ID,
-} from "@/lib/seo/json-ld"
+export { LIVE_RATE_CONFIRMATION_LABEL } from "@/lib/constants/brand"
+import { ORGANIZATION_JSONLD_ID, WEBSITE_JSONLD_ID } from "@/lib/seo/json-ld"
 import {
   buildPublicMetadata,
   CANONICAL_ORIGIN,
@@ -100,9 +98,7 @@ export function resolveStrictGatewayCityRouteSlug(
     .toLowerCase()
     .replace(/^from-/, "")
 
-  if (
-    !(UMRAH_GATEWAY_CITY_SLUGS as readonly string[]).includes(cleaned)
-  ) {
+  if (!(UMRAH_GATEWAY_CITY_SLUGS as readonly string[]).includes(cleaned)) {
     return null
   }
   return resolveUmrahGatewayCity(cleaned)
@@ -165,8 +161,7 @@ export function buildUmrahPackageSlugMetadata(
     ]
     const matched = expandedCandidates.find(
       (c) =>
-        c.length + suffixFull.length >= 50 &&
-        c.length + suffixFull.length <= 60
+        c.length + suffixFull.length >= 50 && c.length + suffixFull.length <= 60
     )
     if (matched) {
       finalBrandedTitle = `${matched}${suffixFull}`
@@ -380,5 +375,61 @@ export function computeWordNgramUniqueness(
   return {
     similarity,
     uniqueness: 1 - similarity,
+  }
+}
+
+const OPTIMIZED_IMAGE_EXACT_HOSTS = new Set([
+  "r2.alramlahtravels.com",
+  "assets.alramlahtravels.com",
+  "images.unsplash.com",
+  "plus.unsplash.com",
+  "lh3.googleusercontent.com",
+  "avatars.githubusercontent.com",
+])
+
+const OPTIMIZED_IMAGE_WILDCARD_SUFFIXES = [
+  ".r2.dev",
+  ".r2.cloudflarestorage.com",
+  ".public.blob.vercel-storage.com",
+] as const
+
+/**
+ * Determines whether `<Image>` must set `unoptimized={true}` for a given `src`.
+ * Returns `false` for local `/` paths and `https://` URLs matching `next.config.ts`
+ * `images.remotePatterns`, and `true` for arbitrary external supplier or `data:` URLs
+ * so Next.js image optimization optimizes configured hosts without throwing on unknown ones.
+ */
+export function shouldBypassNextImageOptimization(src: string): boolean {
+  const trimmed = src.trim()
+  if (!trimmed) {
+    return true
+  }
+
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+    return false
+  }
+
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol !== "https:") {
+      return true
+    }
+
+    const hostname = parsed.hostname.toLowerCase()
+    if (OPTIMIZED_IMAGE_EXACT_HOSTS.has(hostname)) {
+      return false
+    }
+
+    if (
+      OPTIMIZED_IMAGE_WILDCARD_SUFFIXES.some(
+        (suffix) => hostname.endsWith(suffix) && hostname.length > suffix.length
+      )
+    ) {
+      return false
+    }
+
+    return true
+  } catch {
+    return true
   }
 }

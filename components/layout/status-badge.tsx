@@ -50,38 +50,38 @@ interface StatusConfig {
 const STATUS_CONFIG: Record<ApplicationStatus, StatusConfig> = {
   pending_quote: {
     label: "Pending Quote",
-    bgClass: "bg-amber-50",
-    textClass: "text-amber-800",
-    borderClass: "border-amber-300",
-    dotClass: "bg-amber-500",
+    bgClass: "bg-status-warning-bg",
+    textClass: "text-status-warning",
+    borderClass: "border-status-warning-border",
+    dotClass: "bg-status-warning",
   },
   quoted: {
     label: "Quoted",
-    bgClass: "bg-sky-50",
-    textClass: "text-sky-800",
-    borderClass: "border-sky-300",
-    dotClass: "bg-sky-500",
+    bgClass: "bg-status-info-bg",
+    textClass: "text-status-info",
+    borderClass: "border-status-info-border",
+    dotClass: "bg-status-info",
   },
   approved: {
     label: "Approved",
-    bgClass: "bg-emerald-50",
-    textClass: "text-emerald-800",
-    borderClass: "border-emerald-300",
-    dotClass: "bg-emerald-600",
+    bgClass: "bg-status-success-bg",
+    textClass: "text-status-success",
+    borderClass: "border-status-success-border",
+    dotClass: "bg-status-success",
   },
   rejected: {
     label: "Rejected",
-    bgClass: "bg-red-50",
-    textClass: "text-red-800",
-    borderClass: "border-red-300",
-    dotClass: "bg-red-600",
+    bgClass: "bg-status-danger-bg",
+    textClass: "text-status-danger",
+    borderClass: "border-status-danger-border",
+    dotClass: "bg-status-danger",
   },
   cancelled: {
     label: "Cancelled",
-    bgClass: "bg-slate-100",
-    textClass: "text-slate-700",
-    borderClass: "border-slate-300",
-    dotClass: "bg-slate-500",
+    bgClass: "bg-secondary",
+    textClass: "text-muted-foreground",
+    borderClass: "border-border",
+    dotClass: "bg-muted-foreground",
   },
 }
 
@@ -91,6 +91,7 @@ export interface StatusBadgeProps {
   isOverdue?: boolean
   showSlaWarning?: boolean
   slaOverdueHours?: number
+  nowMs?: number
   className?: string
 }
 
@@ -114,6 +115,7 @@ export function StatusBadge({
   isOverdue: isOverdueProp,
   showSlaWarning = true,
   slaOverdueHours,
+  nowMs,
   className,
 }: StatusBadgeProps) {
   const contextSlaHours = useAdminSlaOverdueHours()
@@ -146,14 +148,14 @@ export function StatusBadge({
     if (normalizedStatus !== "pending_quote") return false
     if (isOverdueProp !== undefined) return isOverdueProp
     if (!createdAt) return false
-    return isCreatedOverdue(createdAt, effectiveSlaHours)
-  }, [normalizedStatus, isOverdueProp, createdAt, effectiveSlaHours])
+    return isCreatedOverdue(createdAt, effectiveSlaHours, nowMs)
+  }, [normalizedStatus, isOverdueProp, createdAt, effectiveSlaHours, nowMs])
 
   return (
     <div className={cn("inline-flex items-center gap-1.5", className)}>
       <span
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium tracking-wide shadow-2xs select-none",
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium shadow-2xs select-none",
           config.bgClass,
           config.textClass,
           config.borderClass
@@ -169,11 +171,11 @@ export function StatusBadge({
       {isOverdue && showSlaWarning && (
         <span
           title={`Quote is overdue SLA (more than ${effectiveSlaHours} ${effectiveSlaHours === 1 ? "hour" : "hours"} in pending queue)`}
-          className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-900 tabular-nums shadow-2xs select-none"
+          className="inline-flex items-center gap-1 rounded-full border border-status-danger-border bg-status-danger-bg px-2 py-0.5 text-[11px] font-semibold text-status-danger tabular-nums shadow-2xs select-none"
         >
           <span
             aria-hidden="true"
-            className="size-1.5 shrink-0 animate-pulse rounded-full bg-red-600 motion-reduce:animate-none"
+            className="size-1.5 shrink-0 animate-pulse rounded-full bg-status-danger motion-reduce:animate-none"
           />
           <span className="font-mono tabular-nums">
             SLA Overdue ({effectiveSlaHours}h+)

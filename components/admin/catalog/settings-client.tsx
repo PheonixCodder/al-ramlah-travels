@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { updateAgencySettings } from "@/app/actions/catalog"
 import { DEFAULT_OFFICE_ADDRESS } from "@/lib/company-info"
 import { Button } from "@/components/ui/button"
@@ -106,9 +106,7 @@ export function SettingsClient({
   const [youtubeUrl, setYoutubeUrl] = useState(
     initialSettings?.youtubeUrl ?? ""
   )
-  const [tiktokUrl, setTiktokUrl] = useState(
-    initialSettings?.tiktokUrl ?? ""
-  )
+  const [tiktokUrl, setTiktokUrl] = useState(initialSettings?.tiktokUrl ?? "")
 
   // Regulatory & Official Banking (`OD-10`, `T-077`)
   const [dtsLicense, setDtsLicense] = useState(
@@ -130,39 +128,45 @@ export function SettingsClient({
     initialSettings?.ibanVerified ?? false
   )
 
-  useEffect(() => {
-    if (!initialSettings) return
-    setAgencyName(initialSettings.agencyName ?? "Al Ramlah Travels")
-    setLegalEntityName(
-      initialSettings.legalEntityName ??
-        initialSettings.agencyName ??
-        "Al Ramlah Travels"
-    )
-    setTagline(initialSettings.tagline ?? "Where Purpose Meets Excellence")
-    setPrimaryWhatsapp(initialSettings.primaryWhatsapp ?? "03274029701")
-    setSecondaryPhone(initialSettings.secondaryPhone ?? "03190462638")
-    setSupportEmail(initialSettings.supportEmail ?? "alramlahtravels@gmail.com")
-    setOfficeAddress(initialSettings.officeAddress ?? DEFAULT_OFFICE_ADDRESS)
-    setWorkingHours(
-      initialSettings.workingHours ??
-        "Monday to Saturday: 9:00 AM to 8:00 PM PKT"
-    )
-    setSlaOverdueHours(initialSettings.slaOverdueHours ?? 24)
-    setSarToPkrRate(initialSettings.sarToPkrRate ?? 75)
-    setMapsEmbedUrl(initialSettings.mapsEmbedUrl ?? "")
-    setFacebookUrl(initialSettings.facebookUrl ?? "")
-    setInstagramUrl(initialSettings.instagramUrl ?? "")
-    setYoutubeUrl(initialSettings.youtubeUrl ?? "")
-    setTiktokUrl(initialSettings.tiktokUrl ?? "")
-    setDtsLicense(initialSettings.dtsLicense ?? "")
-    setMoraLicense(initialSettings.moraLicense ?? "")
-    setIataCode(initialSettings.iataCode ?? "")
-    setNtnNumber(initialSettings.ntnNumber ?? "")
-    setBankName(initialSettings.bankName ?? "")
-    setAccountTitle(initialSettings.accountTitle ?? "Al Ramlah Travels")
-    setOfficialIban(initialSettings.officialIban ?? "")
-    setIbanVerified(initialSettings.ibanVerified ?? false)
-  }, [initialSettings])
+  const [prevInitialSettings, setPrevInitialSettings] =
+    useState(initialSettings)
+  if (prevInitialSettings !== initialSettings) {
+    setPrevInitialSettings(initialSettings)
+    if (initialSettings) {
+      setAgencyName(initialSettings.agencyName ?? "Al Ramlah Travels")
+      setLegalEntityName(
+        initialSettings.legalEntityName ??
+          initialSettings.agencyName ??
+          "Al Ramlah Travels"
+      )
+      setTagline(initialSettings.tagline ?? "Where Purpose Meets Excellence")
+      setPrimaryWhatsapp(initialSettings.primaryWhatsapp ?? "03274029701")
+      setSecondaryPhone(initialSettings.secondaryPhone ?? "03190462638")
+      setSupportEmail(
+        initialSettings.supportEmail ?? "alramlahtravels@gmail.com"
+      )
+      setOfficeAddress(initialSettings.officeAddress ?? DEFAULT_OFFICE_ADDRESS)
+      setWorkingHours(
+        initialSettings.workingHours ??
+          "Monday to Saturday: 9:00 AM to 8:00 PM PKT"
+      )
+      setSlaOverdueHours(initialSettings.slaOverdueHours ?? 24)
+      setSarToPkrRate(initialSettings.sarToPkrRate ?? 75)
+      setMapsEmbedUrl(initialSettings.mapsEmbedUrl ?? "")
+      setFacebookUrl(initialSettings.facebookUrl ?? "")
+      setInstagramUrl(initialSettings.instagramUrl ?? "")
+      setYoutubeUrl(initialSettings.youtubeUrl ?? "")
+      setTiktokUrl(initialSettings.tiktokUrl ?? "")
+      setDtsLicense(initialSettings.dtsLicense ?? "")
+      setMoraLicense(initialSettings.moraLicense ?? "")
+      setIataCode(initialSettings.iataCode ?? "")
+      setNtnNumber(initialSettings.ntnNumber ?? "")
+      setBankName(initialSettings.bankName ?? "")
+      setAccountTitle(initialSettings.accountTitle ?? "Al Ramlah Travels")
+      setOfficialIban(initialSettings.officialIban ?? "")
+      setIbanVerified(initialSettings.ibanVerified ?? false)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -215,43 +219,54 @@ export function SettingsClient({
     <div className="max-w-4xl space-y-6">
       <div>
         <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-          Agency Settings, Regulatory Licenses & Banking SSoT
+          Agency Settings, Regulatory Licenses &amp; Banking SSoT
         </h1>
         <p className="text-sm text-muted-foreground">
-          Single source of truth for Lahore HQ contact coordinates, DTS/MORA/IATA/NTN regulatory credentials, verified remittance IBAN, and SAR-to-PKR exchange rate.
+          Single source of truth for Lahore HQ contact coordinates,
+          DTS/MORA/IATA/NTN regulatory credentials, verified remittance IBAN,
+          and SAR-to-PKR exchange rate.
         </p>
       </div>
 
       {!isSuperAdmin && (
-        <div className="flex items-center gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-950">
-          <Lock className="size-4 text-amber-700 shrink-0" />
+        <div className="flex items-center gap-2.5 rounded-xl border border-status-warning-border bg-status-warning-bg p-4 text-xs text-status-warning">
+          <Lock
+            className="size-4 shrink-0 text-status-warning"
+            aria-hidden="true"
+          />
           <span>
-            Read-only view: Only a <strong>Super Administrator</strong> may modify agency legal, regulatory, banking, or global forex settings.
+            Read-only view: Only a <strong>Super Administrator</strong> may
+            modify agency legal, regulatory, banking, or global forex settings.
           </span>
         </div>
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-xs text-red-800">
+        <div className="rounded-xl border border-status-danger-border bg-status-danger-bg p-4 text-xs text-status-danger">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-xs text-emerald-800">
-          <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-          <span>Agency settings updated across all public pages and luxury PDFs.</span>
+        <div className="flex items-center gap-2 rounded-xl border border-status-success-border bg-status-success-bg p-4 text-xs text-status-success">
+          <CheckCircle2
+            className="size-4 shrink-0 text-status-success"
+            aria-hidden="true"
+          />
+          <span>
+            Agency settings updated across all public pages and luxury PDFs.
+          </span>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <fieldset disabled={!isSuperAdmin || loading} className="space-y-6">
           {/* Brand & Legal Identity Card */}
-          <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-xs">
             <div className="flex items-center gap-2 border-b border-border pb-3">
-              <Building2 className="size-4 text-gold" />
-              <h2 className="font-semibold text-base text-foreground">
-                Brand & Legal Entity Identity
+              <Building2 className="size-4 text-gold-text" aria-hidden="true" />
+              <h2 className="text-base font-semibold text-foreground">
+                Brand &amp; Legal Entity Identity
               </h2>
             </div>
 
@@ -267,7 +282,9 @@ export function SettingsClient({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="as-legal-name">Registered Legal Entity Name</Label>
+                <Label htmlFor="as-legal-name">
+                  Registered Legal Entity Name
+                </Label>
                 <Input
                   id="as-legal-name"
                   value={legalEntityName}
@@ -290,16 +307,19 @@ export function SettingsClient({
           </div>
 
           {/* Regulatory Credentials Card (`OD-10`) */}
-          <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-xs">
             <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="size-4 text-emerald-700" />
-                <h2 className="font-semibold text-base text-foreground">
-                  Government & Industry Accreditations
+                <ShieldCheck
+                  className="size-4 text-status-success"
+                  aria-hidden="true"
+                />
+                <h2 className="text-base font-semibold text-foreground">
+                  Government &amp; Industry Accreditations
                 </h2>
               </div>
               <span className="text-[11px] text-muted-foreground">
-                Displayed on footer & legal pages only when populated
+                Displayed on footer &amp; legal pages only when populated
               </span>
             </div>
 
@@ -315,7 +335,9 @@ export function SettingsClient({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="as-mora">MORA Enlistment / Hajj Quota No.</Label>
+                <Label htmlFor="as-mora">
+                  MORA Enlistment / Hajj Quota No.
+                </Label>
                 <Input
                   id="as-mora"
                   value={moraLicense}
@@ -348,20 +370,23 @@ export function SettingsClient({
           </div>
 
           {/* Official Corporate Remittance & IBAN Governance (`OD-10`, `T-080`) */}
-          <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-xs">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
               <div className="flex items-center gap-2">
-                <Landmark className="size-4 text-gold" />
-                <h2 className="font-semibold text-base text-foreground">
-                  Official Corporate Bank & IBAN Governance
+                <Landmark
+                  className="size-4 text-gold-text"
+                  aria-hidden="true"
+                />
+                <h2 className="text-base font-semibold text-foreground">
+                  Official Corporate Bank &amp; IBAN Governance
                 </h2>
               </div>
               <Badge
                 variant="outline"
                 className={
                   ibanVerified && officialIban.trim()
-                    ? "border-emerald-300 bg-emerald-50 text-emerald-900 text-[11px]"
-                    : "border-amber-300 bg-amber-50 text-amber-900 text-[11px]"
+                    ? "border-status-success-border bg-status-success-bg text-[11px] text-status-success"
+                    : "border-status-warning-border bg-status-warning-bg text-[11px] text-status-warning"
                 }
               >
                 {ibanVerified && officialIban.trim()
@@ -394,38 +419,46 @@ export function SettingsClient({
                 <Input
                   id="as-iban"
                   value={officialIban}
-                  onChange={(e) => setOfficialIban(e.target.value.toUpperCase())}
+                  onChange={(e) =>
+                    setOfficialIban(e.target.value.toUpperCase())
+                  }
                   placeholder="PK36MEZN0000000123456789"
-                  className="font-mono text-xs uppercase"
+                  className="font-mono text-xs"
                 />
               </div>
             </div>
 
-            <label className="flex items-start gap-2.5 rounded-lg border border-border/80 bg-muted/20 p-3 text-xs cursor-pointer">
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-lg bg-secondary/50 p-3 text-xs">
               <input
                 type="checkbox"
                 checked={ibanVerified && Boolean(officialIban.trim())}
                 disabled={!officialIban.trim()}
                 onChange={(e) => setIbanVerified(e.target.checked)}
-                className="mt-0.5 size-4 accent-emerald-700"
+                className="mt-0.5 size-4 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               />
               <div>
-                <span className="font-semibold text-foreground block">
-                  Confirm IBAN is verified by Finance & authorize printing on pilgrim PDF quotations
+                <span className="block font-semibold text-foreground">
+                  Confirm IBAN is verified by Finance &amp; authorize printing
+                  on pilgrim PDF quotations
                 </span>
                 <span className="text-muted-foreground">
-                  When unchecked, pilgrim quotations display a safe Lahore HQ bank-verification instruction instead of an unverified account number.
+                  When unchecked, pilgrim quotations display a safe Lahore HQ
+                  bank-verification instruction instead of an unverified account
+                  number.
                 </span>
               </div>
             </label>
           </div>
 
           {/* Contact Communications Card */}
-          <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-xs">
             <div className="flex items-center gap-2 border-b border-border pb-3">
-              <Phone className="size-4 text-emerald-700" />
-              <h2 className="font-semibold text-base text-foreground">
-                Contact & Inquiries
+              <Phone
+                className="size-4 text-status-success"
+                aria-hidden="true"
+              />
+              <h2 className="text-base font-semibold text-foreground">
+                Contact &amp; Inquiries
               </h2>
             </div>
 
@@ -464,11 +497,14 @@ export function SettingsClient({
           </div>
 
           {/* Physical Office & Operations */}
-          <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-xs">
             <div className="flex items-center gap-2 border-b border-border pb-3">
-              <MapPin className="size-4 text-amber-700" />
-              <h2 className="font-semibold text-base text-foreground">
-                Lahore HQ Location, Forex & SLA
+              <MapPin
+                className="size-4 text-status-warning"
+                aria-hidden="true"
+              />
+              <h2 className="text-base font-semibold text-foreground">
+                Lahore HQ Location, Forex &amp; SLA
               </h2>
             </div>
 
@@ -495,7 +531,9 @@ export function SettingsClient({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="as-sla">Quote SLA Overdue Threshold (Hours)</Label>
+                <Label htmlFor="as-sla">
+                  Quote SLA Overdue Threshold (Hours)
+                </Label>
                 <Input
                   id="as-sla"
                   type="number"
@@ -508,7 +546,10 @@ export function SettingsClient({
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1">
-                  <Coins className="size-3.5 text-gold" />
+                  <Coins
+                    className="size-3.5 text-gold-text"
+                    aria-hidden="true"
+                  />
                   <Label htmlFor="as-sar" className="font-semibold">
                     SAR to PKR Rate (1 SAR = PKR)
                   </Label>
@@ -538,10 +579,10 @@ export function SettingsClient({
           </div>
 
           {/* Social Media Links */}
-          <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-xs">
             <div className="flex items-center gap-2 border-b border-border pb-3">
-              <Globe className="size-4 text-primary" />
-              <h2 className="font-semibold text-base text-foreground">
+              <Globe className="size-4 text-primary" aria-hidden="true" />
+              <h2 className="text-base font-semibold text-foreground">
                 Social Media Channels
               </h2>
             </div>
@@ -553,7 +594,7 @@ export function SettingsClient({
                   id="as-fb"
                   value={facebookUrl ?? ""}
                   onChange={(e) => setFacebookUrl(e.target.value)}
-                  placeholder="https://facebook.com/..."
+                  placeholder="https://facebook.com/alramlahtravels"
                 />
               </div>
               <div className="space-y-1.5">
@@ -562,7 +603,7 @@ export function SettingsClient({
                   id="as-ig"
                   value={instagramUrl ?? ""}
                   onChange={(e) => setInstagramUrl(e.target.value)}
-                  placeholder="https://instagram.com/..."
+                  placeholder="https://instagram.com/alramlahtravels"
                 />
               </div>
               <div className="space-y-1.5">
@@ -571,7 +612,7 @@ export function SettingsClient({
                   id="as-yt"
                   value={youtubeUrl ?? ""}
                   onChange={(e) => setYoutubeUrl(e.target.value)}
-                  placeholder="https://youtube.com/..."
+                  placeholder="https://youtube.com/@alramlahtravels"
                 />
               </div>
               <div className="space-y-1.5">
@@ -580,7 +621,7 @@ export function SettingsClient({
                   id="as-tk"
                   value={tiktokUrl ?? ""}
                   onChange={(e) => setTiktokUrl(e.target.value)}
-                  placeholder="https://tiktok.com/@..."
+                  placeholder="https://tiktok.com/@alramlahtravels"
                 />
               </div>
             </div>
@@ -591,12 +632,15 @@ export function SettingsClient({
               <Button
                 type="submit"
                 disabled={loading}
-                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-6 py-2.5 cursor-pointer"
+                className="cursor-pointer gap-2 bg-primary px-6 py-2.5 text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 {loading ? (
-                  <Loader2 className="size-4 animate-spin" />
+                  <Loader2
+                    className="size-4 animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Save className="size-4" />
+                  <Save className="size-4" aria-hidden="true" />
                 )}
                 <span>Save Agency Settings</span>
               </Button>

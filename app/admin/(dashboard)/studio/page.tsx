@@ -14,7 +14,7 @@ import { type PackageWithRelations } from "@/components/admin/catalog/groups-cli
 export const metadata = {
   title: "4K Poster & Package Studio | Al Ramlah Travels Admin",
   description:
-    "Finished 4K Poster & Package Studio — Drop your finished 4K Gemini Ultra posters or PDFs, extract package cards, track wholesale commissions, and publish live.",
+    "Finished 4K Poster & Package Studio: Drop your finished 4K Gemini Ultra posters or PDFs, extract package cards, track wholesale commissions, and publish live.",
 }
 
 interface AdminStudioPageProps {
@@ -80,7 +80,10 @@ export default async function AdminStudioPage({
     }),
     db.select().from(schema.airlines).orderBy(asc(schema.airlines.name)),
     db.select().from(schema.hotels).orderBy(asc(schema.hotels.name)),
-    db.select().from(schema.departureCities).orderBy(asc(schema.departureCities.cityName)),
+    db
+      .select()
+      .from(schema.departureCities)
+      .orderBy(asc(schema.departureCities.cityName)),
   ])
 
   return (

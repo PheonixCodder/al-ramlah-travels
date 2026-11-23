@@ -407,25 +407,25 @@ export async function queryAdminOverviewMetrics(
       source: "Custom Builder",
       inquiries: customCount,
       approvedCount: parseSqlBigInt(pRow.custom_approved_count),
-      fillColor: "#0F4C31",
+      fillColor: "var(--chart-1)",
     },
     {
       source: "Group Batches",
       inquiries: groupCount,
       approvedCount: parseSqlBigInt(pRow.group_approved_count),
-      fillColor: "#C5A059",
+      fillColor: "var(--chart-2)",
     },
     {
       source: "WhatsApp Intake",
       inquiries: whatsappIntakeCount,
       approvedCount: parseSqlBigInt(pRow.wa_approved_count),
-      fillColor: "#059669",
+      fillColor: "var(--status-success)",
     },
     {
       source: "Hajj Inquiry",
       inquiries: hajjCount,
       approvedCount: parseSqlBigInt(pRow.hajj_approved_count),
-      fillColor: "#7C3AED",
+      fillColor: "var(--chart-3)",
     },
   ]
 
@@ -434,25 +434,25 @@ export async function queryAdminOverviewMetrics(
       name: "Pending",
       count: pendingActionCount,
       pkrValue: pendingPipelinePkr,
-      color: "#D97706",
+      color: "var(--chart-4)",
     },
     {
       name: "Quoted",
       count: quotedCount,
       pkrValue: quotedOnlyPkr,
-      color: "#0284C7",
+      color: "var(--chart-3)",
     },
     {
       name: "Approved",
       count: approvedCount,
       pkrValue: approvedRevenuePkr,
-      color: "#059669",
+      color: "var(--status-success)",
     },
     {
       name: "Declined",
       count: rejectedCount + cancelledCount,
       pkrValue: 0,
-      color: "#64748B",
+      color: "var(--chart-5)",
     },
   ]
 
@@ -460,27 +460,27 @@ export async function queryAdminOverviewMetrics(
     {
       pillar: "Umrah Visa",
       inquiries: parseSqlBigInt(pRow.visa_pillar_count),
-      fillColor: "#0F4C31",
+      fillColor: "var(--chart-1)",
     },
     {
       pillar: "Hotels",
       inquiries: parseSqlBigInt(pRow.hotel_pillar_count),
-      fillColor: "#C5A059",
+      fillColor: "var(--chart-2)",
     },
     {
       pillar: "Flights",
       inquiries: parseSqlBigInt(pRow.flight_pillar_count),
-      fillColor: "#0284C7",
+      fillColor: "var(--chart-3)",
     },
     {
       pillar: "Transport",
       inquiries: parseSqlBigInt(pRow.transport_pillar_count),
-      fillColor: "#059669",
+      fillColor: "var(--status-success)",
     },
     {
       pillar: "Ziyarat",
       inquiries: parseSqlBigInt(pRow.ziyarat_pillar_count),
-      fillColor: "#7C3AED",
+      fillColor: "var(--chart-4)",
     },
   ]
 

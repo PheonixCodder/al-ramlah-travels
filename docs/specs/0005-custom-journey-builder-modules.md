@@ -1,7 +1,7 @@
 # 0005. Custom Journey Builder Modules
 
 **Date**: 2026-10-17
-**Status**: Proposed
+**Status**: Accepted (Implemented)
 
 ## Summary
 

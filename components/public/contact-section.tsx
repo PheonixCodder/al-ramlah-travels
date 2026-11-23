@@ -10,21 +10,20 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 import {
-  MapPin,
-  Phone,
-  Mail,
-  Clock,
-  MessageCircle,
-  Send,
-  Loader2,
-  CheckCircle2,
-  ShieldCheck,
-  ExternalLink,
   AlertCircle,
-  Award,
   ArrowRight,
+  Award,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  Loader2,
+  Mail,
+  MapPin,
+  MessageCircle,
+  Phone,
+  Send,
+  ShieldCheck,
 } from "lucide-react"
 import {
   DEFAULT_COMPANY_INFO,
@@ -168,50 +167,60 @@ export function ContactSection({ settings }: ContactSectionProps) {
   return (
     <section
       id="contact"
-      className="py-20 bg-muted/20 border-t border-border scroll-mt-16"
+      aria-labelledby="home-contact-heading"
+      className="scroll-mt-20 border-t border-border bg-secondary/45 py-14 sm:py-16"
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-12">
-        {/* Section Header */}
-        <div className="text-center max-w-3xl mx-auto flex flex-col gap-3">
-          <Badge className="self-center bg-primary/10 text-primary border-primary/20 text-xs uppercase tracking-wider font-semibold">
-            Concierge Support
-          </Badge>
-          <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
-            Connect with Our Travel Directors
-          </h2>
-          <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-            Whether you are planning an executive family Umrah, organizing an extended group, or visiting our Lahore Cantt headquarters in person, our team is at your service.
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+      <div className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-8 px-4 sm:px-6 lg:px-8">
+        {/* Editorial Left-Aligned Header */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex max-w-2xl flex-col gap-2">
+            <h2
+              id="home-contact-heading"
+              className="font-display text-2xl font-bold tracking-tight text-primary text-balance sm:text-3xl lg:text-4xl"
+            >
+              Connect with Our Lahore Cantt Travel Directors
+            </h2>
+            <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
+              Whether you are coordinating a family Umrah, organizing an
+              extended group, or visiting our Askari 10 headquarters in person,
+              our ticketing desk responds within 24 hours.
+            </p>
+          </div>
+          <div className="shrink-0">
             <Link
               href="/contact"
-              className="inline-flex min-h-7 items-center gap-1 text-xs font-semibold text-primary hover:underline"
+              className="inline-flex min-h-9 items-center gap-1.5 text-xs font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 sm:text-sm"
             >
               <span>Visit Full Lahore Cantt Office &amp; Directions Guide</span>
-              <ArrowRight className="size-3.5" />
+              <ArrowRight className="size-3.5" aria-hidden="true" />
             </Link>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-          {/* Left Cards: Contact Info & Office Details (5 cols) */}
-          <div className="flex flex-col gap-6 lg:col-span-5">
-            <div className="rounded-3xl border border-border bg-card p-6 shadow-xs flex flex-col gap-5">
-              <h3 className="font-display text-xl font-bold text-foreground">
-                Executive Agency Headquarters
-              </h3>
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-stretch">
+          {/* Left Panel: Deep Haramain Emerald Askari 10 HQ Card (5 cols) */}
+          <div className="flex min-w-0 flex-col justify-between gap-6 rounded-2xl bg-primary p-6 text-primary-foreground shadow-xs sm:p-8 lg:col-span-5">
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-1">
+                <h3 className="font-display text-xl font-bold text-primary-foreground sm:text-2xl">
+                  Executive Agency Headquarters
+                </h3>
+                <p className="text-xs text-primary-foreground/80 sm:text-sm">
+                  Askari 10, Airport Road, Lahore Cantt
+                </p>
+              </div>
 
               <div className="flex flex-col gap-4 text-sm">
                 {/* Address */}
                 <div className="flex items-start gap-3">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <MapPin className="size-4" />
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-gold/30 bg-primary-foreground/10 text-gold">
+                    <MapPin className="size-4" aria-hidden="true" />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="font-semibold text-foreground block">
+                    <span className="block font-semibold text-primary-foreground">
                       Physical Office (Lahore HQ)
                     </span>
-                    <p className="text-muted-foreground text-xs leading-relaxed">
+                    <p className="text-xs leading-relaxed text-primary-foreground/85">
                       {info.officeAddress}
                     </p>
                     {safeMapsUrl && (
@@ -219,10 +228,10 @@ export function ContactSection({ settings }: ContactSectionProps) {
                         href={safeMapsUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex min-h-6 items-center gap-1 text-[11px] font-semibold text-emerald-800 hover:underline pt-0.5"
+                        className="inline-flex min-h-6 items-center gap-1 pt-0.5 text-xs font-semibold text-gold underline decoration-gold/50 underline-offset-4 transition-colors hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80"
                       >
                         <span>Open Askari 10 Lahore HQ on Google Maps</span>
-                        <ExternalLink className="size-3" />
+                        <ExternalLink className="size-3" aria-hidden="true" />
                       </a>
                     )}
                   </div>
@@ -230,28 +239,33 @@ export function ContactSection({ settings }: ContactSectionProps) {
 
                 {/* WhatsApp + E.164 Call */}
                 <div className="flex items-start gap-3">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800">
-                    <MessageCircle className="size-4" />
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-gold/30 bg-primary-foreground/10 text-gold">
+                    <MessageCircle className="size-4" aria-hidden="true" />
                   </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-semibold text-foreground block">
+                  <div className="flex flex-col gap-1">
+                    <span className="block font-semibold text-primary-foreground">
                       Primary WhatsApp &amp; Hotline
                     </span>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                       <a
                         href={primaryWaHref}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex min-h-6 items-center text-xs font-mono tabular-nums font-medium text-emerald-700 hover:underline"
+                        className="inline-flex min-h-6 items-center gap-1.5 font-medium text-gold underline decoration-gold/50 underline-offset-4 transition-colors hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80"
                       >
-                        WhatsApp {primaryDisplay}
+                        <span>WhatsApp</span>
+                        <span className="font-mono tabular-nums">
+                          {primaryDisplay}
+                        </span>
                       </a>
-                      <span className="text-muted-foreground">·</span>
                       <a
                         href={primaryTelHref}
-                        className="inline-flex min-h-6 items-center text-xs font-mono tabular-nums text-muted-foreground hover:text-foreground"
+                        className="inline-flex min-h-6 items-center gap-1.5 text-primary-foreground/85 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80"
                       >
-                        Call {primaryDisplay}
+                        <span>Call</span>
+                        <span className="font-mono tabular-nums">
+                          {primaryDisplay}
+                        </span>
                       </a>
                     </div>
                   </div>
@@ -260,16 +274,16 @@ export function ContactSection({ settings }: ContactSectionProps) {
                 {/* Secondary Telephone */}
                 {secondaryTelHref && secondaryDisplay && (
                   <div className="flex items-start gap-3">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-900">
-                      <Phone className="size-4" />
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-gold/30 bg-primary-foreground/10 text-gold">
+                      <Phone className="size-4" aria-hidden="true" />
                     </div>
                     <div>
-                      <span className="font-semibold text-foreground block">
+                      <span className="block font-semibold text-primary-foreground">
                         Office Telephone
                       </span>
                       <a
                         href={secondaryTelHref}
-                        className="inline-flex min-h-6 items-center text-xs font-mono tabular-nums text-muted-foreground hover:text-foreground"
+                        className="inline-flex min-h-6 items-center font-mono text-xs tabular-nums text-primary-foreground/85 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80"
                       >
                         {secondaryDisplay}
                       </a>
@@ -279,16 +293,16 @@ export function ContactSection({ settings }: ContactSectionProps) {
 
                 {/* Email */}
                 <div className="flex items-start gap-3">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <Mail className="size-4" />
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-gold/30 bg-primary-foreground/10 text-gold">
+                    <Mail className="size-4" aria-hidden="true" />
                   </div>
                   <div>
-                    <span className="font-semibold text-foreground block">
+                    <span className="block font-semibold text-primary-foreground">
                       Official Inquiries Email
                     </span>
                     <a
                       href={`mailto:${info.supportEmail}`}
-                      className="inline-flex min-h-6 items-center text-xs text-muted-foreground hover:text-foreground"
+                      className="inline-flex min-h-6 items-center text-xs text-primary-foreground/85 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80"
                     >
                       {info.supportEmail}
                     </a>
@@ -297,14 +311,14 @@ export function ContactSection({ settings }: ContactSectionProps) {
 
                 {/* Working Hours */}
                 <div className="flex items-start gap-3">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                    <Clock className="size-4" />
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-gold/30 bg-primary-foreground/10 text-gold">
+                    <Clock className="size-4" aria-hidden="true" />
                   </div>
                   <div>
-                    <span className="font-semibold text-foreground block">
+                    <span className="block font-semibold text-primary-foreground">
                       Operating Schedule
                     </span>
-                    <p className="text-muted-foreground text-xs mt-0.5">
+                    <p className="mt-0.5 text-xs text-primary-foreground/85">
                       {info.workingHours}
                     </p>
                   </div>
@@ -312,44 +326,54 @@ export function ContactSection({ settings }: ContactSectionProps) {
               </div>
 
               {verifiedLicenses.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+                <div className="flex flex-wrap items-center gap-2 border-t border-primary-foreground/15 pt-4">
                   {verifiedLicenses.map((lic) => (
                     <span
                       key={lic.label}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-2.5 py-1 font-mono text-[11px] tabular-nums text-foreground"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-primary-foreground/10 px-2.5 py-1 text-xs text-primary-foreground"
                     >
-                      <Award className="size-3 text-gold-text" />
-                      <strong className="font-sans font-semibold text-gold-text">
+                      <Award
+                        className="size-3 text-gold"
+                        aria-hidden="true"
+                      />
+                      <strong className="font-semibold text-gold">
                         {lic.label}:
                       </strong>
-                      <span>{lic.value}</span>
+                      <span className="font-mono tabular-nums">
+                        {lic.value}
+                      </span>
                     </span>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Trust Badge */}
-            <div className="rounded-2xl border border-emerald-300 bg-emerald-50/80 p-4 text-emerald-950 flex items-center gap-3">
-              <ShieldCheck className="size-6 text-emerald-700 shrink-0" />
-              <div className="text-xs leading-snug">
-                <span className="font-bold block">
+            {/* Integrated Concierge Promise */}
+            <div className="flex items-start gap-3 border-t border-primary-foreground/15 pt-4 text-xs leading-relaxed text-primary-foreground/90">
+              <ShieldCheck
+                className="mt-0.5 size-5 shrink-0 text-gold"
+                aria-hidden="true"
+              />
+              <div>
+                <span className="block font-bold text-gold">
                   Where Purpose Meets Excellence
                 </span>
-                Hajj • Umrah • Flights • Hotels • Tours. Dedicated pilgrim concierge, transparent pricing, and 24/7 on-ground assistance.
+                Dedicated pilgrim concierge for Hajj, Umrah, flights, hotels,
+                and Ziyarat tours with 24/7 on-ground assistance.
               </div>
             </div>
           </div>
 
-          {/* Right Form: Interactive Contact Message Form (7 cols) */}
-          <div className="lg:col-span-7">
-            <div className="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-xs flex flex-col gap-6">
+          {/* Right Panel: Alabaster Direct Concierge Inquiry Form (7 cols) */}
+          <div className="flex min-w-0 flex-col lg:col-span-7">
+            <div className="flex h-full flex-col gap-5 rounded-2xl border border-border bg-card p-6 shadow-xs sm:p-8">
               <div>
-                <h3 className="font-display text-xl font-bold text-foreground">
+                <h3 className="font-display text-xl font-bold text-foreground sm:text-2xl">
                   Send a Direct Message
                 </h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Have a specific itinerary request or flight inquiry? Our team responds within 24 hours.
+                <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+                  Have a specific itinerary request or flight inquiry? Our team
+                  responds within 24 hours.
                 </p>
               </div>
 
@@ -357,11 +381,15 @@ export function ContactSection({ settings }: ContactSectionProps) {
                 <div
                   role="status"
                   aria-live="polite"
-                  className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-xs text-emerald-800"
+                  className="flex items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/10 p-4 text-xs text-primary sm:text-sm"
                 >
-                  <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                  <CheckCircle2
+                    className="size-4 shrink-0 text-primary"
+                    aria-hidden="true"
+                  />
                   <span>
-                    Thank you! Your message has been routed to our Lahore concierge team. We will call or WhatsApp you promptly.
+                    Thank you! Your message has been routed to our Lahore
+                    concierge team. We will call or WhatsApp you promptly.
                   </span>
                 </div>
               )}
@@ -369,14 +397,21 @@ export function ContactSection({ settings }: ContactSectionProps) {
               {error && (
                 <div
                   role="alert"
-                  className="flex items-start gap-2 rounded-xl border border-red-300 bg-red-50 p-3 text-xs text-red-800"
+                  className="flex items-start gap-2.5 rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-xs text-destructive sm:text-sm"
                 >
-                  <AlertCircle className="size-4 text-red-600 shrink-0 mt-0.5" />
+                  <AlertCircle
+                    className="mt-0.5 size-4 shrink-0 text-destructive"
+                    aria-hidden="true"
+                  />
                   <span>{error}</span>
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+              <form
+                onSubmit={handleSubmit}
+                className="flex flex-col gap-4"
+                noValidate
+              >
                 {/* Hidden Honeypot Anti-Spam Trap (`T-055`) */}
                 <div className="sr-only" aria-hidden="true">
                   <label htmlFor="c-website">Company Website</label>
@@ -402,11 +437,17 @@ export function ContactSection({ settings }: ContactSectionProps) {
                       onChange={(e) => setName(e.target.value)}
                       placeholder="e.g. Asad Qureshi"
                       aria-invalid={Boolean(fieldErrors.name)}
-                      aria-describedby={fieldErrors.name ? "c-name-error" : undefined}
+                      aria-describedby={
+                        fieldErrors.name ? "c-name-error" : undefined
+                      }
+                      className="min-h-11 bg-background focus-visible:outline-2 focus-visible:outline-primary"
                       required
                     />
                     {fieldErrors.name && (
-                      <p id="c-name-error" className="text-[11px] font-medium text-red-700">
+                      <p
+                        id="c-name-error"
+                        className="text-xs font-medium text-destructive"
+                      >
                         {fieldErrors.name}
                       </p>
                     )}
@@ -422,10 +463,16 @@ export function ContactSection({ settings }: ContactSectionProps) {
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="asad@example.com"
                       aria-invalid={Boolean(fieldErrors.email)}
-                      aria-describedby={fieldErrors.email ? "c-email-error" : undefined}
+                      aria-describedby={
+                        fieldErrors.email ? "c-email-error" : undefined
+                      }
+                      className="min-h-11 bg-background focus-visible:outline-2 focus-visible:outline-primary"
                     />
                     {fieldErrors.email && (
-                      <p id="c-email-error" className="text-[11px] font-medium text-red-700">
+                      <p
+                        id="c-email-error"
+                        className="text-xs font-medium text-destructive"
+                      >
                         {fieldErrors.email}
                       </p>
                     )}
@@ -444,11 +491,17 @@ export function ContactSection({ settings }: ContactSectionProps) {
                       onChange={(e) => syncPhone(e.target.value)}
                       placeholder="0327 4029701 or +44 7911 123456"
                       aria-invalid={Boolean(fieldErrors.phone)}
-                      aria-describedby={fieldErrors.phone ? "c-phone-error" : undefined}
+                      aria-describedby={
+                        fieldErrors.phone ? "c-phone-error" : undefined
+                      }
+                      className="min-h-11 bg-background font-mono tabular-nums focus-visible:outline-2 focus-visible:outline-primary"
                       required
                     />
                     {fieldErrors.phone && (
-                      <p id="c-phone-error" className="text-[11px] font-medium text-red-700">
+                      <p
+                        id="c-phone-error"
+                        className="text-xs font-medium text-destructive"
+                      >
                         {fieldErrors.phone}
                       </p>
                     )}
@@ -464,10 +517,16 @@ export function ContactSection({ settings }: ContactSectionProps) {
                       onChange={(e) => setWhatsapp(e.target.value)}
                       placeholder="0327 4029701"
                       aria-invalid={Boolean(fieldErrors.whatsapp)}
-                      aria-describedby={fieldErrors.whatsapp ? "c-wa-error" : undefined}
+                      aria-describedby={
+                        fieldErrors.whatsapp ? "c-wa-error" : undefined
+                      }
+                      className="min-h-11 bg-background font-mono tabular-nums focus-visible:outline-2 focus-visible:outline-primary"
                     />
                     {fieldErrors.whatsapp && (
-                      <p id="c-wa-error" className="text-[11px] font-medium text-red-700">
+                      <p
+                        id="c-wa-error"
+                        className="text-xs font-medium text-destructive"
+                      >
                         {fieldErrors.whatsapp}
                       </p>
                     )}
@@ -482,7 +541,8 @@ export function ContactSection({ settings }: ContactSectionProps) {
                     id="c-sub"
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
+                    disabled={loading}
+                    className="min-h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option value="General Umrah Inquiry">
                       General Umrah Inquiry
@@ -513,11 +573,17 @@ export function ContactSection({ settings }: ContactSectionProps) {
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder="Tell us about your estimated travel month, party size, preferred hotel distance from Haram, or specific airline..."
                     aria-invalid={Boolean(fieldErrors.message)}
-                    aria-describedby={fieldErrors.message ? "c-msg-error" : undefined}
+                    aria-describedby={
+                      fieldErrors.message ? "c-msg-error" : undefined
+                    }
+                    className="bg-background focus-visible:outline-2 focus-visible:outline-primary"
                     required
                   />
                   {fieldErrors.message && (
-                    <p id="c-msg-error" className="text-[11px] font-medium text-red-700">
+                    <p
+                      id="c-msg-error"
+                      className="text-xs font-medium text-destructive"
+                    >
                       {fieldErrors.message}
                     </p>
                   )}
@@ -526,12 +592,15 @@ export function ContactSection({ settings }: ContactSectionProps) {
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full gap-2 bg-primary py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                  className="min-h-11 w-full gap-2 bg-primary py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loading ? (
-                    <Loader2 className="size-4 animate-spin" />
+                    <Loader2
+                      className="size-4 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Send className="size-4" />
+                    <Send className="size-4" aria-hidden="true" />
                   )}
                   <span>Send Inquiry to Concierge</span>
                 </Button>

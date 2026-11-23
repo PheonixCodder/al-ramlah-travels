@@ -4,12 +4,7 @@ import type {
 } from "@/lib/social/types"
 
 export type SettingsTabKey =
-  | "connections"
-  | "whatsapp"
-  | "infrastructure"
-  | "agency"
-  | "staff"
-  | "health"
+  "connections" | "whatsapp" | "infrastructure" | "agency" | "staff" | "health"
 
 const SETTINGS_TAB_ALIAS_MAP: Record<string, SettingsTabKey> = {
   connections: "connections",

@@ -1,6 +1,6 @@
 import * as React from "react"
 import Link from "next/link"
-import { Building2, CheckCircle2, FileCheck2, ShieldCheck } from "lucide-react"
+import { Building2, CheckCircle2, FileCheck2 } from "lucide-react"
 import type { ResolvedCompanyInfo } from "@/lib/company-info"
 
 export interface TrustEeatCredentialsProps {
@@ -52,25 +52,23 @@ export function TrustEeatCredentials({
   return (
     <section
       aria-labelledby="eeat-verification-heading"
-      className="rounded-3xl border border-[#E6DEC8] bg-white p-6 sm:p-10 shadow-xs space-y-6"
+      className="flex flex-col gap-6 rounded-3xl border border-border bg-card p-6 shadow-xs sm:p-10"
     >
-      <div className="space-y-2">
-        <div className="inline-flex items-center gap-2 rounded-full border border-[#7A5C1E]/30 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
-          <ShieldCheck className="size-3.5 text-[#7A5C1E]" />
-          <span>Transparent Entity &amp; Pilgrim Protection</span>
-        </div>
+      <div className="flex flex-col gap-2">
         <h2
           id="eeat-verification-heading"
-          className="font-display text-2xl sm:text-3xl font-bold text-[#0A3622]"
+          className="font-display text-2xl font-bold tracking-tight text-primary sm:text-3xl"
         >
           Corporate Credentials &amp; Before-You-Pay Verification Checklist
         </h2>
-        <p className="text-sm text-[#4A5248] leading-relaxed">
-          High-value Haramain bookings require verifiable physical accountability. Every itinerary issued by{" "}
-          <strong className="text-[#1A1D1A]">{company.legalEntityName}</strong>{" "}
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          High-value Haramain bookings require verifiable physical
+          accountability. Every itinerary issued by{" "}
+          <strong className="text-foreground">{company.legalEntityName}</strong>{" "}
           is backed by our staffed Askari 10, Lahore Cantt office, numbered{" "}
-          <code className="font-mono text-xs text-[#0A3622]">ART-...</code>{" "}
-          quotation worksheets, and official Kingdom of Saudi Arabia electronic visa clearance.
+          <code className="font-mono text-xs text-primary">ART-...</code>{" "}
+          quotation worksheets, and official Kingdom of Saudi Arabia electronic
+          visa clearance.
         </p>
       </div>
 
@@ -79,70 +77,98 @@ export function TrustEeatCredentials({
           {verifiedCredentials.map((cred) => (
             <div
               key={cred.label}
-              className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-4 space-y-1"
+              className="flex flex-col gap-1 rounded-2xl border border-border bg-secondary/55 p-4"
             >
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#7A5C1E] block">
+              <h3 className="text-sm font-bold text-primary">{cred.label}</h3>
+              <p className="text-xs font-medium text-gold-text">
                 {cred.authority}
-              </span>
-              <h3 className="text-sm font-bold text-[#0A3622]">{cred.label}</h3>
-              <p className="font-mono text-sm font-semibold text-[#1A1D1A] tabular-nums">
+              </p>
+              <p className="font-mono text-sm font-semibold text-foreground tabular-nums">
                 {cred.value}
               </p>
             </div>
           ))}
         </div>
       ) : (
-        <div className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-5 flex items-start gap-3.5">
-          <Building2 className="size-5 text-[#7A5C1E] shrink-0 mt-0.5" />
-          <div className="space-y-1.5 text-xs sm:text-sm text-[#4A5248] leading-relaxed">
-            <h3 className="font-bold text-[#0A3622] text-sm">
+        <div className="flex items-start gap-3.5 rounded-2xl border border-border bg-secondary/55 p-5">
+          <Building2
+            className="mt-0.5 size-5 shrink-0 text-gold-text"
+            aria-hidden="true"
+          />
+          <div className="flex flex-col gap-1.5 text-xs leading-relaxed text-muted-foreground sm:text-sm">
+            <h3 className="text-sm font-bold text-primary">
               In-Person Credential Inspection at Our Lahore Cantt Office
             </h3>
             <p>
-              Original corporate registration certificates, authorized Saudi Umrah B2B fulfillment agreements, and official banking details are available for direct inspection by families visiting{" "}
-              <strong className="text-[#1A1D1A]">{company.officeAddress}</strong>{" "}
-              or upon request during quotation review before any deposit transfer.
+              Original corporate registration certificates, authorized Saudi
+              Umrah B2B fulfillment agreements, and official banking details are
+              available for direct inspection by families visiting{" "}
+              <strong className="text-foreground">
+                {company.officeAddress}
+              </strong>{" "}
+              or upon request during quotation review before any deposit
+              transfer.
             </p>
           </div>
         </div>
       )}
 
       {company.ibanVerified && company.officialIban && company.accountTitle ? (
-        <div className="rounded-2xl border border-emerald-300 bg-emerald-50/70 p-4 text-xs sm:text-sm text-[#0A3622] space-y-1">
+        <div className="flex flex-col gap-1.5 rounded-2xl border border-primary/25 bg-secondary p-4 text-xs text-primary sm:text-sm">
           <div className="flex items-center gap-2 font-bold">
-            <FileCheck2 className="size-4 text-[#0A3622]" />
+            <FileCheck2 className="size-4 text-primary" aria-hidden="true" />
             <span>Verified Corporate Settlement Account</span>
           </div>
-          <p className="text-[#1A1D1A]">
-            <strong>Account Title:</strong> {company.accountTitle}
-            {company.bankName ? ` · ${company.bankName}` : ""} ·{" "}
-            <strong className="font-mono tabular-nums">
-              {company.officialIban}
-            </strong>
-          </p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-foreground">
+            <span>
+              <strong>Account Title:</strong> {company.accountTitle}
+            </span>
+            {company.bankName ? (
+              <span>
+                <strong>Bank:</strong> {company.bankName}
+              </span>
+            ) : null}
+            <span>
+              <strong>IBAN:</strong>{" "}
+              <code className="font-mono font-semibold tabular-nums">
+                {company.officialIban}
+              </code>
+            </span>
+          </div>
         </div>
       ) : null}
 
-      <div className="space-y-3 pt-2 border-t border-[#E6DEC8]">
-        <h3 className="font-display text-lg font-bold text-[#0A3622]">
+      <div className="flex flex-col gap-3 border-t border-border pt-4">
+        <h3 className="font-display text-lg font-bold text-primary">
           6-Point Pilgrim Safety Checklist (Avoiding Unverified WhatsApp Scams)
         </h3>
-        <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 text-xs sm:text-sm text-[#4A5248]">
+        <ul className="grid grid-cols-1 gap-2.5 text-xs text-muted-foreground sm:grid-cols-2 sm:text-sm">
           <li className="flex items-start gap-2">
-            <CheckCircle2 className="size-4 text-[#0A3622] shrink-0 mt-0.5" />
+            <CheckCircle2
+              className="mt-0.5 size-4 shrink-0 text-primary"
+              aria-hidden="true"
+            />
             <span>
-              <strong className="text-[#1A1D1A]">Visit Physical Premises:</strong>{" "}
-              Confirm a real staffed address ({company.officeAddress}) rather than anonymous mobile-only brokers.
+              <strong className="text-foreground">
+                Visit Physical Premises:
+              </strong>{" "}
+              Confirm a real staffed address ({company.officeAddress}) rather
+              than anonymous mobile-only brokers.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <CheckCircle2 className="size-4 text-[#0A3622] shrink-0 mt-0.5" />
+            <CheckCircle2
+              className="mt-0.5 size-4 shrink-0 text-primary"
+              aria-hidden="true"
+            />
             <span>
-              <strong className="text-[#1A1D1A]">Verify True Haram Meters:</strong>{" "}
+              <strong className="text-foreground">
+                Verify True Haram Meters:
+              </strong>{" "}
               Check exact meter distances and shuttle vs flat-walk access in our{" "}
               <Link
                 href="/hotels/makkah"
-                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
+                className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
               >
                 Makkah Hotel Directory
               </Link>
@@ -150,35 +176,58 @@ export function TrustEeatCredentials({
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <CheckCircle2 className="size-4 text-[#0A3622] shrink-0 mt-0.5" />
+            <CheckCircle2
+              className="mt-0.5 size-4 shrink-0 text-primary"
+              aria-hidden="true"
+            />
             <span>
-              <strong className="text-[#1A1D1A]">Require Itemized PKR Quotes:</strong>{" "}
-              Insist on a numbered <code className="font-mono text-xs">ART-...</code>{" "}
-              quotation separating visa, flight PNR, hotel nights, and vehicle legs.
+              <strong className="text-foreground">
+                Require Itemized PKR Quotes:
+              </strong>{" "}
+              Insist on a numbered{" "}
+              <code className="font-mono text-xs">ART-...</code> quotation
+              separating visa, flight PNR, hotel nights, and vehicle legs.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <CheckCircle2 className="size-4 text-[#0A3622] shrink-0 mt-0.5" />
+            <CheckCircle2
+              className="mt-0.5 size-4 shrink-0 text-primary"
+              aria-hidden="true"
+            />
             <span>
-              <strong className="text-[#1A1D1A]">Confirm Airline PNR &amp; Baggage:</strong>{" "}
-              Verify whether your fare is an instant GDS ticket or a non-refundable group block seat before paying.
+              <strong className="text-foreground">
+                Confirm Airline PNR &amp; Baggage:
+              </strong>{" "}
+              Verify whether your fare is an instant GDS ticket or a
+              non-refundable group block seat before paying.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <CheckCircle2 className="size-4 text-[#0A3622] shrink-0 mt-0.5" />
+            <CheckCircle2
+              className="mt-0.5 size-4 shrink-0 text-primary"
+              aria-hidden="true"
+            />
             <span>
-              <strong className="text-[#1A1D1A]">Check Official KSA e-Visa:</strong>{" "}
-              Validate issued Umrah visas on Saudi MOFA / Nusuk portals with mandatory medical insurance included.
+              <strong className="text-foreground">
+                Check Official KSA e-Visa:
+              </strong>{" "}
+              Validate issued Umrah visas on Saudi MOFA / Nusuk portals with
+              mandatory medical insurance included.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <CheckCircle2 className="size-4 text-[#0A3622] shrink-0 mt-0.5" />
+            <CheckCircle2
+              className="mt-0.5 size-4 shrink-0 text-primary"
+              aria-hidden="true"
+            />
             <span>
-              <strong className="text-[#1A1D1A]">Review Written Refund Terms:</strong>{" "}
+              <strong className="text-foreground">
+                Review Written Refund Terms:
+              </strong>{" "}
               Read our{" "}
               <Link
                 href="/refund-policy"
-                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
+                className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
               >
                 Cancellation &amp; PKR Refund Policy
               </Link>{" "}

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { updateSarToPkrRate, updateVisaRate } from "@/app/actions/catalog"
 import { Badge } from "@/components/ui/badge"
@@ -52,7 +52,8 @@ const DEFAULT_SHORT_TERM_RATE: VisaRateData = {
   withMasar15DaysSar: 515,
   withMasar21DaysSar: 530,
   withMasar28DaysSar: 545,
-  notes: "Includes Saudi Ministry electronic visa processing & mandatory health coverage.",
+  notes:
+    "Includes Saudi Ministry electronic visa processing & mandatory health coverage.",
   updatedAt: null,
 }
 
@@ -68,7 +69,8 @@ const DEFAULT_LONG_TERM_RATE: VisaRateData = {
   withMasar15DaysSar: 515,
   withMasar21DaysSar: 530,
   withMasar28DaysSar: 545,
-  notes: "Extended stay allowance over 30 days up to maximum configured stay threshold.",
+  notes:
+    "Extended stay allowance over 30 days up to maximum configured stay threshold.",
   updatedAt: null,
 }
 
@@ -89,9 +91,15 @@ export function VisaClient({
   const [rates, setRates] = useState<VisaRateData[]>(() =>
     hydrateVisaTiers(initialRates)
   )
-  const [savingTier, setSavingTier] = useState<"short_term" | "long_term" | null>(
-    null
-  )
+  const [prevInitialRates, setPrevInitialRates] = useState(initialRates)
+  if (prevInitialRates !== initialRates) {
+    setPrevInitialRates(initialRates)
+    setRates(hydrateVisaTiers(initialRates))
+  }
+
+  const [savingTier, setSavingTier] = useState<
+    "short_term" | "long_term" | null
+  >(null)
   const [savedSuccessTier, setSavedSuccessTier] = useState<
     "short_term" | "long_term" | null
   >(null)
@@ -101,17 +109,16 @@ export function VisaClient({
   } | null>(null)
 
   const [sarToPkrRate, setSarToPkrRate] = useState<number>(initialSarToPkrRate)
+  const [prevInitialSarToPkrRate, setPrevInitialSarToPkrRate] =
+    useState(initialSarToPkrRate)
+  if (prevInitialSarToPkrRate !== initialSarToPkrRate) {
+    setPrevInitialSarToPkrRate(initialSarToPkrRate)
+    setSarToPkrRate(initialSarToPkrRate)
+  }
+
   const [savingForex, setSavingForex] = useState(false)
   const [forexSaved, setForexSaved] = useState(false)
   const [forexError, setForexError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setRates(hydrateVisaTiers(initialRates))
-  }, [initialRates])
-
-  useEffect(() => {
-    setSarToPkrRate(initialSarToPkrRate)
-  }, [initialSarToPkrRate])
 
   const shortTerm =
     rates.find((r) => r.tier === "short_term") ?? DEFAULT_SHORT_TERM_RATE
@@ -228,23 +235,23 @@ export function VisaClient({
         </p>
       </div>
 
-      {/* Master SAR -> PKR Exchange Rate Editor */}
+      {/* Master SAR to PKR Exchange Rate Editor */}
       <form
         onSubmit={handleSaveForex}
-        className="rounded-xl border border-gold/40 bg-card p-5 shadow-xs space-y-3"
+        className="space-y-3 rounded-xl border border-gold-border bg-card p-5 shadow-xs"
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-gold/15 text-gold-text border border-gold/30">
-              <ArrowLeftRight className="size-4" />
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-gold-border bg-accent/50 text-gold-text">
+              <ArrowLeftRight className="size-4" aria-hidden="true" />
             </span>
             <div>
               <h3 className="text-sm font-bold text-foreground">
                 Master SAR → PKR Conversion Rate
               </h3>
               <p className="text-xs text-muted-foreground">
-                Used across Admin Quote Worksheets, SAR hotel/transport matrices,
-                and Masar visa cost conversions.
+                Used across Admin Quote Worksheets, SAR hotel/transport
+                matrices, and Masar visa cost conversions.
               </p>
             </div>
           </div>
@@ -258,7 +265,7 @@ export function VisaClient({
                 1 SAR =
               </Label>
               <div className="relative w-36">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-muted-foreground">
+                <span className="absolute top-1/2 left-2.5 -translate-y-1/2 text-[11px] font-bold text-muted-foreground">
                   PKR
                 </span>
                 <Input
@@ -269,29 +276,36 @@ export function VisaClient({
                   max={10000}
                   value={sarToPkrRate}
                   onChange={(e) => setSarToPkrRate(Number(e.target.value))}
-                  className="pl-11 h-9 font-mono text-sm font-bold tabular-nums"
+                  className="h-9 pl-11 font-mono text-sm font-bold tabular-nums"
                   required
                 />
               </div>
             </div>
             <Badge
               variant="outline"
-              className="font-mono text-[11px] tabular-nums border-border bg-muted/30"
+              className="border-border bg-muted/30 text-[11px] tabular-nums"
             >
-              470 SAR ≈ PKR {Math.round(470 * (sarToPkrRate || 0)).toLocaleString()}
+              470 SAR ≈ PKR{" "}
+              {Math.round(470 * (sarToPkrRate || 0)).toLocaleString()}
             </Badge>
             <Button
               type="submit"
               size="sm"
               disabled={savingForex}
-              className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+              className="cursor-pointer gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               {savingForex ? (
-                <Loader2 className="size-3.5 animate-spin" />
+                <Loader2
+                  className="size-3.5 animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
               ) : forexSaved ? (
-                <CheckCircle2 className="size-3.5 text-emerald-300" />
+                <CheckCircle2
+                  className="size-3.5 text-gold"
+                  aria-hidden="true"
+                />
               ) : (
-                <Save className="size-3.5" />
+                <Save className="size-3.5" aria-hidden="true" />
               )}
               <span>{forexSaved ? "Forex Saved" : "Save SAR Rate"}</span>
             </Button>
@@ -299,20 +313,23 @@ export function VisaClient({
         </div>
 
         {forexError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-800">
+          <div className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2.5 text-xs text-status-danger">
             {forexError}
           </div>
         )}
       </form>
 
       {/* Domain Rule Explanatory Banner */}
-      <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-xs text-amber-950 sm:text-sm">
-        <Info className="size-5 shrink-0 text-amber-700 mt-0.5" />
+      <div className="flex items-start gap-3 rounded-xl border border-status-warning-border bg-status-warning-bg p-4 text-xs text-status-warning sm:text-sm">
+        <Info
+          className="mt-0.5 size-5 shrink-0 text-status-warning"
+          aria-hidden="true"
+        />
         <div className="space-y-1">
-          <p className="font-semibold text-amber-900">
+          <p className="font-semibold text-status-warning">
             Automated Tier Rule &amp; Quoting Guarantee
           </p>
-          <p className="text-amber-800 leading-relaxed text-xs">
+          <p className="text-xs leading-relaxed text-status-warning">
             The public Custom Journey Builder <strong>never</strong> displays a
             manual visa-tier dropdown to customers. The server automatically
             compares <strong>KSA Arrival Date</strong> and{" "}
@@ -334,11 +351,11 @@ export function VisaClient({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <FileCheck className="size-4" />
+                <span className="flex size-8 items-center justify-center rounded-lg border border-status-success-border bg-status-success-bg text-status-success">
+                  <FileCheck className="size-4" aria-hidden="true" />
                 </span>
                 <div>
-                  <h3 className="font-semibold text-base text-foreground">
+                  <h3 className="text-base font-semibold text-foreground">
                     Short-Term Tourist/Umrah Visa
                   </h3>
                   <span className="text-xs text-muted-foreground">
@@ -346,20 +363,20 @@ export function VisaClient({
                   </span>
                 </div>
               </div>
-              <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-xs font-semibold tabular-nums">
+              <Badge className="border-status-success-border bg-status-success-bg text-xs font-semibold text-status-success tabular-nums">
                 &le; {shortTerm.maxDays} Days
               </Badge>
             </div>
 
             {!shortTerm.id && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
-                Not yet initialized in database — click{" "}
+              <div className="rounded-lg border border-status-warning-border bg-status-warning-bg p-2.5 text-xs text-status-warning">
+                Not yet initialized in database: click{" "}
                 <strong>Initialize Short-Term Rate</strong> below to persist.
               </div>
             )}
 
             {errorTier?.tier === "short_term" && (
-              <div className="rounded-lg bg-red-50 p-2.5 text-xs text-red-800 border border-red-200">
+              <div className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2.5 text-xs text-status-danger">
                 {errorTier.message}
               </div>
             )}
@@ -405,7 +422,7 @@ export function VisaClient({
                   Customer Guaranteed Rate (PKR)
                 </Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
+                  <span className="absolute top-1/2 left-3 -translate-y-1/2 text-xs font-bold text-muted-foreground">
                     PKR
                   </span>
                   <Input
@@ -420,15 +437,18 @@ export function VisaClient({
                         Number(e.target.value)
                       )
                     }
-                    className="pl-12 font-mono text-base font-bold text-emerald-800 tabular-nums"
+                    className="pl-12 font-mono text-base font-bold text-status-success tabular-nums"
                   />
                 </div>
               </div>
 
               {/* Masar Ground & Base SAR Rates Matrix */}
-              <div className="rounded-lg border border-gold/40 bg-card p-3 space-y-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground border-b border-border/60 pb-1.5">
-                  <Coins className="size-3.5 text-gold" />
+              <div className="space-y-2.5 rounded-lg bg-secondary/55 p-3">
+                <div className="flex items-center gap-1.5 border-b border-border/60 pb-1.5 text-xs font-semibold text-foreground">
+                  <Coins
+                    className="size-3.5 text-gold-text"
+                    aria-hidden="true"
+                  />
                   <span>Masar Platform &amp; Ministry SAR Cost Breakdown</span>
                 </div>
 
@@ -544,13 +564,13 @@ export function VisaClient({
                   onChange={(e) =>
                     updateField("short_term", "notes", e.target.value)
                   }
-                  placeholder="Includes mandatory Saudi medical insurance coverage..."
+                  placeholder="Includes mandatory Saudi medical insurance coverage"
                 />
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-border pt-4 mt-6">
+          <div className="mt-6 flex items-center justify-between border-t border-border pt-4">
             <span className="text-[11px] text-muted-foreground">
               {shortTerm.updatedAt
                 ? `Last updated: ${new Date(shortTerm.updatedAt).toLocaleDateString()}`
@@ -560,21 +580,24 @@ export function VisaClient({
               type="button"
               onClick={() => handleSave(shortTerm)}
               disabled={savingTier === "short_term"}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+              className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               {savingTier === "short_term" ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2
+                  className="size-4 animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
               ) : savedSuccessTier === "short_term" ? (
-                <CheckCircle2 className="size-4 text-emerald-300" />
+                <CheckCircle2 className="size-4 text-gold" aria-hidden="true" />
               ) : (
-                <Save className="size-4" />
+                <Save className="size-4" aria-hidden="true" />
               )}
               <span>
                 {savedSuccessTier === "short_term"
                   ? "Rate Saved!"
                   : shortTerm.id
-                  ? "Save Short-Term Rate"
-                  : "Initialize Short-Term Rate"}
+                    ? "Save Short-Term Rate"
+                    : "Initialize Short-Term Rate"}
               </span>
             </Button>
           </div>
@@ -585,11 +608,11 @@ export function VisaClient({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="flex size-8 items-center justify-center rounded-lg bg-amber-50 text-amber-700 border border-amber-200">
-                  <FileCheck className="size-4" />
+                <span className="flex size-8 items-center justify-center rounded-lg border border-status-warning-border bg-status-warning-bg text-status-warning">
+                  <FileCheck className="size-4" aria-hidden="true" />
                 </span>
                 <div>
-                  <h3 className="font-semibold text-base text-foreground">
+                  <h3 className="text-base font-semibold text-foreground">
                     Long-Term Extended Visa
                   </h3>
                   <span className="text-xs text-muted-foreground">
@@ -597,20 +620,20 @@ export function VisaClient({
                   </span>
                 </div>
               </div>
-              <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-xs font-semibold tabular-nums">
+              <Badge className="border-status-warning-border bg-status-warning-bg text-xs font-semibold text-status-warning tabular-nums">
                 &gt; {shortTerm.maxDays} Days (Max {longTerm.maxDays}d)
               </Badge>
             </div>
 
             {!longTerm.id && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
-                Not yet initialized in database — click{" "}
+              <div className="rounded-lg border border-status-warning-border bg-status-warning-bg p-2.5 text-xs text-status-warning">
+                Not yet initialized in database: click{" "}
                 <strong>Initialize Long-Term Rate</strong> below to persist.
               </div>
             )}
 
             {errorTier?.tier === "long_term" && (
-              <div className="rounded-lg bg-red-50 p-2.5 text-xs text-red-800 border border-red-200">
+              <div className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2.5 text-xs text-status-danger">
                 {errorTier.message}
               </div>
             )}
@@ -656,7 +679,7 @@ export function VisaClient({
                   Customer Guaranteed Rate (PKR)
                 </Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
+                  <span className="absolute top-1/2 left-3 -translate-y-1/2 text-xs font-bold text-muted-foreground">
                     PKR
                   </span>
                   <Input
@@ -671,15 +694,18 @@ export function VisaClient({
                         Number(e.target.value)
                       )
                     }
-                    className="pl-12 font-mono text-base font-bold text-amber-900 tabular-nums"
+                    className="pl-12 font-mono text-base font-bold text-status-warning tabular-nums"
                   />
                 </div>
               </div>
 
               {/* Masar Ground & Base SAR Rates Matrix */}
-              <div className="rounded-lg border border-gold/40 bg-card p-3 space-y-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground border-b border-border/60 pb-1.5">
-                  <Coins className="size-3.5 text-gold" />
+              <div className="space-y-2.5 rounded-lg bg-secondary/55 p-3">
+                <div className="flex items-center gap-1.5 border-b border-border/60 pb-1.5 text-xs font-semibold text-foreground">
+                  <Coins
+                    className="size-3.5 text-gold-text"
+                    aria-hidden="true"
+                  />
                   <span>Masar Platform &amp; Ministry SAR Cost Breakdown</span>
                 </div>
 
@@ -795,13 +821,13 @@ export function VisaClient({
                   onChange={(e) =>
                     updateField("long_term", "notes", e.target.value)
                   }
-                  placeholder="Multiple-entry extended 1-year tourist e-visa with 90-day stay allowance..."
+                  placeholder="Multiple-entry extended 1-year tourist e-visa with 90-day stay allowance"
                 />
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-border pt-4 mt-6">
+          <div className="mt-6 flex items-center justify-between border-t border-border pt-4">
             <span className="text-[11px] text-muted-foreground">
               {longTerm.updatedAt
                 ? `Last updated: ${new Date(longTerm.updatedAt).toLocaleDateString()}`
@@ -811,21 +837,24 @@ export function VisaClient({
               type="button"
               onClick={() => handleSave(longTerm)}
               disabled={savingTier === "long_term"}
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+              className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               {savingTier === "long_term" ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2
+                  className="size-4 animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
               ) : savedSuccessTier === "long_term" ? (
-                <CheckCircle2 className="size-4 text-emerald-300" />
+                <CheckCircle2 className="size-4 text-gold" aria-hidden="true" />
               ) : (
-                <Save className="size-4" />
+                <Save className="size-4" aria-hidden="true" />
               )}
               <span>
                 {savedSuccessTier === "long_term"
                   ? "Rate Saved!"
                   : longTerm.id
-                  ? "Save Long-Term Rate"
-                  : "Initialize Long-Term Rate"}
+                    ? "Save Long-Term Rate"
+                    : "Initialize Long-Term Rate"}
               </span>
             </Button>
           </div>

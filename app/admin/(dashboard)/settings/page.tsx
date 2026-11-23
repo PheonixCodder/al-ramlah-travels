@@ -24,7 +24,10 @@ import {
   projectSafeWhatsappAccountDto,
 } from "@/components/admin/settings/safe-settings-dto"
 import { evaluateSystemConfigHealth } from "@/components/admin/settings/config-health"
-import type { SocialIntegrationStatus, SocialProviderId } from "@/lib/social/types"
+import type {
+  SocialIntegrationStatus,
+  SocialProviderId,
+} from "@/lib/social/types"
 
 export const metadata = {
   title: "Settings & Connections Center | Al Ramlah Travels Admin",
@@ -41,6 +44,10 @@ interface AdminSettingsPageProps {
     selectAccount?: string
     integrationId?: string
   }>
+}
+
+function getServerNowMs(): number {
+  return Date.now()
 }
 
 export default async function AdminSettingsPage({
@@ -89,12 +96,13 @@ export default async function AdminSettingsPage({
     .from(socialIntegrations)
     .orderBy(desc(socialIntegrations.createdAt))
 
-  const safeSocialIntegrations: SafeSocialIntegration[] = socialRows.map((row) =>
-    projectSafeSocialIntegrationDto({
-      ...row,
-      provider: row.provider as SocialProviderId,
-      status: (row.status as SocialIntegrationStatus) || "ACTIVE",
-    })
+  const safeSocialIntegrations: SafeSocialIntegration[] = socialRows.map(
+    (row) =>
+      projectSafeSocialIntegrationDto({
+        ...row,
+        provider: row.provider as SocialProviderId,
+        status: (row.status as SocialIntegrationStatus) || "ACTIVE",
+      })
   )
 
   // 5. Fetch WhatsApp WABA Accounts & project strict secret-free DTOs (`T-038`)
@@ -183,18 +191,16 @@ export default async function AdminSettingsPage({
     ),
     r2Configured: Boolean(
       env.R2_BUCKET_NAME &&
-        env.R2_ACCOUNT_ID &&
-        env.R2_ACCESS_KEY_ID &&
-        env.R2_SECRET_ACCESS_KEY
+      env.R2_ACCOUNT_ID &&
+      env.R2_ACCESS_KEY_ID &&
+      env.R2_SECRET_ACCESS_KEY
     ),
     triggerConfigured: Boolean(env.TRIGGER_SECRET_KEY),
     gotenbergConfigured: Boolean(
       env.GOTENBERG_API_URL && env.GOTENBERG_API_KEY
     ),
     appUrl:
-      env.NEXT_PUBLIC_APP_URL ||
-      env.BETTER_AUTH_URL ||
-      "http://localhost:3000",
+      env.NEXT_PUBLIC_APP_URL || env.BETTER_AUTH_URL || "http://localhost:3000",
   }
 
   const configHealth = evaluateSystemConfigHealth(process.env, {
@@ -249,6 +255,7 @@ export default async function AdminSettingsPage({
       staffUsers={staffUsers}
       currentUserId={currentUser.id}
       currentUserRole={currentUserRole}
+      initialNowMs={getServerNowMs()}
     />
   )
 }

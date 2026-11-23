@@ -1,15 +1,11 @@
 import * as React from "react"
 import type { Metadata } from "next"
 import Link from "next/link"
-import { ArrowRight, Compass, MapPin, Phone, ShieldCheck } from "lucide-react"
-import { PublicBreadcrumbs } from "@/components/layout/breadcrumbs"
-import { ArabicText } from "@/components/public/arabic-text"
+import { ArrowRight, Compass, MapPin, Phone } from "lucide-react"
+import { PublicPageHero } from "@/components/public/public-page-hero"
 import { toWaMeUrl } from "@/components/public/public-utils"
 import { TrustEeatCredentials } from "@/components/seo/trust-eeat-credentials"
-import {
-  formatPkPhoneDisplay,
-  toTelHref,
-} from "@/lib/company-info"
+import { formatPkPhoneDisplay, toTelHref } from "@/lib/company-info"
 import { BRAND_ARABIC_NAME } from "@/lib/constants/brand"
 import {
   buildTravelAgencyJsonLd,
@@ -33,7 +29,7 @@ const SERVICE_STANDARDS = [
   {
     pillar: "Saudi Umrah Visa & Nusuk Masar",
     standard:
-      "Automated <=30-day Short-Term vs 31–90-day Long-Term KSA stay calculation with mandatory medical insurance.",
+      "Automated <=30-day Short-Term vs 31 to 90-day Long-Term KSA stay calculation with mandatory medical insurance.",
     benefit:
       "Eliminates manual tier guesswork and ensures 100% KSA border compliance.",
     href: "/umrah-visa",
@@ -51,7 +47,7 @@ const SERVICE_STANDARDS = [
   {
     pillar: "Haramain Courtyard Hospitality",
     standard:
-      "Verified meter distances across 0–50m Makkah Clock Tower/Ajyad suites and Madinah Markaziyah Gate 25 hotels.",
+      "Verified meter distances across 0 to 50m Makkah Clock Tower/Ajyad suites and Madinah Markaziyah Gate 25 hotels.",
     benefit:
       "Protects elderly and wheelchair-using parents from steep climbs or long bus waits.",
     href: "/hotels/makkah",
@@ -91,7 +87,7 @@ export default async function AboutPage() {
     "@type": "AboutPage",
     "@id": `${CANONICAL_ORIGIN}/about#webpage`,
     url: `${CANONICAL_ORIGIN}/about`,
-    name: "About Al Ramlah Travels — Haramain Pilgrimage Specialists in Lahore",
+    name: "About Al Ramlah Travels: Haramain Pilgrimage Specialists in Lahore",
     description:
       "Dedicated Haramain Umrah, Saudi e-visa, hotel, transport, and Hajj 2027 pilgrimage specialists headquartered in Sector C, Askari 10, Lahore Cantt, Pakistan.",
     inLanguage: "en-PK",
@@ -104,122 +100,139 @@ export default async function AboutPage() {
   }
 
   return (
-    <div className="bg-[#FAF7F0] min-h-screen py-10 sm:py-16">
+    <div className="min-h-screen bg-background">
       <JsonLd data={[aboutPageJsonLd, buildTravelAgencyJsonLd(company)]} />
 
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 space-y-12">
-        <PublicBreadcrumbs
-          items={[{ label: "About Al Ramlah Travels", href: "/about" }]}
-        />
-
-        {/* Hero / Answer-First Entity Header */}
-        <header className="rounded-3xl border border-[#E6DEC8] bg-white p-8 sm:p-12 shadow-xs space-y-5">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-2 rounded-full border border-[#7A5C1E]/30 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
-              <ShieldCheck className="size-3.5 text-[#7A5C1E]" />
-              <span>Askari 10 · Lahore Cantt Headquarters</span>
-            </span>
-            <ArabicText className="text-lg sm:text-xl font-bold text-[#7A5C1E]">
-              {BRAND_ARABIC_NAME}
-            </ArabicText>
-          </div>
-
-          <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#0A3622] leading-tight">
-            About Al Ramlah Travels — Haramain Pilgrimage Specialists in Lahore
-          </h1>
-
-          <p className="text-sm sm:text-base text-[#4A5248] leading-relaxed max-w-4xl">
+      <PublicPageHero
+        variant="read"
+        breadcrumbs={[{ label: "About Al Ramlah Travels", href: "/about" }]}
+        arabicInvocation={BRAND_ARABIC_NAME}
+        title="About Al Ramlah Travels: Haramain Pilgrimage Specialists in Lahore"
+        description={
+          <>
             Headquartered at{" "}
-            <strong className="text-[#1A1D1A]">{company.officeAddress}</strong>{" "}
-            — approximately five minutes from Allama Iqbal International Airport (LHE) —{" "}
-            <strong className="text-[#1A1D1A]">{company.legalEntityName}</strong>{" "}
-            organizes custom family Umrah itineraries, fixed-departure PKR group batches, standalone Saudi Umrah e-visas, courtyard Makkah and Madinah hotels, private KSA transfers, and indicative Hajj 2027 pre-registration for pilgrims across Pakistan and the global diaspora.
-          </p>
-
-          <div className="flex flex-wrap items-center gap-4 pt-2">
+            <strong className="text-foreground">{company.officeAddress}</strong>{" "}
+            (approximately five minutes from Allama Iqbal International Airport,
+            LHE),{" "}
+            <strong className="text-foreground">
+              {company.legalEntityName}
+            </strong>{" "}
+            organizes custom family Umrah itineraries, fixed-departure PKR group
+            batches, standalone Saudi Umrah e-visas, courtyard Makkah and
+            Madinah hotels, private KSA transfers, and indicative Hajj 2027
+            pre-registration for pilgrims across Pakistan and the global
+            diaspora.
+          </>
+        }
+        actions={
+          <>
             <Link
               href="/#journey-builder"
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#0A3622] px-6 py-2.5 text-sm font-bold text-white hover:bg-[#0F5132] transition-colors"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
             >
               <span>Design Custom Umrah Plan</span>
-              <ArrowRight className="size-4" />
+              <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
             <Link
               href="/contact"
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#0A3622]/30 bg-[#FAF7F0] px-5 py-2.5 text-sm font-semibold text-[#0A3622] hover:border-[#7A5C1E] hover:text-[#7A5C1E] transition-colors"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-primary/30 bg-secondary px-5 py-2.5 text-sm font-semibold text-primary transition-colors hover:border-gold-border hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
             >
-              <MapPin className="size-4 text-[#7A5C1E]" />
+              <MapPin className="size-4 text-gold-text" aria-hidden="true" />
               <span>Visit Our Lahore Cantt Desk</span>
             </Link>
             <a
               href={primaryTelHref}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#E6DEC8] bg-white px-5 py-2.5 text-sm font-mono font-semibold text-[#0A3622] tabular-nums hover:border-[#7A5C1E]"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-5 py-2.5 font-mono text-sm font-semibold text-primary tabular-nums transition-colors hover:border-gold-border hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
             >
-              <Phone className="size-4 text-[#7A5C1E]" />
+              <Phone className="size-4 text-gold-text" aria-hidden="true" />
               <span>{primaryDisplay}</span>
             </a>
-          </div>
-        </header>
+          </>
+        }
+      />
 
+      <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
         {/* Askari 10 Lahore Story & Multi-Origin Diaspora Model */}
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="rounded-3xl border border-[#E6DEC8] bg-white p-8 shadow-xs space-y-4">
-            <h2 className="font-display text-2xl font-bold text-[#0A3622]">
+          <div className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-8 shadow-xs">
+            <h2 className="font-display text-2xl font-bold text-primary">
               Why We Operate from Sector C, Askari 10 (Airport Road, Lahore)
             </h2>
-            <p className="text-sm text-[#4A5248] leading-relaxed">
-              Sacred travel demands personal accountability before departure and responsive support once your family lands in Jeddah (JED) or Madinah (MED). Operating from Sector C, Askari 10 on Airport Road allows families in Lahore to drop off passports in person, review hotel walking maps face-to-face with senior ticketing directors, and collect printed travel dossiers minutes from Allama Iqbal International Airport.
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Sacred travel demands personal accountability before departure and
+              responsive support once your family lands in Jeddah (JED) or
+              Madinah (MED). Operating from Sector C, Askari 10 on Airport Road
+              allows families in Lahore to drop off passports in person, review
+              hotel walking maps face-to-face with senior ticketing directors,
+              and collect printed travel dossiers minutes from Allama Iqbal
+              International Airport.
             </p>
-            <p className="text-sm text-[#4A5248] leading-relaxed">
+            <p className="text-sm leading-relaxed text-muted-foreground">
               For pilgrims departing from{" "}
               <Link
                 href="/umrah-packages/from-karachi"
-                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
+                className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
               >
                 Karachi (KHI)
               </Link>
               ,{" "}
               <Link
                 href="/umrah-packages/from-islamabad"
-                className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
+                className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
               >
                 Islamabad (ISB)
               </Link>
-              , Multan, Sialkot, or Faisalabad, our digital intake workflow handles e-visa processing, Saudi Visa Bio guidance, and QR-verified confirmation vouchers without requiring intercity courier delays.
+              , Multan, Sialkot, or Faisalabad, our digital intake workflow
+              handles e-visa processing, Saudi Visa Bio guidance, and
+              QR-verified confirmation vouchers without requiring intercity
+              courier delays.
             </p>
           </div>
 
-          <div className="rounded-3xl border border-[#E6DEC8] bg-white p-8 shadow-xs space-y-4">
-            <h2 className="font-display text-2xl font-bold text-[#0A3622]">
+          <div className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-8 shadow-xs">
+            <h2 className="font-display text-2xl font-bold text-primary">
               Synchronizing Pakistani Parents &amp; Overseas Diaspora Families
             </h2>
-            <p className="text-sm text-[#4A5248] leading-relaxed">
-              Many overseas Pakistani sons and daughters in the United Kingdom, United States, Canada, and the UAE coordinate Umrah or Hajj journeys alongside elderly parents living in Pakistan. Our concierge desk aligns dual-origin flight arrivals into Jeddah or Madinah so the entire family checks into the same Haramain courtyard suites and rides together in a single private GMC Yukon or HiAce van.
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Many overseas Pakistani sons and daughters in the United Kingdom,
+              United States, Canada, and the UAE coordinate Umrah or Hajj
+              journeys alongside elderly parents living in Pakistan. Our
+              concierge desk aligns dual-origin flight arrivals into Jeddah or
+              Madinah so the entire family checks into the same Haramain
+              courtyard suites and rides together in a single private GMC Yukon
+              or HiAce van.
             </p>
-            <ul className="list-disc pl-5 space-y-1.5 text-xs sm:text-sm text-[#4A5248]">
+            <ul className="flex list-disc flex-col gap-1.5 pl-5 text-xs text-muted-foreground sm:text-sm">
               <li>
-                <strong className="text-[#1A1D1A]">24-Hour Quote Turnaround:</strong>{" "}
-                Every custom request receives an itemized PKR worksheet within one business day.
+                <strong className="text-foreground">
+                  24-Hour Quote Turnaround:
+                </strong>{" "}
+                Every custom request receives an itemized PKR worksheet within
+                one business day.
               </li>
               <li>
-                <strong className="text-[#1A1D1A]">Elderly &amp; Mobility Priority:</strong>{" "}
+                <strong className="text-foreground">
+                  Elderly &amp; Mobility Priority:
+                </strong>{" "}
                 Honest incline advisories, flat courtyard routing, and{" "}
                 <Link
                   href="/hotels/madinah"
-                  className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
+                  className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
                 >
                   Madinah Ladies Gate 25
                 </Link>{" "}
                 hotel matching.
               </li>
               <li>
-                <strong className="text-[#1A1D1A]">Dedicated WhatsApp Concierge:</strong>{" "}
+                <strong className="text-foreground">
+                  Dedicated WhatsApp Concierge:
+                </strong>{" "}
                 Direct support on{" "}
                 <a
                   href={waHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-mono font-semibold text-[#0A3622] underline tabular-nums"
+                  className="font-mono font-semibold text-primary tabular-nums underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
                 >
                   {primaryDisplay}
                 </a>{" "}
@@ -232,26 +245,32 @@ export default async function AboutPage() {
         {/* Service Standards Table */}
         <section
           aria-labelledby="service-standards-heading"
-          className="rounded-3xl border border-[#E6DEC8] bg-white p-6 sm:p-10 shadow-xs space-y-6"
+          className="flex flex-col gap-6 rounded-3xl border border-border bg-card p-6 shadow-xs sm:p-10"
         >
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <h2
               id="service-standards-heading"
-              className="font-display text-2xl sm:text-3xl font-bold text-[#0A3622]"
+              className="font-display text-2xl font-bold text-primary sm:text-3xl"
             >
               Our Operational Service Standards &amp; Pricing Commitments
             </h2>
-            <p className="text-sm text-[#4A5248] leading-relaxed">
-              Every web inquiry and staff quotation follows strict domain rules designed to prevent hidden surcharges, misrouted airport transfers, and mismatched hotel room capacities.
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Every web inquiry and staff quotation follows strict domain rules
+              designed to prevent hidden surcharges, misrouted airport
+              transfers, and mismatched hotel room capacities.
             </p>
           </div>
 
-          <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
-            <table className="w-full text-left text-xs sm:text-sm border-collapse">
+          <div
+            tabIndex={0}
+            className="overflow-x-auto rounded-2xl border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <table className="w-full border-collapse text-left text-xs sm:text-sm">
               <caption className="sr-only">
-                Al Ramlah Travels operational service standards across visas, group packages, Haramain hotels, transport, and Hajj 2027
+                Al Ramlah Travels operational service standards across visas,
+                group packages, Haramain hotels, transport, and Hajj 2027
               </caption>
-              <thead className="bg-[#FAF7F0] text-[#0A3622] border-b border-[#E6DEC8]">
+              <thead className="border-b border-border bg-secondary text-primary">
                 <tr>
                   <th scope="col" className="px-4 py-3.5 font-bold">
                     Service Pillar
@@ -267,10 +286,13 @@ export default async function AboutPage() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E6DEC8] text-[#4A5248]">
+              <tbody className="divide-y divide-border text-muted-foreground">
                 {SERVICE_STANDARDS.map((row) => (
-                  <tr key={row.pillar} className="hover:bg-[#FAF7F0]/60">
-                    <td className="px-4 py-3.5 font-semibold text-[#1A1D1A]">
+                  <tr
+                    key={row.pillar}
+                    className="transition-colors hover:bg-background/70 motion-reduce:transition-none"
+                  >
+                    <td className="px-4 py-3.5 font-semibold text-foreground">
                       {row.pillar}
                     </td>
                     <td className="px-4 py-3.5 leading-relaxed">
@@ -282,7 +304,7 @@ export default async function AboutPage() {
                     <td className="px-4 py-3.5">
                       <Link
                         href={row.href}
-                        className="inline-flex min-h-6 items-center font-semibold text-[#0A3622] underline decoration-[#7A5C1E]/60 underline-offset-4 hover:text-[#7A5C1E]"
+                        className="inline-flex min-h-6 items-center font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
                       >
                         {row.linkText}
                       </Link>
@@ -298,48 +320,52 @@ export default async function AboutPage() {
         <TrustEeatCredentials company={company} />
 
         {/* Hub Navigation Footer */}
-        <section className="rounded-3xl border border-[#0A3622] bg-[#0A3622] p-8 sm:p-10 text-white flex flex-col gap-6">
-          <div className="flex flex-col gap-2 max-w-3xl">
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#DFBE6F]">
-              <Compass className="size-4" />
-              <span>Start Planning Your Sacred Journey</span>
-            </span>
-            <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">
-              Explore Our Pakistan Gateways &amp; Haramain Guides
-            </h2>
-            <p className="text-sm text-white/85 leading-relaxed">
-              Browse live departure batches, compare Makkah and Madinah hotel walking distances, or review our 20+ operational FAQs before speaking with a travel director.
+        <section className="flex flex-col gap-6 rounded-3xl border border-primary bg-primary p-8 text-primary-foreground sm:p-10">
+          <div className="flex max-w-3xl flex-col gap-2">
+            <div className="flex items-center gap-2.5">
+              <Compass
+                className="size-6 shrink-0 text-gold"
+                aria-hidden="true"
+              />
+              <h2 className="font-display text-2xl font-bold text-primary-foreground sm:text-3xl">
+                Explore Our Pakistan Gateways &amp; Haramain Guides
+              </h2>
+            </div>
+            <p className="text-sm leading-relaxed text-primary-foreground/85">
+              Browse live departure batches, compare Makkah and Madinah hotel
+              walking distances, or review our 20+ operational FAQs before
+              speaking with a travel director.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm font-semibold">
+          <div className="flex flex-wrap items-center gap-3 text-xs font-semibold sm:text-sm">
             <Link
               href="/umrah-packages/from-lahore"
-              className="inline-flex min-h-9 items-center rounded-full border border-[#DFBE6F]/40 bg-white/10 px-4 py-1.5 text-white hover:bg-white/20"
+              className="inline-flex min-h-9 items-center rounded-full border border-gold/40 bg-primary-foreground/10 px-4 py-1.5 text-primary-foreground transition-colors hover:bg-primary-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
               Umrah from Lahore (LHE)
             </Link>
             <Link
               href="/umrah-packages/from-karachi"
-              className="inline-flex min-h-9 items-center rounded-full border border-[#DFBE6F]/40 bg-white/10 px-4 py-1.5 text-white hover:bg-white/20"
+              className="inline-flex min-h-9 items-center rounded-full border border-gold/40 bg-primary-foreground/10 px-4 py-1.5 text-primary-foreground transition-colors hover:bg-primary-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
               Umrah from Karachi (KHI)
             </Link>
             <Link
               href="/umrah-packages/from-islamabad"
-              className="inline-flex min-h-9 items-center rounded-full border border-[#DFBE6F]/40 bg-white/10 px-4 py-1.5 text-white hover:bg-white/20"
+              className="inline-flex min-h-9 items-center rounded-full border border-gold/40 bg-primary-foreground/10 px-4 py-1.5 text-primary-foreground transition-colors hover:bg-primary-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
               Umrah from Islamabad (ISB)
             </Link>
             <Link
               href="/faq"
-              className="inline-flex min-h-9 items-center rounded-full border border-[#DFBE6F]/40 bg-white/10 px-4 py-1.5 text-white hover:bg-white/20"
+              className="inline-flex min-h-9 items-center rounded-full border border-gold/40 bg-primary-foreground/10 px-4 py-1.5 text-primary-foreground transition-colors hover:bg-primary-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
               Pilgrimage FAQs
             </Link>
             <Link
               href="/terms"
-              className="inline-flex min-h-9 items-center rounded-full border border-[#DFBE6F]/40 bg-white/10 px-4 py-1.5 text-white hover:bg-white/20"
+              className="inline-flex min-h-9 items-center rounded-full border border-gold/40 bg-primary-foreground/10 px-4 py-1.5 text-primary-foreground transition-colors hover:bg-primary-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
               Booking Terms
             </Link>

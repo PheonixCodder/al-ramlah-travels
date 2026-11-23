@@ -61,7 +61,12 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 45 | Multi-Number WhatsApp System: multi-session Linked Device switcher, per-number group/status & chat attribution, multi-line auto-posting & inbox line filter | Slice 41 | done |
 | 46 | Production-Ready De-Clutter & Dynamic Data Overhaul: purge all demo seeds/presets, 100% dynamic WhatsApp phone linking, simplified Settings/Campaigns/Inbox UI & dynamic public/admin pages | Slice 42 | done |
 | 47 | Spec 0024 — Production Readiness Audit & Hardening | Slice 43 | done |
-| 48 | Spec 0025 — Public Site SEO, GEO & Attribution Readiness | Slice 44 | in-progress |
+| 48 | Spec 0025 — Public Site SEO, GEO & Attribution Readiness | Slice 44 | done |
+| 49 | Unified CDD, Design System (`DESIGN.md` + `PRODUCT.md`) & Spec-Driven Engineering | Slice 45 | done |
+| 50 | Spec 0026 — Home Page Editorial Redesign & Public Motion Architecture (`Lenis` + `GSAP` + `Motion`) | Slice 46 | done |
+| 51 | Spec 0027 — Secondary public hubs, spokes & shell editorial alignment | Slice 47 | done |
+| 52 | Spec 0028 · Admin 4 Hub Operate Surface and Shell Alignment | Slice 48 | done |
+| 53 | Spec 0029 · Pilgrim Document Upload Portal and Staff Verification | Slice 49 | done |
 
 ## Foundations
 
@@ -708,12 +713,98 @@ spec [0025](docs/specs/0025-public-site-seo-readiness.md) · code in `lib/seo/`,
 - [x] Verify it: `/check verify Public Site SEO Readiness` (`Wave 7` Gate B `GB-01`–`GB-08` sign-off in `docs/audit/seo/04-seo-verification.md` & `docs/audit/SEO_READINESS.md`)
 - [x] Test it: `/test Public Site SEO Readiness` (`tests/seo/`, `tests/integration/seo-utm-attribution.integration.test.ts`, `tests/e2e/j23-seo-crawl-and-attribution.spec.ts`)
 
+## Slice 45: Unified CDD, Design System & Spec-Driven Engineering
+
+### 49. Slice 45 · Unified CDD, Design System (`DESIGN.md` + `PRODUCT.md`) & Spec-Driven Engineering · done
+
+Establish the full multi-harness Context-Driven Development (CDD), Design-Driven Development (`hallmark` + `impeccable` + `awesome-design-md`), and Spec-Driven Development (`jsmastery-skills` + `awesome-spec-driven-development`) foundation across the workspace and `web/`.
+**Done when:** all 5 reference repos are cloned into `services/`, all 28 skills are canonically installed in `web/.agents/skills/` and mounted via `.agents/skills.json`, multi-harness MCP configs resolve cleanly, `DESIGN.md` (Stitch YAML + 8 sections) & `PRODUCT.md` are synced to `app/globals.css`, 7 nested `<area>/AGENTS.md` files are live, and `npm run cdd:check` (`scripts/verify-cdd.mjs`) exits `0` across all 7 governance gates.
+code in `AGENTS.md`, `DESIGN.md`, `PRODUCT.md`, `.agents/skills/`, `docs/CONSTITUTION.md`, `docs/INDEX.md`, `scripts/verify-cdd.mjs`
+
+- [x] Capture conventions + tooling choices: `/audit`
+- [x] Build it: `/develop Unified CDD & SDD System`
+  - [x] Milestone 1: Clone `hallmark`, `impeccable`, `awesome-design-md`, `jsmastery-skills`, and `awesome-spec-driven-development` into `services/`; install all 28 canonical skills in `web/.agents/skills/` mounted via `.agents/skills.json`; fix multi-harness `trigger` MCP config (`.mcp.json`, `web/.mcp.json`, `.gemini/settings.json`, `.agents/plugins/al-ramlah-workspace/`)
+  - [x] Milestone 2: Upgrade `web/DESIGN.md` (Stitch YAML frontmatter + 8 canonical sections synced to `app/globals.css` & 4-Hub Admin IA) and author `web/PRODUCT.md` (`impeccable:product-schema 1`) + workspace-root mirrors
+  - [x] Milestone 3: Author 7 progressive nested `<area>/AGENTS.md` (+ `CLAUDE.md`) files (`app/(public)`, `app/admin`, `components`, `db`, `lib/whatsapp`, `lib/social`, `trigger`) and reconcile root + `web/AGENTS.md`
+  - [x] Milestone 4: Author `docs/CONSTITUTION.md`, `docs/INDEX.md`, `docs/specs/_TEMPLATE.md`, `test-preferences.json`, and deterministic governance verifier `scripts/verify-cdd.mjs` (`npm run cdd:check`)
+- [x] Check it runs clean: `/check verify Unified CDD & SDD System` (`npm run cdd:check`)
+
+## Slice 46: Spec 0026 — Home Page Editorial Redesign & Public Motion Architecture
+
+### 50. Slice 46 · Spec 0026 — Home Page Editorial Redesign & Public Motion Architecture · Beta · done
+
+Integrate `lenis` (`lenis/react`), `gsap` + `@gsap/react` (`ScrollTrigger`, `useGSAP`, `gsap.matchMedia`), and `motion` + `framer-motion` under a single-RAF public storefront provider (`app/(public)/layout.tsx`), mount official Motion/GSAP/Lenis agent skills + `https://mcp.motion.dev`, and right-size all Home Page (`/`) sections around the strictly untouched `Design Your Custom Umrah Pilgrimage` (`#journey-builder` / `components/planner/**`) centerpiece (`~25,930 px` → `~12,000 px`).
+**Done when:** `components/planner/**` has `0` modified lines, `Lenis` + `GSAP` + `Motion` run smoothly at 60fps with Base UI portal scroll isolation and `prefers-reduced-motion: reduce` + SSR visibility safety (`sloplint` Gate `62`), Group Umrah uses an equal-height horizontal carousel free of flyer text collisions, Hajj 2027 uses a 4-column Maktab row + 2-column tabbed readiness/form split, duplicate Section `6B` rules table is consolidated without losing `GB-06` SEO link parity, and `npm run ui:lint`, `npm test` (`.env.audit`), Playwright `J1`–`J5` & `J23`, and `npm run cdd:check` all pass.
+spec [0026](docs/specs/0026-home-page-redesign-and-motion-architecture/index.md) · code in `components/motion/`, `app/(public)/`, `components/public/`, `components/seo/`
+
+- [x] Design it (spec): `/architect Home Page Editorial Redesign & Public Motion Architecture` ([0026](docs/specs/0026-home-page-redesign-and-motion-architecture/index.md))
+- [x] Build it: `/develop Home Page Editorial Redesign & Public Motion Architecture`
+  - [x] Milestone 1 (`M1` Runtime & Shell): Install `lenis`, `gsap`, `@gsap/react`, `motion`, `framer-motion`; build `components/motion/*` (`gsap-registry.ts`, `public-motion-provider.tsx` with `gsap.ticker` single-RAF + Base UI `prevent` guard, `haramain-reveal.tsx`) and wire `app/(public)/layout.tsx` + `app/globals.css`
+  - [x] Milestone 2 (`M2` Hero & Group Packages): Luminous single-eyebrow `HeroSlider` (`useGSAP` entrance + interactive slide tabs) and equal-height horizontal Embla `GroupPackagesSection` (`Motion` `layoutId` pills, flyer-safe banners, compact hotel-tier badge, intact modal booking)
+  - [x] Milestone 3 (`M3` Hajj 2027 & Status Tracker): 4-column `HajjInquirySection` Maktab row + 2-column `Motion`-tabbed Readiness & `#hajj-reservation-card` split (`OD-09e`), plus inline horizontal `StatusTracker` bar with `AnimatePresence` dossier reveal
+  - [x] Milestone 4 (`M4` Lower Storefront & Page Composition): Remove duplicate Section `6B` rules table in `app/(public)/page.tsx` (keeping `#journey-builder` untouched), merge spoke links into `TrustHomeOverview`, and upgrade `MarketingSections` (GSAP 4-Step Timeline, Makkah/Madinah tabbed Ziyarat 6-card showcase, 2-col `keepMounted` FAQ) + `ContactSection`
+- [x] Verify it: `/check verify Home Page Editorial Redesign & Public Motion Architecture` ([verify.md](docs/specs/0026-home-page-redesign-and-motion-architecture/verify.md))
+- [x] Test it: `/test Home Page Editorial Redesign & Public Motion Architecture` (`tests/unit/home-motion-and-proportion.test.ts`, `tests/unit/home-public-sections.test.ts`, `tests/seo/gate-b-seo-invariants.test.ts`, `tests/e2e/j01-j05-public-pilgrim.spec.ts`, `tests/e2e/j23-seo-crawl-and-attribution.spec.ts`)
+
+## Slice 47: Secondary Public Hubs, Spokes & Shell Editorial Alignment
+
+### 51. Slice 47 · Secondary Public Hubs, Spokes & Shell Editorial Alignment · Beta · done
+
+Bring all 14 remaining public hub, guide, trust, and policy pages (`/umrah-packages`, `/umrah-packages/from-[city]`, `/umrah-packages/[slug]`, `/umrah-visa`, `/hajj-2027`, `/hotels/[city]`, `/ziyarat`, `/ziyarat/[city]`, `/about`, `/faq`, `/contact`, `/terms`, `/privacy`, `/refund-policy`) plus shared public header, footer, and SEO comparison blocks up to the Home Page editorial layout, semantic token, focus ring, and reduced motion bar while keeping `components/planner/**` and `/voucher/[token]` untouched.
+**Done when:** every non voucher public page and shared shell or SEO block uses semantic Haramain design tokens with zero `ui:lint` failures across `app/(public)` (excluding `/voucher`), `components/public`, and `components/seo`, preserves `100%` of public SEO metadata, structured data, wholesale SAR redaction, and inbound link invariants, keeps `components/planner/**` and `/voucher/[token]` untouched, and passes accessibility and automated checks.
+spec [0027](docs/specs/0027-public-storefront-editorial-alignment/index.md) · code in `lib/constants/brand.ts`, `components/public/`, `components/layout/`, `components/seo/`, `app/(public)/`
+
+- [x] Design it (spec): `/architect Secondary Public Hubs, Spokes & Shell Editorial Alignment` ([0027](docs/specs/0027-public-storefront-editorial-alignment/index.md))
+- [x] Build it: `/develop Secondary Public Hubs, Spokes & Shell Editorial Alignment`
+  - [x] Milestone 1 (`M1` Shared Hero, Shell & Modal): Land `LIVE_RATE_CONFIRMATION_LABEL` in `lib/constants/brand.ts` and `PublicPageHero` in `components/public/public-page-hero.tsx`, then align `public-header.tsx`, `public-footer.tsx`, `breadcrumbs.tsx`, `whatsapp-fab.tsx`, and `group-booking-modal.tsx` (`AC-1`..`AC-3`, `AC-7`, `AC-8`)
+  - [x] Milestone 2 (`M2` Umrah Hubs, City Gateways & Package Detail): Align `/umrah-packages`, `/umrah-packages/from-[city]`, `/umrah-packages/[slug]`, and `components/seo/umrah-*` (`AC-1`, `AC-2`, `AC-4`, `AC-7`..`AC-9`)
+  - [x] Milestone 3 (`M3` Sacred Guides & Destination Spokes): Align `/umrah-visa`, `/hajj-2027`, `/hotels/[city]`, `/ziyarat`, `/ziyarat/[city]`, and `components/seo/guides-*` (`AC-1`, `AC-2`, `AC-5`, `AC-7`..`AC-9`)
+  - [x] Milestone 4 (`M4` Trust, Support & Policy Spokes): Align `/about`, `/faq`, `/contact`, `/terms`, `/privacy`, `/refund-policy`, `trust-eeat-credentials.tsx`, and `trust-legal-crosslinks.tsx` (`AC-1`, `AC-2`, `AC-6`..`AC-9`)
+- [x] Verify it: `/check verify Secondary Public Hubs, Spokes & Shell Editorial Alignment` ([verify.md](docs/specs/0027-public-storefront-editorial-alignment/verify.md) · [2026-11-21-main.md](docs/reviews/2026-11-21-main.md))
+- [x] Test it: `/test Secondary Public Hubs, Spokes & Shell Editorial Alignment` ([public-storefront-alignment.test.ts](tests/unit/public-storefront-alignment.test.ts))
+
+## Slice 48: Admin 4 Hub Operate Surface and Shell Alignment
+
+### 52. Slice 48 · Admin 4 Hub Operate Surface and Shell Alignment · Beta · done
+
+Bring the Admin `Operate` surface (`/admin`, `/admin/studio`, `/admin/campaigns`, `/admin/desk`, `/admin/catalog`, `/admin/settings`, `/admin/login`), shared admin shell (`admin-sidebar.tsx`, `admin-topbar.tsx`, `command-palette.tsx`), and admin feature views up to the semantic Haramain design system, keyboard focus floor, and clean React hook rules.
+**Done when:** every admin route, shell component, and admin hub view uses semantic Haramain light tokens with zero `ui:lint` failures across `app/admin` and `components/admin` plus `components/layout/{admin-sidebar,admin-topbar,command-palette}.tsx`, clears React hook `setState` effect warnings on touched admin components, preserves all role guards, wholesale cost redaction for staff, Kanban drag interactions, and existing admin test contracts, and passes accessibility and automated checks.
+spec [0028](docs/specs/0028-admin-operate-surface-alignment/index.md) · code in `app/globals.css`, `lib/constants/admin-labels.ts`, `app/admin/`, `components/admin/`, `components/layout/`
+
+- [x] Design it (spec): `/architect Admin 4 Hub Operate Surface and Shell Alignment` ([0028](docs/specs/0028-admin-operate-surface-alignment/index.md))
+- [x] Build it: `/develop Admin 4 Hub Operate Surface and Shell Alignment`
+  - [x] Milestone 1 (`M1` Status Tokens, Labels, Shell, Overview & Dossiers): Land `--status-*` / `--color-status-*` tokens in `app/globals.css` and `lib/constants/admin-labels.ts`, then align `admin-sidebar.tsx`, `admin-topbar.tsx`, `command-palette.tsx`, `status-badge.tsx`, `/admin/login`, `/admin`, and non voucher `applications/*` (`AC-1`..`AC-4`, `AC-8`..`AC-10`)
+  - [x] Milestone 2 (`M2` Desk Hub, Kanban Board & WhatsApp Modals): Align `/admin/desk`, `desk-hub-client.tsx`, `applications-kanban-board.tsx`, `copilot-realtime-run-banner.tsx`, `meta-template-builder-modal.tsx`, `whatsapp-auto-reply-studio.tsx`, and `whatsapp-linked-device-card.tsx` (`AC-1`, `AC-5`, `AC-8`..`AC-10`)
+  - [x] Milestone 3 (`M3` Campaigns Hub, Social Calendar, Previewer & Broadcasts): Align `/admin/campaigns`, `campaigns-hub-client.tsx`, and `components/admin/campaigns/*` (`AC-1`, `AC-6`, `AC-8`..`AC-10`)
+  - [x] Milestone 4 (`M4` Studio, Marketing Ops, Catalog & Settings Hubs): Align `/admin/studio`, `/admin/catalog`, `/admin/settings`, `studio-hub-client.tsx`, `catalog-hub-client.tsx`, `connections-settings-client.tsx`, `studio-realtime-run-banner.tsx`, `components/admin/marketing/*`, `components/admin/catalog/*`, and `components/admin/settings/*` (`AC-1`, `AC-2`, `AC-7`..`AC-10`)
+- [x] Verify it: `/check verify Admin 4 Hub Operate Surface and Shell Alignment` ([verify.md](docs/specs/0028-admin-operate-surface-alignment/verify.md) · [2026-11-22-main.md](docs/reviews/2026-11-22-main.md))
+- [x] Test it: `/test Admin 4 Hub Operate Surface and Shell Alignment` ([admin-operate-alignment.test.ts](tests/unit/admin-operate-alignment.test.ts) · [j06-j12-admin-desk-quote-studio.spec.ts](tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts))
+
+## Slice 49: Pilgrim Document Upload Portal and Staff Verification
+
+### 53. Slice 49 · Pilgrim Document Upload Portal and Staff Verification · GA · done
+
+Give pilgrims with an approved and deposit verified booking a self service checklist to upload passport bio pages, national ID scans, and visa photos for every adult, child, and infant on the journey, and let staff approve or request a clearer reupload inside the application dossier.
+**Done when:** the portal unlocks only when a booking is approved with verified deposit or full payment, pilgrims can open it from a dedicated capability link or from `/#track-status` without creating an account password, every traveller passport slot enforces private storage with short lived signed previews, `noindex` headers, and 60 day post return retention, and consultants can approve or request reuploads per document in `/admin/applications/[id]` with accessible mobile and desktop states.
+spec [0029](docs/specs/0029-pilgrim-document-upload-portal/index.md) · code in `db/schema/applications.ts`, `drizzle/0004_pilgrim_document_portal.sql`, `lib/domain/pilgrim-documents.ts`, `lib/validations/pilgrim-documents.ts`, `app/actions/pilgrim-documents.ts`, `app/api/documents/[token]/`, `app/(public)/documents/[token]/`, `components/public/pilgrim-document-portal.tsx`, `components/admin/applications/pilgrim-documents-review-panel.tsx`
+
+- [x] Design it (spec): `/architect Pilgrim Document Upload Portal and Staff Verification` ([0029](docs/specs/0029-pilgrim-document-upload-portal/index.md))
+- [x] Build it: `/develop Pilgrim Document Upload Portal and Staff Verification`
+  - [x] Milestone 1 (`M1` Schema, Migration `0004`, Domain Rules & Storage Verifier): Add `application_travellers`, `application_documents`, and `documentPortalToken*` columns, domain/Zod helpers, and `512` byte R2 header verifier (`AC-1`..`AC-6`, `AC-9`)
+  - [x] Milestone 2 (`M2` Actions, Mailer, Presign & Local Upload Routes, Crawl & Retention): Build `pilgrim-documents.ts` actions, `presign` + `local-upload` routes, `robots.ts` / `proxy.ts` `noindex` guards, 4 way token minting, and `60` day post return purge (`AC-1`..`AC-9`)
+  - [x] Milestone 3 (`M3` Public `/documents/[token]` Portal & Status Tracker CTA): Build `/documents/[token]` (`page.tsx`, `forbidden.tsx`, phone session gate, traveller checklist) and `/#track-status` launch button (`AC-1`..`AC-6`, `AC-8`, `AC-10`)
+  - [x] Milestone 4 (`M4` Admin Dossier Verification Panel & Dispatch Controls): Build `pilgrim-documents-review-panel.tsx` and wire dossier review, nudges, passenger count edits, and `super_admin` override/rotation controls (`AC-3`, `AC-4`, `AC-6`..`AC-8`, `AC-10`)
+- [x] Verify it: `/check verify Pilgrim Document Upload Portal and Staff Verification` ([verify.md](docs/specs/0029-pilgrim-document-upload-portal/verify.md))
+- [x] Test it: `/test Pilgrim Document Upload Portal and Staff Verification` ([pilgrim-documents-domain.test.ts](tests/unit/pilgrim-documents-domain.test.ts) · [pilgrim-documents-portal.integration.test.ts](tests/integration/pilgrim-documents-portal.integration.test.ts) · [j24-pilgrim-document-portal.spec.ts](tests/e2e/j24-pilgrim-document-portal.spec.ts))
+- [x] Review it (fresh model): `/check review Pilgrim Document Upload Portal and Staff Verification` ([2026-11-22-slice-49.md](docs/reviews/2026-11-22-slice-49.md))
+- [x] Document it: `/document Pilgrim Document Upload Portal and Staff Verification` (PR `feat/slices-45-49-ui-and-document-portal`)
+
 ## Deferred
 
 Out of scope for the current build pass, kept so the plan stays honest.
 
 - **Online card payment gateway**: collect online credit card or bank checkout payments directly on the website · needs a decision · GA
-- **Pilgrim document upload portal**: self service passport scan and photo upload after quote approval · needs a decision
+- **Passport MRZ text pre fill**: optional OCR pre fill of passport numbers and expiry dates on the pilgrim document checklist (from spec 0029) · needs a decision
 
 ## Legend
 

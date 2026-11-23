@@ -99,10 +99,7 @@ export default async function AdminCatalogPage({
       .from(testimonials)
       .orderBy(asc(testimonials.sortOrder), asc(testimonials.createdAt)),
     db.select().from(faqs).orderBy(asc(faqs.sortOrder), asc(faqs.createdAt)),
-    db
-      .select()
-      .from(contactMessages)
-      .orderBy(desc(contactMessages.createdAt)),
+    db.select().from(contactMessages).orderBy(desc(contactMessages.createdAt)),
     db
       .select({ sarToPkrRate: agencySettings.sarToPkrRate })
       .from(agencySettings)

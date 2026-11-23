@@ -21,7 +21,7 @@ const DynamicGroupBookingModal = dynamic(
       <Button
         type="button"
         disabled
-        className="min-h-11 w-full bg-[#0A3622] text-white font-semibold text-xs sm:text-sm"
+        className="min-h-11 w-full bg-primary text-xs font-semibold text-primary-foreground sm:text-sm"
       >
         Loading Seat Reservation…
       </Button>
@@ -34,7 +34,49 @@ export interface UmrahPackageBookingCtaProps {
   agencyWhatsapp: string
 }
 
+export type GroupPackageCardItem = BookingModalPackage & { slug?: string }
+
 type OccupancyKey = "sharing" | "quad" | "triple" | "double"
+
+function normalizeModalTierPrice(price: number | null | undefined): number {
+  return typeof price === "number" && Number.isFinite(price) && price > 0
+    ? price
+    : 0
+}
+
+/**
+ * Preserves `0` ("On Request") occupancy tier tariffs (`OD-09b`) when handing off
+ * a package to `GroupBookingModal`, and retains every `multiHotelOptions` row
+ * that publishes at least one positive (`> 0`) occupancy price.
+ */
+export function prepareGroupModalPackage(
+  pkg: GroupPackageCardItem
+): GroupPackageCardItem {
+  const validHotelOptions = (pkg.multiHotelOptions ?? [])
+    .map((opt) => ({
+      ...opt,
+      sharingPricePkr: normalizeModalTierPrice(opt.sharingPricePkr),
+      quadPricePkr: normalizeModalTierPrice(opt.quadPricePkr),
+      triplePricePkr: normalizeModalTierPrice(opt.triplePricePkr),
+      doublePricePkr: normalizeModalTierPrice(opt.doublePricePkr),
+    }))
+    .filter(
+      (opt) =>
+        opt.sharingPricePkr > 0 ||
+        opt.quadPricePkr > 0 ||
+        opt.triplePricePkr > 0 ||
+        opt.doublePricePkr > 0
+    )
+
+  return {
+    ...pkg,
+    sharingPricePkr: normalizeModalTierPrice(pkg.sharingPricePkr),
+    quadPricePkr: normalizeModalTierPrice(pkg.quadPricePkr),
+    triplePricePkr: normalizeModalTierPrice(pkg.triplePricePkr),
+    doublePricePkr: normalizeModalTierPrice(pkg.doublePricePkr),
+    multiHotelOptions: validHotelOptions,
+  }
+}
 
 /**
  * Interactive leaf client island for `/umrah-packages/[slug]` (`Spec 0025` §3 `#3`, `OD-09b`).
@@ -89,42 +131,21 @@ export function UmrahPackageBookingCta({
     firstBookableTier
   )
 
+  // Preserve `0` ("On Request") occupancy tariffs and valid partial multi-hotel rows (`OD-09b`)
+  const sanitizedModalPkg: BookingModalPackage = useMemo(
+    () => prepareGroupModalPackage(pkg),
+    [pkg]
+  )
+
   const activeTierCard = tierCards.find((t) => t.key === selectedTier) ?? null
+  const hasBookableHotelOptions =
+    (sanitizedModalPkg.multiHotelOptions?.length ?? 0) > 0
   const canOpenBookingModal =
     openFutureBatches.length > 0 &&
-    firstBookableTier !== null &&
-    activeTierCard !== null &&
-    activeTierCard.formatted.isBookable
-
-  // Exclude any multiHotelOptions row that carries <= 0 PKR tariffs (`OD-09b` defense-in-depth)
-  const sanitizedModalPkg: BookingModalPackage = useMemo(() => {
-    const positiveFallback =
-      tierCards.find((t) => t.formatted.numericPrice !== null)?.formatted
-        .numericPrice ?? 1
-
-    const validHotelOptions = (pkg.multiHotelOptions ?? []).filter(
-      (opt) =>
-        opt.quadPricePkr > 0 &&
-        opt.triplePricePkr > 0 &&
-        opt.doublePricePkr > 0 &&
-        opt.sharingPricePkr > 0
-    )
-
-    return {
-      ...pkg,
-      sharingPricePkr:
-        typeof pkg.sharingPricePkr === "number" && pkg.sharingPricePkr > 0
-          ? pkg.sharingPricePkr
-          : positiveFallback,
-      quadPricePkr:
-        pkg.quadPricePkr > 0 ? pkg.quadPricePkr : positiveFallback,
-      triplePricePkr:
-        pkg.triplePricePkr > 0 ? pkg.triplePricePkr : positiveFallback,
-      doublePricePkr:
-        pkg.doublePricePkr > 0 ? pkg.doublePricePkr : positiveFallback,
-      multiHotelOptions: validHotelOptions,
-    }
-  }, [pkg, tierCards])
+    ((firstBookableTier !== null &&
+      activeTierCard !== null &&
+      activeTierCard.formatted.isBookable) ||
+      hasBookableHotelOptions)
 
   const whatsappHref = useMemo(() => {
     const tierNote = activeTierCard?.formatted.isBookable
@@ -141,28 +162,27 @@ export function UmrahPackageBookingCta({
   return (
     <aside
       aria-label="Reserve Group Package Seats"
-      className="rounded-3xl border border-[#E6DEC8] bg-white p-6 shadow-sm space-y-5"
+      className="flex flex-col gap-5 rounded-3xl border border-border bg-card p-6 shadow-sm"
     >
-      <div className="space-y-1 border-b border-[#E6DEC8] pb-4">
-        <span className="text-xs font-bold uppercase tracking-wider text-gold-text">
-          Transparent PKR Occupancy Rates
-        </span>
-        <h2 className="font-display text-xl font-bold text-[#0A3622]">
+      <div className="flex flex-col gap-1 border-b border-border pb-4">
+        <h2 className="font-display text-xl font-bold text-primary">
           Select Occupancy &amp; Reserve Seats
         </h2>
-        <p className="text-xs text-[#4A5048]">
-          Soft seat holds are confirmed within 24 hours by our Askari 10 Lahore ticketing desk.
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Transparent PKR occupancy rates with soft seat holds confirmed within
+          24 hours by our Askari 10 Lahore ticketing desk.
         </p>
       </div>
 
       {/* Occupancy Tier Selector (`OD-09b`: `<= 0` tiers disabled & marked "On Request") */}
-      <div className="space-y-2">
-        <span className="block text-xs font-semibold text-[#1A1D1A]">
+      <div className="flex flex-col gap-2">
+        <span className="block text-xs font-semibold text-foreground">
           Adult / Child Room Occupancy Tier
         </span>
         <div className="grid grid-cols-2 gap-2.5">
           {tierCards.map((tier) => {
-            const isSelected = selectedTier === tier.key && tier.formatted.isBookable
+            const isSelected =
+              selectedTier === tier.key && tier.formatted.isBookable
             return (
               <button
                 key={tier.key}
@@ -174,23 +194,23 @@ export function UmrahPackageBookingCta({
                     setSelectedTier(tier.key)
                   }
                 }}
-                className={`min-h-14 rounded-xl border p-3 text-left transition-all ${
+                className={`min-h-14 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 disabled:cursor-not-allowed disabled:border-border disabled:bg-secondary/65 disabled:opacity-75 motion-reduce:transition-none ${
                   !tier.formatted.isBookable
-                    ? "cursor-not-allowed border-[#E6DEC8] bg-[#FAF7F0]/70 opacity-75"
+                    ? "cursor-not-allowed border-border bg-secondary/65 opacity-75"
                     : isSelected
-                      ? "border-[#0A3622] bg-[#0A3622]/5 ring-2 ring-[#0A3622]/25"
-                      : "border-[#E6DEC8] bg-white hover:border-[#7A5C1E]/50 hover:bg-[#FAF7F0]/50"
+                      ? "border-primary bg-primary/5 ring-2 ring-primary/25"
+                      : "border-border bg-background hover:border-gold-border hover:bg-secondary/75"
                 }`}
               >
-                <span className="block text-xs font-bold text-[#1A1D1A]">
+                <span className="block text-xs font-bold text-foreground">
                   {tier.label}
                 </span>
                 <span
-                  className={`mt-0.5 block font-mono tabular-nums text-xs sm:text-sm font-bold ${
+                  className={
                     tier.formatted.isBookable
-                      ? "text-[#0A3622]"
-                      : "text-gold-text"
-                  }`}
+                      ? "mt-0.5 block font-mono text-xs font-bold text-primary tabular-nums sm:text-sm"
+                      : "mt-0.5 block text-xs font-semibold text-gold-text sm:text-sm"
+                  }
                 >
                   {tier.formatted.label}
                 </span>
@@ -201,34 +221,44 @@ export function UmrahPackageBookingCta({
       </div>
 
       {/* Infant (<2 yrs) Bed/Seat Invariant Summary (`OD-09d`) */}
-      <div className="rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] p-3.5 text-xs text-[#4A5048] space-y-1">
+      <div className="flex flex-col gap-1 rounded-xl border border-border bg-secondary/75 p-3.5 text-xs text-muted-foreground">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-semibold text-[#1A1D1A]">
+          <span className="font-semibold text-foreground">
             Infant (&lt;2 yrs) Visa &amp; Air Ticket:
           </span>
-          <span className="font-mono tabular-nums font-bold text-[#0A3622]">
-            {infantFormatted.label}
-          </span>
+          {infantFormatted.isBookable ? (
+            <span className="font-mono font-bold text-primary tabular-nums">
+              {infantFormatted.label}
+            </span>
+          ) : (
+            <span className="font-semibold text-gold-text">On Request</span>
+          )}
         </div>
-        <p className="text-[11px] leading-relaxed">
-          Adults + Children occupy hotel beds and KSA vehicle seats. Infants (&lt;2 yrs) take{" "}
-          <strong className="font-mono tabular-nums text-[#1A1D1A]">0</strong> beds and{" "}
-          <strong className="font-mono tabular-nums text-[#1A1D1A]">0</strong> vehicle seats.
+        <p className="text-xs leading-relaxed">
+          Adults + Children occupy hotel beds and KSA vehicle seats. Infants
+          (&lt;2 yrs) take{" "}
+          <strong className="font-mono text-foreground tabular-nums">0</strong>{" "}
+          beds and{" "}
+          <strong className="font-mono text-foreground tabular-nums">0</strong>{" "}
+          vehicle seats.
         </p>
       </div>
 
       {/* Primary Action: Modal Seat Hold or Custom Dates Fallback */}
-      <div className="space-y-2.5 pt-1">
+      <div className="flex flex-col gap-2.5 pt-1">
         {canOpenBookingModal ? (
           <DynamicGroupBookingModal
             pkg={sanitizedModalPkg}
             selectedBatchId={openFutureBatches[0]?.id}
+            defaultRoomType={selectedTier ?? undefined}
             agencyWhatsapp={agencyWhatsapp}
             trigger={
-              <Button className="min-h-11 w-full gap-2 bg-[#0A3622] text-white hover:bg-[#0F5132] font-semibold text-xs sm:text-sm">
-                <CalendarCheck2 className="size-4" />
+              <Button className="min-h-11 w-full gap-2 bg-primary text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none sm:text-sm">
+                <CalendarCheck2 className="size-4" aria-hidden="true" />
                 <span>
-                  Book Group Seats ({activeTierCard.formatted.label})
+                  {activeTierCard?.formatted.isBookable
+                    ? `Book Group Seats (${activeTierCard.formatted.label})`
+                    : "Book Group Seats (Hotel Options)"}
                 </span>
               </Button>
             }
@@ -236,9 +266,9 @@ export function UmrahPackageBookingCta({
         ) : (
           <Link
             href="/?preset=complete_umrah#journey-builder"
-            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#0A3622] px-4 py-2.5 text-xs sm:text-sm font-semibold text-white transition-colors hover:bg-[#0F5132]"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none sm:text-sm"
           >
-            <Compass className="size-4" />
+            <Compass className="size-4" aria-hidden="true" />
             <span>
               {openFutureBatches.length === 0
                 ? "Request Custom Travel Dates"
@@ -251,16 +281,16 @@ export function UmrahPackageBookingCta({
           href={whatsappHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#0A3622]/30 bg-[#FAF7F0] px-4 py-2.5 text-xs sm:text-sm font-semibold text-[#0A3622] transition-colors hover:bg-[#0A3622] hover:text-white"
+          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-secondary px-4 py-2.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none sm:text-sm"
         >
-          <MessageCircle className="size-4" />
+          <MessageCircle className="size-4" aria-hidden="true" />
           <span>WhatsApp Concierge Inquiry</span>
         </a>
 
         <div className="pt-1 text-center">
           <Link
             href="/?preset=complete_umrah#journey-builder"
-            className="inline-flex min-h-6 items-center text-xs font-semibold text-gold-text underline hover:text-[#0A3622]"
+            className="inline-flex min-h-6 items-center rounded-sm text-xs font-semibold text-gold-text underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
           >
             Prefer flexible dates or private SUV transfers? Open Custom Builder
           </Link>

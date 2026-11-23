@@ -46,6 +46,8 @@ describe("F-PLAT: Dependencies, Next Config, Docker/Nginx & Repo Hygiene (T-001,
       NEXT_PUBLIC_APP_URL: "https://alramlahtravels.com",
       BETTER_AUTH_URL: "https://alramlahtravels.com",
       R2_PUBLIC_URL: "https://cdn.alramlahtravels.com",
+      VERCEL_URL: "",
+      VERCEL_PROJECT_PRODUCTION_URL: "",
     })
 
     const patterns = prodConfig.images?.remotePatterns ?? []
@@ -60,7 +62,18 @@ describe("F-PLAT: Dependencies, Next Config, Docker/Nginx & Repo Hygiene (T-001,
 
     const allowedOrigins =
       prodConfig.experimental?.serverActions?.allowedOrigins ?? []
-    assert.deepEqual(allowedOrigins, ["alramlahtravels.com"])
+    assert.deepEqual(allowedOrigins, [
+      "alramlahtravels.com",
+      "www.alramlahtravels.com",
+      "al-ramlah-travels.vercel.app",
+      "*.vercel.app",
+    ])
+    for (const origin of allowedOrigins) {
+      assert.ok(
+        !/ngrok|trycloudflare|devtunnels|localhost|127\.0\.0\.1/i.test(origin),
+        `Tunnel or loopback origin forbidden in production: ${origin}`
+      )
+    }
     assert.equal(
       prodConfig.experimental?.serverActions?.bodySizeLimit,
       "4mb"

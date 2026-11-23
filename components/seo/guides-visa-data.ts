@@ -1,6 +1,13 @@
 import { formatPkr } from "@/components/public/public-utils"
+import { LIVE_RATE_CONFIRMATION_LABEL } from "@/lib/constants/brand"
 import type { FaqJsonLdItem, VisaRateJsonLdInput } from "@/lib/seo/json-ld"
 import type { PublicVisaRateDto } from "@/lib/seo/public-queries"
+
+export const VISA_BUILDER_FALLBACK_RATE_LABEL =
+  "Published PKR Tariff — Check Instant Visa Builder" as const
+
+export const VISA_FAQ_SECTION_HEADING =
+  "Frequently Asked Questions — Saudi Umrah Visa from Pakistan" as const
 
 export const UMRAH_VISA_METADATA_SPEC = {
   path: "/umrah-visa",
@@ -38,8 +45,7 @@ export function normalizePublicVisaTierRows(
         shortRow && Number.isFinite(shortRow.pricePkr) && shortRow.pricePkr > 0
           ? shortRow.pricePkr
           : null,
-      masarBundleRule:
-        "Live Rate — Confirmed upon submission (1–10d, 11–15d, 16–21d & 22–30d Nusuk Masar stay brackets)",
+      masarBundleRule: `${LIVE_RATE_CONFIRMATION_LABEL} (1–10d, 11–15d, 16–21d & 22–30d Nusuk Masar stay brackets)`,
       notes:
         shortRow?.notes ||
         "Includes official Saudi Umrah e-visa issuance and mandatory Kingdom emergency medical insurance for stays up to 30 calendar days.",
@@ -54,8 +60,7 @@ export function normalizePublicVisaTierRows(
         longRow && Number.isFinite(longRow.pricePkr) && longRow.pricePkr > 0
           ? longRow.pricePkr
           : null,
-      masarBundleRule:
-        "Live Rate — Confirmed upon submission (31–90d extended Nusuk Masar itinerary worksheet)",
+      masarBundleRule: `${LIVE_RATE_CONFIRMATION_LABEL} (31–90d extended Nusuk Masar itinerary worksheet)`,
       notes:
         longRow?.notes ||
         "Designed for extended Haramain spiritual residence, Ramadan full-month stays, and family visits between 31 and 90 inclusive days.",
@@ -154,48 +159,47 @@ export interface VisaEligibilityMatrixRow {
   biometricsAndHealth: string
 }
 
-export const VISA_ELIGIBILITY_MATRIX_ROWS: readonly VisaEligibilityMatrixRow[] = [
-  {
-    travelerCategory:
-      "Pakistani Passport Holders (Residing in Pakistan)",
-    recommendedPermit:
-      "Official Saudi Umrah E-Visa (Single Entry, up to 90 days validity outside Hajj season closure).",
-    hotelMasarRule:
-      "Available as Standalone Visa-Only (immediate fixed PKR rate) or bundled with Nusuk Masar verified Haramain hotels ('Live Rate — Confirmed upon submission').",
-    biometricsAndHealth:
-      "Saudi Visa Bio smartphone enrollment + Meningitis ACWY-135 & Pakistan Polio certificate.",
-  },
-  {
-    travelerCategory:
-      "Overseas Pakistanis Holding Pakistani Passport + UK/US/CA/EU Residency or Active Visa",
-    recommendedPermit:
-      "Saudi Visa-on-Arrival / e-Visa (if holding utilized qualifying US/UK/Schengen visa or PR) OR standard Saudi Umrah E-Visa.",
-    hotelMasarRule:
-      "Flexible land-only Haramain courtyard hotel booking synchronized with relatives flying from Lahore, Karachi, or Islamabad.",
-    biometricsAndHealth:
-      "Biometrics completed at KSA port of entry (for VoA) or via Saudi Visa Bio app (for advance Umrah e-visa).",
-  },
-  {
-    travelerCategory:
-      "UK, USA, Canada, EU & Australian Citizen Passports",
-    recommendedPermit:
-      "1-Year Multiple-Entry Saudi Tourist e-Visa (permits multiple Umrah performances outside Dhul Qa'dah / Hajj blackout dates) + Nusuk Umrah permit slot.",
-    hotelMasarRule:
-      "Book Makkah Clock Tower & Madinah Markaziyah suites directly via our Custom Journey Builder ('Live Rate — Confirmed upon submission').",
-    biometricsAndHealth:
-      "Passport validity >= 6 months + Meningitis ACWY-135 health compliance.",
-  },
-  {
-    travelerCategory:
-      "GCC Residents (UAE, Qatar, Kuwait, Oman, Bahrain Iqama Holders)",
-    recommendedPermit:
-      "Saudi GCC Resident e-Visa (subject to valid GCC residency >= 3 months and passport validity >= 6 months).",
-    hotelMasarRule:
-      "Combine directly with land-only Haramain hotels and private GMC Yukon / Hyundai Staria airport transfers.",
-    biometricsAndHealth:
-      "Digital application photo, GCC residency card copy, and Nusuk permit registration.",
-  },
-] as const
+export const VISA_ELIGIBILITY_MATRIX_ROWS: readonly VisaEligibilityMatrixRow[] =
+  [
+    {
+      travelerCategory: "Pakistani Passport Holders (Residing in Pakistan)",
+      recommendedPermit:
+        "Official Saudi Umrah E-Visa (Single Entry, up to 90 days validity outside Hajj season closure).",
+      hotelMasarRule:
+        "Available as Standalone Visa-Only (immediate fixed PKR rate) or bundled with Nusuk Masar verified Haramain hotels ('Live Rate — Confirmed upon submission').",
+      biometricsAndHealth:
+        "Saudi Visa Bio smartphone enrollment + Meningitis ACWY-135 & Pakistan Polio certificate.",
+    },
+    {
+      travelerCategory:
+        "Overseas Pakistanis Holding Pakistani Passport + UK/US/CA/EU Residency or Active Visa",
+      recommendedPermit:
+        "Saudi Visa-on-Arrival / e-Visa (if holding utilized qualifying US/UK/Schengen visa or PR) OR standard Saudi Umrah E-Visa.",
+      hotelMasarRule:
+        "Flexible land-only Haramain courtyard hotel booking synchronized with relatives flying from Lahore, Karachi, or Islamabad.",
+      biometricsAndHealth:
+        "Biometrics completed at KSA port of entry (for VoA) or via Saudi Visa Bio app (for advance Umrah e-visa).",
+    },
+    {
+      travelerCategory: "UK, USA, Canada, EU & Australian Citizen Passports",
+      recommendedPermit:
+        "1-Year Multiple-Entry Saudi Tourist e-Visa (permits multiple Umrah performances outside Dhul Qa'dah / Hajj blackout dates) + Nusuk Umrah permit slot.",
+      hotelMasarRule:
+        "Book Makkah Clock Tower & Madinah Markaziyah suites directly via our Custom Journey Builder ('Live Rate — Confirmed upon submission').",
+      biometricsAndHealth:
+        "Passport validity >= 6 months + Meningitis ACWY-135 health compliance.",
+    },
+    {
+      travelerCategory:
+        "GCC Residents (UAE, Qatar, Kuwait, Oman, Bahrain Iqama Holders)",
+      recommendedPermit:
+        "Saudi GCC Resident e-Visa (subject to valid GCC residency >= 3 months and passport validity >= 6 months).",
+      hotelMasarRule:
+        "Combine directly with land-only Haramain hotels and private GMC Yukon / Hyundai Staria airport transfers.",
+      biometricsAndHealth:
+        "Digital application photo, GCC residency card copy, and Nusuk permit registration.",
+    },
+  ] as const
 
 export function buildUmrahVisaFaqs(
   rows: ReadonlyArray<NormalizedVisaTierRow>

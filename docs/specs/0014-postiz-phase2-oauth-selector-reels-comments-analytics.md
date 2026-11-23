@@ -1,7 +1,7 @@
 # 0014. Postiz Phase 2: Multi-Page OAuth Selector, Proactive Token Refresh, Reels and Stories Upload, First-Comment Auto-Plug, and Analytics Sync
 
 **Date**: 2026-11-07
-**Status**: Approved
+**Status**: Accepted (Implemented)
 
 ## Summary
 

@@ -10,17 +10,14 @@ import {
   Navigation,
   Phone,
 } from "lucide-react"
-import { PublicBreadcrumbs } from "@/components/layout/breadcrumbs"
 import {
   ContactSection,
   type AgencyContactInfo,
 } from "@/components/public/contact-section"
+import { PublicPageHero } from "@/components/public/public-page-hero"
 import { toWaMeUrl } from "@/components/public/public-utils"
 import { TrustEeatCredentials } from "@/components/seo/trust-eeat-credentials"
-import {
-  formatPkPhoneDisplay,
-  toTelHref,
-} from "@/lib/company-info"
+import { formatPkPhoneDisplay, toTelHref } from "@/lib/company-info"
 import {
   buildTravelAgencyJsonLd,
   JsonLd,
@@ -41,20 +38,20 @@ export const metadata: Metadata = buildPublicMetadata({
 
 const OFFICE_SCHEDULE_ROWS = [
   {
-    days: "Monday – Thursday & Saturday",
-    hoursPkt: "09:00 AM – 08:00 PM PKT",
+    days: "Monday to Thursday & Saturday",
+    hoursPkt: "09:00 AM to 08:00 PM PKT",
     services:
       "Walk-in consultations, passport & visa intake, custom Umrah quoting, and group reservations.",
   },
   {
     days: "Friday (Jummah Schedule)",
-    hoursPkt: "09:00 AM – 12:45 PM & 02:15 PM – 08:00 PM PKT",
+    hoursPkt: "09:00 AM to 12:45 PM & 02:15 PM to 08:00 PM PKT",
     services:
       "Full concierge desk operations before and after Jummah congregational prayer break.",
   },
   {
     days: "Sunday & Public Holidays",
-    hoursPkt: "By Prior Appointment · 24/7 Active Pilgrim WhatsApp",
+    hoursPkt: "By Prior Appointment (24/7 Active Pilgrim WhatsApp)",
     services:
       "Scheduled executive family meetings; active KSA in-kingdom travellers receive round-the-clock WhatsApp support.",
   },
@@ -101,129 +98,132 @@ export default async function ContactPage() {
   }
 
   return (
-    <div className="bg-[#FAF7F0] min-h-screen pt-10 sm:pt-16">
+    <div className="min-h-screen bg-background">
       <JsonLd data={[contactPageJsonLd, buildTravelAgencyJsonLd(company)]} />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-12 pb-12">
-        <PublicBreadcrumbs
-          items={[{ label: "Contact Lahore Desk", href: "/contact" }]}
-        />
+      <PublicPageHero
+        variant="read"
+        breadcrumbs={[{ label: "Contact Lahore Desk", href: "/contact" }]}
+        title="Contact Our Askari 10, Lahore Cantt Pilgrimage Concierge Desk"
+        description={
+          <>
+            Visit{" "}
+            <strong className="text-foreground">
+              {company.legalEntityName}
+            </strong>{" "}
+            in person at{" "}
+            <strong className="text-foreground">{company.officeAddress}</strong>{" "}
+            or reach our senior Umrah, Saudi e-visa, and Hajj 2027 travel
+            directors directly by phone or WhatsApp from anywhere in Pakistan,
+            the UK, North America, or the Gulf.
+          </>
+        }
+      />
 
-        {/* Verbatim NAP & E.164 Direct Action Header */}
-        <header className="rounded-3xl border border-[#E6DEC8] bg-white p-8 sm:p-12 shadow-xs space-y-6">
-          <div className="space-y-3 max-w-4xl">
-            <span className="inline-flex items-center gap-2 rounded-full border border-[#7A5C1E]/30 bg-[#FAF7F0] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-[#0A3622]">
-              <MapPin className="size-3.5 text-[#7A5C1E]" />
-              <span>Lahore Cantt Headquarters &amp; Global Diaspora Desk</span>
-            </span>
-            <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#0A3622] leading-tight">
-              Contact Our Askari 10, Lahore Cantt Pilgrimage Concierge Desk
-            </h1>
-            <p className="text-sm sm:text-base text-[#4A5248] leading-relaxed">
-              Visit{" "}
-              <strong className="text-[#1A1D1A]">{company.legalEntityName}</strong>{" "}
-              in person at{" "}
-              <strong className="text-[#1A1D1A]">{company.officeAddress}</strong>{" "}
-              or reach our senior Umrah, Saudi e-visa, and Hajj 2027 travel directors directly by phone or WhatsApp from anywhere in Pakistan, the UK, North America, or the Gulf.
+      <div className="mx-auto flex max-w-7xl flex-col gap-10 px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
+        {/* Verbatim NAP & E.164 Direct Action Cards */}
+        <section
+          aria-label="Direct contact channels"
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        >
+          <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-5 shadow-xs">
+            <div className="flex items-center gap-2 text-xs font-semibold text-gold-text">
+              <MessageCircle className="size-4" aria-hidden="true" />
+              <span>Primary WhatsApp &amp; Call</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <a
+                href={primaryTelHref}
+                className="inline-flex min-h-6 items-center font-mono text-base font-bold text-primary tabular-nums transition-colors hover:text-gold-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
+              >
+                {primaryDisplay}
+              </a>
+              <a
+                href={primaryWaHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-6 items-center gap-1 text-xs font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
+              >
+                <span>Chat on WhatsApp Now</span>
+                <ExternalLink className="size-3" aria-hidden="true" />
+              </a>
+            </div>
+          </div>
+
+          {secondaryDisplay && secondaryTelHref ? (
+            <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-5 shadow-xs">
+              <div className="flex items-center gap-2 text-xs font-semibold text-gold-text">
+                <Phone className="size-4" aria-hidden="true" />
+                <span>Reservations Line</span>
+              </div>
+              <a
+                href={secondaryTelHref}
+                className="inline-flex min-h-6 items-center font-mono text-base font-bold text-primary tabular-nums transition-colors hover:text-gold-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
+              >
+                {secondaryDisplay}
+              </a>
+              <p className="text-xs text-muted-foreground">
+                Direct international E.164 calling supported
+              </p>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-5 shadow-xs">
+            <div className="flex items-center gap-2 text-xs font-semibold text-gold-text">
+              <Mail className="size-4" aria-hidden="true" />
+              <span>Official Email Desk</span>
+            </div>
+            <a
+              href={`mailto:${company.supportEmail}`}
+              className="inline-flex min-h-6 items-center text-sm font-bold break-all text-primary transition-colors hover:text-gold-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
+            >
+              {company.supportEmail}
+            </a>
+            <p className="text-xs text-muted-foreground">
+              24-hour written response SLA
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-5 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#7A5C1E]">
-                <MessageCircle className="size-4" />
-                <span>Primary WhatsApp &amp; Call</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <a
-                  href={primaryTelHref}
-                  className="inline-flex min-h-6 items-center font-mono text-base font-bold text-[#0A3622] tabular-nums hover:underline"
-                >
-                  {primaryDisplay}
-                </a>
-                <a
-                  href={primaryWaHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-h-6 items-center gap-1 text-xs font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
-                >
-                  <span>Chat on WhatsApp Now</span>
-                  <ExternalLink className="size-3" />
-                </a>
-              </div>
+          <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-5 shadow-xs">
+            <div className="flex items-center gap-2 text-xs font-semibold text-gold-text">
+              <MapPin className="size-4" aria-hidden="true" />
+              <span>Physical HQ (Lahore)</span>
             </div>
-
-            {secondaryDisplay && secondaryTelHref ? (
-              <div className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-5 space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#7A5C1E]">
-                  <Phone className="size-4" />
-                  <span>Reservations Line</span>
-                </div>
-                <a
-                  href={secondaryTelHref}
-                  className="inline-flex min-h-6 items-center font-mono text-base font-bold text-[#0A3622] tabular-nums hover:underline"
-                >
-                  {secondaryDisplay}
-                </a>
-                <p className="text-xs text-[#4A5248]">
-                  Direct international E.164 calling supported
-                </p>
-              </div>
-            ) : null}
-
-            <div className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-5 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#7A5C1E]">
-                <Mail className="size-4" />
-                <span>Official Email Desk</span>
-              </div>
-              <a
-                href={`mailto:${company.supportEmail}`}
-                className="inline-flex min-h-6 items-center text-sm font-bold text-[#0A3622] break-all hover:underline"
-              >
-                {company.supportEmail}
-              </a>
-              <p className="text-xs text-[#4A5248]">
-                24-hour written response SLA
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-[#E6DEC8] bg-[#FAF7F0] p-5 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#7A5C1E]">
-                <MapPin className="size-4" />
-                <span>Physical HQ (Lahore)</span>
-              </div>
-              <address className="not-italic text-xs text-[#1A1D1A] font-medium leading-relaxed">
-                {company.officeAddress}
-              </address>
-              <a
-                href={company.mapsEmbedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex min-h-6 items-center gap-1 text-xs font-semibold text-[#0A3622] underline hover:text-[#7A5C1E]"
-              >
-                <span>Open in Google Maps</span>
-                <ExternalLink className="size-3" />
-              </a>
-            </div>
+            <address className="text-xs leading-relaxed font-medium text-foreground not-italic">
+              {company.officeAddress}
+            </address>
+            <a
+              href={company.mapsEmbedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-6 items-center gap-1 text-xs font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
+            >
+              <span>Open in Google Maps</span>
+              <ExternalLink className="size-3" aria-hidden="true" />
+            </a>
           </div>
-        </header>
+        </section>
 
         {/* PKT Office Hours Table & LHE / Ring Road Directions */}
         <section className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-          <div className="lg:col-span-7 rounded-3xl border border-[#E6DEC8] bg-white p-6 sm:p-8 shadow-xs space-y-5">
+          <div className="flex flex-col gap-5 rounded-3xl border border-border bg-card p-6 shadow-xs sm:p-8 lg:col-span-7">
             <div className="flex items-center gap-2">
-              <Clock className="size-5 text-[#7A5C1E]" />
-              <h2 className="font-display text-2xl font-bold text-[#0A3622]">
-                Lahore Office Hours (Pakistan Standard Time — PKT)
+              <Clock className="size-5 text-gold-text" aria-hidden="true" />
+              <h2 className="font-display text-2xl font-bold text-primary">
+                Lahore Office Hours (Pakistan Standard Time, PKT)
               </h2>
             </div>
 
-            <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
-              <table className="w-full text-left text-xs sm:text-sm border-collapse">
+            <div
+              tabIndex={0}
+              className="overflow-x-auto rounded-2xl border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <table className="w-full border-collapse text-left text-xs sm:text-sm">
                 <caption className="sr-only">
-                  Al Ramlah Travels Askari 10 Lahore Cantt operating hours in Pakistan Standard Time
+                  Al Ramlah Travels Askari 10 Lahore Cantt operating hours in
+                  Pakistan Standard Time
                 </caption>
-                <thead className="bg-[#FAF7F0] text-[#0A3622] border-b border-[#E6DEC8]">
+                <thead className="border-b border-border bg-secondary text-primary">
                   <tr>
                     <th scope="col" className="px-4 py-3 font-bold">
                       Days
@@ -236,13 +236,13 @@ export default async function ContactPage() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#E6DEC8] text-[#4A5248] tabular-nums">
+                <tbody className="divide-y divide-border text-muted-foreground tabular-nums">
                   {OFFICE_SCHEDULE_ROWS.map((row) => (
                     <tr key={row.days}>
-                      <td className="px-4 py-3 font-semibold text-[#1A1D1A]">
+                      <td className="px-4 py-3 font-semibold text-foreground">
                         {row.days}
                       </td>
-                      <td className="px-4 py-3 font-mono font-semibold text-[#0A3622]">
+                      <td className="px-4 py-3 font-mono font-semibold text-primary">
                         {row.hoursPkt}
                       </td>
                       <td className="px-4 py-3 leading-relaxed">
@@ -255,49 +255,59 @@ export default async function ContactPage() {
             </div>
           </div>
 
-          <div className="lg:col-span-5 rounded-3xl border border-[#E6DEC8] bg-white p-6 sm:p-8 shadow-xs space-y-4">
+          <div className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-6 shadow-xs sm:p-8 lg:col-span-5">
             <div className="flex items-center gap-2">
-              <Navigation className="size-5 text-[#7A5C1E]" />
-              <h2 className="font-display text-2xl font-bold text-[#0A3622]">
+              <Navigation
+                className="size-5 text-gold-text"
+                aria-hidden="true"
+              />
+              <h2 className="font-display text-2xl font-bold text-primary">
                 Directions from LHE Airport &amp; Ring Road
               </h2>
             </div>
-            <p className="text-xs sm:text-sm text-[#4A5248] leading-relaxed">
-              Our Sector C, Askari 10 office sits adjacent to Allama Iqbal International Airport, making pre-departure document collection effortless for Lahore and out-of-town families:
+            <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+              Our Sector C, Askari 10 office sits adjacent to Allama Iqbal
+              International Airport, keeping pre-departure passport drop-off and
+              document collection convenient for Lahore and out-of-town
+              families:
             </p>
-            <ul className="list-disc pl-5 space-y-2 text-xs sm:text-sm text-[#4A5248]">
+            <ul className="flex list-disc flex-col gap-2 pl-5 text-xs text-muted-foreground sm:text-sm">
               <li>
-                <strong className="text-[#1A1D1A]">
-                  From Allama Iqbal Int&apos;l Airport (LHE — ~5 mins):
+                <strong className="text-foreground">
+                  From Allama Iqbal Int&apos;l Airport (LHE, ~5 mins):
                 </strong>{" "}
-                Exit the terminal onto Airport Road towards Askari 10, enter Sector C, and proceed to Street 1, Office No. 38.
+                Exit the terminal onto Airport Road towards Askari 10, enter
+                Sector C, and proceed to Street 1, Office No. 38.
               </li>
               <li>
-                <strong className="text-[#1A1D1A]">
+                <strong className="text-foreground">
                   From DHA, Gulberg, Bahria Town &amp; Lahore Ring Road (L-20):
                 </strong>{" "}
-                Take the Ring Road Airport / Askari 10 interchange exit directly onto Airport Road.
+                Take the Ring Road Airport / Askari 10 interchange exit directly
+                onto Airport Road.
               </li>
               <li>
-                <strong className="text-[#1A1D1A]">
+                <strong className="text-foreground">
                   Cantt Security Gate Entry Tip:
                 </strong>{" "}
-                Carry your original CNIC (or driving license) for routine Askari 10 gate verification; message our WhatsApp desk ahead so we can pre-notify reception.
+                Carry your original CNIC (or driving license) for routine Askari
+                10 gate verification; message our WhatsApp desk ahead so we can
+                pre-notify reception.
               </li>
             </ul>
-            <div className="pt-2 flex flex-wrap gap-3 text-xs font-semibold">
+            <div className="flex flex-wrap items-center gap-3 pt-2 text-xs font-semibold">
               <Link
                 href="/umrah-packages/from-lahore"
-                className="inline-flex min-h-6 items-center text-[#0A3622] underline hover:text-[#7A5C1E]"
+                className="inline-flex min-h-6 items-center text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
               >
                 Explore Lahore (LHE) Umrah Packages
               </Link>
-              <span className="text-[#7A5C1E]" aria-hidden="true">
+              <span className="text-gold-text" aria-hidden="true">
                 &bull;
               </span>
               <Link
                 href="/about"
-                className="inline-flex min-h-6 items-center text-[#0A3622] underline hover:text-[#7A5C1E]"
+                className="inline-flex min-h-6 items-center text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
               >
                 About Our Lahore Team
               </Link>
@@ -309,31 +319,31 @@ export default async function ContactPage() {
       {/* Interactive Inquiry Form (Read-Only Import Preserving Exact `settings` Signature) */}
       <ContactSection settings={contactSettings} />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 space-y-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-12 sm:px-6 lg:px-8">
         <TrustEeatCredentials company={company} />
 
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs sm:text-sm font-semibold">
+        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs font-semibold sm:text-sm">
           <Link
             href="/umrah-packages"
-            className="inline-flex min-h-6 items-center text-[#0A3622] underline hover:text-[#7A5C1E]"
+            className="inline-flex min-h-6 items-center text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
           >
             Group Umrah Packages
           </Link>
           <Link
             href="/umrah-visa"
-            className="inline-flex min-h-6 items-center text-[#0A3622] underline hover:text-[#7A5C1E]"
+            className="inline-flex min-h-6 items-center text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
           >
             Saudi Umrah Visa PKR Rates
           </Link>
           <Link
             href="/hajj-2027"
-            className="inline-flex min-h-6 items-center text-[#0A3622] underline hover:text-[#7A5C1E]"
+            className="inline-flex min-h-6 items-center text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
           >
             Hajj 2027 Pre-Registration
           </Link>
           <Link
             href="/faq"
-            className="inline-flex min-h-6 items-center text-[#0A3622] underline hover:text-[#7A5C1E]"
+            className="inline-flex min-h-6 items-center text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
           >
             Pilgrimage FAQs
           </Link>

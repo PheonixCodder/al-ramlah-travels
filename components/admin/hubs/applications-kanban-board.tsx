@@ -124,54 +124,57 @@ export const KANBAN_COLUMNS: ColumnConfig[] = [
     title: "Pending Quote",
     subtitle: "Fresh inquiries & active costing",
     icon: Clock,
-    badgeClass: "bg-amber-200 text-amber-950 border-amber-400",
-    columnClass: "border-amber-300/80 bg-amber-50/20",
-    headerBg: "bg-amber-100/70 border-amber-300 text-amber-950",
+    badgeClass:
+      "bg-status-warning-bg text-status-warning border-status-warning-border",
+    columnClass: "bg-status-warning-bg/45",
+    headerBg: "bg-status-warning-bg text-status-warning",
   },
   {
     id: "quoted",
     title: "Quoted",
     subtitle: "Formal proposal dispatched",
     icon: Send,
-    badgeClass: "bg-sky-100 text-sky-900 border-sky-300",
-    columnClass: "border-sky-200/80 bg-sky-50/20",
-    headerBg: "bg-sky-50/80 border-sky-200 text-sky-950",
+    badgeClass: "bg-status-info-bg text-status-info border-status-info-border",
+    columnClass: "bg-status-info-bg/45",
+    headerBg: "bg-status-info-bg text-status-info",
   },
   {
     id: "revision_requested",
     title: "Revision Requested",
     subtitle: "Pilgrim requested changes",
     icon: RotateCcw,
-    badgeClass: "bg-purple-100 text-purple-900 border-purple-300",
-    columnClass: "border-purple-200/80 bg-purple-50/20",
-    headerBg: "bg-purple-50/80 border-purple-200 text-purple-950",
+    badgeClass: "bg-accent text-gold-text border-gold-border",
+    columnClass: "bg-accent/40",
+    headerBg: "bg-accent/75 text-gold-text",
   },
   {
     id: "approved",
     title: "Approved",
     subtitle: "Confirmed & seats reserved",
     icon: CheckCircle2,
-    badgeClass: "bg-emerald-100 text-emerald-900 border-emerald-300",
-    columnClass: "border-emerald-200/80 bg-emerald-50/20",
-    headerBg: "bg-emerald-50/80 border-emerald-200 text-emerald-950",
+    badgeClass:
+      "bg-status-success-bg text-status-success border-status-success-border",
+    columnClass: "bg-status-success-bg/45",
+    headerBg: "bg-status-success-bg text-status-success",
   },
   {
     id: "rejected",
     title: "Rejected",
     subtitle: "Declined proposals",
     icon: XCircle,
-    badgeClass: "bg-red-100 text-red-900 border-red-300",
-    columnClass: "border-red-200/80 bg-red-50/15",
-    headerBg: "bg-red-50/80 border-red-200 text-red-950",
+    badgeClass:
+      "bg-status-danger-bg text-status-danger border-status-danger-border",
+    columnClass: "bg-status-danger-bg/40",
+    headerBg: "bg-status-danger-bg text-status-danger",
   },
   {
     id: "cancelled",
     title: "Cancelled",
     subtitle: "Cancelled bookings",
     icon: Ban,
-    badgeClass: "bg-slate-200 text-slate-800 border-slate-300",
-    columnClass: "border-slate-200 bg-slate-50/30",
-    headerBg: "bg-slate-100/80 border-slate-200 text-slate-800",
+    badgeClass: "bg-secondary text-muted-foreground border-border",
+    columnClass: "bg-secondary/60",
+    headerBg: "bg-secondary text-foreground",
   },
 ]
 
@@ -235,30 +238,102 @@ function cloneColumnsRecord(
 interface ApplicationsKanbanBoardProps {
   applications: KanbanApplicationItem[]
   slaHours?: number
+  initialNowMs?: number
 }
 
 export function ApplicationsKanbanBoard({
   applications,
   slaHours = 24,
+  initialNowMs,
 }: ApplicationsKanbanBoardProps) {
-  const [itemsMap, setItemsMap] = React.useState<
-    Map<string, KanbanApplicationItem>
-  >(() => {
-    const map = new Map<string, KanbanApplicationItem>()
-    applications.forEach((app) => map.set(app.id, app))
-    return map
-  })
-
-  const [columns, setColumns] = React.useState<Record<KanbanColumnId, string[]>>(
-    () => groupApplicationsByKanbanColumn(applications)
-  )
+  const [nowMs, setNowMs] = React.useState<number>(() => initialNowMs ?? 0)
 
   React.useEffect(() => {
+    const syncTimer = window.setTimeout(() => {
+      setNowMs(Date.now())
+    }, 0)
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now())
+    }, 60_000)
+    return () => {
+      window.clearTimeout(syncTimer)
+      window.clearInterval(intervalId)
+    }
+  }, [])
+
+  const baseItemsMap = React.useMemo(() => {
     const map = new Map<string, KanbanApplicationItem>()
-    applications.forEach((app) => map.set(app.id, app))
-    setItemsMap(map)
-    setColumns(groupApplicationsByKanbanColumn(applications))
+    for (const app of applications) {
+      map.set(app.id, app)
+    }
+    return map
   }, [applications])
+
+  const baseColumns = React.useMemo(
+    () => groupApplicationsByKanbanColumn(applications),
+    [applications]
+  )
+
+  const [overrideState, setOverrideState] = React.useState<{
+    forApplications: KanbanApplicationItem[]
+    columns: Record<KanbanColumnId, string[]>
+    statusOverrides: Record<string, KanbanApplicationStatus>
+  } | null>(null)
+
+  const columns = React.useMemo(
+    () =>
+      overrideState && overrideState.forApplications === applications
+        ? overrideState.columns
+        : baseColumns,
+    [applications, baseColumns, overrideState]
+  )
+
+  const itemsMap = React.useMemo(() => {
+    if (
+      !overrideState ||
+      overrideState.forApplications !== applications ||
+      Object.keys(overrideState.statusOverrides).length === 0
+    ) {
+      return baseItemsMap
+    }
+    const next = new Map(baseItemsMap)
+    for (const [id, status] of Object.entries(overrideState.statusOverrides)) {
+      const current = next.get(id)
+      if (current) {
+        next.set(id, { ...current, status })
+      }
+    }
+    return next
+  }, [applications, baseItemsMap, overrideState])
+
+  const setColumns = React.useCallback(
+    (
+      updater:
+        | Record<KanbanColumnId, string[]>
+        | ((
+            prev: Record<KanbanColumnId, string[]>
+          ) => Record<KanbanColumnId, string[]>)
+    ) => {
+      setOverrideState((prev) => {
+        const currentCols =
+          prev && prev.forApplications === applications
+            ? prev.columns
+            : baseColumns
+        const currentStatuses =
+          prev && prev.forApplications === applications
+            ? prev.statusOverrides
+            : {}
+        const nextCols =
+          typeof updater === "function" ? updater(currentCols) : updater
+        return {
+          forApplications: applications,
+          columns: nextCols,
+          statusOverrides: currentStatuses,
+        }
+      })
+    },
+    [applications, baseColumns]
+  )
 
   const [activeId, setActiveId] = React.useState<string | null>(null)
   const [preDragSnapshot, setPreDragSnapshot] = React.useState<Record<
@@ -318,13 +393,17 @@ export function ApplicationsKanbanBoard({
             })
           } else {
             setErrorBanner(null)
-            setItemsMap((prev) => {
-              const next = new Map(prev)
-              const current = next.get(movedAppId)
-              if (current) {
-                next.set(movedAppId, { ...current, status: targetStatus })
+            setOverrideState((prev) => {
+              if (!prev || prev.forApplications !== applications) {
+                return prev
               }
-              return next
+              return {
+                ...prev,
+                statusOverrides: {
+                  ...prev.statusOverrides,
+                  [movedAppId]: targetStatus,
+                },
+              }
             })
           }
         } catch (err) {
@@ -341,7 +420,7 @@ export function ApplicationsKanbanBoard({
         }
       })
     },
-    [itemsMap]
+    [applications, itemsMap, setColumns]
   )
 
   const handleSelectStatusChange = React.useCallback(
@@ -357,7 +436,7 @@ export function ApplicationsKanbanBoard({
       }))
       commitColumnMove(appId, targetCol, snapshot)
     },
-    [columns, commitColumnMove, findContainer]
+    [columns, commitColumnMove, findContainer, setColumns]
   )
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -511,14 +590,14 @@ export function ApplicationsKanbanBoard({
       {errorBanner && (
         <div
           role="alert"
-          className="relative flex items-center justify-between rounded-xl border border-red-400 bg-red-50/95 p-3.5 text-xs text-red-950 shadow-sm animate-in fade-in-50 duration-200"
+          className="relative flex items-center justify-between rounded-xl border border-status-danger-border bg-status-danger-bg p-3.5 text-xs text-status-danger shadow-sm animate-in fade-in-50 duration-200 motion-reduce:animate-none"
         >
           <div className="flex items-center gap-2.5">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-700">
-              <AlertTriangle className="size-4" />
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-background/70 text-status-danger">
+              <AlertTriangle className="size-4" aria-hidden="true" />
             </div>
             <div>
-              <span className="font-semibold text-red-900">
+              <span className="font-semibold text-status-danger">
                 {errorBanner.cardRef
                   ? `Action Blocked for [${errorBanner.cardRef}]: `
                   : "Action Blocked: "}
@@ -529,10 +608,10 @@ export function ApplicationsKanbanBoard({
           <button
             type="button"
             onClick={() => setErrorBanner(null)}
-            className="rounded-md p-1 text-red-600 transition-colors hover:bg-red-100 hover:text-red-900"
+            className="inline-flex min-h-7 min-w-7 shrink-0 items-center justify-center rounded-md p-1 text-status-danger transition-colors hover:bg-background/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80 motion-reduce:transition-none"
             aria-label="Dismiss alert"
           >
-            <X className="size-4" />
+            <X className="size-4" aria-hidden="true" />
           </button>
         </div>
       )}
@@ -547,30 +626,37 @@ export function ApplicationsKanbanBoard({
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 xl:gap-4">
-          {KANBAN_COLUMNS.map((col) => {
-            const itemIds = columns[col.id] || []
-            const columnApps = itemIds
-              .map((id) => itemsMap.get(id))
-              .filter((a): a is KanbanApplicationItem => Boolean(a))
+        <div
+          tabIndex={0}
+          aria-label="Applications pipeline Kanban board"
+          className="w-full overflow-x-auto rounded-xl pb-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 xl:gap-4">
+            {KANBAN_COLUMNS.map((col) => {
+              const itemIds = columns[col.id] || []
+              const columnApps = itemIds
+                .map((id) => itemsMap.get(id))
+                .filter((a): a is KanbanApplicationItem => Boolean(a))
 
-            const columnTotalPkr = columnApps.reduce((acc, app) => {
-              const quote = app.quotes?.[0]
-              return acc + (quote?.grandTotalPkr || 0)
-            }, 0)
+              const columnTotalPkr = columnApps.reduce((acc, app) => {
+                const quote = app.quotes?.[0]
+                return acc + (quote?.grandTotalPkr || 0)
+              }, 0)
 
-            return (
-              <KanbanColumn
-                key={col.id}
-                config={col}
-                apps={columnApps}
-                totalPkr={columnTotalPkr}
-                slaHours={slaHours}
-                isTransitioning={isTransitioning}
-                onSelectStatusChange={handleSelectStatusChange}
-              />
-            )
-          })}
+              return (
+                <KanbanColumn
+                  key={col.id}
+                  config={col}
+                  apps={columnApps}
+                  totalPkr={columnTotalPkr}
+                  slaHours={slaHours}
+                  nowMs={nowMs}
+                  isTransitioning={isTransitioning}
+                  onSelectStatusChange={handleSelectStatusChange}
+                />
+              )
+            })}
+          </div>
         </div>
 
         {/* Drag Overlay */}
@@ -580,6 +666,7 @@ export function ApplicationsKanbanBoard({
               <KanbanCardItem
                 card={activeCard}
                 slaHours={slaHours}
+                nowMs={nowMs}
                 isOverlay
               />
             </div>
@@ -599,6 +686,7 @@ interface KanbanColumnProps {
   apps: KanbanApplicationItem[]
   totalPkr: number
   slaHours: number
+  nowMs: number
   isTransitioning: boolean
   onSelectStatusChange: (appId: string, targetCol: KanbanColumnId) => void
 }
@@ -608,6 +696,7 @@ function KanbanColumn({
   apps,
   totalPkr,
   slaHours,
+  nowMs,
   isTransitioning,
   onSelectStatusChange,
 }: KanbanColumnProps) {
@@ -622,28 +711,28 @@ function KanbanColumn({
       ref={setNodeRef}
       aria-label={`${config.title} column (${apps.length} applications)`}
       className={cn(
-        "flex min-h-[580px] flex-col rounded-2xl border p-2.5 transition-colors duration-200",
+        "flex min-h-[580px] flex-col rounded-2xl p-2.5 transition-colors duration-200 motion-reduce:transition-none",
         config.columnClass,
-        isOver && "ring-2 ring-primary ring-offset-2 bg-secondary/50"
+        isOver && "bg-secondary/70 ring-2 ring-primary ring-offset-2"
       )}
     >
       {/* Column Header */}
       <div
         className={cn(
-          "mb-3 flex flex-col gap-1.5 rounded-xl border p-3 shadow-2xs",
+          "mb-3 flex flex-col gap-1.5 rounded-xl p-3",
           config.headerBg
         )}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Icon className="size-4 shrink-0 text-primary" />
+            <Icon className="size-4 shrink-0 text-primary" aria-hidden="true" />
             <span className="font-display text-sm font-bold tracking-tight">
               {config.title}
             </span>
           </div>
           <span
             className={cn(
-              "rounded-full border px-2 py-0.5 text-xs font-bold tabular-nums shadow-2xs",
+              "rounded-full border px-2 py-0.5 text-xs font-bold tabular-nums",
               config.badgeClass
             )}
           >
@@ -653,7 +742,7 @@ function KanbanColumn({
         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
           <span className="truncate">{config.subtitle}</span>
           {totalPkr > 0 && (
-            <span className="font-mono font-semibold text-foreground shrink-0 tabular-nums">
+            <span className="shrink-0 font-mono font-semibold tabular-nums text-foreground">
               <TabularPrice amount={totalPkr} />
             </span>
           )}
@@ -671,6 +760,7 @@ function KanbanColumn({
               key={app.id}
               card={app}
               slaHours={slaHours}
+              nowMs={nowMs}
               isTransitioning={isTransitioning}
               onSelectStatusChange={onSelectStatusChange}
             />
@@ -694,11 +784,13 @@ function KanbanColumn({
 function SortableKanbanCard({
   card,
   slaHours,
+  nowMs,
   isTransitioning,
   onSelectStatusChange,
 }: {
   card: KanbanApplicationItem
   slaHours: number
+  nowMs: number
   isTransitioning: boolean
   onSelectStatusChange: (appId: string, targetCol: KanbanColumnId) => void
 }) {
@@ -723,6 +815,7 @@ function SortableKanbanCard({
       <KanbanCardItem
         card={card}
         slaHours={slaHours}
+        nowMs={nowMs}
         dragHandleRef={setActivatorNodeRef}
         dragAttributes={attributes}
         dragListeners={listeners}
@@ -740,6 +833,7 @@ function SortableKanbanCard({
 function KanbanCardItem({
   card,
   slaHours,
+  nowMs,
   isOverlay = false,
   dragHandleRef,
   dragAttributes,
@@ -749,6 +843,7 @@ function KanbanCardItem({
 }: {
   card: KanbanApplicationItem
   slaHours: number
+  nowMs: number
   isOverlay?: boolean
   dragHandleRef?: (element: HTMLElement | null) => void
   dragAttributes?: DraggableAttributes
@@ -770,9 +865,10 @@ function KanbanCardItem({
     [card.createdAt]
   )
 
-  const elapsedMs = Number.isFinite(createdMs)
-    ? Math.max(0, Date.now() - createdMs)
-    : 0
+  const elapsedMs =
+    nowMs > 0 && Number.isFinite(createdMs)
+      ? Math.max(0, nowMs - createdMs)
+      : 0
   const hoursElapsed = Math.floor(elapsedMs / (1000 * 60 * 60))
   const isFreshInquiry =
     card.status === "pending_quote" && grandTotal <= 0 && hoursElapsed < 2
@@ -794,41 +890,45 @@ function KanbanCardItem({
     <article
       aria-label={`Application ${card.referenceNumber} for ${card.customerName}`}
       className={cn(
-        "group relative flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3 shadow-xs transition-all hover:border-primary/50 hover:shadow-md",
+        "group relative flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3 shadow-xs transition-colors hover:border-primary/50 hover:shadow-md motion-reduce:transition-none",
         isOverlay && "border-primary bg-card/95 shadow-xl",
-        isOverdue && "border-red-300 bg-red-50/20 hover:border-red-400"
+        isOverdue &&
+          "border-status-danger-border bg-status-danger-bg/35 hover:border-status-danger"
       )}
     >
       {/* Top Meta Strip: Dedicated Drag Handle + Reference + Source + SLA Indicator */}
-      <div className="flex items-center justify-between gap-1 text-[11px]">
-        <div className="flex items-center gap-1 min-w-0">
+      <div className="flex items-center justify-between gap-1.5 text-[11px]">
+        <div className="flex min-w-0 items-center gap-1.5">
           <button
             ref={dragHandleRef}
             type="button"
             aria-label={`Drag application ${card.referenceNumber}`}
-            className="inline-flex size-6 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary active:cursor-grabbing"
+            className="inline-flex size-7 min-h-7 min-w-7 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:cursor-grabbing active:opacity-80"
             {...(dragAttributes ?? {})}
             {...(dragListeners ?? {})}
           >
-            <GripVertical className="size-3.5" />
+            <GripVertical className="size-3.5" aria-hidden="true" />
           </button>
 
           <Link
             href={`/admin/applications/${card.id}`}
-            className="font-mono font-bold tracking-tight text-primary hover:underline flex items-center gap-1 truncate"
+            className="inline-flex min-h-7 min-w-6 items-center gap-1 truncate font-mono font-bold tracking-tight text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <span className="truncate">{card.referenceNumber}</span>
-            <ArrowUpRight className="size-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <ArrowUpRight
+              className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
           </Link>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex shrink-0 items-center gap-1">
           {isFreshInquiry && (
             <Badge
               variant="outline"
-              className="border-amber-400 bg-amber-100 text-amber-950 text-[10px] px-1.5 py-0 h-4 inline-flex items-center gap-0.5"
+              className="inline-flex h-4 items-center gap-0.5 border-status-warning-border bg-status-warning-bg px-1.5 py-0 text-[11px] text-status-warning"
             >
-              <Sparkles className="size-2.5" />
+              <Sparkles className="size-2.5" aria-hidden="true" />
               <span>New</span>
             </Badge>
           )}
@@ -836,35 +936,35 @@ function KanbanCardItem({
           {isWhatsAppIntake ? (
             <Badge
               variant="outline"
-              className="border-emerald-400 bg-emerald-100 text-emerald-950 text-[10px] px-1.5 py-0 h-4 font-mono"
+              className="h-4 border-status-success-border bg-status-success-bg px-1.5 py-0 text-[11px] text-status-success"
             >
               WA Intake
             </Badge>
           ) : card.sourcePostCode ? (
             <Badge
               variant="outline"
-              className="border-amber-300 bg-amber-50 text-amber-900 text-[10px] px-1.5 py-0 h-4 font-mono"
+              className="h-4 border-gold-border bg-accent px-1.5 py-0 text-[11px] text-gold-text"
             >
               Post Ref
             </Badge>
           ) : card.source === "custom_builder" ? (
             <Badge
               variant="outline"
-              className="border-emerald-300 bg-emerald-50 text-emerald-900 text-[10px] px-1.5 py-0 h-4"
+              className="h-4 border-status-success-border bg-secondary px-1.5 py-0 text-[11px] text-primary"
             >
               Builder
             </Badge>
           ) : card.source === "group_booking" ? (
             <Badge
               variant="outline"
-              className="border-sky-300 bg-sky-50 text-sky-900 text-[10px] px-1.5 py-0 h-4"
+              className="h-4 border-status-info-border bg-status-info-bg px-1.5 py-0 text-[11px] text-status-info"
             >
               Group
             </Badge>
           ) : (
             <Badge
               variant="outline"
-              className="border-purple-300 bg-purple-50 text-purple-900 text-[10px] px-1.5 py-0 h-4"
+              className="h-4 border-gold-border bg-secondary px-1.5 py-0 text-[11px] text-gold-text"
             >
               Hajj
             </Badge>
@@ -873,9 +973,9 @@ function KanbanCardItem({
           {isOverdue && (
             <span
               title={`Inquiry has exceeded ${slaHours}h quoting SLA (${hoursElapsed}h elapsed)`}
-              className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-100 px-1.5 py-0 text-[10px] font-bold text-red-900 shadow-2xs select-none"
+              className="inline-flex select-none items-center gap-1 rounded-full border border-status-danger-border bg-status-danger-bg px-1.5 py-0 text-[11px] font-bold text-status-danger shadow-2xs"
             >
-              <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-red-600 motion-reduce:animate-none" />
+              <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-status-danger motion-reduce:animate-none" />
               <span>{hoursElapsed}h+</span>
             </span>
           )}
@@ -883,54 +983,63 @@ function KanbanCardItem({
       </div>
 
       {/* Pilgrim Header */}
-      <div className="flex flex-col">
+      <div className="flex flex-col gap-1.5">
         <Link
           href={`/admin/applications/${card.id}`}
           dir="auto"
-          className="font-display text-sm font-bold text-foreground transition-colors hover:text-primary leading-tight"
+          className="inline-flex min-h-7 min-w-6 w-fit max-w-full items-center font-display text-sm font-bold leading-snug text-foreground transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
         >
           {card.customerName}
         </Link>
-        <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted-foreground">
           <span dir="auto" className="truncate">
             {card.customerCity || "Pakistan"}
           </span>
-          <span className="text-border">·</span>
+          <span className="text-border" aria-hidden="true">
+            /
+          </span>
           <a
             href={waUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 text-emerald-700 hover:text-emerald-800 font-mono text-[11px]"
+            className="inline-flex min-h-7 min-w-6 items-center gap-1.5 rounded-md font-mono text-[11px] text-status-success hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             title="Chat on WhatsApp"
           >
-            <Phone className="size-2.5" />
+            <Phone className="size-2.5 shrink-0" aria-hidden="true" />
             <span>{card.customerPhone}</span>
           </a>
         </div>
       </div>
 
       {/* Pilgrim Party Breakdown & Flight City */}
-      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground bg-secondary/40 rounded-lg p-1.5">
+      <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-secondary/40 p-1.5 text-[11px] text-muted-foreground">
         <div className="flex items-center gap-1 font-medium text-foreground">
-          <Users className="size-3 text-primary shrink-0" />
+          <Users className="size-3 shrink-0 text-primary" aria-hidden="true" />
           <span>
-            {card.adults}A · {card.children}C · {card.infants}I
+            {card.adults}A, {card.children}C, {card.infants}I
           </span>
         </div>
         {card.departureCity && (
           <>
-            <span className="text-border">·</span>
+            <span className="text-border" aria-hidden="true">
+              /
+            </span>
             <div className="flex items-center gap-1 truncate">
-              <Plane className="size-3 text-muted-foreground shrink-0" />
+              <Plane
+                className="size-3 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
               <span>{card.departureCity.airportCode}</span>
             </div>
           </>
         )}
         {card.groupPackage && (
           <>
-            <span className="text-border">·</span>
+            <span className="text-border" aria-hidden="true">
+              /
+            </span>
             <span
-              className="truncate max-w-[120px]"
+              className="max-w-[120px] truncate"
               title={card.groupPackage.title}
             >
               {card.groupPackage.title}
@@ -944,7 +1053,7 @@ function KanbanCardItem({
         <div className="flex items-center justify-between gap-2">
           <label
             htmlFor={`kanban-move-${card.id}`}
-            className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+            className="text-[11px] font-semibold text-muted-foreground"
           >
             Stage
           </label>
@@ -959,7 +1068,7 @@ function KanbanCardItem({
                 e.target.value as KanbanColumnId
               )
             }
-            className="h-6 rounded-md border border-border bg-background px-1.5 text-[11px] font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
+            className="h-7 min-h-7 min-w-6 rounded-md border border-input bg-background px-1.5 text-[11px] font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
             {KANBAN_COLUMNS.map((col) => (
               <option key={col.id} value={col.id}>
@@ -975,7 +1084,7 @@ function KanbanCardItem({
         <div>
           {grandTotal > 0 ? (
             <div className="flex flex-col">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
+              <span className="text-[11px] font-semibold text-muted-foreground">
                 Quoted Total
               </span>
               <TabularPrice
@@ -986,7 +1095,7 @@ function KanbanCardItem({
           ) : (
             <Badge
               variant="outline"
-              className="border-amber-300 bg-amber-50 text-amber-800 text-[11px] font-medium"
+              className="border-status-warning-border bg-status-warning-bg text-[11px] font-medium text-status-warning"
             >
               Rate Pending
             </Badge>
@@ -994,12 +1103,12 @@ function KanbanCardItem({
         </div>
 
         {/* 1-Click Action Buttons */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           {voucherReady && (
             <Button
               variant="outline"
               size="xs"
-              className="border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 hover:text-emerald-900"
+              className="h-7 min-h-7 min-w-6 border-status-success-border bg-status-success-bg text-status-success hover:bg-status-success-bg/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
               render={
                 <Link
                   href={`/admin/applications/${card.id}/voucher`}
@@ -1009,7 +1118,7 @@ function KanbanCardItem({
               }
               nativeButton={false}
             >
-              <Printer className="size-3" />
+              <Printer className="size-3" aria-hidden="true" />
               <span>Voucher</span>
             </Button>
           )}
@@ -1017,7 +1126,7 @@ function KanbanCardItem({
           <Button
             variant="secondary"
             size="xs"
-            className="border border-border/80 text-foreground hover:bg-secondary font-medium"
+            className="h-7 min-h-7 min-w-6 border border-border/80 font-medium text-foreground hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-80"
             render={
               <Link
                 href={`/admin/applications/${card.id}`}
@@ -1026,7 +1135,7 @@ function KanbanCardItem({
             }
             nativeButton={false}
           >
-            <FileEdit className="size-3" />
+            <FileEdit className="size-3" aria-hidden="true" />
             <span>Worksheet</span>
           </Button>
         </div>

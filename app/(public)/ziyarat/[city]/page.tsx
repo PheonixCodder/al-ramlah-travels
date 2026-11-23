@@ -8,6 +8,7 @@ import {
   type ZiyaratSpokeCity,
 } from "@/components/seo/guides-ziyarat-data"
 import { GuidesZiyaratCitySpokeView } from "@/components/seo/guides-ziyarat-view"
+import { LIVE_RATE_CONFIRMATION_LABEL } from "@/lib/constants/brand"
 import { buildPublicMetadata } from "@/lib/seo/metadata"
 import {
   getCachedCompanyInfo,
@@ -59,7 +60,7 @@ export default async function ZiyaratCitySpokePage({
   const isMakkah = normalized === "makkah"
 
   return (
-    <div className="bg-[#FAF7F0]">
+    <div className="bg-background">
       <GuidesZiyaratCitySpokeView
         city={normalized}
         places={places}
@@ -70,26 +71,33 @@ export default async function ZiyaratCitySpokePage({
         aria-label="City Ziyarat etiquette and related pilgrimage guides"
         className="mx-auto max-w-6xl px-4 pb-14 sm:px-6 lg:px-8"
       >
-        <div className="rounded-3xl border border-[#E6DEC8] bg-white p-6 sm:p-8 shadow-xs space-y-5">
-          <h2 className="font-display text-xl font-bold text-[#0A3622]">
+        <div className="space-y-5 rounded-3xl border border-border bg-card p-6 shadow-xs sm:p-8">
+          <h2 className="font-display text-xl font-bold text-primary">
             {isMakkah
               ? "Makkah & Taif Miqat Excursion Checklist"
               : "Madinah Sunnah & Badr Excursion Checklist"}
           </h2>
-          <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-[#E6DEC8]">
-            <table className="w-full text-left text-xs sm:text-sm border-collapse">
+          <div
+            tabIndex={0}
+            className="overflow-x-auto rounded-2xl border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <table className="w-full border-collapse text-left text-xs sm:text-sm">
               <caption className="sr-only">
                 Excursion etiquette and transport booking status
               </caption>
-              <thead className="bg-[#FAF7F0] text-[#0A3622] border-b border-[#E6DEC8]">
+              <thead className="border-b border-border bg-secondary text-primary">
                 <tr>
-                  <th scope="col" className="px-4 py-2.5 font-bold">Excursion Element</th>
-                  <th scope="col" className="px-4 py-2.5 font-bold">Pilgrim Guidance</th>
+                  <th scope="col" className="px-4 py-2.5 font-bold">
+                    Excursion Element
+                  </th>
+                  <th scope="col" className="px-4 py-2.5 font-bold">
+                    Pilgrim Guidance
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E6DEC8] text-[#4A5048]">
+              <tbody className="divide-y divide-border text-muted-foreground">
                 <tr>
-                  <td className="px-4 py-2.5 font-semibold text-[#1A1D1A]">
+                  <td className="px-4 py-2.5 font-semibold text-foreground">
                     {isMakkah ? "Miqat Re-Entry Rule" : "Masjid Quba Sunnah"}
                   </td>
                   <td className="px-4 py-2.5">
@@ -99,8 +107,12 @@ export default async function ZiyaratCitySpokePage({
                   </td>
                 </tr>
                 <tr>
-                  <td className="px-4 py-2.5 font-semibold text-[#1A1D1A]">Chauffeured Fleet Tariff</td>
-                  <td className="px-4 py-2.5">Live Rate — Confirmed upon submission</td>
+                  <td className="px-4 py-2.5 font-semibold text-foreground">
+                    Chauffeured Fleet Tariff
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {LIVE_RATE_CONFIRMATION_LABEL}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -109,18 +121,26 @@ export default async function ZiyaratCitySpokePage({
             <li>
               <Link
                 href={isMakkah ? "/ziyarat/madinah" : "/ziyarat/makkah"}
-                className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]"
+                className="inline-flex min-h-8 items-center rounded-xl border border-border bg-background px-3.5 py-1.5 text-primary transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
               >
-                {isMakkah ? "Sacred Madinah Ziyarat Guide" : "Sacred Makkah Ziyarat Guide"}
+                {isMakkah
+                  ? "Sacred Madinah Ziyarat Guide"
+                  : "Sacred Makkah Ziyarat Guide"}
               </Link>
             </li>
             <li>
-              <Link href="/ziyarat" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+              <Link
+                href="/ziyarat"
+                className="inline-flex min-h-8 items-center rounded-xl border border-border bg-background px-3.5 py-1.5 text-primary transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
+              >
                 Complete Haramain Ziyarat Hub
               </Link>
             </li>
             <li>
-              <Link href="/faq" className="inline-flex min-h-8 items-center rounded-xl border border-[#E6DEC8] bg-[#FAF7F0] px-3.5 py-1.5 text-[#0A3622] hover:border-[#0A3622]">
+              <Link
+                href="/faq"
+                className="inline-flex min-h-8 items-center rounded-xl border border-border bg-background px-3.5 py-1.5 text-primary transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none"
+              >
                 Frequently Asked Questions (FAQ)
               </Link>
             </li>

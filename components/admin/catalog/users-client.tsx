@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState, useTransition, useEffect } from "react"
+import { useState, useTransition } from "react"
 import {
   createStaffUser,
   resetStaffPassword,
@@ -51,74 +51,44 @@ interface UsersClientProps {
   currentUserRole: string
 }
 
-function createRandomPassword(): string {
-  const chars =
-    "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*"
+const TEMP_PASSWORD_ALPHABET =
+  "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*"
+const TEMP_PASSWORD_LENGTH = 14
+
+export function createRandomPassword(): string {
+  const alphabetLen = TEMP_PASSWORD_ALPHABET.length
+  const maxUnbiased = 0x1_0000_0000 - (0x1_0000_0000 % alphabetLen)
+  const buf = new Uint32Array(1)
   let pass = ""
-  for (let i = 0; i < 14; i++) {
-    pass += chars.charAt(Math.floor(Math.random() * chars.length))
+  while (pass.length < TEMP_PASSWORD_LENGTH) {
+    crypto.getRandomValues(buf)
+    const sample = buf[0]
+    if (sample !== undefined && sample < maxUnbiased) {
+      pass += TEMP_PASSWORD_ALPHABET.charAt(sample % alphabetLen)
+    }
   }
   return pass
 }
 
-export function UsersClient({
-  initialUsers,
-  currentUserId,
-  currentUserRole,
-}: UsersClientProps) {
-  const [users, setUsers] = useState<UserAccountData[]>(initialUsers)
-  const [openAdd, setOpenAdd] = useState(false)
+function AddStaffFormBody({
+  onCreated,
+  onCancel,
+}: {
+  onCreated: (user: UserAccountData | undefined, email: string) => void
+  onCancel: () => void
+}) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [bannerNotice, setBannerNotice] = useState<{
-    type: "error" | "success"
-    text: string
-  } | null>(null)
-
-  // New staff form state
   const [newName, setNewName] = useState("")
   const [newEmail, setNewEmail] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [newRole, setNewRole] = useState<"staff" | "super_admin">("staff")
 
-  // Password reset dialog state
-  const [resetTarget, setResetTarget] = useState<UserAccountData | null>(null)
-  const [resetPasswordVal, setResetPasswordVal] = useState("")
-  const [showResetPassword, setShowResetPassword] = useState(false)
-  const [resetLoading, setResetLoading] = useState(false)
-  const [resetError, setResetError] = useState<string | null>(null)
-
-  const [, startTransition] = useTransition()
-
-  useEffect(() => {
-    setUsers(initialUsers)
-  }, [initialUsers])
-
-  useEffect(() => {
-    if (openAdd) {
-      setError(null)
-      setNewName("")
-      setNewEmail("")
-      setNewPassword("")
-      setShowNewPassword(false)
-      setNewRole("staff")
-    }
-  }, [openAdd])
-
-  useEffect(() => {
-    if (resetTarget) {
-      setResetError(null)
-      setResetPasswordVal("")
-      setShowResetPassword(false)
-    }
-  }, [resetTarget])
-
   async function handleCreateUser(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    setBannerNotice(null)
 
     try {
       const res = await createStaffUser({
@@ -131,19 +101,293 @@ export function UsersClient({
         setError(res.error || "Failed to create staff account.")
         return
       }
-      if (res.data) {
-        setUsers((prev) => [res.data as UserAccountData, ...prev])
-      }
-      setOpenAdd(false)
-      setBannerNotice({
-        type: "success",
-        text: `Provisioned staff account for ${newEmail.trim().toLowerCase()}.`,
-      })
+      onCreated(
+        res.data ? (res.data as UserAccountData) : undefined,
+        newEmail.trim().toLowerCase()
+      )
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create user.")
     } finally {
       setLoading(false)
     }
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Add Staff Operator</DialogTitle>
+        <DialogDescription>
+          Provision an authenticated consultant account without interrupting
+          your current Super Admin session.
+        </DialogDescription>
+      </DialogHeader>
+
+      {error && (
+        <div className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2.5 text-xs text-status-danger">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleCreateUser} className="space-y-3.5 py-2">
+        <div className="space-y-1">
+          <Label htmlFor="u-name">Full Name</Label>
+          <Input
+            id="u-name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="e.g. Tariq Mehmood"
+            required
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="u-email">Work Email</Label>
+          <Input
+            id="u-email"
+            type="email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="tariq@alramlahtravels.com"
+            required
+          />
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="u-password">
+              Temporary Password (min 10 chars)
+            </Label>
+            <button
+              type="button"
+              onClick={() => {
+                setNewPassword(createRandomPassword())
+                setShowNewPassword(true)
+              }}
+              className="inline-flex cursor-pointer items-center gap-1 rounded text-[11px] font-semibold text-gold-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <Sparkles className="size-3 text-gold-text" aria-hidden="true" />
+              <span>Generate Strong Password</span>
+            </button>
+          </div>
+          <div className="relative">
+            <Input
+              id="u-password"
+              type={showNewPassword ? "text" : "password"}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Minimum 10 characters"
+              minLength={10}
+              required
+              className="pr-9 font-mono"
+            />
+            <button
+              type="button"
+              aria-label={showNewPassword ? "Hide password" : "Show password"}
+              onClick={() => setShowNewPassword((v) => !v)}
+              className="absolute top-1/2 right-2.5 -translate-y-1/2 cursor-pointer rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {showNewPassword ? (
+                <EyeOff className="size-4" aria-hidden="true" />
+              ) : (
+                <Eye className="size-4" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="u-role">Role Assignment</Label>
+          <select
+            id="u-role"
+            value={newRole}
+            onChange={(e) =>
+              setNewRole(e.target.value as "staff" | "super_admin")
+            }
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <option value="staff">
+              Staff Operator (Desk, Quotes &amp; Inquiries)
+            </option>
+            <option value="super_admin">
+              Super Admin (Master Rates, Settings &amp; RBAC)
+            </option>
+          </select>
+        </div>
+
+        <DialogFooter className="pt-2">
+          <DialogClose
+            render={
+              <Button variant="outline" type="button" onClick={onCancel} />
+            }
+          >
+            Cancel
+          </DialogClose>
+          <Button
+            type="submit"
+            disabled={loading}
+            className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            {loading && (
+              <Loader2
+                className="size-4 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+            )}
+            <span>Create Account</span>
+          </Button>
+        </DialogFooter>
+      </form>
+    </>
+  )
+}
+
+function ResetPasswordFormBody({
+  target,
+  onSuccess,
+}: {
+  target: UserAccountData
+  onSuccess: (email: string) => void
+}) {
+  const [resetPasswordVal, setResetPasswordVal] = useState("")
+  const [showResetPassword, setShowResetPassword] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault()
+    setResetLoading(true)
+    setResetError(null)
+
+    try {
+      const res = await resetStaffPassword({
+        userId: target.id,
+        newPassword: resetPasswordVal,
+      })
+      if (!res.success) {
+        setResetError(res.error || "Failed to reset password.")
+        return
+      }
+      onSuccess(target.email)
+    } catch (err: unknown) {
+      setResetError(
+        err instanceof Error ? err.message : "Failed to reset password."
+      )
+    } finally {
+      setResetLoading(false)
+    }
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Reset Staff Password</DialogTitle>
+        <DialogDescription>
+          Set a new temporary password for <strong>{target.email}</strong>. All
+          existing active sessions for this user will be immediately terminated.
+        </DialogDescription>
+      </DialogHeader>
+
+      {resetError && (
+        <div className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2.5 text-xs text-status-danger">
+          {resetError}
+        </div>
+      )}
+
+      <form onSubmit={handleResetPassword} className="space-y-4 py-2">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="u-reset-password">
+              New Temporary Password (min 10 chars)
+            </Label>
+            <button
+              type="button"
+              onClick={() => {
+                setResetPasswordVal(createRandomPassword())
+                setShowResetPassword(true)
+              }}
+              className="inline-flex cursor-pointer items-center gap-1 rounded text-[11px] font-semibold text-gold-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <Sparkles className="size-3 text-gold-text" aria-hidden="true" />
+              <span>Generate</span>
+            </button>
+          </div>
+          <div className="relative">
+            <Input
+              id="u-reset-password"
+              type={showResetPassword ? "text" : "password"}
+              value={resetPasswordVal}
+              onChange={(e) => setResetPasswordVal(e.target.value)}
+              minLength={10}
+              required
+              placeholder="Minimum 10 characters"
+              className="pr-9 font-mono"
+            />
+            <button
+              type="button"
+              aria-label={showResetPassword ? "Hide password" : "Show password"}
+              onClick={() => setShowResetPassword((v) => !v)}
+              className="absolute top-1/2 right-2.5 -translate-y-1/2 cursor-pointer rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {showResetPassword ? (
+                <EyeOff className="size-4" aria-hidden="true" />
+              ) : (
+                <Eye className="size-4" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" type="button" />}>
+            Cancel
+          </DialogClose>
+          <Button
+            type="submit"
+            disabled={resetLoading}
+            className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            {resetLoading && (
+              <Loader2
+                className="size-4 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+            )}
+            <span>Save &amp; Revoke Sessions</span>
+          </Button>
+        </DialogFooter>
+      </form>
+    </>
+  )
+}
+
+export function UsersClient({
+  initialUsers,
+  currentUserId,
+  currentUserRole,
+}: UsersClientProps) {
+  const [users, setUsers] = useState<UserAccountData[]>(initialUsers)
+  const [prevInitialUsers, setPrevInitialUsers] = useState(initialUsers)
+  if (prevInitialUsers !== initialUsers) {
+    setPrevInitialUsers(initialUsers)
+    setUsers(initialUsers)
+  }
+
+  const [openAdd, setOpenAdd] = useState(false)
+  const [addFormSession, setAddFormSession] = useState(0)
+  const [bannerNotice, setBannerNotice] = useState<{
+    type: "error" | "success"
+    text: string
+  } | null>(null)
+
+  const [resetTarget, setResetTarget] = useState<UserAccountData | null>(null)
+  const [, startTransition] = useTransition()
+
+  function handleOpenAddChange(nextOpen: boolean) {
+    if (nextOpen) {
+      setAddFormSession((prev) => prev + 1)
+      setBannerNotice(null)
+    }
+    setOpenAdd(nextOpen)
   }
 
   function handleToggleActive(userId: string, current: boolean) {
@@ -205,36 +449,6 @@ export function UsersClient({
     })
   }
 
-  async function handleResetPassword(e: React.FormEvent) {
-    e.preventDefault()
-    if (!resetTarget) return
-    setResetLoading(true)
-    setResetError(null)
-
-    try {
-      const res = await resetStaffPassword({
-        userId: resetTarget.id,
-        newPassword: resetPasswordVal,
-      })
-      if (!res.success) {
-        setResetError(res.error || "Failed to reset password.")
-        return
-      }
-      const targetEmail = resetTarget.email
-      setResetTarget(null)
-      setBannerNotice({
-        type: "success",
-        text: `Temporary password set for ${targetEmail} and active sessions revoked.`,
-      })
-    } catch (err: unknown) {
-      setResetError(
-        err instanceof Error ? err.message : "Failed to reset password."
-      )
-    } finally {
-      setResetLoading(false)
-    }
-  }
-
   const isSuperAdmin = currentUserRole === "super_admin"
 
   return (
@@ -243,144 +457,40 @@ export function UsersClient({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            Staff & Administrative Roles
+            Staff &amp; Administrative Roles
           </h1>
           <p className="text-sm text-muted-foreground">
-            Manage agency consultants, Desk operators, and Super Administrator privileges. Deactivating or demoting an account immediately revokes its active sessions.
+            Manage agency consultants, Desk operators, and Super Administrator
+            privileges. Deactivating or demoting an account immediately revokes
+            its active sessions.
           </p>
         </div>
 
         {isSuperAdmin && (
-          <Dialog open={openAdd} onOpenChange={setOpenAdd}>
+          <Dialog open={openAdd} onOpenChange={handleOpenAddChange}>
             <DialogTrigger
               render={
-                <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
-                  <UserPlus className="size-4" />
+                <Button className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                  <UserPlus className="size-4" aria-hidden="true" />
                   <span>Add Staff Account</span>
                 </Button>
               }
             />
-            <DialogContent
-              key={openAdd ? "add-staff-open" : "add-staff-closed"}
-              className="sm:max-w-md"
-            >
-              <DialogHeader>
-                <DialogTitle>Add Staff Operator</DialogTitle>
-                <DialogDescription>
-                  Provision an authenticated consultant account without interrupting your current Super Admin session.
-                </DialogDescription>
-              </DialogHeader>
-
-              {error && (
-                <div className="rounded-lg bg-red-50 p-2.5 text-xs text-red-800 border border-red-200">
-                  {error}
-                </div>
-              )}
-
-              <form onSubmit={handleCreateUser} className="space-y-3.5 py-2">
-                <div className="space-y-1">
-                  <Label htmlFor="u-name">Full Name</Label>
-                  <Input
-                    id="u-name"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="e.g. Tariq Mehmood"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <Label htmlFor="u-email">Work Email</Label>
-                  <Input
-                    id="u-email"
-                    type="email"
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    placeholder="tariq@alramlahtravels.com"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="u-password">
-                      Temporary Password (min 10 chars)
-                    </Label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewPassword(createRandomPassword())
-                        setShowNewPassword(true)
-                      }}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-gold-text hover:underline cursor-pointer"
-                    >
-                      <Sparkles className="size-3 text-gold" />
-                      <span>Generate Strong Password</span>
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <Input
-                      id="u-password"
-                      type={showNewPassword ? "text" : "password"}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Minimum 10 characters"
-                      minLength={10}
-                      required
-                      className="font-mono pr-9"
-                    />
-                    <button
-                      type="button"
-                      aria-label={
-                        showNewPassword ? "Hide password" : "Show password"
-                      }
-                      onClick={() => setShowNewPassword((v) => !v)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
-                    >
-                      {showNewPassword ? (
-                        <EyeOff className="size-4" />
-                      ) : (
-                        <Eye className="size-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <Label htmlFor="u-role">Role Assignment</Label>
-                  <select
-                    id="u-role"
-                    value={newRole}
-                    onChange={(e) =>
-                      setNewRole(e.target.value as "staff" | "super_admin")
-                    }
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-ring"
-                  >
-                    <option value="staff">
-                      Staff Operator (Desk, Quotes & Inquiries)
-                    </option>
-                    <option value="super_admin">
-                      Super Admin (Master Rates, Settings & RBAC)
-                    </option>
-                  </select>
-                </div>
-
-                <DialogFooter className="pt-2">
-                  <DialogClose
-                    render={<Button variant="outline" type="button" />}
-                  >
-                    Cancel
-                  </DialogClose>
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
-                  >
-                    {loading && <Loader2 className="size-4 animate-spin" />}
-                    <span>Create Account</span>
-                  </Button>
-                </DialogFooter>
-              </form>
+            <DialogContent className="sm:max-w-md">
+              <AddStaffFormBody
+                key={`add-staff-${addFormSession}`}
+                onCreated={(createdUser, email) => {
+                  if (createdUser) {
+                    setUsers((prev) => [createdUser, ...prev])
+                  }
+                  setOpenAdd(false)
+                  setBannerNotice({
+                    type: "success",
+                    text: `Provisioned staff account for ${email}.`,
+                  })
+                }}
+                onCancel={() => setOpenAdd(false)}
+              />
             </DialogContent>
           </Dialog>
         )}
@@ -390,8 +500,8 @@ export function UsersClient({
         <div
           className={
             bannerNotice.type === "error"
-              ? "rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800"
-              : "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900"
+              ? "rounded-xl border border-status-danger-border bg-status-danger-bg px-4 py-3 text-xs text-status-danger"
+              : "rounded-xl border border-status-success-border bg-status-success-bg px-4 py-3 text-xs text-status-success"
           }
         >
           {bannerNotice.text}
@@ -400,11 +510,14 @@ export function UsersClient({
 
       {/* Users Table Card */}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-        <div className="overflow-x-auto">
+        <div
+          tabIndex={0}
+          className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-border bg-muted/30 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            <thead className="border-b border-border bg-muted/30 text-xs font-semibold text-muted-foreground">
               <tr>
-                <th className="px-5 py-3">User & Email</th>
+                <th className="px-5 py-3">User &amp; Email</th>
                 <th className="px-5 py-3">Role Privilege</th>
                 <th className="px-5 py-3">Account Status</th>
                 <th className="px-5 py-3">Joined Date</th>
@@ -419,11 +532,11 @@ export function UsersClient({
                 return (
                   <tr
                     key={u.id}
-                    className="hover:bg-muted/10 transition-colors"
+                    className="transition-colors hover:bg-muted/10 motion-reduce:transition-none"
                   >
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
+                        <div className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
                           {u.name.charAt(0).toUpperCase()}
                         </div>
                         <div>
@@ -437,8 +550,8 @@ export function UsersClient({
                               </Badge>
                             )}
                           </div>
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                            <Mail className="size-3" />
+                          <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                            <Mail className="size-3" aria-hidden="true" />
                             {u.email}
                           </span>
                         </div>
@@ -448,6 +561,7 @@ export function UsersClient({
                     <td className="px-5 py-4">
                       {isSuperAdmin && !isSelf ? (
                         <select
+                          aria-label={`Role for ${u.name}`}
                           value={u.role}
                           onChange={(e) =>
                             handleRoleChange(
@@ -455,7 +569,7 @@ export function UsersClient({
                               e.target.value as "staff" | "super_admin"
                             )
                           }
-                          className="rounded-md border border-input bg-background px-2 py-1 text-xs font-medium shadow-xs focus-visible:outline-ring"
+                          className="rounded-md border border-input bg-background px-2 py-1 text-xs font-medium shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           <option value="staff">Staff Operator</option>
                           <option value="super_admin">
@@ -464,16 +578,22 @@ export function UsersClient({
                         </select>
                       ) : (
                         <Badge
-                          className={`capitalize text-xs ${
+                          className={`text-xs capitalize ${
                             u.role === "super_admin"
-                              ? "bg-amber-100 text-amber-950 border-amber-300"
-                              : "bg-emerald-100 text-emerald-950 border-emerald-300"
+                              ? "border-status-warning-border bg-status-warning-bg text-status-warning"
+                              : "border-status-success-border bg-status-success-bg text-status-success"
                           }`}
                         >
                           {u.role === "super_admin" ? (
-                            <Shield className="size-3 mr-1" />
+                            <Shield
+                              className="mr-1 size-3"
+                              aria-hidden="true"
+                            />
                           ) : (
-                            <UserCheck className="size-3 mr-1" />
+                            <UserCheck
+                              className="mr-1 size-3"
+                              aria-hidden="true"
+                            />
                           )}
                           {u.role.replace("_", " ")}
                         </Badge>
@@ -482,19 +602,22 @@ export function UsersClient({
 
                     <td className="px-5 py-4">
                       {u.isActive ? (
-                        <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
-                          <CheckCircle2 className="size-4 text-emerald-600" />
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-status-success">
+                          <CheckCircle2
+                            className="size-4 text-status-success"
+                            aria-hidden="true"
+                          />
                           Active
                         </span>
                       ) : (
                         <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                          <XCircle className="size-4" />
+                          <XCircle className="size-4" aria-hidden="true" />
                           Deactivated
                         </span>
                       )}
                     </td>
 
-                    <td className="px-5 py-4 text-xs font-mono text-muted-foreground">
+                    <td className="px-5 py-4 font-mono text-xs text-muted-foreground">
                       {new Date(u.createdAt).toLocaleDateString()}
                     </td>
 
@@ -506,9 +629,9 @@ export function UsersClient({
                             size="xs"
                             type="button"
                             onClick={() => setResetTarget(u)}
-                            className="gap-1 cursor-pointer"
+                            className="cursor-pointer gap-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           >
-                            <KeyRound className="size-3" />
+                            <KeyRound className="size-3" aria-hidden="true" />
                             <span>Reset Password</span>
                           </Button>
                           {!isSelf && (
@@ -521,8 +644,8 @@ export function UsersClient({
                               }
                               className={
                                 u.isActive
-                                  ? "text-amber-700 hover:bg-amber-50 cursor-pointer"
-                                  : "text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                                  ? "cursor-pointer text-status-warning hover:bg-status-warning-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                                  : "cursor-pointer text-status-success hover:bg-status-success-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               }
                             >
                               {u.isActive ? "Deactivate" : "Activate"}
@@ -546,84 +669,20 @@ export function UsersClient({
           if (!nextOpen) setResetTarget(null)
         }}
       >
-        <DialogContent
-          key={resetTarget?.id ?? "reset-closed"}
-          className="sm:max-w-md"
-        >
-          <DialogHeader>
-            <DialogTitle>Reset Staff Password</DialogTitle>
-            <DialogDescription>
-              Set a new temporary password for{" "}
-              <strong>{resetTarget?.email}</strong>. All existing active sessions for this user will be immediately terminated.
-            </DialogDescription>
-          </DialogHeader>
-
-          {resetError && (
-            <div className="rounded-lg bg-red-50 p-2.5 text-xs text-red-800 border border-red-200">
-              {resetError}
-            </div>
-          )}
-
-          <form onSubmit={handleResetPassword} className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="u-reset-password">
-                  New Temporary Password (min 10 chars)
-                </Label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setResetPasswordVal(createRandomPassword())
-                    setShowResetPassword(true)
-                  }}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-gold-text hover:underline cursor-pointer"
-                >
-                  <Sparkles className="size-3 text-gold" />
-                  <span>Generate</span>
-                </button>
-              </div>
-              <div className="relative">
-                <Input
-                  id="u-reset-password"
-                  type={showResetPassword ? "text" : "password"}
-                  value={resetPasswordVal}
-                  onChange={(e) => setResetPasswordVal(e.target.value)}
-                  minLength={10}
-                  required
-                  placeholder="Minimum 10 characters"
-                  className="font-mono pr-9"
-                />
-                <button
-                  type="button"
-                  aria-label={
-                    showResetPassword ? "Hide password" : "Show password"
-                  }
-                  onClick={() => setShowResetPassword((v) => !v)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
-                >
-                  {showResetPassword ? (
-                    <EyeOff className="size-4" />
-                  ) : (
-                    <Eye className="size-4" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <DialogFooter>
-              <DialogClose render={<Button variant="outline" type="button" />}>
-                Cancel
-              </DialogClose>
-              <Button
-                type="submit"
-                disabled={resetLoading}
-                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
-              >
-                {resetLoading && <Loader2 className="size-4 animate-spin" />}
-                <span>Save & Revoke Sessions</span>
-              </Button>
-            </DialogFooter>
-          </form>
+        <DialogContent className="sm:max-w-md">
+          {resetTarget ? (
+            <ResetPasswordFormBody
+              key={resetTarget.id}
+              target={resetTarget}
+              onSuccess={(email) => {
+                setResetTarget(null)
+                setBannerNotice({
+                  type: "success",
+                  text: `Temporary password set for ${email} and active sessions revoked.`,
+                })
+              }}
+            />
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

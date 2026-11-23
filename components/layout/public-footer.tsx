@@ -22,10 +22,7 @@ import {
   ArrowUpRight,
   ExternalLink,
 } from "lucide-react"
-import {
-  BRAND_ARABIC_NAME,
-  BRAND_WEBSITE_DOMAIN,
-} from "@/lib/constants/brand"
+import { BRAND_ARABIC_NAME, BRAND_WEBSITE_DOMAIN } from "@/lib/constants/brand"
 import {
   DEFAULT_COMPANY_INFO,
   formatPkPhoneDisplay,
@@ -70,7 +67,10 @@ function cleanHttpUrl(val: string | null | undefined): string | null {
 const UMRAH_AND_HAJJ_LINKS = [
   { label: "Group Umrah Packages", href: "/umrah-packages" },
   { label: "Umrah Packages from Lahore", href: "/umrah-packages/from-lahore" },
-  { label: "Umrah Packages from Karachi", href: "/umrah-packages/from-karachi" },
+  {
+    label: "Umrah Packages from Karachi",
+    href: "/umrah-packages/from-karachi",
+  },
   {
     label: "Umrah Packages from Islamabad",
     href: "/umrah-packages/from-islamabad",
@@ -150,15 +150,21 @@ export function PublicFooter({
   if (tt) socialLinks.push({ label: "TikTok", href: tt })
 
   return (
-    <footer className="relative overflow-hidden border-t border-primary-foreground/10 bg-primary text-primary-foreground">
+    <footer className="relative overflow-hidden border-t border-sidebar-border bg-primary text-primary-foreground">
       {/* Decorative Islamic Geometric Pattern Watermark */}
-      <div className="bg-haramain-dark-pattern pointer-events-none absolute inset-0 opacity-40" />
+      <div
+        aria-hidden="true"
+        className="bg-haramain-dark-pattern pointer-events-none absolute inset-0 opacity-40"
+      />
 
       <div className="relative mx-auto max-w-7xl px-4 pt-16 pb-12 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-10 border-b border-primary-foreground/15 pb-12 md:grid-cols-2 lg:grid-cols-4 lg:gap-8">
           {/* Column 1: Entity & Verified Askari 10 NAP */}
           <div className="flex flex-col gap-4">
-            <Link href="/" className="inline-flex min-h-6 items-center gap-3">
+            <Link
+              href="/"
+              className="inline-flex min-h-6 items-center gap-3 rounded-lg transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
+            >
               <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-gold/40 bg-card p-1 shadow-md">
                 <Image
                   src="/logo.jpg"
@@ -188,15 +194,18 @@ export function PublicFooter({
             <div className="flex flex-col gap-1.5 text-sm text-primary-foreground/85">
               <a
                 href={telHref}
-                className="inline-flex min-h-6 items-center gap-2 py-0.5 transition-colors hover:text-gold"
+                className="inline-flex min-h-6 items-center gap-2 rounded-sm py-0.5 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
               >
-                <Phone className="size-4 shrink-0 text-gold" />
+                <Phone
+                  className="size-4 shrink-0 text-gold"
+                  aria-hidden="true"
+                />
                 <span className="font-mono tabular-nums">{primaryDisplay}</span>
               </a>
               {secondaryDisplay && (
                 <a
                   href={secTelHref}
-                  className="inline-flex min-h-6 items-center gap-2 py-0.5 pl-6 text-xs text-primary-foreground/80 transition-colors hover:text-gold"
+                  className="inline-flex min-h-6 items-center gap-2 rounded-sm py-0.5 pl-6 text-xs text-primary-foreground/80 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
                 >
                   <span className="font-mono tabular-nums">
                     {secondaryDisplay}
@@ -207,27 +216,39 @@ export function PublicFooter({
                 href={waHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex min-h-6 items-center gap-2 py-0.5 transition-colors hover:text-gold"
+                className="inline-flex min-h-6 items-center gap-2 rounded-sm py-0.5 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
               >
-                <MessageCircle className="size-4 shrink-0 text-emerald-400" />
+                <MessageCircle
+                  className="size-4 shrink-0 text-gold"
+                  aria-hidden="true"
+                />
                 <span>WhatsApp 24/7 Desk</span>
               </a>
               <a
                 href={`mailto:${supportEmail}`}
-                className="inline-flex min-h-6 items-center gap-2 py-0.5 transition-colors hover:text-gold"
+                className="inline-flex min-h-6 items-center gap-2 rounded-sm py-0.5 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
               >
-                <Mail className="size-4 shrink-0 text-gold" />
+                <Mail
+                  className="size-4 shrink-0 text-gold"
+                  aria-hidden="true"
+                />
                 <span>{supportEmail}</span>
               </a>
               <Link
                 href="/"
-                className="inline-flex min-h-6 items-center gap-2 py-0.5 font-mono text-xs transition-colors hover:text-gold"
+                className="inline-flex min-h-6 items-center gap-2 rounded-sm py-0.5 font-mono text-xs transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
               >
-                <Compass className="size-4 shrink-0 text-gold" />
+                <Compass
+                  className="size-4 shrink-0 text-gold"
+                  aria-hidden="true"
+                />
                 <span>{BRAND_WEBSITE_DOMAIN}</span>
               </Link>
               <div className="flex items-start gap-2 pt-1 text-xs text-primary-foreground/75">
-                <MapPin className="mt-0.5 size-4 shrink-0 text-gold" />
+                <MapPin
+                  className="mt-0.5 size-4 shrink-0 text-gold"
+                  aria-hidden="true"
+                />
                 <span>{officeAddress}</span>
               </div>
             </div>
@@ -240,10 +261,13 @@ export function PublicFooter({
                     href={social.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex min-h-6 items-center gap-1 rounded-full border border-gold/30 bg-primary-foreground/10 px-3 py-1 text-xs font-medium text-primary-foreground/90 transition-colors hover:border-gold hover:text-gold"
+                    className="inline-flex min-h-6 items-center gap-1 rounded-full border border-gold/30 bg-primary-foreground/10 px-3 py-1 text-xs font-medium whitespace-nowrap text-primary-foreground/90 transition-colors hover:border-gold hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
                   >
                     <span>{social.label}</span>
-                    <ExternalLink className="size-3 shrink-0" />
+                    <ExternalLink
+                      className="size-3 shrink-0"
+                      aria-hidden="true"
+                    />
                   </a>
                 ))}
               </div>
@@ -252,7 +276,7 @@ export function PublicFooter({
 
           {/* Column 2: Umrah & Hajj Hubs */}
           <div className="flex flex-col gap-3">
-            <h3 className="font-display text-sm font-semibold tracking-wide text-gold uppercase">
+            <h3 className="font-display text-base font-semibold text-gold">
               Umrah &amp; Hajj Hubs
             </h3>
             <ul className="flex flex-col gap-2 text-sm text-primary-foreground/80">
@@ -260,10 +284,13 @@ export function PublicFooter({
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
+                    className="group inline-flex min-h-6 items-center gap-1 rounded-sm py-0.5 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
                   >
                     <span>{item.label}</span>
-                    <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                    <ArrowUpRight
+                      className="size-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+                      aria-hidden="true"
+                    />
                   </Link>
                 </li>
               ))}
@@ -272,7 +299,7 @@ export function PublicFooter({
 
           {/* Column 3: Haramain Stays & Ziyarat */}
           <div className="flex flex-col gap-3">
-            <h3 className="font-display text-sm font-semibold tracking-wide text-gold uppercase">
+            <h3 className="font-display text-base font-semibold text-gold">
               Hotels &amp; Ziyarat Guides
             </h3>
             <ul className="flex flex-col gap-2 text-sm text-primary-foreground/80">
@@ -280,10 +307,13 @@ export function PublicFooter({
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
+                    className="group inline-flex min-h-6 items-center gap-1 rounded-sm py-0.5 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
                   >
                     <span>{item.label}</span>
-                    <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                    <ArrowUpRight
+                      className="size-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+                      aria-hidden="true"
+                    />
                   </Link>
                 </li>
               ))}
@@ -292,7 +322,7 @@ export function PublicFooter({
 
           {/* Column 4: Agency Trust & Policies */}
           <div className="flex flex-col gap-3">
-            <h3 className="font-display text-sm font-semibold tracking-wide text-gold uppercase">
+            <h3 className="font-display text-base font-semibold text-gold">
               Agency &amp; Pilgrim Trust
             </h3>
             <ul className="flex flex-col gap-2 text-sm text-primary-foreground/80">
@@ -300,10 +330,13 @@ export function PublicFooter({
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    className="group inline-flex min-h-6 items-center gap-1 py-0.5 transition-colors hover:text-gold"
+                    className="group inline-flex min-h-6 items-center gap-1 rounded-sm py-0.5 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
                   >
                     <span>{item.label}</span>
-                    <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                    <ArrowUpRight
+                      className="size-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+                      aria-hidden="true"
+                    />
                   </Link>
                 </li>
               ))}
@@ -311,9 +344,10 @@ export function PublicFooter({
 
             <div className="pt-3">
               <ArabicText className="mb-1 block text-sm text-gold">
-                لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ، لَبَّيْكَ لا شَرِيكَ لَكَ لَبَّيْكَ
+                لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ، لَبَّيْكَ لا شَرِيكَ لَكَ
+                لَبَّيْكَ
               </ArabicText>
-              <span className="text-xs text-primary-foreground/60 italic">
+              <span className="text-xs text-primary-foreground/70 italic">
                 &ldquo;At Your Service, O Lord, At Your Service&rdquo;
               </span>
             </div>
@@ -324,30 +358,30 @@ export function PublicFooter({
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-primary-foreground/15 py-6">
           <div className="flex flex-wrap items-center gap-5 text-xs text-primary-foreground/85">
             <div className="inline-flex items-center gap-2">
-              <ShieldCheck className="size-4 text-gold" />
-              <span>Hajj • Umrah • Flights • Hotels • Tours</span>
+              <ShieldCheck className="size-4 text-gold" aria-hidden="true" />
+              <span>Hajj, Umrah, Flights, Hotels, and Tours</span>
             </div>
             {licenseBadges.length > 0 ? (
               licenseBadges.map((badge) => (
                 <div
                   key={badge.label}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-primary-foreground/10 px-3 py-1 font-mono text-[11px] tabular-nums text-primary-foreground"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-primary-foreground/10 px-3 py-1 text-[11px] text-primary-foreground"
                 >
-                  <Award className="size-3.5 text-gold" />
-                  <span className="font-sans font-semibold text-gold">
+                  <Award className="size-3.5 text-gold" aria-hidden="true" />
+                  <span className="font-semibold text-gold">
                     {badge.label}:
                   </span>
-                  <span>{badge.value}</span>
+                  <span className="font-mono tabular-nums">{badge.value}</span>
                 </div>
               ))
             ) : (
               <div className="inline-flex items-center gap-2">
-                <Award className="size-4 text-gold" />
+                <Award className="size-4 text-gold" aria-hidden="true" />
                 <span>Where Purpose Meets Excellence</span>
               </div>
             )}
             <div className="inline-flex items-center gap-2">
-              <Lock className="size-4 text-gold" />
+              <Lock className="size-4 text-gold" aria-hidden="true" />
               <span>TLS Encrypted Pilgrim Dossiers</span>
             </div>
           </div>
@@ -367,21 +401,21 @@ export function PublicFooter({
           >
             <Link
               href="/privacy"
-              className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold focus-visible:underline focus-visible:outline-none"
+              className="inline-flex min-h-6 items-center rounded-sm py-0.5 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
               Privacy Policy
             </Link>
             <span aria-hidden="true">·</span>
             <Link
               href="/terms"
-              className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold focus-visible:underline focus-visible:outline-none"
+              className="inline-flex min-h-6 items-center rounded-sm py-0.5 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
               Terms of Service
             </Link>
             <span aria-hidden="true">·</span>
             <Link
               href="/refund-policy"
-              className="inline-flex min-h-6 items-center py-0.5 transition-colors hover:text-gold focus-visible:underline focus-visible:outline-none"
+              className="inline-flex min-h-6 items-center rounded-sm py-0.5 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
               Refund &amp; Cancellation Policy
             </Link>

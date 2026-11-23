@@ -113,7 +113,7 @@ export default async function AdminDashboardLayout({
             />
           }
         >
-          {/* Skip target `#main-content` is mounted by `AdminShellFrame` (`<a href="#main-content">Skip to main content</a>`) */}
+          {/* Skip target `#main-content` is mounted by `AdminShellFrame` */}
           {mustChangePassword ? (
             <MandatoryPasswordChangeGate
               userEmail={session.user.email}

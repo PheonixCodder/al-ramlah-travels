@@ -131,6 +131,8 @@ export interface QuoteWorksheetFormProps {
     codePrefix: string
     defaultCommissionPkr: number
   }>
+  portalPath?: string | null
+  whatsappOptedOut?: boolean
 }
 
 export function QuoteWorksheetForm({
@@ -142,8 +144,11 @@ export function QuoteWorksheetForm({
   rateHints,
   sarToPkrRate = 75,
   suppliers = [],
+  portalPath = null,
+  whatsappOptedOut = false,
 }: QuoteWorksheetFormProps) {
   const router = useRouter()
+  const isSuperAdmin = currentUserRole === "super_admin"
 
   // Hydrate initial pillars without zeroing `group_booking` package totals (`T-022`)
   const hydratedPillars = React.useMemo(
@@ -164,12 +169,15 @@ export function QuoteWorksheetForm({
     ]
   )
 
-  const [expectedVersion, setExpectedVersion] = React.useState<number>(
-    initialQuote?.version ?? 0
-  )
-  React.useEffect(() => {
-    setExpectedVersion(initialQuote?.version ?? 0)
-  }, [initialQuote?.version])
+  const propVersion = initialQuote?.version ?? 0
+  const [savedVersionState, setSavedVersionState] = React.useState<{
+    basePropVersion: number
+    version: number
+  } | null>(null)
+  const expectedVersion =
+    savedVersionState && savedVersionState.basePropVersion === propVersion
+      ? savedVersionState.version
+      : propVersion
 
   const [visaTotal, setVisaTotal] = React.useState<number>(
     hydratedPillars.visaTotalPkr
@@ -381,8 +389,10 @@ export function QuoteWorksheetForm({
     setTransportTotal(ws.transportTotalPkr)
     setZiyaratTotal(ws.ziyaratTotalPkr)
     setDiscount(ws.discountPkr)
-    setCommissionPkr(ws.commissionPkr)
-    setSupplierNetCostPkr(ws.supplierNetCostPkr)
+    if (isSuperAdmin) {
+      setCommissionPkr(ws.commissionPkr)
+      setSupplierNetCostPkr(ws.supplierNetCostPkr)
+    }
     setCustomerNotes(ws.quoteNotesCustomer)
     setInternalNotes(ws.internalNotesAdmin)
 
@@ -538,9 +548,13 @@ export function QuoteWorksheetForm({
         paymentStatus: reconciledPaymentStatus,
         amountPaidPkr: effectivePaid,
         supplierId: supplierId || null,
-        supplierNetCostPkr: Math.max(0, Math.floor(supplierNetCostPkr)),
-        commissionPkr: Math.max(0, Math.floor(commissionPkr)),
-        allowBelowNetCost,
+        ...(isSuperAdmin
+          ? {
+              supplierNetCostPkr: Math.max(0, Math.floor(supplierNetCostPkr)),
+              commissionPkr: Math.max(0, Math.floor(commissionPkr)),
+              allowBelowNetCost,
+            }
+          : { allowBelowNetCost: false }),
         validUntilDays: validDays,
         targetStatus,
       }
@@ -554,7 +568,10 @@ export function QuoteWorksheetForm({
         })
       } else {
         if (typeof res.version === "number") {
-          setExpectedVersion(res.version)
+          setSavedVersionState({
+            basePropVersion: propVersion,
+            version: res.version,
+          })
         }
         setFeedback({
           type: "success",
@@ -622,6 +639,8 @@ export function QuoteWorksheetForm({
       {/* Live Quote Dispatch Bar synced with form state */}
       <QuoteDispatchBar
         application={application}
+        documentPortalPath={portalPath}
+        whatsappOptedOut={whatsappOptedOut}
         liveQuote={{
           grandTotalPkr,
           visaTotalPkr: visaTotal,
@@ -640,17 +659,17 @@ export function QuoteWorksheetForm({
       />
 
       <Card className="border-border bg-card shadow-md">
-        <CardHeader className="bg-secondary/40 pb-3 border-b border-border">
+        <CardHeader className="border-b border-border bg-secondary/40 pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Calculator className="size-4 text-primary" />
+              <Calculator className="size-4 text-primary" aria-hidden="true" />
               <CardTitle className="font-display text-base font-bold text-foreground">
                 Live Quoting Worksheet
               </CardTitle>
               {expectedVersion > 0 && (
                 <Badge
                   variant="outline"
-                  className="border-gold/50 bg-gold/10 font-mono text-[10px] font-bold text-foreground"
+                  className="border-gold-border bg-gold/10 font-mono text-[10px] font-bold text-foreground tabular-nums"
                 >
                   Rev v{expectedVersion}
                 </Badge>
@@ -663,12 +682,15 @@ export function QuoteWorksheetForm({
                 variant="outline"
                 onClick={handleGenerateLuxuryPdf}
                 disabled={isGeneratingPdf || isSubmitting}
-                className="border-[#C5A059]/70 text-[#0A3622] hover:bg-[#C5A059]/10 text-[11px] font-semibold gap-1.5 shadow-2xs"
+                className="gap-1.5 border-gold-border text-[11px] font-semibold text-primary shadow-2xs transition-colors hover:bg-gold/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
               >
                 {isGeneratingPdf ? (
-                  <Loader2 className="size-3 animate-spin text-[#C5A059]" />
+                  <Loader2
+                    className="size-3 animate-spin text-gold-text motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <FileText className="size-3 text-[#C5A059]" />
+                  <FileText className="size-3 text-gold-text" aria-hidden="true" />
                 )}
                 <span>Generate 3-Page Luxury PDF</span>
               </Button>
@@ -677,18 +699,21 @@ export function QuoteWorksheetForm({
                 size="xs"
                 onClick={handleRunAiCopilot}
                 disabled={isGeneratingCopilot || isSubmitting}
-                className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 border border-[#C5A059]/60 text-[11px] font-semibold gap-1.5 shadow-2xs"
+                className="gap-1.5 border border-gold-border bg-primary text-[11px] font-semibold text-primary-foreground shadow-2xs transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
               >
                 {isGeneratingCopilot ? (
-                  <Loader2 className="size-3 animate-spin text-[#C5A059]" />
+                  <Loader2
+                    className="size-3 animate-spin text-gold motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Sparkles className="size-3 text-[#C5A059]" />
+                  <Sparkles className="size-3 text-gold" aria-hidden="true" />
                 )}
                 <span>AI Copilot Pre-Fill &amp; Summary</span>
               </Button>
               <Badge
                 variant="outline"
-                className="border-primary/20 bg-primary/10 text-[11px] font-mono text-primary font-bold"
+                className="border-primary/20 bg-primary/10 font-mono text-[11px] font-bold text-primary"
               >
                 PKR Single-Currency
               </Badge>
@@ -761,16 +786,16 @@ export function QuoteWorksheetForm({
 
           {/* AI Quoting Copilot Review Banner (Human-in-the-Loop) */}
           {copilotDraft && (
-            <div className="mt-3 rounded-xl border border-[#C5A059]/60 bg-[#0A3622]/5 p-3 text-xs space-y-2.5 animate-in fade-in-50 duration-150">
-              <div className="flex items-center justify-between border-b border-[#C5A059]/30 pb-2">
+            <div className="mt-3 flex flex-col gap-2.5 rounded-xl bg-accent/35 p-3 text-xs">
+              <div className="flex items-center justify-between border-b border-gold-border/60 pb-2">
                 <div className="flex items-center gap-1.5">
-                  <Bot className="size-4 text-primary" />
+                  <Bot className="size-4 text-primary" aria-hidden="true" />
                   <span className="font-display font-bold text-foreground">
                     AI Quoting Copilot Recommendation
                   </span>
                   <Badge
                     variant="outline"
-                    className="border-amber-400 bg-amber-100 text-amber-950 text-[10px] font-mono"
+                    className="border-status-warning-border bg-status-warning-bg font-mono text-[10px] text-status-warning"
                   >
                     HITL Review Required
                   </Badge>
@@ -784,60 +809,61 @@ export function QuoteWorksheetForm({
                   <button
                     type="button"
                     onClick={() => setCopilotDraft(null)}
-                    className="text-muted-foreground hover:text-foreground"
+                    className="rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                     title="Dismiss AI Copilot suggestion"
+                    aria-label="Dismiss AI Copilot suggestion"
                   >
-                    <X className="size-3.5" />
+                    <X className="size-3.5" aria-hidden="true" />
                   </button>
                 </div>
               </div>
 
-              <p className="text-xs text-foreground/90 leading-relaxed">
+              <p className="text-xs leading-relaxed text-foreground/90">
                 {copilotDraft.executiveSummary}
               </p>
 
-              <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-border bg-card p-2 font-mono text-[11px] sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-1.5 rounded-lg bg-background p-2 font-mono text-[11px] sm:grid-cols-3">
                 <div>
-                  <span className="text-muted-foreground block text-[10px]">
+                  <span className="block text-[10px] text-muted-foreground">
                     Visa
                   </span>
-                  <span className="font-bold">
+                  <span className="font-bold tabular-nums">
                     PKR{" "}
                     {copilotDraft.suggestedQuoteWorksheet.visaTotalPkr.toLocaleString()}
                   </span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground block text-[10px]">
+                  <span className="block text-[10px] text-muted-foreground">
                     Flights
                   </span>
-                  <span className="font-bold">
+                  <span className="font-bold tabular-nums">
                     PKR{" "}
                     {copilotDraft.suggestedQuoteWorksheet.flightsTotalPkr.toLocaleString()}
                   </span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground block text-[10px]">
+                  <span className="block text-[10px] text-muted-foreground">
                     Makkah Hotel
                   </span>
-                  <span className="font-bold">
+                  <span className="font-bold tabular-nums">
                     PKR{" "}
                     {copilotDraft.suggestedQuoteWorksheet.makkahHotelTotalPkr.toLocaleString()}
                   </span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground block text-[10px]">
+                  <span className="block text-[10px] text-muted-foreground">
                     Madinah Hotel
                   </span>
-                  <span className="font-bold">
+                  <span className="font-bold tabular-nums">
                     PKR{" "}
                     {copilotDraft.suggestedQuoteWorksheet.madinahHotelTotalPkr.toLocaleString()}
                   </span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground block text-[10px]">
+                  <span className="block text-[10px] text-muted-foreground">
                     Transport &amp; Ziyarat
                   </span>
-                  <span className="font-bold">
+                  <span className="font-bold tabular-nums">
                     PKR{" "}
                     {(
                       copilotDraft.suggestedQuoteWorksheet.transportTotalPkr +
@@ -846,10 +872,10 @@ export function QuoteWorksheetForm({
                   </span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground block text-[10px]">
+                  <span className="block text-[10px] text-muted-foreground">
                     Suggested Total
                   </span>
-                  <span className="font-bold text-primary">
+                  <span className="font-bold text-primary tabular-nums">
                     PKR{" "}
                     {copilotDraft.suggestedQuoteWorksheet.grandTotalPkr.toLocaleString()}
                   </span>
@@ -857,7 +883,7 @@ export function QuoteWorksheetForm({
               </div>
 
               {copilotDraft.recommendedPricingBullets.length > 0 && (
-                <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-muted-foreground">
+                <ul className="flex list-disc flex-col gap-0.5 pl-4 text-[11px] text-muted-foreground">
                   {copilotDraft.recommendedPricingBullets.map((b, idx) => (
                     <li key={idx}>{b}</li>
                   ))}
@@ -865,19 +891,20 @@ export function QuoteWorksheetForm({
               )}
 
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-[10px] text-muted-foreground tabular-nums">
                   Exchange Rate: 1 SAR ={" "}
-                  {copilotDraft.suggestedQuoteWorksheet.sarToPkrRate} PKR ·
-                  Margin: PKR{" "}
-                  {copilotDraft.suggestedQuoteWorksheet.commissionPkr.toLocaleString()}
+                  {copilotDraft.suggestedQuoteWorksheet.sarToPkrRate} PKR
+                  {isSuperAdmin
+                    ? ` · Margin: PKR ${copilotDraft.suggestedQuoteWorksheet.commissionPkr.toLocaleString()}`
+                    : ""}
                 </span>
                 <Button
                   type="button"
                   size="sm"
                   onClick={handleApplyCopilotToWorksheet}
-                  className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 text-xs font-bold gap-1.5"
+                  className="h-auto min-h-8 max-w-full shrink gap-1.5 whitespace-normal bg-primary py-2 text-center text-xs font-bold leading-snug text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
                 >
-                  <ArrowDownToLine className="size-3.5 text-[#C5A059]" />
+                  <ArrowDownToLine className="size-3.5 shrink-0 text-gold" aria-hidden="true" />
                   <span>Apply to Worksheet Fields</span>
                 </Button>
               </div>
@@ -886,14 +913,14 @@ export function QuoteWorksheetForm({
 
           {/* Auto-Fill Catalog Suggested Rates Button */}
           {rateHints && rateHints.estimatedGrandTotalPkr > 0 && (
-            <div className="mt-3 rounded-lg border border-gold/40 bg-gold/10 p-2.5">
+            <div className="mt-3 rounded-lg bg-accent/45 p-2.5">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
+                <div className="min-w-0">
                   <span className="flex items-center gap-1.5 text-xs font-bold text-foreground">
-                    <Sparkles className="size-3.5 text-gold" />
+                    <Sparkles className="size-3.5 text-gold-text" aria-hidden="true" />
                     <span>Suggested Catalog Total:</span>
                   </span>
-                  <div className="font-mono text-xs text-foreground/90">
+                  <div className="font-mono text-xs text-foreground/90 tabular-nums">
                     <span className="font-bold">
                       SAR {rateHints.estimatedGrandTotalSar.toLocaleString()}
                     </span>{" "}
@@ -915,9 +942,9 @@ export function QuoteWorksheetForm({
                   size="sm"
                   onClick={handleApplyAllHints}
                   disabled={isSubmitting}
-                  className="bg-[#0A3622] text-white hover:bg-[#0A3622]/90 text-xs font-semibold gap-1.5 shadow-2xs cursor-pointer"
+                  className="h-auto min-h-8 max-w-full shrink cursor-pointer gap-1.5 whitespace-normal bg-primary py-2 text-center text-xs font-semibold leading-snug text-primary-foreground shadow-2xs transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
                 >
-                  <ArrowDownToLine className="size-3.5 text-gold" />
+                  <ArrowDownToLine className="size-3.5 shrink-0 text-gold" aria-hidden="true" />
                   <span>Auto-Fill Suggested Catalog Rates</span>
                 </Button>
               </div>
@@ -925,20 +952,23 @@ export function QuoteWorksheetForm({
           )}
         </CardHeader>
 
-        <CardContent className="space-y-4 pt-4">
+        <CardContent className="flex flex-col gap-4 pt-4">
           {feedback && (
             <Alert
               variant={feedback.type === "error" ? "destructive" : "default"}
               className={
                 feedback.type === "error"
-                  ? "border-destructive/30 bg-destructive/10"
-                  : "border-emerald-300 bg-emerald-50 text-emerald-900"
+                  ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+                  : "border-status-success-border bg-status-success-bg text-status-success"
               }
             >
               {feedback.type === "error" ? (
-                <AlertCircle className="size-4" />
+                <AlertCircle className="size-4" aria-hidden="true" />
               ) : (
-                <CheckCircle className="size-4 text-emerald-600" />
+                <CheckCircle
+                  className="size-4 text-status-success"
+                  aria-hidden="true"
+                />
               )}
               <AlertTitle className="text-xs font-semibold">
                 {feedback.type === "error" ? "Notice" : "Success"}
@@ -950,9 +980,9 @@ export function QuoteWorksheetForm({
           )}
 
           {/* Line Items Form */}
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             {/* 1. Visa Total */}
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
                 <Label
                   htmlFor="visa-total"
@@ -961,7 +991,7 @@ export function QuoteWorksheetForm({
                   1. Umrah / Hajj Visa Total (PKR)
                 </Label>
                 {application.lockedVisaRatePerPersonPkr ? (
-                  <span className="text-[10px] text-muted-foreground font-mono">
+                  <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
                     {application.totalPassportCount} Pax ×{" "}
                     {application.lockedVisaRatePerPersonPkr.toLocaleString()} PKR
                   </span>
@@ -975,12 +1005,12 @@ export function QuoteWorksheetForm({
                 onChange={(e) =>
                   setVisaTotal(Math.max(0, Number(e.target.value) || 0))
                 }
-                className="font-mono text-sm tabular-nums"
+                className="font-mono text-sm tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 disabled={isSubmitting}
               />
               {rateHints?.visaHint && rateHints.visaHint.totalPkr > 0 && (
-                <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50/70 px-2 py-1 text-[11px] text-amber-900">
-                  <span className="truncate">
+                <div className="flex items-center justify-between rounded-md bg-status-warning-bg px-2 py-1 text-[11px] text-status-warning">
+                  <span className="truncate tabular-nums">
                     <span className="font-semibold">Catalog Hint:</span>{" "}
                     {rateHints.visaHint.totalSar.toLocaleString()} SAR (PKR{" "}
                     {Math.round(rateHints.visaHint.totalPkr).toLocaleString()})
@@ -990,7 +1020,7 @@ export function QuoteWorksheetForm({
                     onClick={() =>
                       setVisaTotal(Math.round(rateHints.visaHint.totalPkr))
                     }
-                    className="ml-2 shrink-0 rounded bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-bold text-amber-950 transition-colors hover:bg-amber-300"
+                    className="ml-2 shrink-0 rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-bold text-status-warning transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                   >
                     Apply
                   </button>
@@ -999,7 +1029,7 @@ export function QuoteWorksheetForm({
             </div>
 
             {/* 2. Return Flights Total */}
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <Label
                 htmlFor="flights-total"
                 className="text-xs font-medium text-foreground"
@@ -1014,14 +1044,14 @@ export function QuoteWorksheetForm({
                 onChange={(e) =>
                   setFlightsTotal(Math.max(0, Number(e.target.value) || 0))
                 }
-                className="font-mono text-sm tabular-nums"
+                className="font-mono text-sm tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 placeholder="0"
                 disabled={isSubmitting}
               />
             </div>
 
             {/* 3. Makkah Hotel Total */}
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <Label
                 htmlFor="makkah-hotel-total"
                 className="text-xs font-medium text-foreground"
@@ -1036,14 +1066,14 @@ export function QuoteWorksheetForm({
                 onChange={(e) =>
                   setMakkahHotelTotal(Math.max(0, Number(e.target.value) || 0))
                 }
-                className="font-mono text-sm tabular-nums"
+                className="font-mono text-sm tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 placeholder="0"
                 disabled={isSubmitting}
               />
               {rateHints?.makkahHotelHint &&
                 rateHints.makkahHotelHint.totalPkr > 0 && (
-                  <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50/70 px-2 py-1 text-[11px] text-amber-900">
-                    <span className="truncate">
+                  <div className="flex items-center justify-between rounded-md bg-status-warning-bg px-2 py-1 text-[11px] text-status-warning">
+                    <span className="truncate tabular-nums">
                       <span className="font-semibold">Catalog Hint:</span> PKR{" "}
                       {Math.round(
                         rateHints.makkahHotelHint.totalPkr
@@ -1056,7 +1086,7 @@ export function QuoteWorksheetForm({
                           Math.round(rateHints.makkahHotelHint.totalPkr)
                         )
                       }
-                      className="ml-2 shrink-0 rounded bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-bold text-amber-950 transition-colors hover:bg-amber-300"
+                      className="ml-2 shrink-0 rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-bold text-status-warning transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                     >
                       Apply
                     </button>
@@ -1065,7 +1095,7 @@ export function QuoteWorksheetForm({
             </div>
 
             {/* 4. Madinah Hotel Total */}
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <Label
                 htmlFor="madinah-hotel-total"
                 className="text-xs font-medium text-foreground"
@@ -1080,14 +1110,14 @@ export function QuoteWorksheetForm({
                 onChange={(e) =>
                   setMadinahHotelTotal(Math.max(0, Number(e.target.value) || 0))
                 }
-                className="font-mono text-sm tabular-nums"
+                className="font-mono text-sm tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 placeholder="0"
                 disabled={isSubmitting}
               />
               {rateHints?.madinahHotelHint &&
                 rateHints.madinahHotelHint.totalPkr > 0 && (
-                  <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50/70 px-2 py-1 text-[11px] text-amber-900">
-                    <span className="truncate">
+                  <div className="flex items-center justify-between rounded-md bg-status-warning-bg px-2 py-1 text-[11px] text-status-warning">
+                    <span className="truncate tabular-nums">
                       <span className="font-semibold">Catalog Hint:</span> PKR{" "}
                       {Math.round(
                         rateHints.madinahHotelHint.totalPkr
@@ -1100,7 +1130,7 @@ export function QuoteWorksheetForm({
                           Math.round(rateHints.madinahHotelHint.totalPkr)
                         )
                       }
-                      className="ml-2 shrink-0 rounded bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-bold text-amber-950 transition-colors hover:bg-amber-300"
+                      className="ml-2 shrink-0 rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-bold text-status-warning transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                     >
                       Apply
                     </button>
@@ -1109,7 +1139,7 @@ export function QuoteWorksheetForm({
             </div>
 
             {/* 5. Ground Transport Total */}
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <Label
                 htmlFor="transport-total"
                 className="text-xs font-medium text-foreground"
@@ -1124,14 +1154,14 @@ export function QuoteWorksheetForm({
                 onChange={(e) =>
                   setTransportTotal(Math.max(0, Number(e.target.value) || 0))
                 }
-                className="font-mono text-sm tabular-nums"
+                className="font-mono text-sm tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 placeholder="0"
                 disabled={isSubmitting}
               />
             </div>
 
             {/* 6. Ziyarat Total */}
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <Label
                 htmlFor="ziyarat-total"
                 className="text-xs font-medium text-foreground"
@@ -1146,7 +1176,7 @@ export function QuoteWorksheetForm({
                 onChange={(e) =>
                   setZiyaratTotal(Math.max(0, Number(e.target.value) || 0))
                 }
-                className="font-mono text-sm tabular-nums"
+                className="font-mono text-sm tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 placeholder="0"
                 disabled={isSubmitting}
               />
@@ -1154,10 +1184,10 @@ export function QuoteWorksheetForm({
 
             {/* 7. Special Courtesy Discount & Required Deposit */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
+              <div className="flex flex-col gap-1">
                 <Label
                   htmlFor="discount-total"
-                  className="text-xs font-medium text-amber-800"
+                  className="text-xs font-medium text-gold-text"
                 >
                   Courtesy Discount (PKR)
                 </Label>
@@ -1169,13 +1199,13 @@ export function QuoteWorksheetForm({
                   onChange={(e) =>
                     setDiscount(Math.max(0, Number(e.target.value) || 0))
                   }
-                  className="font-mono text-sm tabular-nums border-amber-300 bg-amber-50/40 text-amber-900"
+                  className="border-gold-border bg-accent/25 font-mono text-sm text-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   placeholder="0"
                   disabled={isSubmitting}
                 />
               </div>
 
-              <div className="space-y-1">
+              <div className="flex flex-col gap-1">
                 <Label
                   htmlFor="deposit-required"
                   className="text-xs font-medium text-foreground"
@@ -1196,7 +1226,7 @@ export function QuoteWorksheetForm({
                       nextDep
                     )
                   }}
-                  className="font-mono text-sm tabular-nums"
+                  className="font-mono text-sm tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   placeholder="0"
                   disabled={isSubmitting}
                 />
@@ -1205,35 +1235,39 @@ export function QuoteWorksheetForm({
           </div>
 
           {/* Grand Total Banner */}
-          <div className="rounded-xl border border-gold/40 bg-primary p-4 text-primary-foreground shadow-sm">
-            <div className="flex items-center justify-between text-xs text-primary-foreground/80">
+          <div className="rounded-xl bg-primary p-4 text-primary-foreground shadow-sm ring-1 ring-gold/40">
+            <div className="flex items-center justify-between text-xs text-primary-foreground/80 tabular-nums">
               <span>Subtotal: PKR {subtotalPkr.toLocaleString()}</span>
               {discount > 0 && (
                 <span>Discount: -PKR {discount.toLocaleString()}</span>
               )}
             </div>
             <div className="mt-1 flex items-baseline justify-between border-t border-primary-foreground/20 pt-2">
-              <span className="font-display text-sm font-semibold uppercase tracking-wider text-gold">
+              <span className="font-display text-sm font-semibold text-gold">
                 Grand Total:
               </span>
-              <span className="font-mono text-2xl font-bold tabular-nums text-white sm:text-3xl">
+              <span className="font-mono text-2xl font-bold tabular-nums text-primary-foreground sm:text-3xl">
                 PKR {grandTotalPkr.toLocaleString()}
               </span>
             </div>
           </div>
 
-          {/* B2B Supplier Attribution & Commission Box (`T-059`) */}
-          <div className="space-y-3 rounded-lg border border-gold/40 bg-gold/5 p-3 text-xs">
+          {/* B2B Supplier Attribution & Commission Box (`T-059`, `T-061`) */}
+          <div className="flex flex-col gap-3 rounded-lg bg-accent/30 p-3 text-xs">
             <div className="flex items-center justify-between font-semibold text-foreground">
-              <span>B2B Supplier &amp; Al Ramlah Commission:</span>
-              <Badge
-                variant="outline"
-                className="border-gold/50 bg-white text-[10px] font-mono text-primary font-bold"
-              >
-                Margin: PKR {commissionPkr.toLocaleString()}
-              </Badge>
+              <span>B2B Supplier Attribution{isSuperAdmin ? " & Al Ramlah Commission:" : ":"}</span>
+              {isSuperAdmin && (
+                <Badge
+                  variant="outline"
+                  className="border-gold-border bg-background font-mono text-[10px] font-bold text-primary tabular-nums"
+                >
+                  Margin: PKR {commissionPkr.toLocaleString()}
+                </Badge>
+              )}
             </div>
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+            <div
+              className={`grid grid-cols-1 gap-2.5 ${isSuperAdmin ? "sm:grid-cols-3" : ""}`}
+            >
               <div>
                 <Label
                   htmlFor="quote-supplier"
@@ -1247,6 +1281,7 @@ export function QuoteWorksheetForm({
                   onChange={(e) => {
                     const nextSupId = e.target.value
                     setSupplierId(nextSupId)
+                    if (!isSuperAdmin) return
                     if (nextSupId) {
                       const found = suppliers.find((s) => s.id === nextSupId)
                       if (found && commissionPkr === 0) {
@@ -1264,7 +1299,7 @@ export function QuoteWorksheetForm({
                       setSupplierNetCostPkr(0)
                     }
                   }}
-                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-2.5 py-1 text-xs shadow-xs"
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-2.5 py-1 text-xs shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   disabled={isSubmitting}
                 >
                   <option value="">Direct / Unassigned</option>
@@ -1275,101 +1310,106 @@ export function QuoteWorksheetForm({
                   ))}
                 </select>
               </div>
-              <div>
-                <Label
-                  htmlFor="quote-commission"
-                  className="text-[11px] text-muted-foreground"
-                >
-                  Our Commission (PKR)
-                </Label>
-                <Input
-                  id="quote-commission"
-                  type="number"
-                  min={0}
-                  value={commissionPkr}
-                  onChange={(e) => {
-                    const nextComm = Math.max(0, Number(e.target.value) || 0)
-                    setCommissionPkr(nextComm)
-                    if (supplierId && grandTotalPkr > 0) {
-                      setSupplierNetCostPkr(
-                        Math.max(0, grandTotalPkr - nextComm)
-                      )
-                    }
-                  }}
-                  className="font-mono text-xs tabular-nums mt-1"
-                  disabled={isSubmitting}
-                />
-              </div>
-              <div>
-                <Label
-                  htmlFor="quote-net-cost"
-                  className="text-[11px] text-muted-foreground"
-                >
-                  Supplier Net Payable (PKR)
-                </Label>
-                <Input
-                  id="quote-net-cost"
-                  type="number"
-                  min={0}
-                  value={supplierNetCostPkr}
-                  onChange={(e) =>
-                    setSupplierNetCostPkr(
-                      Math.max(0, Number(e.target.value) || 0)
-                    )
-                  }
-                  className="font-mono text-xs tabular-nums mt-1"
-                  disabled={isSubmitting}
-                />
-              </div>
+              {isSuperAdmin && (
+                <>
+                  <div>
+                    <Label
+                      htmlFor="quote-commission"
+                      className="text-[11px] text-muted-foreground"
+                    >
+                      Our Commission (PKR)
+                    </Label>
+                    <Input
+                      id="quote-commission"
+                      type="number"
+                      min={0}
+                      value={commissionPkr}
+                      onChange={(e) => {
+                        const nextComm = Math.max(0, Number(e.target.value) || 0)
+                        setCommissionPkr(nextComm)
+                        if (supplierId && grandTotalPkr > 0) {
+                          setSupplierNetCostPkr(
+                            Math.max(0, grandTotalPkr - nextComm)
+                          )
+                        }
+                      }}
+                      className="mt-1 font-mono text-xs tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                  <div>
+                    <Label
+                      htmlFor="quote-net-cost"
+                      className="text-[11px] text-muted-foreground"
+                    >
+                      Supplier Net Payable (PKR)
+                    </Label>
+                    <Input
+                      id="quote-net-cost"
+                      type="number"
+                      min={0}
+                      value={supplierNetCostPkr}
+                      onChange={(e) =>
+                        setSupplierNetCostPkr(
+                          Math.max(0, Number(e.target.value) || 0)
+                        )
+                      }
+                      className="mt-1 font-mono text-xs tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
-            {isBelowNetCost && (
-              <div className="rounded-md border border-red-300 bg-red-50 p-2 text-[11px] text-red-900 space-y-1.5">
-                <p className="font-semibold">
+            {!isSuperAdmin && (
+              <p className="text-[11px] text-muted-foreground">
+                Wholesale supplier net cost and margin figures are visible to
+                Super Admin only.
+              </p>
+            )}
+
+            {isSuperAdmin && isBelowNetCost && (
+              <div className="flex flex-col gap-1.5 rounded-md bg-status-danger-bg p-2 text-[11px] text-status-danger">
+                <p className="font-semibold tabular-nums">
                   Warning: Grand Total (PKR {grandTotalPkr.toLocaleString()}) is
                   below Supplier Net Payable (PKR{" "}
                   {supplierNetCostPkr.toLocaleString()}).
                 </p>
-                {currentUserRole === "super_admin" ? (
-                  <label className="inline-flex items-center gap-1.5 cursor-pointer font-medium">
-                    <input
-                      type="checkbox"
-                      checked={allowBelowNetCost}
-                      onChange={(e) => setAllowBelowNetCost(e.target.checked)}
-                    />
-                    <span>
-                      Super Admin Override: Authorize promotional pricing below
-                      net cost
-                    </span>
-                  </label>
-                ) : (
-                  <p>
-                    Only a Super Admin can authorize selling below supplier net
-                    cost.
-                  </p>
-                )}
+                <label className="inline-flex cursor-pointer items-center gap-1.5 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={allowBelowNetCost}
+                    onChange={(e) => setAllowBelowNetCost(e.target.checked)}
+                    className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  />
+                  <span>
+                    Super Admin Override: Authorize promotional pricing below
+                    net cost
+                  </span>
+                </label>
               </div>
             )}
           </div>
 
           {/* Payment & Verified Ledger Section (`OD-03`, `T-022`) */}
-          <div className="space-y-3 rounded-lg border border-border bg-secondary/30 p-3 text-xs">
+          <div className="flex flex-col gap-3 rounded-lg bg-secondary/50 p-3 text-xs">
             <div className="flex items-center justify-between font-semibold text-foreground">
               <span className="flex items-center gap-1.5">
-                <CreditCard className="size-3.5 text-primary" />
+                <CreditCard className="size-3.5 text-primary" aria-hidden="true" />
                 <span>Verified Payment &amp; Deposit Ledger:</span>
               </span>
               <div className="flex items-center gap-1.5">
                 <Badge
                   variant="outline"
-                  className={`text-[10px] capitalize font-medium ${
+                  className={`text-[10px] font-medium capitalize ${
                     paymentStatus === "paid_in_full"
-                      ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                      ? "border-status-success-border bg-status-success-bg text-status-success"
                       : paymentStatus === "deposit_paid"
-                        ? "border-sky-300 bg-sky-100 text-sky-900"
+                        ? "border-status-info-border bg-status-info-bg text-status-info"
                         : paymentStatus === "partially_paid"
-                          ? "border-amber-300 bg-amber-100 text-amber-800"
-                          : "border-slate-300 bg-slate-100 text-slate-700"
+                          ? "border-status-warning-border bg-status-warning-bg text-status-warning"
+                          : "border-border bg-background text-muted-foreground"
                   }`}
                 >
                   {paymentStatus.replace(/_/g, " ")}
@@ -1380,7 +1420,7 @@ export function QuoteWorksheetForm({
                   variant="outline"
                   onClick={() => setShowPaymentForm((prev) => !prev)}
                   disabled={grandTotalPkr <= 0}
-                  className="text-[10px] h-6 px-2"
+                  className="h-6 px-2 text-[10px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   + Record Payment
                 </Button>
@@ -1403,16 +1443,16 @@ export function QuoteWorksheetForm({
                   onChange={(e) =>
                     handleAmountPaidChange(Number(e.target.value) || 0)
                   }
-                  className="font-mono text-xs tabular-nums mt-1"
+                  className="mt-1 font-mono text-xs tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   disabled={isSubmitting}
                 />
               </div>
 
               <div>
-                <span className="text-[11px] text-muted-foreground block">
+                <span className="block text-[11px] text-muted-foreground">
                   Outstanding Balance
                 </span>
-                <div className="mt-1 flex h-9 items-center rounded-md border border-border bg-card px-3 font-mono text-xs font-bold text-foreground tabular-nums">
+                <div className="mt-1 flex h-9 items-center rounded-md border border-border bg-background px-3 font-mono text-xs font-bold text-foreground tabular-nums">
                   PKR {balanceDuePkr.toLocaleString()}
                 </div>
               </div>
@@ -1421,7 +1461,7 @@ export function QuoteWorksheetForm({
             {showPaymentForm && (
               <form
                 onSubmit={handleRecordPayment}
-                className="space-y-2 rounded-lg border border-primary/25 bg-card p-2.5"
+                className="flex flex-col gap-2 rounded-lg bg-background p-2.5"
               >
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div>
@@ -1438,7 +1478,7 @@ export function QuoteWorksheetForm({
                           Math.max(0, Number(e.target.value) || 0)
                         )
                       }
-                      className="h-8 font-mono text-xs mt-0.5"
+                      className="mt-0.5 h-8 font-mono text-xs tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       placeholder="e.g. 250000"
                     />
                   </div>
@@ -1453,7 +1493,7 @@ export function QuoteWorksheetForm({
                           e.target.value as typeof newPaymentMethod
                         )
                       }
-                      className="mt-0.5 flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                      className="mt-0.5 flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       <option value="bank_transfer">Bank Transfer</option>
                       <option value="raast">Raast Instant</option>
@@ -1469,19 +1509,19 @@ export function QuoteWorksheetForm({
                     <Input
                       value={newPaymentRef}
                       onChange={(e) => setNewPaymentRef(e.target.value)}
-                      className="h-8 text-xs mt-0.5"
+                      className="mt-0.5 h-8 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       placeholder="TXN / Slip #"
                     />
                   </div>
                   <div>
                     <Label className="text-[10px] text-muted-foreground">
-                      Private Receipt Key (receipts/...)
+                      Private Receipt Key (receipts/…)
                     </Label>
                     <Input
                       value={newReceiptKey}
                       onChange={(e) => setNewReceiptKey(e.target.value)}
-                      className="h-8 font-mono text-xs mt-0.5"
-                      placeholder="receipts/..."
+                      className="mt-0.5 h-8 font-mono text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      placeholder="receipts/…"
                     />
                   </div>
                 </div>
@@ -1491,6 +1531,7 @@ export function QuoteWorksheetForm({
                     size="xs"
                     variant="ghost"
                     onClick={() => setShowPaymentForm(false)}
+                    className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     Cancel
                   </Button>
@@ -1498,9 +1539,13 @@ export function QuoteWorksheetForm({
                     type="submit"
                     size="xs"
                     disabled={isRecordingPayment || newPaymentAmount <= 0}
+                    className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
                   >
                     {isRecordingPayment ? (
-                      <Loader2 className="size-3 animate-spin" />
+                      <Loader2
+                        className="size-3 animate-spin motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
                     ) : null}
                     <span>Commit Verified Receipt</span>
                   </Button>
@@ -1509,17 +1554,17 @@ export function QuoteWorksheetForm({
             )}
 
             {paymentsHistory.length > 0 && (
-              <div className="space-y-1 pt-1 border-t border-border/60">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="flex flex-col gap-1 border-t border-border/60 pt-1">
+                <span className="text-[11px] font-semibold text-muted-foreground">
                   Recorded Payment Receipts ({paymentsHistory.length})
                 </span>
-                <div className="max-h-28 overflow-y-auto space-y-1">
+                <div className="flex max-h-28 flex-col gap-1 overflow-y-auto">
                   {paymentsHistory.map((p) => (
                     <div
                       key={p.id}
-                      className="flex items-center justify-between rounded bg-card px-2 py-1 text-[11px] border border-border/60"
+                      className="flex items-center justify-between rounded bg-background px-2 py-1 text-[11px]"
                     >
-                      <span className="font-mono font-bold text-emerald-800">
+                      <span className="font-mono font-bold text-status-success tabular-nums">
                         +PKR {p.amountPkr.toLocaleString()}
                       </span>
                       <span className="text-muted-foreground capitalize">
@@ -1534,8 +1579,8 @@ export function QuoteWorksheetForm({
           </div>
 
           {/* Notes */}
-          <div className="space-y-3">
-            <div className="space-y-1">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
               <Label
                 htmlFor="customer-notes"
                 className="text-xs font-medium text-foreground"
@@ -1545,29 +1590,29 @@ export function QuoteWorksheetForm({
               <Textarea
                 id="customer-notes"
                 rows={2}
-                placeholder="e.g. Includes Makkah VIP breakfast, private GMC transfer, and guided Ziyarat..."
+                placeholder="e.g. Includes Makkah VIP breakfast, private GMC transfer, and guided Ziyarat…"
                 value={customerNotes}
                 onChange={(e) => setCustomerNotes(e.target.value)}
-                className="text-xs"
+                className="text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 disabled={isSubmitting}
               />
             </div>
 
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <Label
                 htmlFor="internal-notes"
-                className="text-xs font-medium text-muted-foreground flex items-center gap-1"
+                className="flex items-center gap-1 text-xs font-medium text-muted-foreground"
               >
-                <Lock className="size-3 text-gold" />
+                <Lock className="size-3 text-gold-text" aria-hidden="true" />
                 <span>Private Internal Notes (Staff Only)</span>
               </Label>
               <Textarea
                 id="internal-notes"
                 rows={2}
-                placeholder="e.g. Supplier wholesale margin & allotment notes..."
+                placeholder="e.g. Supplier wholesale margin & allotment notes…"
                 value={internalNotes}
                 onChange={(e) => setInternalNotes(e.target.value)}
-                className="text-xs bg-muted/50"
+                className="bg-muted/50 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 disabled={isSubmitting}
               />
             </div>
@@ -1575,21 +1620,21 @@ export function QuoteWorksheetForm({
 
           {/* Append-Only Revision History (`OD-02`, `T-059`) */}
           {quoteHistory.length > 1 && (
-            <div className="rounded-lg border border-border bg-secondary/20 p-2.5 text-xs space-y-1.5">
+            <div className="flex flex-col gap-1.5 rounded-lg bg-secondary/45 p-2.5 text-xs">
               <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                <History className="size-3.5 text-primary" />
+                <History className="size-3.5 text-primary" aria-hidden="true" />
                 <span>Append-Only Quote Revisions ({quoteHistory.length})</span>
               </div>
-              <div className="max-h-28 overflow-y-auto space-y-1">
+              <div className="flex max-h-28 flex-col gap-1 overflow-y-auto">
                 {quoteHistory.map((rev) => (
                   <div
                     key={rev.id}
-                    className="flex items-center justify-between rounded bg-card px-2 py-1 text-[11px] border border-border/60"
+                    className="flex items-center justify-between rounded bg-background px-2 py-1 text-[11px]"
                   >
-                    <span className="font-mono font-bold text-primary">
+                    <span className="font-mono font-bold text-primary tabular-nums">
                       v{rev.version}
                     </span>
-                    <span className="font-mono font-semibold">
+                    <span className="font-mono font-semibold tabular-nums">
                       PKR {rev.grandTotalPkr.toLocaleString()}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
@@ -1619,9 +1664,9 @@ export function QuoteWorksheetForm({
                 variant="outline"
                 disabled={isSubmitting}
                 onClick={() => handleStatusChange("pending_quote")}
-                className="gap-1.5 text-xs font-semibold"
+                className="gap-1.5 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <RotateCcw className="size-3.5" />
+                <RotateCcw className="size-3.5" aria-hidden="true" />
                 <span>Reopen to Pending Quote</span>
               </Button>
             </div>
@@ -1633,12 +1678,15 @@ export function QuoteWorksheetForm({
                   variant="outline"
                   disabled={isSubmitting}
                   onClick={() => handleSave()}
-                  className="w-full text-xs font-medium"
+                  className="w-full text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {isSubmitting ? (
-                    <Loader2 className="size-3.5 animate-spin" />
+                    <Loader2
+                      className="size-3.5 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Save className="size-3.5" />
+                    <Save className="size-3.5" aria-hidden="true" />
                   )}
                   <span>Save Quote Revision</span>
                 </Button>
@@ -1651,12 +1699,15 @@ export function QuoteWorksheetForm({
                     application.status === "approved"
                   }
                   onClick={() => handleSave("quoted")}
-                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-medium"
+                  className="w-full bg-primary text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
                 >
                   {isSubmitting ? (
-                    <Loader2 className="size-3.5 animate-spin" />
+                    <Loader2
+                      className="size-3.5 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Send className="size-3.5" />
+                    <Send className="size-3.5" aria-hidden="true" />
                   )}
                   <span>Save &amp; Mark Quoted</span>
                 </Button>
@@ -1668,9 +1719,9 @@ export function QuoteWorksheetForm({
                   size="sm"
                   disabled={isSubmitting || grandTotalPkr <= 0}
                   onClick={() => handleSave("approved")}
-                  className="bg-emerald-800 text-white hover:bg-emerald-900 text-xs"
+                  className="bg-status-success text-xs text-primary-foreground transition-colors hover:bg-status-success/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                 >
-                  <CheckCircle className="size-3.5" />
+                  <CheckCircle className="size-3.5" aria-hidden="true" />
                   <span>Approve Booking</span>
                 </Button>
 
@@ -1681,7 +1732,7 @@ export function QuoteWorksheetForm({
                     size="sm"
                     disabled={isSubmitting}
                     onClick={() => handleStatusChange("rejected")}
-                    className="text-xs text-red-600 hover:bg-red-50"
+                    className="text-xs text-status-danger transition-colors hover:bg-status-danger-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                   >
                     Reject
                   </Button>
@@ -1691,7 +1742,7 @@ export function QuoteWorksheetForm({
                     size="sm"
                     disabled={isSubmitting}
                     onClick={() => handleStatusChange("cancelled")}
-                    className="text-xs text-muted-foreground hover:bg-muted"
+                    className="text-xs text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
                   >
                     Cancel
                   </Button>

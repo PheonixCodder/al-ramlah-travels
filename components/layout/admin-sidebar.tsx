@@ -31,6 +31,7 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar"
 import { authClient } from "@/lib/auth-client"
+import { cn } from "@/lib/utils"
 
 export interface NavItem {
   title: string
@@ -74,7 +75,7 @@ const NAV_GROUPS: NavGroup[] = [
         title: "Pilgrim Inbox & Quote Desk",
         href: "/admin/desk",
         icon: Inbox,
-        badgeClass: "bg-amber-500/25 text-amber-200 border border-amber-500/40",
+        badgeClass: "border border-gold/40 bg-gold/20 text-sidebar-foreground",
       },
     ],
   },
@@ -145,7 +146,7 @@ export function AdminSidebar({
               width={36}
               height={36}
               className="size-full object-contain"
-              priority
+              preload
             />
           </div>
           <div className="flex flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
@@ -153,11 +154,11 @@ export function AdminSidebar({
               Al Ramlah Travels
             </span>
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-semibold tracking-wider text-gold uppercase">
+              <span className="text-[11px] font-semibold text-gold">
                 Admin Portal
               </span>
-              <span className="text-[9px] text-sidebar-foreground/60">
-                · v1.0
+              <span className="text-[10px] text-sidebar-foreground/70">
+                v1.0
               </span>
             </div>
           </div>
@@ -177,7 +178,7 @@ export function AdminSidebar({
 
           return (
             <SidebarGroup key={group.groupLabel} className="p-0">
-              <SidebarGroupLabel className="px-2 text-[11px] font-semibold tracking-wider text-sidebar-foreground/50 uppercase group-data-[collapsible=icon]:hidden">
+              <SidebarGroupLabel className="px-2 text-xs font-semibold text-sidebar-foreground/75 group-data-[collapsible=icon]:hidden">
                 {group.groupLabel}
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -245,10 +246,13 @@ export function AdminSidebar({
                           isActive={isActive}
                           tooltip={item.title}
                           render={<Link href={item.href} />}
-                          className="transition-colors data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-gold cursor-pointer"
+                          className={cn(
+                            "cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-gold",
+                            badgeValue && (badgeValue.length >= 3 ? "pr-11" : "pr-9")
+                          )}
                         >
-                          <item.icon className="size-4 shrink-0" />
-                          <span className="truncate">{item.title}</span>
+                          <item.icon className="size-4 shrink-0" aria-hidden="true" />
+                          <span className="min-w-0 flex-1 truncate">{item.title}</span>
                         </SidebarMenuButton>
 
                         {badgeValue && (
@@ -276,15 +280,15 @@ export function AdminSidebar({
       {/* Sidebar Footer: User Profile, Open Public Website & Sign Out */}
       <SidebarFooter className="gap-2 p-2">
         {user && (
-          <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5 bg-sidebar-accent/50 border border-sidebar-border group-data-[collapsible=icon]:hidden">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-950/80 border border-gold/40 text-[11px] font-bold text-gold">
+          <div className="flex items-center gap-2.5 rounded-md border border-sidebar-border bg-sidebar-accent/50 px-2 py-1.5 group-data-[collapsible=icon]:hidden">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full border border-gold/40 bg-sidebar-accent text-[11px] font-bold text-gold">
               {(user.name || "AR").slice(0, 2).toUpperCase()}
             </div>
-            <div className="flex flex-col min-w-0">
+            <div className="flex min-w-0 flex-col">
               <span className="truncate text-xs font-medium text-sidebar-foreground">
                 {user.name || "Admin Staff"}
               </span>
-              <span className="truncate text-[10px] text-sidebar-foreground/60 capitalize">
+              <span className="truncate text-[11px] text-sidebar-foreground/75 capitalize">
                 {user.role === "super_admin" ? "Super Admin" : "Agency Staff"}
               </span>
             </div>
@@ -295,11 +299,12 @@ export function AdminSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Open Public Website"
+              className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
               render={
                 <Link href="/" target="_blank" rel="noopener noreferrer" />
               }
             >
-              <ExternalLink className="size-4 shrink-0 text-gold" />
+              <ExternalLink className="size-4 shrink-0 text-gold" aria-hidden="true" />
               <span className="truncate">Open Public Website</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -308,9 +313,9 @@ export function AdminSidebar({
             <SidebarMenuButton
               tooltip="Sign Out"
               onClick={handleSignOut}
-              className="text-red-300 hover:bg-red-950/30 hover:text-red-200 cursor-pointer"
+              className="cursor-pointer text-sidebar-foreground/90 transition-colors hover:bg-destructive/25 hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
             >
-              <LogOut className="size-4 shrink-0" />
+              <LogOut className="size-4 shrink-0" aria-hidden="true" />
               <span className="truncate">Sign Out</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

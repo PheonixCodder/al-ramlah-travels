@@ -14,6 +14,10 @@ export function readE2eFixturesSummary(): E2eSeedFixturesSummary {
 export async function assertZeroSeriousOrCriticalAxeViolations(
   page: Page
 ): Promise<void> {
+  await expect
+    .poll(async () => (await page.title()).trim().length, { timeout: 5_000 })
+    .toBeGreaterThan(0)
+
   const builder = new AxeBuilder({ page }).withTags([
     "wcag2a",
     "wcag2aa",

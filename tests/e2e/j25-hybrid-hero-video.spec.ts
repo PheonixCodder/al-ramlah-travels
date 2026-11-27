@@ -207,10 +207,11 @@ test.describe("J25: Hybrid Hero Video & Admin Catalog Media Uploader", () => {
         )
         expect(isPausedAfterClick).toBe(true)
 
-        // Resume video, move pointer & focus outside HeroSlider so auto-advance on `onEnded` fires (`~1.2s`)
+        // Resume video, move pointer onto sticky top header (keeping scrollY=0 so HeroSlider stays in viewport!) & blur focus so auto-advance on `onEnded` fires (`~1.2s`)
         await playBtn.click()
-        await pilgrimPage.locator("footer").hover().catch(() => undefined)
+        await pilgrimPage.mouse.move(10, 10)
         await pilgrimPage.evaluate(() => {
+          window.scrollTo(0, 0)
           if (document.activeElement instanceof HTMLElement) {
             document.activeElement.blur()
           }

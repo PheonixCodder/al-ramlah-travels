@@ -624,12 +624,14 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     const page = await adminCtx.newPage()
     await page.goto("/admin")
 
-    // Open Command Palette via Ctrl+K, verify Escape close + repeat open-post-lookup event
-    await page.keyboard.press("Control+k")
+    // Open Command Palette via Ctrl+K (retrying until React keydown effect hydrates), verify Escape close + repeat open-post-lookup event
     const searchInput = page
       .locator('input[cmdk-input], input[placeholder*="ART-"]')
       .first()
-    await expect(searchInput).toBeVisible()
+    await expect(async () => {
+      await page.keyboard.press("Control+k")
+      await expect(searchInput).toBeVisible({ timeout: 2_000 })
+    }).toPass({ timeout: 15_000 })
     await page.keyboard.press("Escape")
     await expect(searchInput).toBeHidden()
     await page.evaluate(() => {

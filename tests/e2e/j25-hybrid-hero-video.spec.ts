@@ -6,7 +6,7 @@ import path from "node:path"
 import type { Page } from "@playwright/test"
 import { eq, inArray } from "drizzle-orm"
 import * as schema from "../../db/schema"
-import { extractManagedHeroSlidesKey } from "../../lib/storage/upload-security"
+import { extractStorageKeyFromUrlOrKey } from "../../lib/storage/r2"
 import { STAFF_AUTH_FILE, SUPERADMIN_AUTH_FILE } from "./global-setup"
 import { assertZeroSeriousOrCriticalAxeViolations } from "./helpers/assertions"
 import { clearAuthRateLimits, getE2eDb } from "./helpers/db"
@@ -164,8 +164,10 @@ test.describe("J25: Hybrid Hero Video & Admin Catalog Media Uploader", () => {
       savedSlideId = savedRow.id
       createdSlideIds.push(savedSlideId)
 
-      uploadedPosterKey = extractManagedHeroSlidesKey(savedRow.imageUrl) ?? ""
-      uploadedVideoKey = extractManagedHeroSlidesKey(savedRow.videoUrl) ?? ""
+      uploadedPosterKey =
+        extractStorageKeyFromUrlOrKey(savedRow.imageUrl ?? "") ?? ""
+      uploadedVideoKey =
+        extractStorageKeyFromUrlOrKey(savedRow.videoUrl ?? "") ?? ""
       expect(uploadedPosterKey).toMatch(/^cms\/hero-slides\/images\//)
       expect(uploadedVideoKey).toMatch(/^cms\/hero-slides\/videos\//)
       createdStorageKeys.push(uploadedPosterKey, uploadedVideoKey)

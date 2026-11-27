@@ -155,6 +155,7 @@ export interface CatalogHubClientProps {
   testimonials: TestimonialData[]
   faqs: FaqData[]
   contactMessages?: ContactMessageData[]
+  canManageCms?: boolean
 }
 
 const TAB_CONFIG: Array<{
@@ -245,6 +246,7 @@ export function CatalogHubClient({
   testimonials,
   faqs,
   contactMessages = [],
+  canManageCms = true,
 }: CatalogHubClientProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -447,6 +449,7 @@ export function CatalogHubClient({
             initialFaqs={faqs}
             initialHotels={hotels}
             initialSubTab={resolvedTab.cmsSubTab ?? "slides"}
+            canManageCms={canManageCms}
           />
         )}
 

@@ -88,6 +88,8 @@ export const groupPackages = pgTable(
       .default([]),
     highlights: jsonb("highlights").$type<string[]>().notNull().default([]),
     bannerUrl: text("banner_url"),
+    coverImageUrl: text("cover_image_url"),
+    internalPosterUrl: text("internal_poster_url"),
     isFeatured: boolean("is_featured").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),

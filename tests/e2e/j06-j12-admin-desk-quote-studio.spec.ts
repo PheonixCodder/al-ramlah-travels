@@ -504,7 +504,19 @@ test.describe("J6–J12 Admin RBAC, Kanban Desk, Quote Worksheet, Copilot, Vouch
     const page = await adminCtx.newPage()
 
     await page.goto("/admin/studio")
-    // Verify Studio Hub passes WCAG 2.2 AA form label & target-size rules (covers: AC-7, AC-10)
+    // Verify default Package-First Workbench (`tab=packages`) passes WCAG 2.2 AA rules (covers: AC-3, AC-10)
+    await assertZeroSeriousOrCriticalAxeViolations(page)
+
+    // Switch to the AI Flyer & Poster Importer tab (`?tab=studio`) before Mode B extraction
+    await page
+      .getByRole("tab", { name: /2\. AI Flyer & Poster Importer/i })
+      .click()
+    await expect(
+      page.getByRole("button", {
+        name: /Mode B — Raw B2B Supplier Wholesale Flyer/i,
+      })
+    ).toBeVisible({ timeout: 15_000 })
+    // Verify Studio AI Flyer Importer tab also passes WCAG 2.2 AA form label & target-size rules (covers: AC-7, AC-10)
     await assertZeroSeriousOrCriticalAxeViolations(page)
 
     // J10: Select Mode B (`Raw B2B Supplier Wholesale Flyer` -> `net_plus_markup`, `25,000` PKR markup)

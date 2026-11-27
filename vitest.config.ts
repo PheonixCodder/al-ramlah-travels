@@ -17,6 +17,7 @@ export default defineConfig({
     setupFiles: ["./tests/setup/hermetic-env.ts"],
     include: [
       "tests/unit/**/*.test.ts",
+      "tests/unit/**/*.test.tsx",
       "tests/integration/**/*.test.ts",
       "tests/seo/**/*.test.ts",
       "tests/seo/**/*.test.tsx",

@@ -117,6 +117,98 @@ export interface PublicGroupDepartureDto {
   updatedAt: Date
 }
 
+export interface PublicPackageVisualInput {
+  coverImageUrl?: string | null
+  bannerUrl?: string | null
+  makkahHotel?: {
+    imageUrl?: string | null
+    galleryUrls?: ReadonlyArray<string | null | undefined> | null
+  } | null
+  madinahHotel?: {
+    imageUrl?: string | null
+    galleryUrls?: ReadonlyArray<string | null | undefined> | null
+  } | null
+}
+
+export interface ResolvedPublicPackageVisuals {
+  primaryImageUrl: string | null
+  secondaryHotelImageUrl: string | null
+}
+
+function cleanPublicVisualUrl(
+  raw: string | null | undefined
+): string | null {
+  if (typeof raw !== "string") return null
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  const cleanPath = trimmed.split("?")[0]?.split("#")[0]?.toLowerCase() ?? ""
+  if (cleanPath.endsWith(".pdf")) return null
+  return trimmed
+}
+
+function cleanLegacyCoverBannerUrl(
+  raw: string | null | undefined
+): string | null {
+  const cleaned = cleanPublicVisualUrl(raw)
+  if (!cleaned) return null
+  const lower = cleaned.toLowerCase()
+  if (
+    lower.includes("/flyers/") ||
+    lower.includes("/posters/spotlights/") ||
+    lower.includes("/posters/multi-sheets/") ||
+    lower.includes("/posters/wrapped") ||
+    lower.includes("alramlah-wrapped-")
+  ) {
+    return null
+  }
+  return cleaned
+}
+
+/**
+ * Resolves public website imagery for a group package (`AC-1`):
+ * - `primaryImageUrl`: explicit `coverImageUrl` -> linked Makkah hotel image/gallery -> linked Madinah hotel image/gallery -> non-poster legacy `bannerUrl` -> `null`.
+ * - `secondaryHotelImageUrl`: linked Madinah hotel image/gallery distinct from `primaryImageUrl` when possible.
+ * Never consumes `internalPosterUrl`.
+ */
+export function resolvePublicPackageVisuals(
+  input: PublicPackageVisualInput
+): ResolvedPublicPackageVisuals {
+  const explicitCover = cleanPublicVisualUrl(input.coverImageUrl)
+  const makkahPrimary = cleanPublicVisualUrl(input.makkahHotel?.imageUrl)
+  const madinahPrimary = cleanPublicVisualUrl(input.madinahHotel?.imageUrl)
+  const makkahGalleryFirst =
+    (input.makkahHotel?.galleryUrls ?? [])
+      .map(cleanPublicVisualUrl)
+      .find((url): url is string => Boolean(url)) ?? null
+  const madinahGalleryFirst =
+    (input.madinahHotel?.galleryUrls ?? [])
+      .map(cleanPublicVisualUrl)
+      .find((url): url is string => Boolean(url)) ?? null
+  const legacyBanner = cleanLegacyCoverBannerUrl(input.bannerUrl)
+
+  const primaryImageUrl =
+    explicitCover ??
+    makkahPrimary ??
+    madinahPrimary ??
+    makkahGalleryFirst ??
+    madinahGalleryFirst ??
+    legacyBanner ??
+    null
+
+  const madinahCandidates = [
+    madinahPrimary,
+    ...(input.madinahHotel?.galleryUrls ?? []).map(cleanPublicVisualUrl),
+  ].filter((url): url is string => Boolean(url))
+
+  const secondaryHotelImageUrl =
+    madinahCandidates.find((url) => url !== primaryImageUrl) ?? null
+
+  return {
+    primaryImageUrl,
+    secondaryHotelImageUrl,
+  }
+}
+
 export interface PublicGroupPackageDto {
   id: string
   slug: string
@@ -137,6 +229,9 @@ export interface PublicGroupPackageDto {
   multiHotelOptions: (typeof schema.groupPackages.$inferSelect)["multiHotelOptions"]
   highlights: string[]
   bannerUrl: string | null
+  coverImageUrl: string | null
+  resolvedCoverImageUrl: string | null
+  secondaryHotelImageUrl: string | null
   isFeatured: boolean
   isActive: boolean
   sortOrder: number
@@ -159,6 +254,17 @@ function toPublicGroupPackageDto(
     >
   }
 ): PublicGroupPackageDto {
+  const makkahHotel = row.makkahHotel ? toPublicHotelDto(row.makkahHotel) : null
+  const madinahHotel = row.madinahHotel
+    ? toPublicHotelDto(row.madinahHotel)
+    : null
+  const visuals = resolvePublicPackageVisuals({
+    coverImageUrl: row.coverImageUrl,
+    bannerUrl: row.bannerUrl,
+    makkahHotel,
+    madinahHotel,
+  })
+
   return {
     id: row.id,
     slug: row.slug,
@@ -182,7 +288,10 @@ function toPublicGroupPackageDto(
       ? row.multiHotelOptions
       : [],
     highlights: Array.isArray(row.highlights) ? row.highlights : [],
-    bannerUrl: row.bannerUrl,
+    bannerUrl: row.coverImageUrl ?? row.bannerUrl,
+    coverImageUrl: row.coverImageUrl,
+    resolvedCoverImageUrl: visuals.primaryImageUrl,
+    secondaryHotelImageUrl: visuals.secondaryHotelImageUrl,
     isFeatured: row.isFeatured,
     isActive: row.isActive,
     sortOrder: row.sortOrder,
@@ -197,8 +306,8 @@ function toPublicGroupPackageDto(
           isConnectingAvailable: row.airline.isConnectingAvailable,
         }
       : null,
-    makkahHotel: row.makkahHotel ? toPublicHotelDto(row.makkahHotel) : null,
-    madinahHotel: row.madinahHotel ? toPublicHotelDto(row.madinahHotel) : null,
+    makkahHotel,
+    madinahHotel,
     departures: row.departures.map((dep) => ({
       id: dep.id,
       packageId: dep.packageId,
@@ -600,6 +709,7 @@ export interface PublicHeroSlideDto {
   title: string
   subtitle: string
   imageUrl: string
+  videoUrl: string | null
   primaryCtaLabel: string
   primaryCtaUrl: string
   secondaryCtaLabel: string | null
@@ -621,6 +731,7 @@ export const getPublicHeroSlides = cache(
           title: schema.heroSlides.title,
           subtitle: schema.heroSlides.subtitle,
           imageUrl: schema.heroSlides.imageUrl,
+          videoUrl: schema.heroSlides.videoUrl,
           primaryCtaLabel: schema.heroSlides.primaryCtaLabel,
           primaryCtaUrl: schema.heroSlides.primaryCtaUrl,
           secondaryCtaLabel: schema.heroSlides.secondaryCtaLabel,

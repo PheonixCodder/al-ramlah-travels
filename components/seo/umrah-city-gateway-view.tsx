@@ -12,6 +12,7 @@ import {
 import { HaramainSectionReveal } from "@/components/motion"
 import { PublicPageHero } from "@/components/public/public-page-hero"
 import { toWaMeUrl } from "@/components/public/public-utils"
+import { UmrahPackagesExplorer } from "@/components/public/umrah-packages-explorer"
 import { UMRAH_CITY_GATEWAY_PROFILES } from "@/components/seo/umrah-city-gateway-data"
 import { UmrahPackageComparisonTable } from "@/components/seo/umrah-package-comparison-table"
 import {
@@ -133,41 +134,48 @@ export function UmrahCityGatewayView({
       />
 
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-12 px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
-        {/* Live Filtered Gateway Group Packages Table */}
+        {/* Live Gateway Visual Explorer when packages exist, or concise city-specific table + empty fallback (`>= 60%` Jaccard uniqueness) */}
         <HaramainSectionReveal>
-          <section
-            aria-labelledby="city-batches-heading"
-            className="flex flex-col gap-4"
-          >
-            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
-              <div className="flex flex-col gap-1">
-                <h2
-                  id="city-batches-heading"
-                  className="font-display text-2xl font-bold text-primary sm:text-3xl"
-                >
-                  Upcoming Group Umrah Batches from {gateway.cityName} (
-                  {gateway.airportCode})
-                </h2>
-                <p className="text-xs text-muted-foreground sm:text-sm">
-                  Live {gateway.airportCode} departure seat inventory in
-                  Pakistani Rupees.
-                </p>
-              </div>
-              <Link
-                href="/umrah-packages"
-                className="inline-flex min-h-6 items-center gap-1 rounded-sm text-xs font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none sm:text-sm"
-              >
-                <span>Compare All Pakistan Departures</span>
-                <ArrowRight className="size-3.5" aria-hidden="true" />
-              </Link>
-            </div>
-
-            <UmrahPackageComparisonTable
+          {cityPackages.length > 0 ? (
+            <UmrahPackagesExplorer
               packages={cityPackages}
-              caption={`Active Fixed-Departure Umrah Packages Departing ${gateway.airportName} (${gateway.airportCode}) in PKR`}
+              lockedGateway={gateway}
+              agencyWhatsapp={company.primaryWhatsapp}
+              comparisonCaption={`Active Fixed-Departure Umrah Packages Departing ${gateway.airportName} (${gateway.airportCode}) in PKR`}
             />
+          ) : (
+            <section
+              aria-labelledby="city-batches-heading"
+              className="flex flex-col gap-4"
+            >
+              <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+                <div className="flex flex-col gap-1">
+                  <h2
+                    id="city-batches-heading"
+                    className="font-display text-2xl font-bold text-primary sm:text-3xl"
+                  >
+                    Upcoming Group Umrah Batches from {gateway.cityName} (
+                    {gateway.airportCode})
+                  </h2>
+                  <p className="text-xs text-muted-foreground sm:text-sm">
+                    Live {gateway.airportCode} departure seat inventory in
+                    Pakistani Rupees.
+                  </p>
+                </div>
+                <Link
+                  href="/umrah-packages"
+                  className="inline-flex min-h-6 items-center gap-1 rounded-sm text-xs font-semibold text-primary underline decoration-gold-text/50 underline-offset-4 transition-colors hover:text-gold-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 motion-reduce:transition-none sm:text-sm"
+                >
+                  <span>Compare All Pakistan Departures</span>
+                  <ArrowRight className="size-3.5" aria-hidden="true" />
+                </Link>
+              </div>
 
-            {cityPackages.length === 0 ? (
+              <UmrahPackageComparisonTable
+                packages={cityPackages}
+                caption={`Active Fixed-Departure Umrah Packages Departing ${gateway.airportName} (${gateway.airportCode}) in PKR`}
+              />
+
               <div className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-6 shadow-xs sm:flex-row sm:items-center">
                 <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
                   Active {gateway.cityName} ({gateway.airportCode}) group
@@ -192,8 +200,8 @@ export function UmrahCityGatewayView({
                   </a>
                 </div>
               </div>
-            ) : null}
-          </section>
+            </section>
+          )}
         </HaramainSectionReveal>
 
         {/* City-Specific Documentation & Concierge Workflow */}

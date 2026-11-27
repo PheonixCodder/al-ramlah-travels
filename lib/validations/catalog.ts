@@ -374,7 +374,9 @@ export const groupPackageSchema = z.object({
     .max(20)
     .default([]),
   highlights: z.array(z.string().trim().min(1).max(200)).max(30).default([]),
-  bannerUrl: safeOptionalAssetUrlSchema("Package banner URL"),
+  bannerUrl: safeNullableAssetUrlSchema("Package banner URL"),
+  coverImageUrl: safeNullableAssetUrlSchema("Package cover image URL"),
+  internalPosterUrl: safeNullableAssetUrlSchema("Internal poster URL"),
   ctaUrl: safeOptionalCtaUrlSchema(),
   ctaHref: safeOptionalCtaUrlSchema(),
   isFeatured: z.boolean().default(false),
@@ -382,74 +384,110 @@ export const groupPackageSchema = z.object({
   sortOrder: z.number().int().min(-1000).max(10_000).default(0),
 })
 
+const groupDepartureBaseFields = {
+  id: z.string().uuid().optional(),
+  batchCode: z.string().trim().min(1).max(32),
+  departureCityId: z.string().uuid(),
+  departureDate: isoCalendarDateSchema,
+  returnDate: isoCalendarDateSchema,
+  totalSeats: z.number().int().min(1).max(500),
+  bookedSeats: z.number().int().min(0).max(500).default(0),
+  status: z
+    .enum(["open", "filling_fast", "sold_out", "closed"])
+    .default("open"),
+  quadPriceOverridePkr: z
+    .number()
+    .int()
+    .min(0)
+    .max(500_000_000)
+    .optional()
+    .nullable(),
+  triplePriceOverridePkr: z
+    .number()
+    .int()
+    .min(0)
+    .max(500_000_000)
+    .optional()
+    .nullable(),
+  doublePriceOverridePkr: z
+    .number()
+    .int()
+    .min(0)
+    .max(500_000_000)
+    .optional()
+    .nullable(),
+  sharingPriceOverridePkr: z
+    .number()
+    .int()
+    .min(0)
+    .max(500_000_000)
+    .optional()
+    .nullable(),
+  outboundFlightNumber: z.string().trim().max(32).optional().nullable(),
+  returnFlightNumber: z.string().trim().max(32).optional().nullable(),
+  flightScheduleSummary: z.string().trim().max(500).optional().nullable(),
+  routingNote: z.string().trim().max(500).optional().nullable(),
+  baggageAllowance: z
+    .string()
+    .trim()
+    .max(120)
+    .default("23-KG Outbound / 46-KG Return")
+    .optional()
+    .nullable(),
+}
+
+function validateDepartureDatesAndSeats(
+  data: {
+    departureDate: string
+    returnDate: string
+    totalSeats: number
+    bookedSeats: number
+  },
+  ctx: z.RefinementCtx
+): void {
+  if (data.returnDate < data.departureDate) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["returnDate"],
+      message: `returnDate (${data.returnDate}) must be on or after departureDate (${data.departureDate})`,
+    })
+  }
+  if (data.bookedSeats > data.totalSeats) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["bookedSeats"],
+      message: `bookedSeats (${data.bookedSeats}) cannot exceed totalSeats (${data.totalSeats})`,
+    })
+  }
+}
+
 export const groupDepartureSchema = z
   .object({
-    id: z.string().uuid().optional(),
+    ...groupDepartureBaseFields,
     packageId: z.string().uuid(),
-    batchCode: z.string().trim().min(1).max(32),
-    departureCityId: z.string().uuid(),
-    departureDate: isoCalendarDateSchema,
-    returnDate: isoCalendarDateSchema,
-    totalSeats: z.number().int().min(1).max(500),
-    bookedSeats: z.number().int().min(0).max(500).default(0),
-    status: z
-      .enum(["open", "filling_fast", "sold_out", "closed"])
-      .default("open"),
-    quadPriceOverridePkr: z
-      .number()
-      .int()
-      .min(0)
-      .max(500_000_000)
-      .optional()
-      .nullable(),
-    triplePriceOverridePkr: z
-      .number()
-      .int()
-      .min(0)
-      .max(500_000_000)
-      .optional()
-      .nullable(),
-    doublePriceOverridePkr: z
-      .number()
-      .int()
-      .min(0)
-      .max(500_000_000)
-      .optional()
-      .nullable(),
-    sharingPriceOverridePkr: z
-      .number()
-      .int()
-      .min(0)
-      .max(500_000_000)
-      .optional()
-      .nullable(),
-    outboundFlightNumber: z.string().trim().max(32).optional().nullable(),
-    returnFlightNumber: z.string().trim().max(32).optional().nullable(),
-    flightScheduleSummary: z.string().trim().max(500).optional().nullable(),
-    routingNote: z.string().trim().max(500).optional().nullable(),
-    baggageAllowance: z
-      .string()
-      .trim()
-      .max(120)
-      .default("23-KG Outbound / 46-KG Return")
-      .optional(),
   })
-  .superRefine((data, ctx) => {
-    if (data.returnDate < data.departureDate) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["returnDate"],
-        message: `returnDate (${data.returnDate}) must be on or after departureDate (${data.departureDate})`,
-      })
-    }
-    if (data.bookedSeats > data.totalSeats) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["bookedSeats"],
-        message: `bookedSeats (${data.bookedSeats}) cannot exceed totalSeats (${data.totalSeats})`,
-      })
-    }
+  .superRefine(validateDepartureDatesAndSeats)
+
+export const groupPackageBatchInputSchema = z
+  .object({
+    ...groupDepartureBaseFields,
+    packageId: z.string().uuid().optional(),
   })
+  .superRefine(validateDepartureDatesAndSeats)
+
+export const upsertGroupPackageWithBatchesSchema = z.object({
+  package: groupPackageSchema,
+  batches: z.array(groupPackageBatchInputSchema).max(30).default([]),
+})
+
+export const cloneGroupDepartureBatchSchema = z.object({
+  sourceBatchId: z.string().uuid("Invalid source departure batch ID"),
+  targetCityIds: z
+    .array(z.string().uuid("Invalid target departure city ID"))
+    .min(1, "Select at least one target departure city")
+    .max(10, "Cannot clone into more than 10 target cities at once"),
+  departureDateOffsetDays: z.number().int().min(-365).max(365).default(0),
+})
 
 export const hajjPackageSchema = z.object({
   id: z.string().uuid().optional(),
@@ -520,4 +558,11 @@ export type AgencySettingsInput = z.infer<typeof agencySettingsSchema>
 export type CreateStaffUserInput = z.infer<typeof createStaffUserSchema>
 export type GroupPackageInput = z.infer<typeof groupPackageSchema>
 export type GroupDepartureInput = z.infer<typeof groupDepartureSchema>
+export type GroupPackageBatchInput = z.infer<typeof groupPackageBatchInputSchema>
+export type UpsertGroupPackageWithBatchesInput = z.infer<
+  typeof upsertGroupPackageWithBatchesSchema
+>
+export type CloneGroupDepartureBatchInput = z.infer<
+  typeof cloneGroupDepartureBatchSchema
+>
 export type HajjPackageInput = z.infer<typeof hajjPackageSchema>

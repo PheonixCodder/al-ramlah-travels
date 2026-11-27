@@ -438,8 +438,8 @@ export async function searchPostPackagesCommandAction(
       infantPricePkr: row.pkg.infantPricePkr,
       netSharingPkr: isSuperAdmin ? sharingPkr : 0,
       commissionPkr: 0,
-      spotlightPosterUrl: row.pkg.bannerUrl,
-      multiSheetImageUrl: row.pkg.bannerUrl,
+      spotlightPosterUrl: row.pkg.internalPosterUrl ?? row.pkg.bannerUrl,
+      multiSheetImageUrl: row.pkg.internalPosterUrl ?? row.pkg.bannerUrl,
       availableSeats,
     })
 

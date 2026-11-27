@@ -19,8 +19,21 @@ import { Label } from "@/components/ui/label"
 import { upsertGroupDeparture } from "@/app/actions/groups"
 import { Loader2, Plane, Plus } from "lucide-react"
 
-function generateDefaultBatchCode(): string {
-  return `BATCH-${Math.floor(1000 + Math.random() * 9000)}`
+function buildDefaultBatchCode(todayPktIso?: string): string {
+  const dateStamp = (todayPktIso ?? "2026-12-01").replace(/-/g, "").slice(2, 8)
+  return `BATCH-${dateStamp}-LHE`
+}
+
+function addDaysToIso(isoDate: string, days: number): string {
+  const parts = isoDate.split("-").map((n) => Number.parseInt(n, 10))
+  const utc = new Date(
+    Date.UTC(parts[0] || 2026, (parts[1] || 1) - 1, (parts[2] || 1) + days)
+  )
+  return [
+    String(utc.getUTCFullYear()).padStart(4, "0"),
+    String(utc.getUTCMonth() + 1).padStart(2, "0"),
+    String(utc.getUTCDate()).padStart(2, "0"),
+  ].join("-")
 }
 
 export interface DepartureBatchData {
@@ -48,6 +61,9 @@ interface DepartureBatchDialogProps {
   batch?: DepartureBatchData
   packageId: string
   cities: { id: string; cityName: string; airportCode: string }[]
+  todayPktIso?: string
+  defaultDurationDays?: number
+  onSaved?: (savedBatch: DepartureBatchData) => void
   trigger?: React.ReactNode
 }
 
@@ -55,28 +71,40 @@ function DepartureBatchFormBody({
   batch,
   packageId,
   cities,
+  todayPktIso,
+  defaultDurationDays = 14,
   onSuccess,
 }: {
   batch?: DepartureBatchData
   packageId: string
   cities: { id: string; cityName: string; airportCode: string }[]
-  onSuccess: () => void
+  todayPktIso?: string
+  defaultDurationDays?: number
+  onSuccess: (savedBatch: DepartureBatchData) => void
 }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const defaultDeparture = todayPktIso
+    ? addDaysToIso(todayPktIso, 30)
+    : "2026-12-15"
+  const defaultReturn = addDaysToIso(
+    defaultDeparture,
+    Math.max(1, defaultDurationDays - 1)
+  )
+
   const [batchCode, setBatchCode] = useState(
-    () => batch?.batchCode ?? generateDefaultBatchCode()
+    () => batch?.batchCode ?? buildDefaultBatchCode(todayPktIso)
   )
   const [departureCityId, setDepartureCityId] = useState(
     batch?.departureCityId ?? (cities[0]?.id || "")
   )
   const [departureDate, setDepartureDate] = useState(
-    batch?.departureDate ?? "2026-11-15"
+    batch?.departureDate ?? defaultDeparture
   )
   const [returnDate, setReturnDate] = useState(
-    batch?.returnDate ?? "2026-11-29"
+    batch?.returnDate ?? defaultReturn
   )
   const [totalSeats, setTotalSeats] = useState(batch?.totalSeats ?? 45)
   const [bookedSeats, setBookedSeats] = useState(batch?.bookedSeats ?? 0)
@@ -140,8 +168,8 @@ function DepartureBatchFormBody({
         routingNote: routingNote || undefined,
         baggageAllowance: baggageAllowance || undefined,
       })
-      if (res.success) {
-        onSuccess()
+      if (res.success && res.data) {
+        onSuccess(res.data as DepartureBatchData)
         router.refresh()
       } else {
         const maybeError =
@@ -420,6 +448,9 @@ export function DepartureBatchDialog({
   batch,
   packageId,
   cities,
+  todayPktIso,
+  defaultDurationDays,
+  onSaved,
   trigger,
 }: DepartureBatchDialogProps) {
   const [open, setOpen] = useState(false)
@@ -442,7 +473,7 @@ export function DepartureBatchDialog({
             <Button
               variant="outline"
               size="xs"
-              className="cursor-pointer gap-1.5 border-border bg-card text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="cursor-pointer gap-1.5 border-border bg-card text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px"
             >
               <Plus className="size-3.5" aria-hidden="true" />
               <span>Add Batch</span>
@@ -456,7 +487,12 @@ export function DepartureBatchDialog({
           batch={batch}
           packageId={packageId}
           cities={cities}
-          onSuccess={() => setOpen(false)}
+          todayPktIso={todayPktIso}
+          defaultDurationDays={defaultDurationDays}
+          onSuccess={(saved) => {
+            setOpen(false)
+            onSaved?.(saved)
+          }}
         />
       </DialogContent>
     </Dialog>

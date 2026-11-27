@@ -54,6 +54,8 @@ export interface GroupPackageData {
   }>
   highlights: string[]
   bannerUrl?: string | null
+  coverImageUrl?: string | null
+  internalPosterUrl?: string | null
   isFeatured: boolean
   isActive: boolean
   sortOrder: number

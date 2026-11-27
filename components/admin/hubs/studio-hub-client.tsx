@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import {
   Sparkles,
@@ -49,10 +50,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import {
-  GroupsClient,
-  type PackageWithRelations,
-} from "@/components/admin/catalog/groups-client"
+import type { PackageWithRelations } from "@/components/admin/catalog/groups-client"
+import { PackageWorkbenchClient } from "@/components/admin/studio/package-workbench-client"
+import type { StudioHotelOption } from "@/components/admin/studio/package-builder-sheet"
 import {
   approveStagedSupplierFlyerAction,
   ingestFinishedPosterOrFlyerAction,
@@ -363,21 +363,22 @@ export interface PostAssetRecord {
 
 export interface StudioHubClientProps {
   initialTab?: string
+  todayPktIso?: string
   suppliers: SupplierRecord[]
   supplierFlyers: SupplierFlyerRecord[]
   postAssets: PostAssetRecord[]
   groupPackages: PackageWithRelations[]
   airlines: { id: string; name: string; iataCode: string }[]
-  hotels: { id: string; name: string; city: string; starRating: number }[]
+  hotels: StudioHotelOption[]
   departureCities: { id: string; cityName: string; airportCode: string }[]
 }
 
-export type StudioTabKey = "studio" | "vault" | "packages"
+export type StudioTabKey = "packages" | "studio" | "vault"
 
 const VALID_STUDIO_TABS: readonly StudioTabKey[] = [
+  "packages",
   "studio",
   "vault",
-  "packages",
 ]
 
 /**
@@ -440,7 +441,8 @@ async function uploadFileDirectToR2(
 }
 
 export function StudioHubClient({
-  initialTab = "studio",
+  initialTab = "packages",
+  todayPktIso = "2026-11-24",
   suppliers: initialSuppliers,
   supplierFlyers: initialFlyers,
   postAssets: initialAssets,
@@ -461,8 +463,12 @@ export function StudioHubClient({
     if (initialTab && VALID_STUDIO_TABS.includes(initialTab as StudioTabKey)) {
       return initialTab as StudioTabKey
     }
-    return "studio"
+    return "packages"
   }, [searchParams, initialTab])
+
+  const [packageBuilderOpen, setPackageBuilderOpen] = React.useState(false)
+  const [builderEditingPackage, setBuilderEditingPackage] =
+    React.useState<PackageWithRelations | null>(null)
 
   const switchTab = React.useCallback(
     (tab: StudioTabKey) => {
@@ -1615,115 +1621,139 @@ export function StudioHubClient({
   return (
     <div className="flex flex-col gap-6">
       {/* ==================================================================== */}
-      {/* FLAGSHIP HARAMAIN LUXURY HEADER & TOP TABS                           */}
+      {/* OPERATE WORKSPACE HEADER & TOP TABS                                  */}
       {/* ==================================================================== */}
-      <div className="relative overflow-hidden rounded-2xl border border-gold/40 bg-gradient-to-r from-sidebar via-primary to-sidebar p-6 text-primary-foreground shadow-md">
-        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="font-display text-2xl font-bold tracking-tight text-primary-foreground sm:text-3xl">
-              4K Poster &amp; Package Studio
-            </h1>
-            <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-primary-foreground/85 sm:text-sm">
-              Drop your finished 4K Gemini Ultra posters or PDFs. Streams
-              directly to Cloudflare R2, auto-generates 1080×1520 social JPEGs,
-              extracts every package card &amp; ART code via AI, tracks
-              wholesale commission vs. supplier net cost, and publishes to your
-              website in 1 click.
-            </p>
-            <div className="mt-2.5 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full border border-gold/50 bg-gold/15 px-3 py-0.5 text-[11px] font-bold text-gold">
-                <Sparkles className="size-3 text-gold" aria-hidden="true" />
-                <span>Multimodal AI &amp; 4K Poster Studio</span>
-              </span>
-              <span className="font-mono text-xs text-primary-foreground/75">
-                /admin/studio
-              </span>
-            </div>
-          </div>
+      <div className="flex flex-col gap-4 border-b border-border pb-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-sans text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+            Umrah Packages &amp; Studio
+          </h1>
+          <p className="text-xs text-muted-foreground sm:text-sm">
+            Build fixed-departure Umrah packages, schedule multi-city batches,
+            and extract 4K promotional posters.
+          </p>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setIsSupplierModalOpen(true)}
-              className="cursor-pointer gap-1.5 border-gold/50 bg-primary-foreground/10 text-xs font-semibold text-primary-foreground hover:bg-primary-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
-            >
-              <Building2 className="size-3.5 text-gold" aria-hidden="true" />
-              <span>+ Add B2B Supplier</span>
-            </Button>
-
+        <div className="flex flex-wrap items-center gap-2">
+          {activeTab === "packages" && (
             <Button
               type="button"
               size="sm"
-              onClick={() => router.push("/admin/campaigns?tab=social")}
-              className="cursor-pointer gap-1.5 bg-gold text-xs font-bold text-gold-foreground shadow-xs hover:bg-gold/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
+              onClick={() => {
+                setBuilderEditingPackage(null)
+                setPackageBuilderOpen(true)
+              }}
+              className="cursor-pointer gap-1.5 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
             >
-              <Share2 className="size-3.5" aria-hidden="true" />
-              <span>Go to Campaigns Hub</span>
+              <Plus className="size-3.5" aria-hidden="true" />
+              <span>Create Package &amp; Batches</span>
             </Button>
-          </div>
+          )}
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsSupplierModalOpen(true)}
+            className="cursor-pointer gap-1.5 border-border bg-card text-xs font-semibold text-foreground hover:border-gold-border hover:bg-secondary/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
+          >
+            <Building2 className="size-3.5 text-gold-text" aria-hidden="true" />
+            <span>+ Add B2B Supplier</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            render={<Link href="/admin/campaigns?tab=social" />}
+            nativeButton={false}
+            className="cursor-pointer gap-1.5 border-border bg-card text-xs font-semibold text-foreground hover:border-gold-border hover:bg-secondary/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px"
+          >
+            <Share2 className="size-3.5 text-gold-text" aria-hidden="true" />
+            <span>Campaigns Hub</span>
+          </Button>
         </div>
       </div>
 
       {/* ==================================================================== */}
-      {/* URL-SYNCED TABS SWITCHER                                             */}
+      {/* URL-SYNCED 3-TAB SEGMENTED TOOLBAR                                   */}
       {/* ==================================================================== */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+      <div
+        role="tablist"
+        aria-label="Studio workspace views"
+        className="flex flex-wrap items-center gap-2 border-b border-border pb-3"
+      >
         <Button
           type="button"
-          variant={activeTab === "studio" ? "default" : "outline"}
-          onClick={() => switchTab("studio")}
+          role="tab"
+          aria-selected={activeTab === "packages"}
+          variant={activeTab === "packages" ? "default" : "outline"}
+          onClick={() => switchTab("packages")}
           className={cn(
-            "cursor-pointer gap-2 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
-            activeTab === "studio"
+            "cursor-pointer gap-2 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px motion-reduce:transition-none",
+            activeTab === "packages"
               ? "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
-              : "border-border hover:border-gold"
+              : "border-border hover:border-gold-border"
           )}
         >
-          <Sparkles className="size-3.5 text-gold" aria-hidden="true" />
-          <span>Upload 4K Poster &amp; Extract</span>
-        </Button>
-
-        <Button
-          type="button"
-          variant={activeTab === "vault" ? "default" : "outline"}
-          onClick={() => switchTab("vault")}
-          className={cn(
-            "cursor-pointer gap-2 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
-            activeTab === "vault"
-              ? "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
-              : "border-border hover:border-gold"
-          )}
-        >
-          <Layers className="size-3.5 text-gold" aria-hidden="true" />
-          <span>4K Posters &amp; Extracted Cards Vault</span>
+          <Globe className="size-3.5 text-gold" aria-hidden="true" />
+          <span>1. Umrah Packages &amp; Batches</span>
           <Badge
             variant="secondary"
-            className="ml-1 bg-primary-foreground/20 px-1.5 py-0 font-mono text-[10px] font-bold text-inherit tabular-nums"
+            className={cn(
+              "ml-0.5 px-1.5 py-0 text-[11px] font-semibold",
+              activeTab === "packages"
+                ? "bg-primary-foreground/20 text-primary-foreground"
+                : "bg-secondary text-foreground"
+            )}
           >
-            {flyersList.length} Posters · {assetsList.length} Assets
+            <span className="font-mono tabular-nums">
+              {groupPackages.length}
+            </span>
           </Badge>
         </Button>
 
         <Button
           type="button"
-          variant={activeTab === "packages" ? "default" : "outline"}
-          onClick={() => switchTab("packages")}
+          role="tab"
+          aria-selected={activeTab === "studio"}
+          variant={activeTab === "studio" ? "default" : "outline"}
+          onClick={() => switchTab("studio")}
           className={cn(
-            "cursor-pointer gap-2 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none",
-            activeTab === "packages"
+            "cursor-pointer gap-2 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px motion-reduce:transition-none",
+            activeTab === "studio"
               ? "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
-              : "border-border hover:border-gold"
+              : "border-border hover:border-gold-border"
           )}
         >
-          <Globe className="size-3.5 text-gold" aria-hidden="true" />
-          <span>Live Website Group Packages &amp; Batches</span>
+          <Sparkles className="size-3.5 text-gold" aria-hidden="true" />
+          <span>2. AI Flyer &amp; Poster Importer</span>
+        </Button>
+
+        <Button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "vault"}
+          variant={activeTab === "vault" ? "default" : "outline"}
+          onClick={() => switchTab("vault")}
+          className={cn(
+            "cursor-pointer gap-2 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px motion-reduce:transition-none",
+            activeTab === "vault"
+              ? "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
+              : "border-border hover:border-gold-border"
+          )}
+        >
+          <Layers className="size-3.5 text-gold" aria-hidden="true" />
+          <span>3. Internal 4K Poster Vault</span>
           <Badge
             variant="secondary"
-            className="ml-1 bg-primary-foreground/20 px-1.5 py-0 font-mono text-[10px] font-bold text-inherit tabular-nums"
+            className={cn(
+              "ml-0.5 px-1.5 py-0 text-[11px] font-semibold",
+              activeTab === "vault"
+                ? "bg-primary-foreground/20 text-primary-foreground"
+                : "bg-secondary text-foreground"
+            )}
           >
-            {groupPackages.length} Packages
+            <span className="font-mono tabular-nums">{flyersList.length}</span>
           </Badge>
         </Button>
       </div>
@@ -2701,38 +2731,53 @@ export function StudioHubClient({
                                     </td>
 
                                     {/* Supplier Net Price */}
-                                    <td className="py-3 pr-3 text-right align-top font-mono tabular-nums">
+                                    <td className="py-3 pr-3 text-right align-top tabular-nums">
                                       <div className="text-muted-foreground">
-                                        PKR {pkg.netSharingPkr.toLocaleString()}
+                                        <span>PKR </span>
+                                        <span className="font-mono">
+                                          {pkg.netSharingPkr.toLocaleString()}
+                                        </span>
                                       </div>
                                       <div className="text-[11px] font-semibold text-status-success">
-                                        +PKR{" "}
-                                        {pkg.commissionPkr.toLocaleString()}{" "}
-                                        Comm.
+                                        <span>+PKR </span>
+                                        <span className="font-mono">
+                                          {pkg.commissionPkr.toLocaleString()}
+                                        </span>{" "}
+                                        <span>Comm.</span>
                                       </div>
                                     </td>
 
                                     {/* Al Ramlah Retail Price */}
-                                    <td className="py-3 pr-3 text-right align-top font-mono tabular-nums">
+                                    <td className="py-3 pr-3 text-right align-top tabular-nums">
                                       <div className="text-sm font-bold text-primary">
-                                        S:{" "}
-                                        {formatStudioPkrTier(
-                                          pkg.retailSharingPkr
-                                        )}
+                                        <span>S: </span>
+                                        <span className="font-mono">
+                                          {formatStudioPkrTier(
+                                            pkg.retailSharingPkr
+                                          )}
+                                        </span>
                                       </div>
                                       <div className="text-[11px] text-foreground">
-                                        Q:{" "}
-                                        {formatStudioPkrTier(pkg.retailQuadPkr)}{" "}
-                                        · T:{" "}
-                                        {formatStudioPkrTier(
-                                          pkg.retailTriplePkr
-                                        )}
+                                        <span>Q: </span>
+                                        <span className="font-mono">
+                                          {formatStudioPkrTier(
+                                            pkg.retailQuadPkr
+                                          )}
+                                        </span>{" "}
+                                        <span>| T: </span>
+                                        <span className="font-mono">
+                                          {formatStudioPkrTier(
+                                            pkg.retailTriplePkr
+                                          )}
+                                        </span>
                                       </div>
                                       <div className="text-[11px] text-muted-foreground">
-                                        D:{" "}
-                                        {formatStudioPkrTier(
-                                          pkg.retailDoublePkr
-                                        )}
+                                        <span>D: </span>
+                                        <span className="font-mono">
+                                          {formatStudioPkrTier(
+                                            pkg.retailDoublePkr
+                                          )}
+                                        </span>
                                       </div>
                                     </td>
 
@@ -3135,49 +3180,22 @@ export function StudioHubClient({
       )}
 
       {/* ==================================================================== */}
-      {/* TAB 3: LIVE WEBSITE GROUP PACKAGES & SEAT BATCHES                     */}
+      {/* TAB 1 (DEFAULT): UMRAH PACKAGES & BATCHES WORKBENCH                  */}
       {/* ==================================================================== */}
       {activeTab === "packages" && (
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col justify-between gap-3 rounded-xl border border-status-success-border bg-status-success-bg/70 p-4 sm:flex-row sm:items-center">
-            <div>
-              <h3 className="flex items-center gap-1.5 font-display text-sm font-bold text-status-success">
-                <Globe
-                  className="size-4 text-status-success"
-                  aria-hidden="true"
-                />
-                <span>
-                  Live Website Group Packages &amp; Departure Batches Desk
-                </span>
-              </h3>
-              <p className="mt-0.5 text-xs text-foreground/80">
-                Manage all public group packages published on the homepage,
-                track real-time seat occupancy meters, and configure seasonal
-                flight batches.
-              </p>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => switchTab("vault")}
-              className="cursor-pointer gap-1.5 self-start border-primary text-xs font-semibold text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:self-auto"
-            >
-              <Sparkles
-                className="size-3.5 text-gold-text"
-                aria-hidden="true"
-              />
-              <span>Publish More from Vault</span>
-            </Button>
-          </div>
-
-          <GroupsClient
-            initialPackages={groupPackages}
-            airlines={airlines}
-            hotels={hotels}
-            departureCities={departureCities}
-          />
-        </div>
+        <PackageWorkbenchClient
+          initialPackages={groupPackages}
+          airlines={airlines}
+          hotels={hotels}
+          departureCities={departureCities}
+          todayPktIso={todayPktIso}
+          onSwitchToVault={() => switchTab("vault")}
+          onSwitchToStudio={() => switchTab("studio")}
+          builderOpen={packageBuilderOpen}
+          onBuilderOpenChange={setPackageBuilderOpen}
+          editingPackage={builderEditingPackage}
+          onEditingPackageChange={setBuilderEditingPackage}
+        />
       )}
 
       {/* ==================================================================== */}
@@ -3930,28 +3948,36 @@ export function StudioHubClient({
                     <span className="text-muted-foreground">
                       Retail Sharing:
                     </span>
-                    <span className="font-mono font-bold text-primary tabular-nums">
-                      PKR {editForm.rawSharingPkr.toLocaleString()}
+                    <span className="font-bold text-primary tabular-nums">
+                      <span>PKR </span>
+                      <span className="font-mono">
+                        {editForm.rawSharingPkr.toLocaleString()}
+                      </span>
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">
                       Commission Margin:
                     </span>
-                    <span className="font-mono font-bold text-status-success tabular-nums">
-                      +PKR {editForm.commissionPkr.toLocaleString()}
+                    <span className="font-bold text-status-success tabular-nums">
+                      <span>+PKR </span>
+                      <span className="font-mono">
+                        {editForm.commissionPkr.toLocaleString()}
+                      </span>
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">
                       Net Supplier Payable:
                     </span>
-                    <span className="font-mono font-bold text-foreground tabular-nums">
-                      PKR{" "}
-                      {Math.max(
-                        0,
-                        editForm.rawSharingPkr - editForm.commissionPkr
-                      ).toLocaleString()}
+                    <span className="font-bold text-foreground tabular-nums">
+                      <span>PKR </span>
+                      <span className="font-mono">
+                        {Math.max(
+                          0,
+                          editForm.rawSharingPkr - editForm.commissionPkr
+                        ).toLocaleString()}
+                      </span>
                     </span>
                   </div>
                 </div>

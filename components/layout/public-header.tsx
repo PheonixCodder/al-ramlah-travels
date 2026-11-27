@@ -88,6 +88,7 @@ export function PublicHeader({
 }: PublicHeaderProps = {}) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = React.useState(false)
+  const [isDocked, setIsDocked] = React.useState(false)
   const [prayerSchedule, setPrayerSchedule] = React.useState(() =>
     computeHaramainPrayerTimes()
   )
@@ -97,6 +98,17 @@ export function PublicHeader({
       setPrayerSchedule(computeHaramainPrayerTimes())
     }, 60_000)
     return () => window.clearInterval(timer)
+  }, [])
+
+  // Topbar scrolls away naturally 1:1 in document flow over the first 36px while <header> docks cleanly at top: 0
+  React.useEffect(() => {
+    const syncScrollState = () => {
+      setIsDocked(window.scrollY > 36)
+    }
+
+    syncScrollState()
+    window.addEventListener("scroll", syncScrollState, { passive: true })
+    return () => window.removeEventListener("scroll", syncScrollState)
   }, [])
 
   const telHref = toTelHref(agencyPhone)
@@ -111,30 +123,35 @@ export function PublicHeader({
   )
 
   return (
-    <div className="w-full">
-      {/* Top Utility Strip */}
-      <div className="border-b border-primary-foreground/10 bg-primary px-4 py-1.5 text-xs text-primary-foreground sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-1">
-          {/* Left: Contact Hotlines */}
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 sm:gap-x-4">
+    <>
+      {/* 1. Top Utility Strip — Normal document flow (h-9 = 2.25rem); scrolls away naturally 1:1 with page */}
+      <div className="w-full border-b border-primary-foreground/10 bg-primary px-4 text-xs text-primary-foreground sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-9 max-w-7xl flex-nowrap items-center justify-between gap-3">
+          {/* Left: Contact Hotlines & Concierge Location */}
+          <div className="flex min-w-0 items-center gap-2.5 whitespace-nowrap sm:gap-3.5">
             <a
               href={telHref}
-              className="inline-flex min-h-6 items-center gap-1.5 rounded-sm transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
+              className="inline-flex min-h-6 shrink-0 items-center gap-1.5 rounded-sm transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
               <Phone
                 className="size-3.5 shrink-0 text-gold"
                 aria-hidden="true"
               />
-              <span className="font-mono tabular-nums">{primaryDisplay}</span>
+              <span className="font-mono font-medium tabular-nums">
+                {primaryDisplay}
+              </span>
             </a>
             {secondaryDisplay && (
               <>
-                <span className="text-primary-foreground/35" aria-hidden="true">
+                <span
+                  className="hidden text-primary-foreground/35 xl:inline"
+                  aria-hidden="true"
+                >
                   ·
                 </span>
                 <a
                   href={secTelHref}
-                  className="inline-flex min-h-6 items-center gap-1.5 rounded-sm transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
+                  className="hidden min-h-6 shrink-0 items-center gap-1.5 rounded-sm text-primary-foreground/90 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 xl:inline-flex motion-reduce:transition-none"
                 >
                   <span className="font-mono tabular-nums">
                     {secondaryDisplay}
@@ -143,16 +160,14 @@ export function PublicHeader({
               </>
             )}
             <span
-              className="hidden text-primary-foreground/35 sm:inline"
+              className="hidden h-3.5 w-px shrink-0 bg-primary-foreground/20 lg:inline-block"
               aria-hidden="true"
-            >
-              |
-            </span>
+            />
             <a
               href={waHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-6 items-center gap-1.5 rounded-sm transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
+              className="hidden min-h-6 shrink-0 items-center gap-1.5 rounded-sm transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 lg:inline-flex motion-reduce:transition-none"
             >
               <MessageCircle
                 className="size-3.5 shrink-0 text-gold"
@@ -161,28 +176,30 @@ export function PublicHeader({
               <span>24/7 Pilgrim Support</span>
             </a>
             <span
-              className="hidden text-primary-foreground/35 2xl:inline"
+              className="hidden h-3.5 w-px shrink-0 bg-primary-foreground/20 xl:inline-block"
               aria-hidden="true"
+            />
+            <Link
+              href="/#contact"
+              title={officeAddress}
+              className="hidden min-h-6 min-w-0 items-center gap-1.5 rounded-sm text-primary-foreground/85 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 xl:inline-flex motion-reduce:transition-none"
             >
-              |
-            </span>
-            <span className="hidden items-center gap-1 text-primary-foreground/85 2xl:inline-flex">
               <MapPin
                 className="size-3.5 shrink-0 text-gold"
                 aria-hidden="true"
               />
-              <span>{officeAddress}</span>
-            </span>
+              <span className="truncate">Askari 10, Lahore Cantt</span>
+            </Link>
           </div>
 
           {/* Right: Zero-CLS Fixed-Width Haramain Prayer Time Pill (`OD-08`, `SEO-030`) & Quick Jump */}
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2.5 sm:gap-3">
             <div
-              className="hidden min-h-6 w-[296px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-gold/30 bg-primary-foreground/10 px-2.5 py-0.5 text-[11px] font-medium whitespace-nowrap text-primary-foreground md:inline-flex"
+              className="hidden min-h-6 w-[296px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-gold/35 bg-sidebar/55 px-2.5 py-0.5 text-[11px] font-medium whitespace-nowrap text-primary-foreground md:inline-flex"
               title="Umm al-Qura astronomical Makkah & Madinah Haramain prayer schedule in Arabia Standard Time (AST / UTC+3)"
             >
               <Clock className="size-3 shrink-0 text-gold" aria-hidden="true" />
-              <span>Next:</span>
+              <span className="text-primary-foreground/80">Next:</span>
               <span
                 className="font-semibold text-gold"
                 suppressHydrationWarning
@@ -218,38 +235,45 @@ export function PublicHeader({
             </div>
             <Link
               href="/#track-status"
-              className="inline-flex min-h-6 items-center gap-1 rounded-sm text-[11px] font-medium whitespace-nowrap underline underline-offset-4 transition-colors hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
+              className="inline-flex min-h-6 shrink-0 items-center gap-1.5 rounded-full border border-gold/30 bg-primary-foreground/10 px-2.5 py-0.5 text-[11px] font-medium whitespace-nowrap text-primary-foreground transition-colors hover:border-gold/60 hover:bg-primary-foreground/15 hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
-              <Search className="size-3 shrink-0" aria-hidden="true" />
+              <Search className="size-3 shrink-0 text-gold" aria-hidden="true" />
               <span>Track Application</span>
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Main Sticky Header */}
-      <header className="sticky top-0 z-40 w-full border-b border-border bg-background">
+      {/* 2. Sticky Main Header — Docks permanently at top: 0 keeping full navigation intact */}
+      <header
+        className={cn(
+          "sticky top-0 z-40 w-full border-b bg-background transition-[border-color,box-shadow] duration-300 ease-out motion-reduce:transition-none",
+          isDocked
+            ? "border-border shadow-xs shadow-primary/6"
+            : "border-border/85"
+        )}
+      >
         <div className="mx-auto flex h-18 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 lg:px-8">
           {/* Brand Logo & Bilingual Title */}
           <Link
             href="/"
-            className="group flex min-h-6 min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85 sm:gap-3"
+            className="group flex min-h-11 min-w-0 items-center gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:opacity-85"
           >
-            <div className="relative size-11 shrink-0 overflow-hidden rounded-xl border border-gold-border bg-card p-0.5 shadow-xs transition-colors group-hover:border-gold motion-reduce:transition-none">
+            <div className="relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gold-border bg-primary p-1 shadow-xs transition-colors group-hover:border-gold sm:size-12 motion-reduce:transition-none">
               <Image
-                src="/logo.jpg"
+                src="/logo-mark.png"
                 alt="Al Ramlah Travels Emblem"
-                width={40}
-                height={40}
+                width={44}
+                height={44}
                 loading="eager"
                 className="size-full object-contain"
               />
             </div>
-            <div className="flex flex-col">
-              <span className="font-display text-lg font-bold tracking-tight text-foreground transition-colors group-hover:text-primary motion-reduce:transition-none sm:text-xl">
+            <div className="flex min-w-0 flex-col items-start gap-0.5">
+              <span className="truncate font-display text-lg leading-tight font-bold tracking-tight text-foreground transition-colors group-hover:text-primary sm:text-xl motion-reduce:transition-none">
                 Al Ramlah Travels
               </span>
-              <ArabicText className="text-xs font-semibold tracking-wide text-gold-text">
+              <ArabicText className="text-xs leading-none font-semibold tracking-wide text-gold-text">
                 {BRAND_ARABIC_NAME}
               </ArabicText>
             </div>
@@ -327,9 +351,9 @@ export function PublicHeader({
                   <div>
                     <SheetHeader className="border-b border-border p-0 pb-6 text-left">
                       <div className="flex items-center gap-3">
-                        <div className="size-10 overflow-hidden rounded-lg border border-gold-border bg-background p-1">
+                        <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gold-border bg-primary p-1">
                           <Image
-                            src="/logo.jpg"
+                            src="/logo-mark.png"
                             alt="Al Ramlah Travels Emblem"
                             width={36}
                             height={36}
@@ -337,12 +361,12 @@ export function PublicHeader({
                             className="size-full object-contain"
                           />
                         </div>
-                        <div>
-                          <SheetTitle className="font-display text-base font-bold text-foreground">
+                        <div className="flex flex-col items-start gap-0.5">
+                          <SheetTitle className="font-display text-base leading-tight font-bold text-foreground">
                             Al Ramlah Travels
                           </SheetTitle>
                           <SheetDescription>
-                            <ArabicText className="text-xs font-medium text-gold-text">
+                            <ArabicText className="text-xs leading-none font-medium text-gold-text">
                               {BRAND_ARABIC_NAME}
                             </ArabicText>
                           </SheetDescription>
@@ -485,6 +509,6 @@ export function PublicHeader({
           </div>
         </div>
       </header>
-    </div>
+    </>
   )
 }

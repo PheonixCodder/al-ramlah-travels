@@ -67,6 +67,8 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 51 | Spec 0027 — Secondary public hubs, spokes & shell editorial alignment | Slice 47 | done |
 | 52 | Spec 0028 · Admin 4 Hub Operate Surface and Shell Alignment | Slice 48 | done |
 | 53 | Spec 0029 · Pilgrim Document Upload Portal and Staff Verification | Slice 49 | done |
+| 54 | Spec 0030 · Hybrid Hero Video and Admin Media Uploader | Slice 50 | done |
+| 55 | Spec 0031 · End-to-End Umrah Package Lifecycle & Storefront Redesign | Slice 51 | in-progress |
 
 ## Foundations
 
@@ -798,6 +800,40 @@ spec [0029](docs/specs/0029-pilgrim-document-upload-portal/index.md) · code in 
 - [x] Test it: `/test Pilgrim Document Upload Portal and Staff Verification` ([pilgrim-documents-domain.test.ts](tests/unit/pilgrim-documents-domain.test.ts) · [pilgrim-documents-portal.integration.test.ts](tests/integration/pilgrim-documents-portal.integration.test.ts) · [j24-pilgrim-document-portal.spec.ts](tests/e2e/j24-pilgrim-document-portal.spec.ts))
 - [x] Review it (fresh model): `/check review Pilgrim Document Upload Portal and Staff Verification` ([2026-11-22-slice-49.md](docs/reviews/2026-11-22-slice-49.md))
 - [x] Document it: `/document Pilgrim Document Upload Portal and Staff Verification` (PR `feat/slices-45-49-ui-and-document-portal`)
+
+## Slice 50: Hybrid Hero Video and Admin Media Uploader
+
+### 54. Slice 50 · Hybrid Hero Video and Admin Media Uploader · Beta · done
+
+Let agency admins upload a mandatory poster image and an optional silent background video directly on each homepage hero slide inside the content catalog, and blend video slides seamlessly with photo slides on the storefront hero without slowing down first frame paint on mobile networks.
+**Done when:** admins can upload, preview, reorder, or clear slide images and background videos directly from the content catalog, video slides paint their poster image immediately before crossfading into silent playback, the slider advances cleanly across mixed video and photo slides while pausing off screen clips, reduced motion and data saver modes stay on the poster image, and an accessible pause toggle is available.
+spec [0030](docs/specs/0030-hybrid-hero-video-and-uploader/index.md) · code in `db/schema/cms.ts`, `drizzle/0005_hero_slides_video_url.sql`, `lib/storage/`, `app/api/uploads/`, `app/uploads/r2-local/`, `app/actions/cms.ts`, `components/admin/catalog/`, `components/public/hero-slider.tsx`
+
+- [x] Design it (spec): `/architect Hybrid Hero Video and Admin Media Uploader` ([0030](docs/specs/0030-hybrid-hero-video-and-uploader/index.md))
+- [x] Build it: `/develop Hybrid Hero Video and Admin Media Uploader`
+  - [x] Milestone 1 (`M1` Schema, Migration `0005`, R2 Local Root, Upload RBAC & Commit Cleanup): Add nullable `hero_slides.video_url` + `CHECK` constraint, route local fallback to `os.tmpdir()`, enforce `super_admin` `25 MB` folder guards + streamed `/uploads/r2-local/[...key]`, and add `512` byte magic byte verification + unreferenced R2 cleanup (`AC-1`..`AC-4`)
+  - [x] Milestone 2 (`M2` Admin Catalog `HeroSlideDialog` Uploader & Role Aware CMS): Gate all `4` `ContentClient` sub tabs with `canManageCms`, add `Video + Poster` / `Photo Slide` badges, and upgrade `HeroSlideDialog` with drag and drop poster + `MP4` uploaders, live progress, inline preview, `Remove Video`, and uncommitted draft cleanup (`AC-4`, `AC-5`, `AC-9`)
+  - [x] Milestone 3 (`M3` Public Hybrid `HeroSlider` Video + Poster Engine): Wire `videoUrl` into `/` (keeping `#journey-builder` untouched) and add post hydration muted `<video>` crossfade, `onEnded` / `20s` cap / `7.5s` stall timing, `useSyncExternalStore` reduced motion & `saveData` fallback, off screen `.pause()`, and `44x44px` `Pause` / `Play` toggle (`AC-6`..`AC-9`)
+  - [x] Milestone 4 (`M4` Unit, Hermetic Integration & Playwright `J25` Suite): Lock SSR, timing, `AbortError` vs `onError`, RBAC `403`, `512` byte polyglot `422`, `0` ref R2 delete guards, and `J25` upload to playback + Axe WCAG 2.2 AA (`AC-1`..`AC-9`)
+- [x] Verify it: skipped local Docker DB steps per owner direction; static, unit, and live storefront probes passed ([verify.md](docs/specs/0030-hybrid-hero-video-and-uploader/verify.md))
+- [x] Test it: `/test Hybrid Hero Video and Admin Media Uploader` ([hero-slider-hybrid-video.test.tsx](tests/unit/hero-slider-hybrid-video.test.tsx) · [hero-slides-media-upload.integration.test.ts](tests/integration/hero-slides-media-upload.integration.test.ts) · [j25-hybrid-hero-video.spec.ts](tests/e2e/j25-hybrid-hero-video.spec.ts))
+
+## Slice 51: End-to-End Umrah Package Lifecycle & Storefront Redesign
+
+### 55. Slice 51 · End-to-End Umrah Package Lifecycle & Storefront Redesign · Beta · in-progress
+
+Separate public website package cover photography from internal 4K marketing posters, turn `/admin/studio` into a Package-First `Operate` workbench with a 3-step Slide-Over Package + Multi-City Batch Builder, and redesign `/umrah-packages`, `/umrah-packages/from-[city]`, `/umrah-packages/[slug]`, and Homepage `#packages` with an interactive Visual Explorer and a Live Sticky Family Calculator.
+**Done when:** `group_packages` isolates `cover_image_url` from `internal_poster_url` (`0%` poster serialization on public pages), `/admin/studio` defaults to a scannable package/batch workbench with 1-click batch cloning and atomic multi-batch creation, `/umrah-packages` and `/from-[city]` render interactive visual cards with live occupancy price switching and matrix toggle, `/umrah-packages/[slug]` provides inline family reservation without double-modal friction, and all `ui:lint`, SEO, hermetic unit/integration, Playwright E2E (`J26`), and `cdd:check` gates pass.
+spec [0031](docs/specs/0031-umrah-package-lifecycle-and-storefront-redesign/index.md) · code in `db/schema/packages.ts`, `drizzle/0006_group_package_media_split.sql`, `app/actions/groups.ts`, `app/actions/marketing-ops.ts`, `lib/seo/public-queries.ts`, `app/admin/(dashboard)/studio/`, `components/admin/studio/`, `app/(public)/umrah-packages/`, `components/public/`, `components/seo/`
+
+- [x] Design it (spec): `/architect End-to-End Umrah Package Lifecycle & Storefront Redesign` ([0031](docs/specs/0031-umrah-package-lifecycle-and-storefront-redesign/index.md))
+- [x] Build it: `/develop End-to-End Umrah Package Lifecycle & Storefront Redesign`
+  - [x] Milestone 1 (`M1` Schema `0006`, Media Split & Atomic Group Actions): Add `cover_image_url` + `internal_poster_url`, migration `0006`, `upsertGroupPackageWithBatches`, `cloneGroupDepartureBatch`, Studio poster isolation, and `resolvePublicPackageVisuals()` (`AC-1`, `AC-2`, `AC-9`)
+  - [x] Milestone 2 (`M2` Admin `/admin/studio` Package-First Workbench & 3-Step Slide-Over): Build `package-workbench-client.tsx` and `package-builder-sheet.tsx` and align `studio/page.tsx` + `studio-hub-client.tsx` (`AC-3`, `AC-4`, `AC-10`)
+  - [x] Milestone 3 (`M3` Shared `UmrahPackageCard`, `UmrahPackagesExplorer`, Hub, City Spokes & Home Sync): Build `umrah-package-card.tsx` and `umrah-packages-explorer.tsx` and wire `/umrah-packages`, `/from-[city]`, and `/` `GroupPackagesSection` (`AC-5`, `AC-6`, `AC-9`, `AC-10`)
+  - [x] Milestone 4 (`M4` `/umrah-packages/[slug]` Sanctuary Showcase, Timeline & Live Sticky Family Calculator): Upgrade `[slug]/page.tsx`, `umrah-departures-schedule.tsx`, and `umrah-package-booking-cta.tsx` (`AC-7`, `AC-8`, `AC-9`, `AC-10`)
+- [ ] Verify it: `/check verify End-to-End Umrah Package Lifecycle & Storefront Redesign`
+- [x] Test it: `/test End-to-End Umrah Package Lifecycle & Storefront Redesign` ([umrah-lifecycle-and-explorer.test.tsx](tests/unit/umrah-lifecycle-and-explorer.test.tsx) · [j26-umrah-lifecycle-and-storefront.spec.ts](tests/e2e/j26-umrah-lifecycle-and-storefront.spec.ts))
 
 ## Deferred
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Dual-driver PostgreSQL 16 data layer (`db/index.ts`), Drizzle ORM definitions (`50` `pgTable` tables, `50` `pgEnum` enums, `22` SQL `check()` constraints across `db/schema/`), ordered SQL migrations (`drizzle/`), idempotent bootstrap seeding (`seed.ts`), and hermetic audit DB guards.
+Dual-driver PostgreSQL 16 data layer (`db/index.ts`), Drizzle ORM definitions (`50` `pgTable` tables, `50` `pgEnum` enums, `23` SQL `check()` constraints across `db/schema/`), ordered SQL migrations (`drizzle/`), idempotent bootstrap seeding (`seed.ts`), and hermetic audit DB guards.
 
 ## Key files
 
@@ -10,13 +10,15 @@ Dual-driver PostgreSQL 16 data layer (`db/index.ts`), Drizzle ORM definitions (`
 |---|---|
 | [index.ts](./index.ts) | `db`, `createDatabaseClient()`, `isNeonServerlessUrl()`, `withTransaction()` |
 | [migrate.ts](./migrate.ts) & [seed.ts](./seed.ts) | Dual-driver migration runner & idempotent initial data bootstrap |
-| [schema/index.ts](./schema/index.ts) | Barrel exporting all 10 schema modules (`50` tables, `50` enums, `22` checks) |
+| [schema/index.ts](./schema/index.ts) | Barrel exporting all 10 schema modules (`50` tables, `50` enums, `23` checks) |
 | [schema/applications.ts](./schema/applications.ts) | `applications`, hotel stays, transport segments, `application_quotes`, `application_payments`, `application_travellers`, `application_documents` |
 | [schema/audit-logs.ts](./schema/audit-logs.ts) | Immutable `audit_logs` & Postgres-backed `rate_limit_buckets` |
 | [schema/packages.ts](./schema/packages.ts) | `group_packages`, `group_departures`, `hajj_packages` |
 | [0002_production_hardening_foundation.sql](../drizzle/0002_production_hardening_foundation.sql) | `trg_audit_logs_immutable` trigger, `deposit_paid`, `revision_requested`, `17` checks |
 | [0003_seo_lead_attribution.sql](../drizzle/0003_seo_lead_attribution.sql) | 7 first-touch UTM/landing/referrer attribution columns on leads & messages |
 | [0004_pilgrim_document_portal.sql](../drizzle/0004_pilgrim_document_portal.sql) | `application_travellers`, `application_documents`, `document_portal_token_*`, and `5` document/traveller checks |
+| [0006_group_package_media_split.sql](../drizzle/0006_group_package_media_split.sql) | Splits `group_packages.cover_image_url` (public site) vs `internal_poster_url` (internal Studio/Cmd+K/Campaigns) |
+| [0005_hero_slides_video_url.sql](../drizzle/0005_hero_slides_video_url.sql) | Nullable `hero_slides.video_url` and `chk_hero_slides_non_empty_video_url` |
 | [_guard.ts](../scripts/_guard.ts) & [audit-guard.ts](../tests/helpers/audit-guard.ts) | Host allowlist blocking live `neon.tech` during seeds, scripts & tests |
 
 ## Commands (run inside `web/`)
@@ -46,5 +48,6 @@ npm run db:backup     # Logical backup helper
 - [Spec 0024 — Production Readiness Audit & Hardening](../docs/specs/0024-production-readiness-audit-and-hardening.md)
 - [Spec 0025 — Public Site SEO Readiness](../docs/specs/0025-public-site-seo-readiness.md)
 - [Spec 0029 — Pilgrim Document Upload Portal and Staff Verification](../docs/specs/0029-pilgrim-document-upload-portal/index.md)
+- [Spec 0030 · Hybrid Hero Video and Admin Media Uploader](../docs/specs/0030-hybrid-hero-video-and-uploader/index.md)
 
 _Drafted by /audit from the repo, worth a quick human pass. Edit freely: once a line stops matching this draft, later runs treat it as curated and will flag rather than overwrite it._

@@ -2,6 +2,7 @@ import { z } from "zod"
 import { parsePhoneE164 } from "../phone"
 import { strictAttributionSchema } from "../seo/utm"
 import {
+  safeNullableAssetUrlSchema,
   safeOptionalAssetUrlSchema,
   safeOptionalCtaUrlSchema,
   safeRequiredAssetUrlSchema,
@@ -14,6 +15,9 @@ export const heroSlideSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
   subtitle: z.string().trim().min(1, "Subtitle is required").max(600),
   imageUrl: safeRequiredAssetUrlSchema("Hero slide image URL"),
+  videoUrl: safeNullableAssetUrlSchema("Hero slide video URL").transform((v) =>
+    v && v.trim().length > 0 ? v.trim() : null
+  ),
   primaryCtaLabel: z.string().trim().min(1).max(80).default("Plan Custom Umrah"),
   primaryCtaUrl: safeRequiredCtaUrlSchema("#custom-builder"),
   secondaryCtaLabel: z.string().trim().max(80).optional(),

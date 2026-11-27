@@ -1923,6 +1923,8 @@ export async function runSeed(options?: RunSeedOptions): Promise<void> {
         ],
         bannerUrl:
           "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=1200",
+        coverImageUrl:
+          "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=1200",
         isFeatured: true,
         sortOrder: 1,
       })
@@ -1936,6 +1938,10 @@ export async function runSeed(options?: RunSeedOptions): Promise<void> {
         infantPricePkr: 65000,
         giftedInclusions,
         multiHotelOptions: sharedMultiHotelOptions,
+        coverImageUrl:
+          pkg1.coverImageUrl ??
+          pkg1.bannerUrl ??
+          "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=1200",
         highlights: [
           "Direct Haram Courtyard Clock Tower Accommodations",
           "Unobstructed Green Dome Oberoi Suite Stays",
@@ -1984,6 +1990,8 @@ export async function runSeed(options?: RunSeedOptions): Promise<void> {
         ],
         bannerUrl:
           "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=1200",
+        coverImageUrl:
+          "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=1200",
         isFeatured: true,
         sortOrder: 2,
       })
@@ -1997,6 +2005,10 @@ export async function runSeed(options?: RunSeedOptions): Promise<void> {
         infantPricePkr: 65000,
         giftedInclusions,
         multiHotelOptions: sharedMultiHotelOptions,
+        coverImageUrl:
+          pkg2.coverImageUrl ??
+          pkg2.bannerUrl ??
+          "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=1200",
       })
       .where(eq(schema.groupPackages.id, pkg2.id))
   }
@@ -2038,6 +2050,8 @@ export async function runSeed(options?: RunSeedOptions): Promise<void> {
         ],
         bannerUrl:
           "https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=1200",
+        coverImageUrl:
+          "https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=1200",
         isFeatured: false,
         sortOrder: 3,
       })
@@ -2051,6 +2065,10 @@ export async function runSeed(options?: RunSeedOptions): Promise<void> {
         infantPricePkr: 65000,
         giftedInclusions,
         multiHotelOptions: sharedMultiHotelOptions,
+        coverImageUrl:
+          pkg3.coverImageUrl ??
+          pkg3.bannerUrl ??
+          "https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=1200",
       })
       .where(eq(schema.groupPackages.id, pkg3.id))
   }
@@ -2092,6 +2110,8 @@ export async function runSeed(options?: RunSeedOptions): Promise<void> {
         ],
         bannerUrl:
           "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=1200",
+        coverImageUrl:
+          "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=1200",
         isFeatured: false,
         sortOrder: 4,
       })
@@ -2108,6 +2128,10 @@ export async function runSeed(options?: RunSeedOptions): Promise<void> {
         infantPricePkr: 65000,
         giftedInclusions,
         multiHotelOptions: sharedMultiHotelOptions,
+        coverImageUrl:
+          pkg4.coverImageUrl ??
+          pkg4.bannerUrl ??
+          "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=1200",
       })
       .where(eq(schema.groupPackages.id, pkg4.id))
   }

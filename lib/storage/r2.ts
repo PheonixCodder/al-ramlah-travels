@@ -252,11 +252,9 @@ export function hasR2CredentialsConfigured(): boolean {
 }
 
 function getLocalFallbackRootDir(isPrivate: boolean): string {
-  // Never write private PII files or test artifacts into `public/uploads/`
-  if (isPrivate || process.env.NODE_ENV === "test" || isAuditLocalE2eMode()) {
-    return path.join(os.tmpdir(), "alramlah-r2-local")
-  }
-  return path.join(process.cwd(), "public", "uploads", "r2-local")
+  void isPrivate
+  // Never write private PII files, local dev uploads, or test artifacts into `public/uploads/` (`T-013`)
+  return path.join(os.tmpdir(), "alramlah-r2-local")
 }
 
 function resolveSafeLocalPath(rootDir: string, sanitizedKey: string): string {

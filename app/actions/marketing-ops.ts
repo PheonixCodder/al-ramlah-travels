@@ -190,7 +190,7 @@ function resolvePublicSafeBannerUrl(params: {
     const clean = candidate?.trim()
     if (!clean) continue
     if (isPdfAssetUrl(clean)) continue
-    // T-026: NEVER copy raw B2B wholesaler flyer URLs into public group_packages.bannerUrl
+    // T-026: NEVER copy raw B2B wholesaler flyer URLs into internalPosterUrl or public coverImageUrl
     if (isRawB2bFlyer && rawFlyer && clean === rawFlyer) {
       continue
     }
@@ -201,6 +201,8 @@ function resolvePublicSafeBannerUrl(params: {
     "Cannot publish card to public website before rendering an Al Ramlah wrapped 4K poster (raw supplier flyers and unrendered PDFs are blocked from public banners)."
   )
 }
+
+const resolveSafePublicBannerFromFlyerCard = resolvePublicSafeBannerUrl
 
 function formatPriceTierLabel(amountPkr: number): string {
   return amountPkr > 0 ? amountPkr.toLocaleString("en-PK") : "On Request"
@@ -1362,7 +1364,7 @@ async function syncFlyerCardToGroupPackagesTx(
   }
 
   // T-026: Require wrapped Al Ramlah poster URL; NEVER leak raw B2B wholesaler flyer URLs or .pdf files
-  const safeBannerUrl = resolvePublicSafeBannerUrl({
+  const safeInternalPosterUrl = resolveSafePublicBannerFromFlyerCard({
     spotlightPosterUrl: pkg.spotlightPosterUrl,
     multiSheetImageUrl: pkg.flyer.multiSheetImageUrl,
     socialReadySheetJpegUrl: pkg.flyer.socialReadySheetJpegUrl,
@@ -1445,7 +1447,8 @@ async function syncFlyerCardToGroupPackagesTx(
         includesZiyarat: true,
         giftedInclusions: pkg.flyer.giftedInclusions,
         highlights,
-        bannerUrl: safeBannerUrl,
+        bannerUrl: null,
+        internalPosterUrl: safeInternalPosterUrl,
         isFeatured: true,
         isActive: true,
         updatedAt: new Date(),
@@ -1481,7 +1484,9 @@ async function syncFlyerCardToGroupPackagesTx(
         includesZiyarat: true,
         giftedInclusions: pkg.flyer.giftedInclusions,
         highlights,
-        bannerUrl: safeBannerUrl,
+        bannerUrl: null,
+        coverImageUrl: null,
+        internalPosterUrl: safeInternalPosterUrl,
         isFeatured: true,
         isActive: true,
       })
@@ -1502,7 +1507,8 @@ async function syncFlyerCardToGroupPackagesTx(
           doublePricePkr: pkg.retailDoublePkr,
           giftedInclusions: pkg.flyer.giftedInclusions,
           highlights,
-          bannerUrl: safeBannerUrl,
+          bannerUrl: null,
+          internalPosterUrl: safeInternalPosterUrl,
           isActive: true,
           updatedAt: new Date(),
         },
@@ -3458,8 +3464,9 @@ export async function updateExtractedFlyerCardAction(rawInput: unknown) {
                 `Madinah (${data.madinahNights}): ${data.madinahHotelName} ${data.madinahDistanceLabel}`,
                 `Flights: ${data.outboundFlightNo} (${data.outboundDateLabel}) / ${data.returnFlightNo} (${data.returnDateLabel})`,
               ],
+              bannerUrl: null,
               ...(data.spotlightPosterUrl
-                ? { bannerUrl: data.spotlightPosterUrl }
+                ? { internalPosterUrl: data.spotlightPosterUrl }
                 : {}),
               updatedAt: new Date(),
             })
@@ -3573,7 +3580,8 @@ export async function updatePackageSpotlightImageAction(rawInput: unknown) {
         await tx
           .update(schema.groupPackages)
           .set({
-            bannerUrl: safeImageUrl,
+            bannerUrl: null,
+            internalPosterUrl: safeImageUrl,
             updatedAt: new Date(),
           })
           .where(eq(schema.groupPackages.id, existingCard.publishedGroupPackageId))
@@ -3582,12 +3590,17 @@ export async function updatePackageSpotlightImageAction(rawInput: unknown) {
       return { existingCard, updatedCard }
     })
 
-    revalidatePath("/admin/studio")
-    revalidatePath("/admin/campaigns")
-    revalidatePath("/admin/supplier-flyers")
-    revalidatePath("/")
-    revalidatePath("/groups")
-    revalidatePath("/admin/groups")
+    try {
+      revalidatePath("/admin/studio")
+      revalidatePath("/admin/campaigns")
+      revalidatePath("/admin/supplier-flyers")
+      revalidatePath("/")
+      revalidatePath("/groups")
+      revalidatePath("/admin/groups")
+    } catch {
+      // Safe outside Next.js incremental cache runtime
+    }
+    revalidatePublicSeoPaths()
 
     return {
       success: true,

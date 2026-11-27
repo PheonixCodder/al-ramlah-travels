@@ -40,7 +40,8 @@ interface AdminCatalogPageProps {
 export default async function AdminCatalogPage({
   searchParams,
 }: AdminCatalogPageProps) {
-  await requireAdmin()
+  const session = await requireAdmin()
+  const canManageCms = session.user.role === "super_admin"
 
   const params = await searchParams
   const activeTab = params.tab || "hotels"
@@ -141,6 +142,7 @@ export default async function AdminCatalogPage({
       testimonials={allReviews}
       faqs={allFaqs}
       contactMessages={allMessages}
+      canManageCms={canManageCms}
     />
   )
 }

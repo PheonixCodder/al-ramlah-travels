@@ -337,6 +337,37 @@ describe("T-040: Isolated PostgreSQL Migrations, Idempotent Seed, Constraints & 
 
     await client.query(`DELETE FROM applications WHERE id = $1`, [probeAppId])
 
+    // 2c. Spec 0030 (`0005`): hero_slides.video_url nullable column + chk_hero_slides_non_empty_video_url
+    const heroColRes = await client.query<{
+      column_name: string
+      is_nullable: string
+      data_type: string
+    }>(
+      `SELECT column_name, is_nullable, data_type
+         FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'hero_slides'
+          AND column_name IN ('image_url', 'video_url')`
+    )
+    const imageUrlCol = heroColRes.rows.find(
+      (r) => r.column_name === "image_url"
+    )
+    const videoUrlCol = heroColRes.rows.find(
+      (r) => r.column_name === "video_url"
+    )
+    expect(imageUrlCol?.is_nullable).toBe("NO")
+    expect(videoUrlCol?.is_nullable).toBe("YES")
+    expect(videoUrlCol?.data_type).toBe("text")
+
+    await expect(
+      client.query(
+        `INSERT INTO hero_slides (title, subtitle, image_url, video_url, primary_cta_label, primary_cta_url)
+         VALUES ('Blank Video Probe', 'Should fail check', 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa', '   ', 'Plan', '/#journey-builder')`
+      )
+    ).rejects.toThrow(
+      /chk_hero_slides_non_empty_video_url|violates check constraint/i
+    )
+
     // 3. Append-only audit_logs immutability trigger blocks UPDATE and DELETE
     const insertedAudit = await client.query<{ id: string }>(
       `INSERT INTO audit_logs (actor_role, action, entity_type, entity_id)

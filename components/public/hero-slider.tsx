@@ -18,7 +18,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Pause,
   Plane,
+  Play,
   ShieldCheck,
   Sparkles,
 } from "lucide-react"
@@ -38,6 +40,7 @@ export interface PublicHeroSlide {
   title: string
   subtitle: string
   imageUrl: string
+  videoUrl?: string | null
   primaryCtaLabel: string
   primaryCtaUrl: string
   secondaryCtaLabel?: string | null
@@ -47,6 +50,10 @@ export interface PublicHeroSlide {
 export const HOME_HERO_PRIMARY_H1 =
   "Umrah Packages, Saudi Visas & Hajj 2027 Journeys from Pakistan"
 
+const PHOTO_SLIDE_DURATION_MS = 7_500
+const VIDEO_MAX_DURATION_MS = 20_000
+const VIDEO_BUFFER_STALL_MS = 7_500
+
 const DEFAULT_SLIDES: PublicHeroSlide[] = [
   {
     badge: "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
@@ -55,6 +62,7 @@ const DEFAULT_SLIDES: PublicHeroSlide[] = [
       "Where Purpose Meets Excellence: bespoke Umrah planning from Lahore, Karachi & Islamabad, 50-meter Haram courtyard hotels, and private GMC transfers.",
     imageUrl:
       "https://images.unsplash.com/photo-1564769625905-50e93615e769?auto=format&fit=crop&q=85&w=1920",
+    videoUrl: null,
     primaryCtaLabel: "Build Custom Umrah Journey",
     primaryCtaUrl: "/#journey-builder",
     secondaryCtaLabel: "Explore Group Umrah Packages",
@@ -67,12 +75,34 @@ const DEFAULT_SLIDES: PublicHeroSlide[] = [
       "Direct Kaaba-view suites in Makkah Clock Royal Tower and footsteps from Bab As-Salam & Ladies Gate 25 in Madinah Al-Munawwarah.",
     imageUrl:
       "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&q=85&w=1920",
+    videoUrl: null,
     primaryCtaLabel: "Plan Family Pilgrimage",
     primaryCtaUrl: "/#journey-builder",
     secondaryCtaLabel: "Hajj 2027 Maktab Guide",
     secondaryCtaUrl: "/hajj-2027",
   },
+  {
+    badge: "Hajj 2027 Pre-Registration",
+    title: "Guided Preparation for the Lifetime Obligation",
+    subtitle:
+      "Transparent Maktab tier guidance, scholar-accompanied rituals, and Askari 10 Lahore concierge support for Pakistan & diaspora families.",
+    imageUrl:
+      "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=85&w=1920",
+    videoUrl: null,
+    primaryCtaLabel: "Explore Hajj 2027 Guide",
+    primaryCtaUrl: "/hajj-2027",
+    secondaryCtaLabel: "View Group Umrah Batches",
+    secondaryCtaUrl: "/umrah-packages",
+  },
 ]
+
+interface NetworkInformationLike extends EventTarget {
+  readonly saveData?: boolean
+}
+
+interface NavigatorWithConnection {
+  readonly connection?: NetworkInformationLike
+}
 
 export function normalizeHeroCtaHref(href: string): string {
   const trimmed = (href || "").trim()
@@ -118,6 +148,27 @@ function getReducedMotionSnapshot(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches
 }
 
+function subscribeSaveData(onStoreChange: () => void): () => void {
+  if (typeof navigator === "undefined") {
+    return () => {}
+  }
+  const conn = (navigator as unknown as NavigatorWithConnection).connection
+  if (!conn || typeof conn.addEventListener !== "function") {
+    return () => {}
+  }
+  conn.addEventListener("change", onStoreChange)
+  return () => conn.removeEventListener("change", onStoreChange)
+}
+
+function getSaveDataSnapshot(): boolean {
+  if (typeof navigator === "undefined") {
+    return false
+  }
+  return Boolean(
+    (navigator as unknown as NavigatorWithConnection).connection?.saveData
+  )
+}
+
 interface HeroSliderProps {
   slides?: PublicHeroSlide[]
 }
@@ -126,8 +177,9 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
   const activeSlides = slides.length > 0 ? slides : DEFAULT_SLIDES
   const [current, setCurrent] = useState(0)
   const heroRef = useRef<HTMLElement | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
 
-  // S03-002 & T-085: Lazily mount slides 1..N after client hydration so initial SSR/LCP fetches strictly Slide 0
+  // S03-002 & T-085: Lazily mount slides 1..N and ambient video after hydration so SSR/LCP fetches strictly Slide 0 poster
   const hasHydrated = useSyncExternalStore(
     noopSubscribe,
     () => true,
@@ -138,22 +190,198 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
     getReducedMotionSnapshot,
     () => false
   )
-  const [isPausedByInteraction, setIsPausedByInteraction] = useState(false)
+  const prefersSaveData = useSyncExternalStore(
+    subscribeSaveData,
+    getSaveDataSnapshot,
+    () => false
+  )
 
-  // T-085: Pause auto-rotation when reduced-motion is requested or pointer/keyboard focus is inside
+  const [isPausedByInteraction, setIsPausedByInteraction] = useState(false)
+  const [isVideoPaused, setIsVideoPaused] = useState(false)
+  const [isHeroInViewport, setIsHeroInViewport] = useState(true)
+  const [isDocumentVisible, setIsDocumentVisible] = useState(true)
+  const [failedVideoIds, setFailedVideoIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
+  const [stalledVideoSessionKey, setStalledVideoSessionKey] = useState<
+    string | null
+  >(null)
+  const [playingVideoSessionKey, setPlayingVideoSessionKey] = useState<
+    string | null
+  >(null)
+
+  const safeCurrent = current < activeSlides.length ? current : 0
+  const slide = activeSlides[safeCurrent] ?? activeSlides[0]!
+  const slideIdentity = slide.id ?? String(safeCurrent)
+  const trimmedVideoUrl = slide.videoUrl?.trim() || null
+  const activeVideoSessionKey = trimmedVideoUrl
+    ? `${slideIdentity}:${trimmedVideoUrl}`
+    : null
+
+  const canUseAmbientVideo =
+    hasHydrated && !prefersReducedMotion && !prefersSaveData
+  const isVideoStalled =
+    activeVideoSessionKey !== null &&
+    stalledVideoSessionKey === activeVideoSessionKey
+  const isVideoCapableSlide =
+    canUseAmbientVideo &&
+    Boolean(trimmedVideoUrl) &&
+    !failedVideoIds.has(slideIdentity) &&
+    !isVideoStalled
+  const hasVideoStartedPlaying =
+    isVideoCapableSlide &&
+    activeVideoSessionKey !== null &&
+    playingVideoSessionKey === activeVideoSessionKey
+  const isStageVisible = isHeroInViewport && isDocumentVisible
+
+  // Pause off-screen or hidden-tab video playback immediately (`AC-7`)
+  useEffect(() => {
+    const root = heroRef.current
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined") {
+        setIsDocumentVisible(document.visibilityState !== "hidden")
+      }
+    }
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange)
+    }
+
+    let observer: IntersectionObserver | null = null
+    if (root && typeof IntersectionObserver !== "undefined") {
+      observer = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[0]
+          if (entry) {
+            setIsHeroInViewport(entry.isIntersecting)
+          }
+        },
+        { threshold: 0.05 }
+      )
+      observer.observe(root)
+    }
+
+    return () => {
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange)
+      }
+      observer?.disconnect()
+    }
+  }, [])
+
+  // Drive HTML5 `<video>` play/pause cleanly while ignoring harmless transition `AbortError` (`AC-7`, `AC-8`)
+  useEffect(() => {
+    const el = videoRef.current
+    if (!isVideoCapableSlide || !activeVideoSessionKey || !el) {
+      return
+    }
+
+    el.defaultMuted = true
+    el.muted = true
+
+    if (isVideoPaused || !isStageVisible) {
+      el.pause()
+      return
+    }
+
+    let cancelled = false
+    const playPromise = el.play()
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch((err: unknown) => {
+        if (cancelled) return
+        const errName =
+          err && typeof err === "object" && "name" in err
+            ? String((err as { name?: unknown }).name)
+            : ""
+        if (errName === "AbortError") {
+          return
+        }
+        setFailedVideoIds((prev) => {
+          if (prev.has(slideIdentity)) return prev
+          const next = new Set(prev)
+          next.add(slideIdentity)
+          return next
+        })
+      })
+    }
+
+    return () => {
+      cancelled = true
+      el.pause()
+    }
+  }, [
+    activeVideoSessionKey,
+    isStageVisible,
+    isVideoCapableSlide,
+    isVideoPaused,
+    slideIdentity,
+  ])
+
+  // Guard against stalled mobile video streams (`7.5s` buffering fallback -> poster + normal rotation)
+  useEffect(() => {
+    if (
+      !isVideoCapableSlide ||
+      !activeVideoSessionKey ||
+      hasVideoStartedPlaying ||
+      isVideoPaused ||
+      !isStageVisible
+    ) {
+      return
+    }
+
+    const stallTimer = setTimeout(() => {
+      setStalledVideoSessionKey(activeVideoSessionKey)
+      if (activeSlides.length > 1 && !isPausedByInteraction) {
+        setCurrent((prev) => (prev + 1) % activeSlides.length)
+      }
+    }, VIDEO_BUFFER_STALL_MS)
+
+    return () => clearTimeout(stallTimer)
+  }, [
+    activeSlides.length,
+    activeVideoSessionKey,
+    hasVideoStartedPlaying,
+    isPausedByInteraction,
+    isStageVisible,
+    isVideoCapableSlide,
+    isVideoPaused,
+  ])
+
+  // Mixed slide advancement: `7.5s` for photo/fallback slides vs `onEnded` + `20s` ceiling for video slides (`AC-7`)
   useEffect(() => {
     if (
       activeSlides.length <= 1 ||
       prefersReducedMotion ||
-      isPausedByInteraction
+      isPausedByInteraction ||
+      !isStageVisible
     ) {
       return
     }
-    const timer = setInterval(() => {
+
+    if (isVideoCapableSlide) {
+      if (isVideoPaused) {
+        return
+      }
+      const ceilingTimer = setTimeout(() => {
+        setCurrent((prev) => (prev + 1) % activeSlides.length)
+      }, VIDEO_MAX_DURATION_MS)
+      return () => clearTimeout(ceilingTimer)
+    }
+
+    const photoTimer = setTimeout(() => {
       setCurrent((prev) => (prev + 1) % activeSlides.length)
-    }, 7000)
-    return () => clearInterval(timer)
-  }, [activeSlides.length, prefersReducedMotion, isPausedByInteraction])
+    }, PHOTO_SLIDE_DURATION_MS)
+    return () => clearTimeout(photoTimer)
+  }, [
+    activeSlides.length,
+    activeVideoSessionKey,
+    isPausedByInteraction,
+    isStageVisible,
+    isVideoCapableSlide,
+    isVideoPaused,
+    prefersReducedMotion,
+    safeCurrent,
+  ])
 
   // Authored GSAP focal settle under reduced-motion matchMedia guard (SSR remains opacity: 1)
   useGSAP(
@@ -189,18 +417,33 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
         mm.revert()
       }
     },
-    { scope: heroRef, dependencies: [current] }
+    { scope: heroRef, dependencies: [safeCurrent] }
   )
 
   function prevSlide() {
-    setCurrent((prev) => (prev === 0 ? activeSlides.length - 1 : prev - 1))
+    setCurrent((prev) => {
+      const base = prev < activeSlides.length ? prev : 0
+      return base === 0 ? activeSlides.length - 1 : base - 1
+    })
   }
 
   function nextSlide() {
-    setCurrent((prev) => (prev + 1) % activeSlides.length)
+    setCurrent((prev) => {
+      const base = prev < activeSlides.length ? prev : 0
+      return (base + 1) % activeSlides.length
+    })
   }
 
-  const slide = activeSlides[current] ?? activeSlides[0]!
+  function handleVideoError(targetIdentity: string) {
+    setFailedVideoIds((prev) => {
+      if (prev.has(targetIdentity)) return prev
+      const next = new Set(prev)
+      next.add(targetIdentity)
+      return next
+    })
+  }
+
+  const showBottomControls = activeSlides.length > 1 || isVideoCapableSlide
 
   return (
     <section
@@ -215,16 +458,20 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
           setIsPausedByInteraction(false)
         }
       }}
-      className="relative flex min-h-[540px] flex-col justify-between overflow-hidden bg-sidebar text-white sm:min-h-[600px] lg:min-h-[640px]"
+      className="relative flex flex-col overflow-hidden bg-sidebar text-white"
     >
-      {/* Luminous Sanctuary Hero Stage */}
-      <div className="relative flex w-full flex-1 items-center">
+      {/* Luminous Full-Viewport Sanctuary Stage (Topbar 2.25rem + Header 4.5rem + Stage = 100svh) */}
+      <div className="relative flex min-h-[max(520px,calc(100svh-6.75rem))] w-full flex-col justify-between">
         {activeSlides.map((s, idx) => {
           const shouldMountSlide = idx === 0 || hasHydrated
           if (!shouldMountSlide) {
             return null
           }
-          const isCurrent = idx === current
+          const isCurrent = idx === safeCurrent
+          const itemIdentity = s.id ?? String(idx)
+          const shouldMountSlideVideo =
+            isCurrent && isVideoCapableSlide && Boolean(activeVideoSessionKey)
+
           return (
             <div
               key={s.id ?? idx}
@@ -245,10 +492,43 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
                 alt={s.title}
                 fill
                 preload={idx === 0}
+                unoptimized={s.imageUrl.startsWith("/uploads/r2-local/")}
                 className="object-cover object-center"
                 sizes="100vw"
               />
-              {/* Directional Deep Haramain Emerald wash keeping >= 7:1 text contrast while letting photography breathe */}
+
+              {shouldMountSlideVideo && activeVideoSessionKey && (
+                <video
+                  key={activeVideoSessionKey}
+                  ref={videoRef}
+                  src={trimmedVideoUrl ?? undefined}
+                  poster={s.imageUrl}
+                  muted
+                  playsInline
+                  preload="metadata"
+                  loop={activeSlides.length === 1 || isPausedByInteraction}
+                  aria-hidden="true"
+                  data-testid="hero-ambient-video"
+                  onPlaying={() =>
+                    setPlayingVideoSessionKey(activeVideoSessionKey)
+                  }
+                  onEnded={() => {
+                    if (
+                      activeSlides.length > 1 &&
+                      !isPausedByInteraction &&
+                      !isVideoPaused
+                    ) {
+                      setCurrent((prev) => (prev + 1) % activeSlides.length)
+                    }
+                  }}
+                  onError={() => handleVideoError(itemIdentity)}
+                  className={`pointer-events-none absolute inset-0 size-full object-cover object-center transition-opacity duration-500 ease-out motion-reduce:transition-none ${
+                    hasVideoStartedPlaying ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+              )}
+
+              {/* Directional Deep Haramain Emerald wash keeping >= 7:1 text contrast while letting photography & video breathe */}
               <div
                 aria-hidden="true"
                 className="absolute inset-0 bg-gradient-to-r from-sidebar/82 via-primary/45 to-sidebar/15"
@@ -262,8 +542,11 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
         })}
 
         {/* Hero Copy & Interactive Slide Selector */}
-        <div className="relative z-20 mx-auto flex w-full max-w-7xl flex-col justify-between gap-8 px-4 py-10 sm:px-6 sm:py-12 lg:px-8 lg:py-14">
-          <div data-hero-copy className="flex max-w-2xl flex-col gap-3.5">
+        <div className="relative z-20 mx-auto flex w-full max-w-7xl flex-1 flex-col justify-between gap-8 px-4 py-10 sm:px-6 sm:py-12 lg:px-8 lg:py-14">
+          <div
+            data-hero-copy
+            className="my-auto flex max-w-2xl flex-col gap-3.5"
+          >
             {slide.badge && (
               <div className="inline-flex self-start items-center border-b border-gold/45 pb-1.5">
                 {containsArabicScript(slide.badge) ? (
@@ -321,67 +604,94 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
             </div>
           </div>
 
-          {/* Tactile Slide Selector Tabs & Prev/Next Controls */}
-          {activeSlides.length > 1 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/15 pt-4">
-              <div className="flex flex-wrap items-center gap-2">
-                {activeSlides.map((s, i) => {
-                  const isActive = i === current
-                  const shortLabel =
-                    s.title.split(" ").slice(0, 3).join(" ") || `Slide ${i + 1}`
-                  return (
-                    <button
-                      key={s.id ?? i}
-                      type="button"
-                      onClick={() => setCurrent(i)}
-                      aria-current={isActive ? "true" : undefined}
-                      className="relative inline-flex min-h-6 min-w-6 items-center gap-2 overflow-hidden rounded-xl border border-white/25 bg-sidebar/80 px-2.5 py-2 text-left text-xs font-medium text-white/85 transition-colors hover:border-gold/70 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:translate-y-px disabled:pointer-events-none disabled:opacity-40 sm:min-h-11 sm:px-3.5"
-                    >
-                      {isActive && (
-                        <MotionPillIndicator
-                          layoutId="home-hero-slide-pill"
-                          className="absolute inset-0 rounded-xl border border-gold/70 bg-primary"
-                        />
-                      )}
-                      <span className="sr-only">Go to slide </span>
-                      <span
-                        className={`relative z-10 font-mono text-xs font-bold tabular-nums ${
-                          isActive ? "text-gold" : "text-white/75"
-                        }`}
+          {/* Framer-Style Slide Pagination Dots, Video Pause/Play & Prev/Next Controls (right clearance avoids fixed WhatsApp FAB below 2xl) */}
+          {showBottomControls && (
+            <div className="flex items-center justify-between gap-3 border-t border-white/15 pt-4 pr-16 sm:pr-18 2xl:pr-0">
+              {activeSlides.length > 1 ? (
+                <div
+                  role="group"
+                  aria-label="Slide pagination"
+                  className="inline-flex items-center gap-0.5 rounded-full border border-white/15 bg-sidebar/65 px-2 py-1 backdrop-blur-xs"
+                >
+                  {activeSlides.map((s, i) => {
+                    const isActive = i === safeCurrent
+                    return (
+                      <button
+                        key={s.id ?? i}
+                        type="button"
+                        onClick={() => setCurrent(i)}
+                        aria-current={isActive ? "true" : undefined}
+                        className="group relative inline-flex min-h-6 min-w-6 items-center justify-center rounded-full px-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:scale-95 disabled:pointer-events-none disabled:opacity-40 motion-reduce:transform-none"
                       >
-                        {String(i + 1).padStart(2, "0")}
-                      </span>
-                      <span className="relative z-10 hidden max-w-[144px] truncate md:inline">
-                        {shortLabel}
-                      </span>
-                      {isActive && (
-                        <span
-                          aria-hidden="true"
-                          className="pointer-events-none absolute inset-x-2.5 bottom-1 z-10 h-0.5 rounded-full bg-gold"
-                        />
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
+                        <span className="sr-only">Go to slide </span>
+                        <span className="sr-only">
+                          {i + 1}: {s.title}
+                        </span>
+                        {isActive ? (
+                          <span
+                            aria-hidden="true"
+                            className="relative block h-2 w-6 rounded-full bg-white/20"
+                          >
+                            <MotionPillIndicator
+                              layoutId="home-hero-slide-pill"
+                              className="absolute inset-0 rounded-full bg-gold"
+                            />
+                          </span>
+                        ) : (
+                          <span
+                            aria-hidden="true"
+                            className="block size-2 rounded-full bg-white/40 transition-colors group-hover:bg-white/80 motion-reduce:transition-none"
+                          />
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div />
+              )}
 
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={prevSlide}
-                  aria-label="Previous slide"
-                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-white/25 bg-sidebar/85 text-white transition-colors hover:border-gold hover:bg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:translate-y-px disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <ChevronLeft className="size-5" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  onClick={nextSlide}
-                  aria-label="Next slide"
-                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-white/25 bg-sidebar/85 text-white transition-colors hover:border-gold hover:bg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:translate-y-px disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <ChevronRight className="size-5" aria-hidden="true" />
-                </button>
+                {isVideoCapableSlide && (
+                  <button
+                    type="button"
+                    onClick={() => setIsVideoPaused((prev) => !prev)}
+                    aria-label={
+                      isVideoPaused
+                        ? "Play background video"
+                        : "Pause background video"
+                    }
+                    aria-pressed={isVideoPaused}
+                    className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-xl border border-white/25 bg-sidebar/85 text-white transition-colors hover:border-gold hover:bg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:translate-y-px disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    {isVideoPaused ? (
+                      <Play className="size-4" aria-hidden="true" />
+                    ) : (
+                      <Pause className="size-4" aria-hidden="true" />
+                    )}
+                  </button>
+                )}
+
+                {activeSlides.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={prevSlide}
+                      aria-label="Previous slide"
+                      className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-xl border border-white/25 bg-sidebar/85 text-white transition-colors hover:border-gold hover:bg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:translate-y-px disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      <ChevronLeft className="size-5" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={nextSlide}
+                      aria-label="Next slide"
+                      className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-xl border border-white/25 bg-sidebar/85 text-white transition-colors hover:border-gold hover:bg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:translate-y-px disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      <ChevronRight className="size-5" aria-hidden="true" />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -422,8 +732,8 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
                 aria-hidden="true"
               />
               <div className="flex min-w-0 flex-col">
-                <span className="font-sans text-sm font-bold text-foreground sm:text-base">
-                  <span className="font-mono tabular-nums">24h</span> SLA
+                <span className="font-sans text-sm font-bold tabular-nums text-foreground sm:text-base">
+                  24h SLA
                 </span>
                 <span className="text-xs text-muted-foreground">
                   Itemized PKR Quote Turnaround
@@ -437,8 +747,8 @@ export function HeroSlider({ slides = [] }: HeroSliderProps) {
                 aria-hidden="true"
               />
               <div className="flex min-w-0 flex-col">
-                <span className="font-sans text-sm font-bold text-foreground sm:text-base">
-                  <span className="font-mono tabular-nums">0-50m</span> Courtyard
+                <span className="font-sans text-sm font-bold tabular-nums text-foreground sm:text-base">
+                  0-50m Courtyard
                 </span>
                 <span className="text-xs text-muted-foreground">
                   Haramain Sanctuary Proximity

@@ -201,6 +201,7 @@ export default async function HomePage() {
     title: s.title,
     subtitle: s.subtitle,
     imageUrl: s.imageUrl,
+    videoUrl: s.videoUrl ?? null,
     primaryCtaLabel: s.primaryCtaLabel,
     primaryCtaUrl: s.primaryCtaUrl,
     secondaryCtaLabel: s.secondaryCtaLabel,
@@ -275,6 +276,9 @@ export default async function HomePage() {
         multiHotelOptions: pkg.multiHotelOptions ?? [],
         highlights: pkg.highlights ?? [],
         bannerUrl: pkg.bannerUrl,
+        coverImageUrl: pkg.coverImageUrl,
+        resolvedCoverImageUrl: pkg.resolvedCoverImageUrl,
+        secondaryHotelImageUrl: pkg.secondaryHotelImageUrl,
         includesVisa: pkg.includesVisa,
         includesTransport: pkg.includesTransport,
         includesZiyarat: pkg.includesZiyarat,
@@ -287,6 +291,9 @@ export default async function HomePage() {
               starRating: pkg.makkahHotel.starRating,
               distanceLabel: pkg.makkahHotel.distanceLabel,
               distanceMeters: pkg.makkahHotel.distanceMeters,
+              accessType: pkg.makkahHotel.accessType,
+              imageUrl: pkg.makkahHotel.imageUrl,
+              galleryUrls: pkg.makkahHotel.galleryUrls,
             }
           : null,
         madinahHotel: pkg.madinahHotel
@@ -295,6 +302,9 @@ export default async function HomePage() {
               starRating: pkg.madinahHotel.starRating,
               distanceLabel: pkg.madinahHotel.distanceLabel,
               distanceMeters: pkg.madinahHotel.distanceMeters,
+              accessType: pkg.madinahHotel.accessType,
+              imageUrl: pkg.madinahHotel.imageUrl,
+              galleryUrls: pkg.madinahHotel.galleryUrls,
             }
           : null,
         departures: openUpcomingDepartures,

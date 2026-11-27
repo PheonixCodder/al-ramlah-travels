@@ -1,4 +1,9 @@
-import { getAuthenticatedAdminOrNull, requireAdmin } from "@/lib/auth-guard"
+import {
+  getAuthenticatedAdminOrNull,
+  requireAdmin,
+  requireSuperAdmin,
+} from "@/lib/auth-guard"
+import { extractStorageKeyFromUrlOrKey } from "@/lib/storage/r2"
 import {
   hasBlockedActiveContentExtension,
   MAX_PILGRIM_DOCUMENT_BYTES,
@@ -35,6 +40,7 @@ export const MAX_IMAGE_OR_DOC_UPLOAD_BYTES = 50 * 1024 * 1024 // 50 MB
 export const MAX_PILGRIM_DOCUMENT_UPLOAD_BYTES = MAX_PILGRIM_DOCUMENT_BYTES
 export const MAX_VIDEO_UPLOAD_BYTES = 250 * 1024 * 1024 // 250 MB
 export const MAX_LOCAL_DEV_UPLOAD_BYTES = 25 * 1024 * 1024 // 25 MB
+export const MAX_HERO_SLIDE_MEDIA_BYTES = 25 * 1024 * 1024 // 25 MB (`26,214,400` bytes)
 
 export const PRESIGN_CONTENT_TYPE_LIMITS: Record<
   string,
@@ -204,8 +210,164 @@ export function sniffAllowedBinaryMagicBytes(
   return null
 }
 
+export const HERO_SLIDE_IMAGE_MIMES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+])
+
+export function isHeroSlidesUploadFolder(rawOrSanitizedFolder: string): boolean {
+  const normalized = rawOrSanitizedFolder
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+    .trim()
+    .toLowerCase()
+  return (
+    normalized === "cms/hero-slides" || normalized.startsWith("cms/hero-slides/")
+  )
+}
+
+export function validateHeroSlideFolderAndMime(params: {
+  folder: string
+  canonicalMime: string
+  sizeBytes: number
+  filename?: string
+}): { ok: true } | { ok: false; status: 400 | 413 | 415; error: string } {
+  if (params.filename && hasBlockedActiveContentExtension(params.filename)) {
+    return {
+      ok: false,
+      status: 400,
+      error:
+        "Executable or markup file extensions (HTML, SVG, JS, XML) are prohibited",
+    }
+  }
+
+  if (
+    !Number.isFinite(params.sizeBytes) ||
+    params.sizeBytes <= 0 ||
+    params.sizeBytes > MAX_HERO_SLIDE_MEDIA_BYTES
+  ) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Hero slide media cannot exceed 25MB",
+    }
+  }
+
+  if (params.folder === "cms/hero-slides/videos") {
+    if (params.canonicalMime !== "video/mp4") {
+      return {
+        ok: false,
+        status: 400,
+        error: "Hero slide videos must be MP4 (video/mp4) up to 25MB",
+      }
+    }
+    return { ok: true }
+  }
+
+  if (
+    params.folder === "cms/hero-slides/images" ||
+    params.folder === "cms/hero-slides"
+  ) {
+    if (!HERO_SLIDE_IMAGE_MIMES.has(params.canonicalMime)) {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          "Hero slide poster images must be JPEG, PNG, or WebP up to 25MB",
+      }
+    }
+    return { ok: true }
+  }
+
+  return {
+    ok: false,
+    status: 400,
+    error:
+      "Invalid hero slide upload subfolder. Allowed: cms/hero-slides/images or cms/hero-slides/videos",
+  }
+}
+
+function isManagedR2Hostname(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase()
+  if (!host) return false
+  if (
+    host === "r2.alramlahtravels.com" ||
+    host === "assets.alramlahtravels.com" ||
+    host.endsWith(".r2.dev") ||
+    host.endsWith(".r2.cloudflarestorage.com")
+  ) {
+    return true
+  }
+
+  const configuredR2Base = process.env.R2_PUBLIC_URL?.trim()
+  if (configuredR2Base) {
+    try {
+      const parsed = new URL(configuredR2Base)
+      if (parsed.hostname.toLowerCase() === host) {
+        return true
+      }
+    } catch {
+      // Ignore malformed env value
+    }
+  }
+
+  return false
+}
+
+/**
+ * Resolves a storage key strictly when `rawInput` belongs to our managed Cloudflare R2
+ * or `/uploads/r2-local/` origins AND resides under `"cms/hero-slides/"`.
+ * External third-party URLs (e.g. Unsplash or external CDNs) always return `null`.
+ */
+export function extractManagedHeroSlidesKey(
+  rawInput: string | null | undefined
+): string | null {
+  const trimmed = rawInput?.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    const configuredR2Base = (process.env.R2_PUBLIC_URL?.trim() ?? "").replace(
+      /\/+$/,
+      ""
+    )
+    const matchesConfiguredBase =
+      Boolean(configuredR2Base) && trimmed.startsWith(`${configuredR2Base}/`)
+
+    if (!matchesConfiguredBase) {
+      try {
+        const parsed = new URL(trimmed)
+        if (parsed.protocol !== "https:") {
+          return null
+        }
+        if (!isManagedR2Hostname(parsed.hostname)) {
+          return null
+        }
+      } catch {
+        return null
+      }
+    }
+  } else if (trimmed.startsWith("/")) {
+    const cleanPath = trimmed.split("?")[0]?.split("#")[0] ?? ""
+    if (!cleanPath.startsWith("/uploads/r2-local/")) {
+      return null
+    }
+  } else if (!trimmed.toLowerCase().startsWith("cms/hero-slides/")) {
+    return null
+  }
+
+  const key = extractStorageKeyFromUrlOrKey(trimmed)
+  if (!key || !key.startsWith("cms/hero-slides/")) {
+    return null
+  }
+  return key
+}
+
 export type RouteAdminAuthDecision =
-  { ok: true } | { ok: false; status: 401 | 403; error: string }
+  | { ok: true; role?: "super_admin" | "staff" }
+  | { ok: false; status: 401 | 403; error: string }
 
 let routeAdminVerifierOverrideForTests:
   | ((req: Request) => Promise<RouteAdminAuthDecision> | RouteAdminAuthDecision)
@@ -238,7 +400,9 @@ export async function enforceRouteAdminAuth(
   try {
     const headerSession = await getAuthenticatedAdminOrNull(req.headers)
     if (headerSession) {
-      return { ok: true }
+      const role =
+        headerSession.user.role === "super_admin" ? "super_admin" : "staff"
+      return { ok: true, role }
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unauthorized"
@@ -248,8 +412,69 @@ export async function enforceRouteAdminAuth(
   }
 
   try {
-    await requireAdmin()
-    return { ok: true }
+    const session = await requireAdmin()
+    const role = session.user.role === "super_admin" ? "super_admin" : "staff"
+    return { ok: true, role }
+  } catch (authErr) {
+    const message = authErr instanceof Error ? authErr.message : "Unauthorized"
+    if (message.toLowerCase().includes("outside a request scope")) {
+      return {
+        ok: false,
+        status: 401,
+        error: "Unauthorized: Admin access required",
+      }
+    }
+    const status = message.toLowerCase().includes("forbidden") ? 403 : 401
+    return { ok: false, status, error: message }
+  }
+}
+
+/**
+ * Verifies an active `super_admin` session (`401` unauthenticated, `403` `staff` or deactivated).
+ */
+export async function enforceRouteSuperAdminAuth(
+  req: Request
+): Promise<RouteAdminAuthDecision> {
+  if (
+    routeAdminVerifierOverrideForTests &&
+    process.env.NODE_ENV !== "production"
+  ) {
+    const decision = await routeAdminVerifierOverrideForTests(req)
+    if (!decision.ok) {
+      return decision
+    }
+    if (decision.role === "staff") {
+      return {
+        ok: false,
+        status: 403,
+        error: "Forbidden: Super Administrator privilege required",
+      }
+    }
+    return { ok: true, role: "super_admin" }
+  }
+
+  try {
+    const headerSession = await getAuthenticatedAdminOrNull(req.headers)
+    if (headerSession) {
+      if (headerSession.user.role !== "super_admin") {
+        return {
+          ok: false,
+          status: 403,
+          error: "Forbidden: Super Administrator privilege required",
+        }
+      }
+      return { ok: true, role: "super_admin" }
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unauthorized"
+    if (msg.toLowerCase().includes("forbidden")) {
+      return { ok: false, status: 403, error: msg }
+    }
+  }
+
+  try {
+    await requireSuperAdmin()
+    return { ok: true, role: "super_admin" }
   } catch (authErr) {
     const message = authErr instanceof Error ? authErr.message : "Unauthorized"
     if (message.toLowerCase().includes("outside a request scope")) {

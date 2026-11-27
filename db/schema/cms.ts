@@ -44,6 +44,7 @@ export const heroSlides = pgTable(
     title: text("title").notNull(),
     subtitle: text("subtitle").notNull(),
     imageUrl: text("image_url").notNull(),
+    videoUrl: text("video_url"),
     primaryCtaLabel: text("primary_cta_label")
       .notNull()
       .default("Plan Custom Umrah"),
@@ -63,6 +64,10 @@ export const heroSlides = pgTable(
   (table) => [
     index("idx_hero_active").on(table.isActive),
     index("idx_hero_sort").on(table.sortOrder),
+    check(
+      "chk_hero_slides_non_empty_video_url",
+      sql`${table.videoUrl} IS NULL OR length(btrim(${table.videoUrl})) > 0`
+    ),
   ]
 )
 

@@ -1,17 +1,23 @@
 "use server"
 
+import crypto from "node:crypto"
 import { revalidatePath } from "next/cache"
-import { eq, sql } from "drizzle-orm"
+import { eq, inArray, sql } from "drizzle-orm"
 import { z } from "zod"
 
-import { db, withTransaction } from "@/db"
+import { db, withTransaction, type TransactionClient } from "@/db"
 import * as schema from "@/db/schema"
 import { recordAuditLog } from "@/lib/audit-log"
 import { requireAdmin } from "@/lib/auth-guard"
 import { revalidatePublicSeoPaths } from "@/lib/seo/revalidate-public"
 import {
+  cloneGroupDepartureBatchSchema,
   groupDepartureSchema,
   groupPackageSchema,
+  upsertGroupPackageWithBatchesSchema,
+  type GroupDepartureInput,
+  type GroupPackageBatchInput,
+  type GroupPackageInput,
 } from "@/lib/validations/catalog"
 import {
   submitGroupBookingApplication,
@@ -19,6 +25,16 @@ import {
 } from "./applications"
 
 const uuidIdSchema = z.string().uuid("Invalid identifier")
+
+class GroupTransactionAbortError extends Error {
+  public readonly code?: string
+
+  constructor(message: string, code?: string) {
+    super(message)
+    this.name = "GroupTransactionAbortError"
+    this.code = code
+  }
+}
 
 function extractPgErrorCode(err: unknown): string | null {
   let current: unknown = err
@@ -32,6 +48,32 @@ function extractPgErrorCode(err: unknown): string | null {
     depth += 1
   }
   return null
+}
+
+function extractPgErrorConstraint(err: unknown): string {
+  let current: unknown = err
+  let depth = 0
+  const parts: string[] = []
+  while (current && typeof current === "object" && depth < 6) {
+    const candidate = current as {
+      constraint?: unknown
+      detail?: unknown
+      message?: unknown
+      cause?: unknown
+    }
+    if (typeof candidate.constraint === "string") {
+      parts.push(candidate.constraint)
+    }
+    if (typeof candidate.detail === "string") {
+      parts.push(candidate.detail)
+    }
+    if (typeof candidate.message === "string") {
+      parts.push(candidate.message)
+    }
+    current = candidate.cause
+    depth += 1
+  }
+  return parts.join(" ").toLowerCase()
 }
 
 function isForeignKeyError(err: unknown): boolean {
@@ -87,8 +129,358 @@ function revalidateGroupInventoryPaths(
 }
 
 // ==========================================
-// 1. GROUP PACKAGES CRUD
+// 1. GROUP PACKAGES CRUD & SHARED TX HELPERS
 // ==========================================
+
+function resolvePackageCoverAndBanner(validated: GroupPackageInput): {
+  coverImageUrl: string | null
+  bannerUrl: string | null
+} {
+  const resolvedCover =
+    validated.coverImageUrl !== undefined
+      ? validated.coverImageUrl?.trim() || null
+      : validated.bannerUrl?.trim() || null
+  return {
+    coverImageUrl: resolvedCover,
+    bannerUrl: resolvedCover,
+  }
+}
+
+async function upsertGroupPackageInTx(
+  tx: TransactionClient,
+  session: { user: { id: string; role: string } },
+  validated: GroupPackageInput,
+  options?: { skipAuditLog?: boolean }
+): Promise<{
+  previousSlug: string | null
+  packageRow: typeof schema.groupPackages.$inferSelect
+}> {
+  const { coverImageUrl, bannerUrl } = resolvePackageCoverAndBanner(validated)
+  const hasExplicitInternalPoster = validated.internalPosterUrl !== undefined
+  const resolvedInternalPoster = hasExplicitInternalPoster
+    ? validated.internalPosterUrl?.trim() || null
+    : undefined
+
+  if (validated.id) {
+    const [existingRow] = await tx
+      .select({ slug: schema.groupPackages.slug })
+      .from(schema.groupPackages)
+      .where(eq(schema.groupPackages.id, validated.id))
+      .limit(1)
+
+    if (!existingRow) {
+      throw new GroupTransactionAbortError("Group package not found.", "NOT_FOUND")
+    }
+
+    const previousSlug = existingRow.slug
+    const resolvedSlug = validated.slug || existingRow.slug
+
+    const [updated] = await tx
+      .update(schema.groupPackages)
+      .set({
+        title: validated.title,
+        slug: resolvedSlug,
+        tier: validated.tier,
+        durationDays: validated.durationDays,
+        makkahNights: validated.makkahNights,
+        madinahNights: validated.madinahNights,
+        airlineId: validated.airlineId || null,
+        makkahHotelId: validated.makkahHotelId || null,
+        madinahHotelId: validated.madinahHotelId || null,
+        includesVisa: validated.includesVisa,
+        includesTransport: validated.includesTransport,
+        includesZiyarat: validated.includesZiyarat,
+        quadPricePkr: validated.quadPricePkr,
+        triplePricePkr: validated.triplePricePkr,
+        doublePricePkr: validated.doublePricePkr,
+        sharingPricePkr: validated.sharingPricePkr,
+        infantPricePkr: validated.infantPricePkr,
+        giftedInclusions: validated.giftedInclusions,
+        multiHotelOptions: validated.multiHotelOptions,
+        highlights: validated.highlights,
+        coverImageUrl,
+        bannerUrl,
+        ...(resolvedInternalPoster !== undefined
+          ? { internalPosterUrl: resolvedInternalPoster }
+          : {}),
+        isFeatured: validated.isFeatured,
+        isActive: validated.isActive,
+        sortOrder: validated.sortOrder,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.groupPackages.id, validated.id))
+      .returning()
+
+    if (!updated) {
+      throw new GroupTransactionAbortError("Group package not found.", "NOT_FOUND")
+    }
+
+    if (!validated.isActive) {
+      await tx
+        .update(schema.groupDepartures)
+        .set({
+          status: "closed",
+          updatedAt: new Date(),
+        })
+        .where(
+          sql`${schema.groupDepartures.packageId} = ${updated.id} AND ${schema.groupDepartures.status} IN ('open', 'filling_fast')`
+        )
+    }
+
+    if (!options?.skipAuditLog) {
+      await recordAuditLog(
+        {
+          actorId: session.user.id,
+          actorRole: session.user.role,
+          action: "group_package.update",
+          entityType: "group_package",
+          entityId: updated.id,
+          after: {
+            slug: updated.slug,
+            isActive: validated.isActive,
+          },
+        },
+        tx
+      )
+    }
+
+    return { previousSlug, packageRow: updated }
+  }
+
+  const [inserted] = await tx
+    .insert(schema.groupPackages)
+    .values({
+      title: validated.title,
+      slug: validated.slug,
+      tier: validated.tier,
+      durationDays: validated.durationDays,
+      makkahNights: validated.makkahNights,
+      madinahNights: validated.madinahNights,
+      airlineId: validated.airlineId || null,
+      makkahHotelId: validated.makkahHotelId || null,
+      madinahHotelId: validated.madinahHotelId || null,
+      includesVisa: validated.includesVisa,
+      includesTransport: validated.includesTransport,
+      includesZiyarat: validated.includesZiyarat,
+      quadPricePkr: validated.quadPricePkr,
+      triplePricePkr: validated.triplePricePkr,
+      doublePricePkr: validated.doublePricePkr,
+      sharingPricePkr: validated.sharingPricePkr,
+      infantPricePkr: validated.infantPricePkr,
+      giftedInclusions: validated.giftedInclusions,
+      multiHotelOptions: validated.multiHotelOptions,
+      highlights: validated.highlights,
+      coverImageUrl,
+      bannerUrl,
+      internalPosterUrl: resolvedInternalPoster ?? null,
+      isFeatured: validated.isFeatured,
+      isActive: validated.isActive,
+      sortOrder: validated.sortOrder,
+    })
+    .returning()
+
+  if (!options?.skipAuditLog) {
+    await recordAuditLog(
+      {
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        action: "group_package.create",
+        entityType: "group_package",
+        entityId: inserted.id,
+        after: {
+          slug: validated.slug,
+          title: validated.title,
+        },
+      },
+      tx
+    )
+  }
+
+  return { previousSlug: null, packageRow: inserted }
+}
+
+function computeEffectiveBatchStatus(
+  requestedStatus: "open" | "filling_fast" | "sold_out" | "closed",
+  totalSeats: number,
+  bookedSeats: number,
+  forceClosed: boolean
+): "open" | "filling_fast" | "sold_out" | "closed" {
+  if (forceClosed || requestedStatus === "closed") {
+    return "closed"
+  }
+  if (bookedSeats >= totalSeats) {
+    return "sold_out"
+  }
+  if (totalSeats > 0 && bookedSeats / totalSeats >= 0.75) {
+    return "filling_fast"
+  }
+  return "open"
+}
+
+async function upsertGroupDepartureInTx(
+  tx: TransactionClient,
+  session: { user: { id: string; role: string } },
+  validated: GroupDepartureInput | (GroupPackageBatchInput & { packageId: string }),
+  options?: {
+    forceClosed?: boolean
+    restrictToPackageId?: string
+    skipAuditLog?: boolean
+  }
+): Promise<typeof schema.groupDepartures.$inferSelect> {
+  if (validated.returnDate < validated.departureDate) {
+    throw new GroupTransactionAbortError(
+      "Return date cannot be earlier than departure date.",
+      "INVALID_DATE_ORDER"
+    )
+  }
+
+  if (validated.id) {
+    const lockRes = await tx.execute(
+      sql`SELECT id, package_id, booked_seats, status FROM group_departures WHERE id = ${validated.id} FOR UPDATE`
+    )
+    const existingDep = (
+      lockRes as unknown as {
+        rows?: Array<{
+          id: string
+          package_id: string
+          booked_seats: number
+          status: "open" | "filling_fast" | "sold_out" | "closed"
+        }>
+      }
+    ).rows?.[0]
+
+    if (
+      !existingDep ||
+      (options?.restrictToPackageId &&
+        existingDep.package_id !== options.restrictToPackageId)
+    ) {
+      throw new GroupTransactionAbortError(
+        "Group departure batch not found.",
+        "NOT_FOUND"
+      )
+    }
+
+    const liveBookedSeats = existingDep.booked_seats
+    if (validated.totalSeats < liveBookedSeats) {
+      throw new GroupTransactionAbortError(
+        `Cannot reduce total seats (${validated.totalSeats}) below already booked seats (${liveBookedSeats}).`,
+        "TOTAL_BELOW_BOOKED"
+      )
+    }
+
+    const effectiveStatus = computeEffectiveBatchStatus(
+      validated.status,
+      validated.totalSeats,
+      liveBookedSeats,
+      Boolean(options?.forceClosed)
+    )
+
+    const [updated] = await tx
+      .update(schema.groupDepartures)
+      .set({
+        packageId: validated.packageId,
+        batchCode: validated.batchCode,
+        departureCityId: validated.departureCityId,
+        departureDate: validated.departureDate,
+        returnDate: validated.returnDate,
+        totalSeats: validated.totalSeats,
+        // Preserve live `bookedSeats` so stale admin forms never clobber concurrent approvals (`T-061`)
+        bookedSeats: liveBookedSeats,
+        status: effectiveStatus,
+        quadPriceOverridePkr: validated.quadPriceOverridePkr ?? null,
+        triplePriceOverridePkr: validated.triplePriceOverridePkr ?? null,
+        doublePriceOverridePkr: validated.doublePriceOverridePkr ?? null,
+        sharingPriceOverridePkr: validated.sharingPriceOverridePkr ?? null,
+        outboundFlightNumber: validated.outboundFlightNumber || null,
+        returnFlightNumber: validated.returnFlightNumber || null,
+        flightScheduleSummary: validated.flightScheduleSummary || null,
+        routingNote: validated.routingNote || null,
+        baggageAllowance: validated.baggageAllowance || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.groupDepartures.id, validated.id))
+      .returning()
+
+    if (!options?.skipAuditLog) {
+      await recordAuditLog(
+        {
+          actorId: session.user.id,
+          actorRole: session.user.role,
+          action: "group_departure.update",
+          entityType: "group_departure",
+          entityId: validated.id,
+          after: {
+            batchCode: validated.batchCode,
+            totalSeats: validated.totalSeats,
+            bookedSeats: liveBookedSeats,
+            status: effectiveStatus,
+          },
+        },
+        tx
+      )
+    }
+
+    return updated
+  }
+
+  if (validated.totalSeats < validated.bookedSeats) {
+    throw new GroupTransactionAbortError(
+      `Total seats (${validated.totalSeats}) cannot be less than booked seats (${validated.bookedSeats}).`,
+      "TOTAL_BELOW_BOOKED"
+    )
+  }
+
+  const initialStatus = computeEffectiveBatchStatus(
+    validated.status,
+    validated.totalSeats,
+    validated.bookedSeats,
+    Boolean(options?.forceClosed)
+  )
+
+  const [inserted] = await tx
+    .insert(schema.groupDepartures)
+    .values({
+      packageId: validated.packageId,
+      batchCode: validated.batchCode,
+      departureCityId: validated.departureCityId,
+      departureDate: validated.departureDate,
+      returnDate: validated.returnDate,
+      totalSeats: validated.totalSeats,
+      bookedSeats: validated.bookedSeats,
+      status: initialStatus,
+      quadPriceOverridePkr: validated.quadPriceOverridePkr ?? null,
+      triplePriceOverridePkr: validated.triplePriceOverridePkr ?? null,
+      doublePriceOverridePkr: validated.doublePriceOverridePkr ?? null,
+      sharingPriceOverridePkr: validated.sharingPriceOverridePkr ?? null,
+      outboundFlightNumber: validated.outboundFlightNumber || null,
+      returnFlightNumber: validated.returnFlightNumber || null,
+      flightScheduleSummary: validated.flightScheduleSummary || null,
+      routingNote: validated.routingNote || null,
+      baggageAllowance: validated.baggageAllowance || null,
+    })
+    .returning()
+
+  if (!options?.skipAuditLog) {
+    await recordAuditLog(
+      {
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        action: "group_departure.create",
+        entityType: "group_departure",
+        entityId: inserted.id,
+        after: {
+          batchCode: validated.batchCode,
+          totalSeats: validated.totalSeats,
+          bookedSeats: validated.bookedSeats,
+          status: initialStatus,
+        },
+      },
+      tx
+    )
+  }
+
+  return inserted
+}
 
 export async function upsertGroupPackage(rawInput: unknown) {
   const session = await requireAdmin()
@@ -104,139 +496,25 @@ export async function upsertGroupPackage(rawInput: unknown) {
   const validated = parsed.data
 
   try {
-    let previousSlug: string | null = null
-    const result = await withTransaction(async (tx) => {
-      if (validated.id) {
-        const [existingRow] = await tx
-          .select({ slug: schema.groupPackages.slug })
-          .from(schema.groupPackages)
-          .where(eq(schema.groupPackages.id, validated.id))
-          .limit(1)
-        previousSlug = existingRow?.slug ?? null
-        const resolvedSlug = validated.slug || existingRow?.slug || validated.slug
-
-        const [updated] = await tx
-          .update(schema.groupPackages)
-          .set({
-            title: validated.title,
-            slug: resolvedSlug,
-            tier: validated.tier,
-            durationDays: validated.durationDays,
-            makkahNights: validated.makkahNights,
-            madinahNights: validated.madinahNights,
-            airlineId: validated.airlineId || null,
-            makkahHotelId: validated.makkahHotelId || null,
-            madinahHotelId: validated.madinahHotelId || null,
-            includesVisa: validated.includesVisa,
-            includesTransport: validated.includesTransport,
-            includesZiyarat: validated.includesZiyarat,
-            quadPricePkr: validated.quadPricePkr,
-            triplePricePkr: validated.triplePricePkr,
-            doublePricePkr: validated.doublePricePkr,
-            sharingPricePkr: validated.sharingPricePkr,
-            infantPricePkr: validated.infantPricePkr,
-            giftedInclusions: validated.giftedInclusions,
-            multiHotelOptions: validated.multiHotelOptions,
-            highlights: validated.highlights,
-            bannerUrl: validated.bannerUrl || null,
-            isFeatured: validated.isFeatured,
-            isActive: validated.isActive,
-            sortOrder: validated.sortOrder,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.groupPackages.id, validated.id))
-          .returning()
-
-        if (!updated) {
-          return {
-            success: false as const,
-            error: "Group package not found.",
-          }
-        }
-
-        if (!validated.isActive) {
-          await tx
-            .update(schema.groupDepartures)
-            .set({
-              status: "closed",
-              updatedAt: new Date(),
-            })
-            .where(
-              sql`${schema.groupDepartures.packageId} = ${updated.id} AND ${schema.groupDepartures.status} IN ('open', 'filling_fast')`
-            )
-        }
-
-        await recordAuditLog(
-          {
-            actorId: session.user.id,
-            actorRole: session.user.role,
-            action: "group_package.update",
-            entityType: "group_package",
-            entityId: updated.id,
-            after: {
-              slug: updated.slug,
-              isActive: validated.isActive,
-            },
-          },
-          tx
-        )
-
-        return { success: true as const, id: updated.id, data: updated }
-      }
-
-      const [inserted] = await tx
-        .insert(schema.groupPackages)
-        .values({
-          title: validated.title,
-          slug: validated.slug,
-          tier: validated.tier,
-          durationDays: validated.durationDays,
-          makkahNights: validated.makkahNights,
-          madinahNights: validated.madinahNights,
-          airlineId: validated.airlineId || null,
-          makkahHotelId: validated.makkahHotelId || null,
-          madinahHotelId: validated.madinahHotelId || null,
-          includesVisa: validated.includesVisa,
-          includesTransport: validated.includesTransport,
-          includesZiyarat: validated.includesZiyarat,
-          quadPricePkr: validated.quadPricePkr,
-          triplePricePkr: validated.triplePricePkr,
-          doublePricePkr: validated.doublePricePkr,
-          sharingPricePkr: validated.sharingPricePkr,
-          infantPricePkr: validated.infantPricePkr,
-          giftedInclusions: validated.giftedInclusions,
-          multiHotelOptions: validated.multiHotelOptions,
-          highlights: validated.highlights,
-          bannerUrl: validated.bannerUrl || null,
-          isFeatured: validated.isFeatured,
-          isActive: validated.isActive,
-          sortOrder: validated.sortOrder,
-        })
-        .returning()
-
-      await recordAuditLog(
-        {
-          actorId: session.user.id,
-          actorRole: session.user.role,
-          action: "group_package.create",
-          entityType: "group_package",
-          entityId: inserted.id,
-          after: {
-            slug: validated.slug,
-            title: validated.title,
-          },
-        },
-        tx
-      )
-
-      return { success: true as const, id: inserted.id, data: inserted }
-    })
-
-    if (result.success) {
-      revalidateGroupInventoryPaths([previousSlug, result.data.slug])
+    const txResult = await withTransaction((tx) =>
+      upsertGroupPackageInTx(tx, session, validated)
+    )
+    revalidateGroupInventoryPaths([
+      txResult.previousSlug,
+      txResult.packageRow.slug,
+    ])
+    return {
+      success: true as const,
+      id: txResult.packageRow.id,
+      data: txResult.packageRow,
     }
-    return result
   } catch (err: unknown) {
+    if (err instanceof GroupTransactionAbortError) {
+      return {
+        success: false as const,
+        error: err.message,
+      }
+    }
     if (isUniqueConstraintError(err)) {
       return {
         success: false as const,
@@ -248,6 +526,127 @@ export async function upsertGroupPackage(rawInput: unknown) {
       success: false as const,
       error:
         err instanceof Error ? err.message : "Failed to save group package.",
+    }
+  }
+}
+
+export async function upsertGroupPackageWithBatches(rawInput: unknown) {
+  const session = await requireAdmin()
+
+  const parsed = upsertGroupPackageWithBatchesSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    const firstIssue = parsed.error.issues[0]
+    return {
+      success: false as const,
+      code: "VALIDATION_ERROR" as const,
+      error:
+        firstIssue?.message || "Invalid group package or departure batch data.",
+    }
+  }
+
+  const validated = parsed.data
+  const seenBatchCodes = new Set<string>()
+  for (const batch of validated.batches) {
+    const normalizedCode = batch.batchCode.trim().toUpperCase()
+    if (seenBatchCodes.has(normalizedCode)) {
+      return {
+        success: false as const,
+        code: "DUPLICATE_BATCH_CODE" as const,
+        error: `Duplicate batch code "${batch.batchCode}" in submission.`,
+      }
+    }
+    seenBatchCodes.add(normalizedCode)
+  }
+
+  try {
+    const txResult = await withTransaction(async (tx) => {
+      const { previousSlug, packageRow } = await upsertGroupPackageInTx(
+        tx,
+        session,
+        validated.package,
+        { skipAuditLog: true }
+      )
+
+      const savedBatches: Array<typeof schema.groupDepartures.$inferSelect> = []
+      for (const batch of validated.batches) {
+        const savedBatch = await upsertGroupDepartureInTx(
+          tx,
+          session,
+          {
+            ...batch,
+            packageId: packageRow.id,
+          },
+          {
+            forceClosed: !validated.package.isActive,
+            restrictToPackageId: packageRow.id,
+            skipAuditLog: true,
+          }
+        )
+        savedBatches.push(savedBatch)
+      }
+
+      await recordAuditLog(
+        {
+          actorId: session.user.id,
+          actorRole: session.user.role,
+          action: "group_package.upsert_with_batches",
+          entityType: "group_package",
+          entityId: packageRow.id,
+          after: {
+            slug: packageRow.slug,
+            isActive: packageRow.isActive,
+            batchCount: savedBatches.length,
+            batchCodes: savedBatches.map((b) => b.batchCode),
+          },
+        },
+        tx
+      )
+
+      return { previousSlug, packageRow, savedBatches }
+    })
+
+    revalidateGroupInventoryPaths([
+      txResult.previousSlug,
+      txResult.packageRow.slug,
+    ])
+
+    return {
+      success: true as const,
+      id: txResult.packageRow.id,
+      slug: txResult.packageRow.slug,
+      batchCount: txResult.savedBatches.length,
+      data: txResult.packageRow,
+      batches: txResult.savedBatches,
+    }
+  } catch (err: unknown) {
+    if (err instanceof GroupTransactionAbortError) {
+      return {
+        success: false as const,
+        ...(err.code ? { code: err.code } : {}),
+        error: err.message,
+      }
+    }
+    if (isUniqueConstraintError(err)) {
+      const pgConstraint = extractPgErrorConstraint(err)
+      if (pgConstraint.includes("batch_code")) {
+        return {
+          success: false as const,
+          code: "DUPLICATE_BATCH_CODE" as const,
+          error: "A departure batch with one of the specified batch codes already exists.",
+        }
+      }
+      return {
+        success: false as const,
+        code: "DUPLICATE_SLUG" as const,
+        error: `A group package with slug "${validated.package.slug}" already exists.`,
+      }
+    }
+    return {
+      success: false as const,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to save group package with departure batches.",
     }
   }
 }
@@ -386,8 +785,105 @@ export async function deleteGroupPackage(id: string) {
 }
 
 // ==========================================
-// 2. GROUP DEPARTURE BATCHES CRUD
+// 2. GROUP DEPARTURE BATCHES CRUD & CLONING
 // ==========================================
+
+const KNOWN_GATEWAY_AIRPORT_RE =
+  /(^|[-_])(LHE|KHI|ISB|PEW|MUX|SKT|LYP|UET)(?=$|[-_])/i
+
+function shiftIsoCalendarDate(isoDate: string, offsetDays: number): string {
+  if (offsetDays === 0) return isoDate
+  const [yearStr, monthStr, dayStr] = isoDate.split("-")
+  const year = Number.parseInt(yearStr ?? "0", 10)
+  const month = Number.parseInt(monthStr ?? "0", 10)
+  const day = Number.parseInt(dayStr ?? "0", 10)
+  const shifted = new Date(Date.UTC(year, month - 1, day + offsetDays))
+  const ny = String(shifted.getUTCFullYear()).padStart(4, "0")
+  const nm = String(shifted.getUTCMonth() + 1).padStart(2, "0")
+  const nd = String(shifted.getUTCDate()).padStart(2, "0")
+  return `${ny}-${nm}-${nd}`
+}
+
+function adaptRoutingAirportCode(
+  rawText: string | null,
+  sourceAirportCode: string,
+  targetAirportCode: string
+): string | null {
+  if (!rawText) return null
+  const src = sourceAirportCode.trim().toUpperCase()
+  const dst = targetAirportCode.trim().toUpperCase()
+  if (!src || !dst || src === dst) return rawText
+  return rawText.replace(new RegExp(`\\b${src}\\b`, "g"), dst)
+}
+
+function buildCollisionSafeClonedBatchCode(
+  sourceBatchCode: string,
+  sourceAirportCode: string,
+  targetAirportCode: string,
+  usedBatchCodesUpper: Set<string>
+): string {
+  const cleanSource = sourceBatchCode.trim()
+  const srcAirport = sourceAirportCode.trim().toUpperCase()
+  const dstAirport = targetAirportCode.trim().toUpperCase()
+
+  let candidateBase = cleanSource
+  const sourceAirportTokenRe = srcAirport
+    ? new RegExp(`(^|[-_])${srcAirport}(?=$|[-_])`, "i")
+    : null
+
+  if (sourceAirportTokenRe && sourceAirportTokenRe.test(cleanSource)) {
+    candidateBase = cleanSource.replace(sourceAirportTokenRe, `$1${dstAirport}`)
+  } else if (KNOWN_GATEWAY_AIRPORT_RE.test(cleanSource)) {
+    candidateBase = cleanSource.replace(
+      KNOWN_GATEWAY_AIRPORT_RE,
+      `$1${dstAirport}`
+    )
+  } else {
+    const maxPrefixLen = Math.max(1, 32 - dstAirport.length - 1)
+    candidateBase = `${cleanSource.slice(0, maxPrefixLen)}-${dstAirport}`
+  }
+
+  candidateBase = candidateBase.slice(0, 32)
+  if (!usedBatchCodesUpper.has(candidateBase.toUpperCase())) {
+    usedBatchCodesUpper.add(candidateBase.toUpperCase())
+    return candidateBase
+  }
+
+  const hasTargetAirportToken = new RegExp(
+    `(^|[-_])${dstAirport}(?=$|[-_])`,
+    "i"
+  ).test(candidateBase)
+
+  for (let seq = 2; seq <= 25; seq += 1) {
+    const suffix = hasTargetAirportToken
+      ? `-${String(seq).padStart(2, "0")}`
+      : `-${dstAirport}-${String(seq).padStart(2, "0")}`
+    const maxLen = Math.max(1, 32 - suffix.length)
+    const candidate = `${candidateBase.slice(0, maxLen)}${suffix}`
+    if (!usedBatchCodesUpper.has(candidate.toUpperCase())) {
+      usedBatchCodesUpper.add(candidate.toUpperCase())
+      return candidate
+    }
+  }
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const shortHex = crypto.randomBytes(2).toString("hex").toUpperCase()
+    const suffix = hasTargetAirportToken
+      ? `-${shortHex}`
+      : `-${dstAirport}-${shortHex}`
+    const maxLen = Math.max(1, 32 - suffix.length)
+    const candidate = `${candidateBase.slice(0, maxLen)}${suffix}`
+    if (!usedBatchCodesUpper.has(candidate.toUpperCase())) {
+      usedBatchCodesUpper.add(candidate.toUpperCase())
+      return candidate
+    }
+  }
+
+  throw new GroupTransactionAbortError(
+    `Could not generate a unique batch code for gateway ${dstAirport}.`,
+    "DUPLICATE_BATCH_CODE"
+  )
+}
 
 export async function upsertGroupDeparture(rawInput: unknown) {
   const session = await requireAdmin()
@@ -419,160 +915,23 @@ export async function upsertGroupDeparture(rawInput: unknown) {
   }
 
   try {
-    const txRes = await withTransaction(async (tx) => {
-      if (validated.id) {
-        const lockRes = await tx.execute(
-          sql`SELECT id, booked_seats, status FROM group_departures WHERE id = ${validated.id} FOR UPDATE`
-        )
-        const existingDep = (
-          lockRes as unknown as {
-            rows?: Array<{
-              id: string
-              booked_seats: number
-              status: "open" | "filling_fast" | "sold_out" | "closed"
-            }>
-          }
-        ).rows?.[0]
-
-        if (!existingDep) {
-          return {
-            success: false as const,
-            code: "NOT_FOUND" as const,
-            error: "Group departure batch not found.",
-          }
-        }
-
-        const liveBookedSeats = existingDep.booked_seats
-        if (validated.totalSeats < liveBookedSeats) {
-          return {
-            success: false as const,
-            code: "TOTAL_BELOW_BOOKED" as const,
-            error: `Cannot reduce total seats (${validated.totalSeats}) below already booked seats (${liveBookedSeats}).`,
-          }
-        }
-
-        const effectiveStatus: "open" | "filling_fast" | "sold_out" | "closed" =
-          validated.status === "closed"
-            ? "closed"
-            : liveBookedSeats >= validated.totalSeats
-              ? "sold_out"
-              : validated.totalSeats > 0 &&
-                  liveBookedSeats / validated.totalSeats >= 0.75
-                ? "filling_fast"
-                : "open"
-
-        const [updated] = await tx
-          .update(schema.groupDepartures)
-          .set({
-            packageId: validated.packageId,
-            batchCode: validated.batchCode,
-            departureCityId: validated.departureCityId,
-            departureDate: validated.departureDate,
-            returnDate: validated.returnDate,
-            totalSeats: validated.totalSeats,
-            // Preserve live `bookedSeats` so stale admin forms never clobber concurrent approvals (`T-061`)
-            bookedSeats: liveBookedSeats,
-            status: effectiveStatus,
-            quadPriceOverridePkr: validated.quadPriceOverridePkr ?? null,
-            triplePriceOverridePkr: validated.triplePriceOverridePkr ?? null,
-            doublePriceOverridePkr: validated.doublePriceOverridePkr ?? null,
-            sharingPriceOverridePkr: validated.sharingPriceOverridePkr ?? null,
-            outboundFlightNumber: validated.outboundFlightNumber || null,
-            returnFlightNumber: validated.returnFlightNumber || null,
-            flightScheduleSummary: validated.flightScheduleSummary || null,
-            routingNote: validated.routingNote || null,
-            baggageAllowance: validated.baggageAllowance || null,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.groupDepartures.id, validated.id))
-          .returning()
-
-        await recordAuditLog(
-          {
-            actorId: session.user.id,
-            actorRole: session.user.role,
-            action: "group_departure.update",
-            entityType: "group_departure",
-            entityId: validated.id,
-            after: {
-              batchCode: validated.batchCode,
-              totalSeats: validated.totalSeats,
-              bookedSeats: liveBookedSeats,
-              status: effectiveStatus,
-            },
-          },
-          tx
-        )
-
-        return { success: true as const, id: validated.id, data: updated }
-      }
-
-      if (validated.totalSeats < validated.bookedSeats) {
-        return {
-          success: false as const,
-          code: "TOTAL_BELOW_BOOKED" as const,
-          error: `Total seats (${validated.totalSeats}) cannot be less than booked seats (${validated.bookedSeats}).`,
-        }
-      }
-
-      const initialStatus: "open" | "filling_fast" | "sold_out" | "closed" =
-        validated.status === "closed"
-          ? "closed"
-          : validated.bookedSeats >= validated.totalSeats
-            ? "sold_out"
-            : validated.totalSeats > 0 &&
-                validated.bookedSeats / validated.totalSeats >= 0.75
-              ? "filling_fast"
-              : "open"
-
-      const [inserted] = await tx
-        .insert(schema.groupDepartures)
-        .values({
-          packageId: validated.packageId,
-          batchCode: validated.batchCode,
-          departureCityId: validated.departureCityId,
-          departureDate: validated.departureDate,
-          returnDate: validated.returnDate,
-          totalSeats: validated.totalSeats,
-          bookedSeats: validated.bookedSeats,
-          status: initialStatus,
-          quadPriceOverridePkr: validated.quadPriceOverridePkr ?? null,
-          triplePriceOverridePkr: validated.triplePriceOverridePkr ?? null,
-          doublePriceOverridePkr: validated.doublePriceOverridePkr ?? null,
-          sharingPriceOverridePkr: validated.sharingPriceOverridePkr ?? null,
-          outboundFlightNumber: validated.outboundFlightNumber || null,
-          returnFlightNumber: validated.returnFlightNumber || null,
-          flightScheduleSummary: validated.flightScheduleSummary || null,
-          routingNote: validated.routingNote || null,
-          baggageAllowance: validated.baggageAllowance || null,
-        })
-        .returning()
-
-      await recordAuditLog(
-        {
-          actorId: session.user.id,
-          actorRole: session.user.role,
-          action: "group_departure.create",
-          entityType: "group_departure",
-          entityId: inserted.id,
-          after: {
-            batchCode: validated.batchCode,
-            totalSeats: validated.totalSeats,
-            bookedSeats: validated.bookedSeats,
-            status: initialStatus,
-          },
-        },
-        tx
-      )
-
-      return { success: true as const, id: inserted.id, data: inserted }
-    })
-
-    if (txRes.success) {
-      revalidateGroupInventoryPaths()
-    }
-    return txRes
+    const savedDep = await withTransaction((tx) =>
+      upsertGroupDepartureInTx(tx, session, validated)
+    )
+    revalidateGroupInventoryPaths()
+    return { success: true as const, id: savedDep.id, data: savedDep }
   } catch (err: unknown) {
+    if (err instanceof GroupTransactionAbortError) {
+      return {
+        success: false as const,
+        code: (err.code ?? "VALIDATION_ERROR") as
+          | "TOTAL_BELOW_BOOKED"
+          | "INVALID_DATE_ORDER"
+          | "NOT_FOUND"
+          | "VALIDATION_ERROR",
+        error: err.message,
+      }
+    }
     if (isUniqueConstraintError(err)) {
       return {
         success: false as const,
@@ -584,6 +943,176 @@ export async function upsertGroupDeparture(rawInput: unknown) {
       success: false as const,
       error:
         err instanceof Error ? err.message : "Failed to save group departure.",
+    }
+  }
+}
+
+export async function cloneGroupDepartureBatch(rawInput: unknown) {
+  const session = await requireAdmin()
+
+  const parsed = cloneGroupDepartureBatchSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    return {
+      success: false as const,
+      code: "VALIDATION_ERROR" as const,
+      error: parsed.error.issues[0]?.message || "Invalid clone batch request.",
+    }
+  }
+
+  const validated = parsed.data
+  const uniqueTargetCityIds = Array.from(new Set(validated.targetCityIds))
+
+  try {
+    const txRes = await withTransaction(async (tx) => {
+      const [sourceRow] = await tx
+        .select({
+          dep: schema.groupDepartures,
+          pkgSlug: schema.groupPackages.slug,
+          sourceAirportCode: schema.departureCities.airportCode,
+        })
+        .from(schema.groupDepartures)
+        .innerJoin(
+          schema.groupPackages,
+          eq(schema.groupDepartures.packageId, schema.groupPackages.id)
+        )
+        .innerJoin(
+          schema.departureCities,
+          eq(schema.groupDepartures.departureCityId, schema.departureCities.id)
+        )
+        .where(eq(schema.groupDepartures.id, validated.sourceBatchId))
+        .limit(1)
+
+      if (!sourceRow) {
+        throw new GroupTransactionAbortError(
+          "Source departure batch not found.",
+          "NOT_FOUND"
+        )
+      }
+
+      const cityRows = await tx
+        .select()
+        .from(schema.departureCities)
+        .where(inArray(schema.departureCities.id, uniqueTargetCityIds))
+
+      const cityById = new Map(cityRows.map((c) => [c.id, c]))
+      for (const targetCityId of uniqueTargetCityIds) {
+        if (!cityById.has(targetCityId)) {
+          throw new GroupTransactionAbortError(
+            "One or more target departure cities were not found.",
+            "NOT_FOUND"
+          )
+        }
+      }
+
+      const existingBatchRows = await tx
+        .select({ batchCode: schema.groupDepartures.batchCode })
+        .from(schema.groupDepartures)
+      const usedBatchCodesUpper = new Set(
+        existingBatchRows.map((row) => row.batchCode.trim().toUpperCase())
+      )
+
+      const clonedDepartureDate = shiftIsoCalendarDate(
+        sourceRow.dep.departureDate,
+        validated.departureDateOffsetDays
+      )
+      const clonedReturnDate = shiftIsoCalendarDate(
+        sourceRow.dep.returnDate,
+        validated.departureDateOffsetDays
+      )
+
+      const clonedBatches: Array<typeof schema.groupDepartures.$inferSelect> =
+        []
+
+      for (const targetCityId of uniqueTargetCityIds) {
+        const targetCity = cityById.get(targetCityId)!
+        const batchCode = buildCollisionSafeClonedBatchCode(
+          sourceRow.dep.batchCode,
+          sourceRow.sourceAirportCode,
+          targetCity.airportCode,
+          usedBatchCodesUpper
+        )
+
+        const [inserted] = await tx
+          .insert(schema.groupDepartures)
+          .values({
+            packageId: sourceRow.dep.packageId,
+            batchCode,
+            departureCityId: targetCity.id,
+            departureDate: clonedDepartureDate,
+            returnDate: clonedReturnDate,
+            totalSeats: sourceRow.dep.totalSeats,
+            bookedSeats: 0,
+            status: "open",
+            quadPriceOverridePkr: sourceRow.dep.quadPriceOverridePkr,
+            triplePriceOverridePkr: sourceRow.dep.triplePriceOverridePkr,
+            doublePriceOverridePkr: sourceRow.dep.doublePriceOverridePkr,
+            sharingPriceOverridePkr: sourceRow.dep.sharingPriceOverridePkr,
+            outboundFlightNumber: sourceRow.dep.outboundFlightNumber,
+            returnFlightNumber: sourceRow.dep.returnFlightNumber,
+            flightScheduleSummary: adaptRoutingAirportCode(
+              sourceRow.dep.flightScheduleSummary,
+              sourceRow.sourceAirportCode,
+              targetCity.airportCode
+            ),
+            routingNote: adaptRoutingAirportCode(
+              sourceRow.dep.routingNote,
+              sourceRow.sourceAirportCode,
+              targetCity.airportCode
+            ),
+            baggageAllowance: sourceRow.dep.baggageAllowance,
+          })
+          .returning()
+
+        clonedBatches.push(inserted)
+      }
+
+      await recordAuditLog(
+        {
+          actorId: session.user.id,
+          actorRole: session.user.role,
+          action: "group_departure.clone",
+          entityType: "group_departure",
+          entityId: sourceRow.dep.id,
+          after: {
+            sourceBatchCode: sourceRow.dep.batchCode,
+            departureDateOffsetDays: validated.departureDateOffsetDays,
+            clonedBatchIds: clonedBatches.map((b) => b.id),
+            clonedBatchCodes: clonedBatches.map((b) => b.batchCode),
+          },
+        },
+        tx
+      )
+
+      return { pkgSlug: sourceRow.pkgSlug, clonedBatches }
+    })
+
+    revalidateGroupInventoryPaths([txRes.pkgSlug])
+
+    return {
+      success: true as const,
+      clonedBatches: txRes.clonedBatches,
+    }
+  } catch (err: unknown) {
+    if (err instanceof GroupTransactionAbortError) {
+      return {
+        success: false as const,
+        ...(err.code ? { code: err.code } : {}),
+        error: err.message,
+      }
+    }
+    if (isUniqueConstraintError(err)) {
+      return {
+        success: false as const,
+        code: "DUPLICATE_BATCH_CODE" as const,
+        error: "Generated batch code conflicted with an existing departure batch.",
+      }
+    }
+    return {
+      success: false as const,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to clone departure batch.",
     }
   }
 }

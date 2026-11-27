@@ -16,6 +16,14 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   ArrowRight,
   Calendar,
   Plane,
@@ -39,6 +47,9 @@ export interface PackageWithRelations extends GroupPackageData {
     starRating: number
     distanceMeters: number
     distanceLabel: string
+    accessType?: "walking" | "shuttle"
+    imageUrl?: string | null
+    galleryUrls?: string[]
   } | null
   madinahHotel?: {
     id: string
@@ -47,6 +58,9 @@ export interface PackageWithRelations extends GroupPackageData {
     starRating: number
     distanceMeters: number
     distanceLabel: string
+    accessType?: "walking" | "shuttle"
+    imageUrl?: string | null
+    galleryUrls?: string[]
   } | null
   departures: (DepartureBatchData & {
     departureCity?: {
@@ -81,6 +95,15 @@ export function GroupsClient({
   }
 
   const [selectedTier, setSelectedTier] = useState<string>("all")
+  const [notice, setNotice] = useState<{
+    type: "error" | "info"
+    text: string
+  } | null>(null)
+  const [confirmTarget, setConfirmTarget] = useState<
+    | { kind: "package"; id: string; title: string }
+    | { kind: "batch"; batchId: string; batchCode: string; pkgId: string }
+    | null
+  >(null)
   const [, startTransition] = useTransition()
 
   const filteredPackages = packages.filter(
@@ -99,63 +122,71 @@ export function GroupsClient({
     })
   }
 
-  function handlePackageDelete(id: string, title: string) {
-    if (!window.confirm(`Delete package "${title}" and all its batches?`))
-      return
-    startTransition(async () => {
-      const res = await deleteGroupPackage(id)
-      if (res.softDeleted) {
-        setPackages((prev) =>
-          prev.map((p) => (p.id === id ? { ...p, isActive: false } : p))
-        )
-        router.refresh()
-        alert(res.error)
-        return
-      }
-      if (!res.success) {
-        alert(res.error)
-        return
-      }
-      setPackages((prev) => prev.filter((p) => p.id !== id))
-      router.refresh()
-    })
-  }
+  function executeConfirmedDelete() {
+    if (!confirmTarget) return
+    const current = confirmTarget
+    setConfirmTarget(null)
 
-  function handleBatchDelete(
-    batchId: string,
-    batchCode: string,
-    pkgId: string
-  ) {
-    if (!window.confirm(`Delete departure batch "${batchCode}"?`)) return
+    if (current.kind === "package") {
+      startTransition(async () => {
+        const res = await deleteGroupPackage(current.id)
+        if (res.softDeleted) {
+          setPackages((prev) =>
+            prev.map((p) =>
+              p.id === current.id ? { ...p, isActive: false } : p
+            )
+          )
+          router.refresh()
+          setNotice({ type: "info", text: res.error })
+          return
+        }
+        if (!res.success) {
+          setNotice({
+            type: "error",
+            text: res.error || "Failed to delete group package.",
+          })
+          return
+        }
+        setPackages((prev) => prev.filter((p) => p.id !== current.id))
+        router.refresh()
+      })
+      return
+    }
+
     startTransition(async () => {
-      const res = await deleteGroupDeparture(batchId)
+      const res = await deleteGroupDeparture(current.batchId)
       if (res.softDeleted) {
         setPackages((prev) =>
           prev.map((p) =>
-            p.id === pkgId
+            p.id === current.pkgId
               ? {
                   ...p,
                   departures: p.departures.map((d) =>
-                    d.id === batchId ? { ...d, status: "closed" } : d
+                    d.id === current.batchId ? { ...d, status: "closed" } : d
                   ),
                 }
               : p
           )
         )
         router.refresh()
-        alert(res.error)
+        setNotice({ type: "info", text: res.error })
         return
       }
       if (!res.success) {
-        alert(res.error)
+        setNotice({
+          type: "error",
+          text: res.error || "Failed to delete departure batch.",
+        })
         return
       }
       setPackages((prev) =>
         prev.map((p) =>
-          p.id === pkgId
+          p.id === current.pkgId
             ? {
                 ...p,
-                departures: p.departures.filter((d) => d.id !== batchId),
+                departures: p.departures.filter(
+                  (d) => d.id !== current.batchId
+                ),
               }
             : p
         )
@@ -165,7 +196,26 @@ export function GroupsClient({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
+      {notice && (
+        <div
+          role="status"
+          className={`flex items-center justify-between rounded-xl border px-4 py-2.5 text-xs font-medium ${
+            notice.type === "error"
+              ? "border-status-danger-border bg-status-danger-bg text-status-danger"
+              : "border-status-info-border bg-status-info-bg text-status-info"
+          }`}
+        >
+          <span>{notice.text}</span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="ml-4 cursor-pointer underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -323,40 +373,55 @@ export function GroupsClient({
                       <span className="block font-sans text-[9px] text-muted-foreground">
                         Sharing
                       </span>
-                      <span className="font-mono text-xs font-bold text-foreground tabular-nums">
-                        PKR {(pkg.sharingPricePkr ?? 258299).toLocaleString()}
+                      <span className="text-xs font-bold text-foreground">
+                        PKR{" "}
+                        <span className="font-mono tabular-nums">
+                          {(pkg.sharingPricePkr ?? 258299).toLocaleString()}
+                        </span>
                       </span>
                     </div>
                     <div className="rounded-md bg-background/90 px-2.5 py-1 text-center">
                       <span className="block font-sans text-[9px] text-muted-foreground">
                         Quad
                       </span>
-                      <span className="font-mono text-xs font-bold text-foreground tabular-nums">
-                        PKR {pkg.quadPricePkr.toLocaleString()}
+                      <span className="text-xs font-bold text-foreground">
+                        PKR{" "}
+                        <span className="font-mono tabular-nums">
+                          {pkg.quadPricePkr.toLocaleString()}
+                        </span>
                       </span>
                     </div>
                     <div className="rounded-md bg-background/90 px-2.5 py-1 text-center">
                       <span className="block font-sans text-[9px] text-muted-foreground">
                         Triple
                       </span>
-                      <span className="font-mono text-xs font-bold text-foreground tabular-nums">
-                        PKR {pkg.triplePricePkr.toLocaleString()}
+                      <span className="text-xs font-bold text-foreground">
+                        PKR{" "}
+                        <span className="font-mono tabular-nums">
+                          {pkg.triplePricePkr.toLocaleString()}
+                        </span>
                       </span>
                     </div>
                     <div className="rounded-md bg-background/90 px-2.5 py-1 text-center">
                       <span className="block font-sans text-[9px] text-muted-foreground">
                         Double
                       </span>
-                      <span className="font-mono text-xs font-bold text-foreground tabular-nums">
-                        PKR {pkg.doublePricePkr.toLocaleString()}
+                      <span className="text-xs font-bold text-foreground">
+                        PKR{" "}
+                        <span className="font-mono tabular-nums">
+                          {pkg.doublePricePkr.toLocaleString()}
+                        </span>
                       </span>
                     </div>
                     <div className="rounded-md bg-background/90 px-2.5 py-1 text-center">
                       <span className="flex items-center justify-center gap-0.5 font-sans text-[9px] text-muted-foreground">
                         <Baby className="size-2.5" aria-hidden="true" /> Infant
                       </span>
-                      <span className="font-mono text-xs font-bold text-foreground tabular-nums">
-                        PKR {(pkg.infantPricePkr ?? 65000).toLocaleString()}
+                      <span className="text-xs font-bold text-foreground">
+                        PKR{" "}
+                        <span className="font-mono tabular-nums">
+                          {(pkg.infantPricePkr ?? 65000).toLocaleString()}
+                        </span>
                       </span>
                     </div>
                   </div>
@@ -406,9 +471,14 @@ export function GroupsClient({
                       variant="ghost"
                       size="icon-xs"
                       onClick={() =>
-                        pkg.id && handlePackageDelete(pkg.id, pkg.title)
+                        pkg.id &&
+                        setConfirmTarget({
+                          kind: "package",
+                          id: pkg.id,
+                          title: pkg.title,
+                        })
                       }
-                      className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
                       title="Delete Package"
                     >
                       <Trash2 className="size-3.5" aria-hidden="true" />
@@ -603,11 +673,12 @@ export function GroupsClient({
                             onClick={() =>
                               batch.id &&
                               pkg.id &&
-                              handleBatchDelete(
-                                batch.id,
-                                batch.batchCode,
-                                pkg.id
-                              )
+                              setConfirmTarget({
+                                kind: "batch",
+                                batchId: batch.id,
+                                batchCode: batch.batchCode,
+                                pkgId: pkg.id,
+                              })
                             }
                             className="size-6 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             title="Delete Batch"
@@ -624,6 +695,46 @@ export function GroupsClient({
           </div>
         ))}
       </div>
+
+      <Dialog
+        open={Boolean(confirmTarget)}
+        onOpenChange={(open) => {
+          if (!open) setConfirmTarget(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {confirmTarget?.kind === "package"
+                ? "Delete Group Package"
+                : "Delete Departure Batch"}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmTarget?.kind === "package"
+                ? `Delete package "${confirmTarget.title}" and its batches? Referenced packages are deactivated safely.`
+                : confirmTarget
+                  ? `Delete departure batch "${confirmTarget.batchCode}"? Batches with existing bookings will be closed instead.`
+                  : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={executeConfirmedDelete}
+            >
+              Confirm Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

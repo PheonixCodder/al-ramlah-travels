@@ -47,5 +47,7 @@ Public pilgrim-facing Hub-and-Spoke pages (`19` indexable route patterns covered
 - [Spec 0026 — Home Page Editorial Redesign and Public Motion Architecture](../../docs/specs/0026-home-page-redesign-and-motion-architecture/index.md)
 - [Spec 0027 — Secondary Public Hubs, Spokes and Shell Editorial Alignment](../../docs/specs/0027-public-storefront-editorial-alignment/index.md)
 - [Spec 0029 — Pilgrim Document Upload Portal and Staff Verification](../../docs/specs/0029-pilgrim-document-upload-portal/index.md)
+- [Spec 0030 · Hybrid Hero Video and Admin Media Uploader](../../docs/specs/0030-hybrid-hero-video-and-uploader/index.md)
+- [Spec 0031 · End-to-End Umrah Package Lifecycle & Storefront Redesign](../../docs/specs/0031-umrah-package-lifecycle-and-storefront-redesign/index.md)
 
 _Drafted by /audit from the repo, worth a quick human pass. Edit freely: once a line stops matching this draft, later runs treat it as curated and will flag rather than overwrite it._

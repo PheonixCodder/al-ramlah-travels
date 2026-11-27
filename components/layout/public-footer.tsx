@@ -165,9 +165,9 @@ export function PublicFooter({
               href="/"
               className="inline-flex min-h-6 items-center gap-3 rounded-lg transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold active:opacity-80 motion-reduce:transition-none"
             >
-              <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-gold/40 bg-card p-1 shadow-md">
+              <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gold/45 bg-sidebar p-1 shadow-md">
                 <Image
-                  src="/logo.jpg"
+                  src="/logo-mark.png"
                   alt={`${agencyName} Emblem`}
                   width={44}
                   height={44}
@@ -175,11 +175,11 @@ export function PublicFooter({
                   className="size-full object-contain"
                 />
               </div>
-              <div className="flex flex-col">
-                <span className="font-display text-xl font-bold tracking-tight text-primary-foreground">
+              <div className="flex flex-col items-start gap-0.5">
+                <span className="font-display text-xl leading-tight font-bold tracking-tight text-primary-foreground">
                   {agencyName}
                 </span>
-                <ArabicText className="text-xs font-medium text-gold">
+                <ArabicText className="text-xs leading-none font-medium text-gold">
                   {BRAND_ARABIC_NAME}
                 </ArabicText>
               </div>

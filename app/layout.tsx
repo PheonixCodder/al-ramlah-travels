@@ -55,10 +55,6 @@ export const metadata: Metadata = {
   alternates: {
     canonical: CANONICAL_ORIGIN,
   },
-  icons: {
-    icon: "/favicon.ico",
-    apple: "/logo.jpg",
-  },
   openGraph: {
     type: "website",
     locale: "en_PK",
@@ -104,14 +100,14 @@ export default function RootLayout({
       style={{ colorScheme: "light" }}
       suppressHydrationWarning
       className={cn(
-        "light antialiased selection:bg-primary/20 selection:text-primary",
+        "light overflow-x-clip antialiased selection:bg-primary/20 selection:text-primary",
         fontSans.variable,
         fontDisplay.variable,
         fontMono.variable,
         fontArabic.variable
       )}
     >
-      <body className="min-h-screen bg-background font-sans text-foreground">
+      <body className="min-h-screen overflow-x-clip bg-background font-sans text-foreground">
         <TooltipProvider>{children}</TooltipProvider>
       </body>
     </html>

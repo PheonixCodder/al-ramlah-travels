@@ -12,7 +12,8 @@ Shared design system primitives (`ui/` on `shadcn` `base-nova`), shells and stat
 | [theme-provider.tsx](./theme-provider.tsx) | Single-theme light lock (`forcedTheme="light"`, `enableSystem={false}`) |
 | [motion/public-motion-provider.tsx](./motion/public-motion-provider.tsx) & [motion/haramain-reveal.tsx](./motion/haramain-reveal.tsx) | `<PublicMotionProvider>` (`Lenis` + `gsap.ticker` + `MotionConfig`), `shouldPreventLenisScroll`, `<HaramainSectionReveal>`, `<MotionPillIndicator>` |
 | [globals.css](../app/globals.css) | Tailwind v4 `@theme inline` tokens & `.never-dark` guard |
-| [public/arabic-text.tsx](./public/arabic-text.tsx) & [public/public-page-hero.tsx](./public/public-page-hero.tsx) | `<ArabicText>` (`lang="ar"`, `dir="rtl"`) & `PublicPageHero` (`Persuade` / `Read` headers) |
+| [public/arabic-text.tsx](./public/arabic-text.tsx), [public/public-page-hero.tsx](./public/public-page-hero.tsx) & [public/hero-slider.tsx](./public/hero-slider.tsx) | `<ArabicText>` (`lang="ar"`, `dir="rtl"`), `PublicPageHero`, & hybrid poster/video `HeroSlider` |
+| [public/umrah-package-card.tsx](./public/umrah-package-card.tsx) & [public/umrah-packages-explorer.tsx](./public/umrah-packages-explorer.tsx) | Shared editorial `UmrahPackageCard` (`coverImageUrl ?? hotel.imageUrl`, zero flyers) & filterable `UmrahPackagesExplorer` |
 | [layout/status-badge.tsx](./layout/status-badge.tsx) | `StatusBadge`, `AdminSlaProvider`, `<TabularPrice />` |
 | [planner/planner-context.tsx](./planner/planner-context.tsx) | Builder state, `sessionStorage` draft, `<Suspense><PlannerUrlHydrator /></Suspense>` |
 | [planner/custom-journey-builder.tsx](./planner/custom-journey-builder.tsx) | Multi-step Umrah Journey Builder wizard & submission flow |
@@ -49,5 +50,6 @@ Shared design system primitives (`ui/` on `shadcn` `base-nova`), shells and stat
 - [Spec 0026 — Home Page Editorial Redesign and Public Motion Architecture](../docs/specs/0026-home-page-redesign-and-motion-architecture/index.md)
 - [Spec 0027 — Secondary Public Hubs, Spokes and Shell Editorial Alignment](../docs/specs/0027-public-storefront-editorial-alignment/index.md)
 - [Spec 0028 — Admin 4 Hub Operate Surface and Shell Alignment](../docs/specs/0028-admin-operate-surface-alignment/index.md)
+- [Spec 0030 · Hybrid Hero Video and Admin Media Uploader](../docs/specs/0030-hybrid-hero-video-and-uploader/index.md)
 
 _Drafted by /audit from the repo, worth a quick human pass. Edit freely: once a line stops matching this draft, later runs treat it as curated and will flag rather than overwrite it._

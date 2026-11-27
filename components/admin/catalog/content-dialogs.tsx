@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
@@ -14,15 +15,92 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  deleteUnreferencedHeroMediaAction,
   upsertFaq,
   upsertHeroSlide,
   upsertTestimonial,
 } from "@/app/actions/cms"
-import { Loader2, Plus } from "lucide-react"
+import {
+  Film,
+  ImagePlus,
+  Loader2,
+  Plus,
+  Trash2,
+  Upload,
+} from "lucide-react"
+
+const MAX_HERO_MEDIA_BYTES = 25 * 1024 * 1024 // 25 MB (`26,214,400` bytes)
+const POSTER_MIME_ALLOWLIST = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+])
+
+function resolvePosterClientMime(file: File): string | null {
+  const lowerType = file.type.trim().toLowerCase()
+  if (POSTER_MIME_ALLOWLIST.has(lowerType)) {
+    return lowerType === "image/jpg" ? "image/jpeg" : lowerType
+  }
+  const lowerName = file.name.trim().toLowerCase()
+  if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) {
+    return "image/jpeg"
+  }
+  if (lowerName.endsWith(".png")) {
+    return "image/png"
+  }
+  if (lowerName.endsWith(".webp")) {
+    return "image/webp"
+  }
+  return null
+}
+
+function resolveVideoClientMime(file: File): string | null {
+  const lowerType = file.type.trim().toLowerCase()
+  if (lowerType === "video/mp4") {
+    return "video/mp4"
+  }
+  if (!lowerType && file.name.trim().toLowerCase().endsWith(".mp4")) {
+    return "video/mp4"
+  }
+  return null
+}
+
+interface PresignApiSuccess {
+  success: true
+  uploadUrl: string
+  publicUrl: string
+  key: string
+  contentType?: string
+  mode: "r2_presigned" | "local_put"
+}
+
+function isRenderablePreviewUrl(raw: string): boolean {
+  const trimmed = raw.trim()
+  if (!trimmed) return false
+  if (trimmed.startsWith("/")) {
+    return !trimmed.startsWith("//") && !trimmed.startsWith("/\\")
+  }
+  return /^https:\/\/[a-z0-9.-]+/i.test(trimmed)
+}
+
+interface UploadLifecycleState {
+  posterXhr: XMLHttpRequest | null
+  videoXhr: XMLHttpRequest | null
+  stagedPosterDraft: { key: string; url: string } | null
+  stagedVideoDraft: { key: string; url: string } | null
+  committed: boolean
+}
 
 // ==========================================
 // HERO SLIDE DIALOG
@@ -34,6 +112,7 @@ export interface HeroSlideData {
   title: string
   subtitle: string
   imageUrl: string
+  videoUrl?: string | null
   primaryCtaLabel: string
   primaryCtaUrl: string
   secondaryCtaLabel?: string | null
@@ -63,10 +142,8 @@ function HeroSlideFormBody({
     slide?.subtitle ??
       "Bespoke Umrah packages, verified Haramain luxury hotels, and private transfers for your family."
   )
-  const [imageUrl, setImageUrl] = useState(
-    slide?.imageUrl ??
-      "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=1600"
-  )
+  const [imageUrl, setImageUrl] = useState(slide?.imageUrl ?? "")
+  const [videoUrl, setVideoUrl] = useState(slide?.videoUrl ?? "")
   const [primaryCtaLabel, setPrimaryCtaLabel] = useState(
     slide?.primaryCtaLabel ?? "Plan Custom Umrah"
   )
@@ -82,8 +159,289 @@ function HeroSlideFormBody({
   const [isActive, setIsActive] = useState(slide?.isActive ?? true)
   const [sortOrder, setSortOrder] = useState(slide?.sortOrder ?? 0)
 
+  const [posterUploading, setPosterUploading] = useState(false)
+  const [posterProgress, setPosterProgress] = useState(0)
+  const [posterDragActive, setPosterDragActive] = useState(false)
+
+  const [videoUploading, setVideoUploading] = useState(false)
+  const [videoProgress, setVideoProgress] = useState(0)
+  const [videoDragActive, setVideoDragActive] = useState(false)
+
+  const posterInputRef = useRef<HTMLInputElement | null>(null)
+  const videoInputRef = useRef<HTMLInputElement | null>(null)
+  const lifecycleRef = useRef<UploadLifecycleState>({
+    posterXhr: null,
+    videoXhr: null,
+    stagedPosterDraft: null,
+    stagedVideoDraft: null,
+    committed: false,
+  })
+
+  useEffect(() => {
+    const lifecycle = lifecycleRef.current
+    return () => {
+      lifecycle.posterXhr?.abort()
+      lifecycle.videoXhr?.abort()
+      if (!lifecycle.committed) {
+        if (lifecycle.stagedPosterDraft) {
+          void deleteUnreferencedHeroMediaAction({
+            keyOrUrl: lifecycle.stagedPosterDraft.key,
+          }).catch(() => undefined)
+        }
+        if (lifecycle.stagedVideoDraft) {
+          void deleteUnreferencedHeroMediaAction({
+            keyOrUrl: lifecycle.stagedVideoDraft.key,
+          }).catch(() => undefined)
+        }
+      }
+    }
+  }, [])
+
+  function discardStagedDraft(slot: "poster" | "video") {
+    const lifecycle = lifecycleRef.current
+    const prev =
+      slot === "poster"
+        ? lifecycle.stagedPosterDraft
+        : lifecycle.stagedVideoDraft
+    if (!prev) return
+    if (slot === "poster") {
+      lifecycle.stagedPosterDraft = null
+    } else {
+      lifecycle.stagedVideoDraft = null
+    }
+    void deleteUnreferencedHeroMediaAction({ keyOrUrl: prev.key }).catch(
+      () => undefined
+    )
+  }
+
+  async function uploadHeroMediaFile(file: File, slot: "poster" | "video") {
+    setError(null)
+
+    if (file.size <= 0) {
+      setError("Selected file is empty.")
+      return
+    }
+    if (file.size > MAX_HERO_MEDIA_BYTES) {
+      setError(
+        slot === "video"
+          ? "Hero slide video exceeds the 25 MB limit."
+          : "Hero slide poster image exceeds the 25 MB limit."
+      )
+      return
+    }
+
+    const clientMime =
+      slot === "video"
+        ? resolveVideoClientMime(file)
+        : resolvePosterClientMime(file)
+
+    if (!clientMime) {
+      setError(
+        slot === "video"
+          ? "Hero slide videos must be MP4 (up to 25 MB)."
+          : "Hero slide poster images must be JPEG, PNG, or WebP (up to 25 MB)."
+      )
+      return
+    }
+
+    const setSlotUploading =
+      slot === "video" ? setVideoUploading : setPosterUploading
+    const setSlotProgress =
+      slot === "video" ? setVideoProgress : setPosterProgress
+    const lifecycle = lifecycleRef.current
+    const folder =
+      slot === "video" ? "cms/hero-slides/videos" : "cms/hero-slides/images"
+
+    if (slot === "video") {
+      lifecycle.videoXhr?.abort()
+    } else {
+      lifecycle.posterXhr?.abort()
+    }
+    setSlotUploading(true)
+    setSlotProgress(0)
+
+    try {
+      const presignResponse = await fetch("/api/uploads/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: clientMime,
+          folder,
+          sizeBytes: file.size,
+        }),
+      })
+
+      const presignJson = (await presignResponse.json()) as
+        | PresignApiSuccess
+        | { success: false; error?: string }
+
+      if (!presignResponse.ok || !presignJson.success) {
+        const message =
+          ("error" in presignJson && presignJson.error) ||
+          "Failed to initialize media upload."
+        setError(message)
+        return
+      }
+
+      const canonicalMime = presignJson.contentType || clientMime
+      const uploadOutcome = await new Promise<
+        | {
+            ok: true
+            publicUrl: string
+            storageKey: string
+          }
+        | {
+            ok: false
+            aborted?: boolean
+            error: string
+          }
+      >((resolve) => {
+        const xhr = new XMLHttpRequest()
+        if (slot === "video") {
+          lifecycle.videoXhr = xhr
+        } else {
+          lifecycle.posterXhr = xhr
+        }
+        xhr.open("PUT", presignJson.uploadUrl, true)
+        xhr.withCredentials = !/^https?:\/\//i.test(presignJson.uploadUrl)
+        xhr.setRequestHeader("Content-Type", canonicalMime)
+
+        xhr.upload.onprogress = (evt) => {
+          if (evt.lengthComputable && evt.total > 0) {
+            const pct = Math.min(
+              100,
+              Math.round((evt.loaded / evt.total) * 100)
+            )
+            setSlotProgress(pct)
+          }
+        }
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            let finalUrl = presignJson.publicUrl
+            let finalKey = presignJson.key
+            if (presignJson.mode === "local_put" && xhr.responseText) {
+              try {
+                const parsed = JSON.parse(xhr.responseText) as {
+                  publicUrl?: string
+                  storageKey?: string
+                }
+                if (parsed.publicUrl) finalUrl = parsed.publicUrl
+                if (parsed.storageKey) finalKey = parsed.storageKey
+              } catch {
+                // Keep presigned local fallback defaults
+              }
+            }
+            resolve({
+              ok: true,
+              publicUrl: finalUrl,
+              storageKey: finalKey,
+            })
+            return
+          }
+
+          let serverMsg = `Upload failed (HTTP ${xhr.status}).`
+          if (xhr.responseText) {
+            try {
+              const errJson = JSON.parse(xhr.responseText) as { error?: string }
+              if (errJson.error) serverMsg = errJson.error
+            } catch {
+              // Keep HTTP status fallback
+            }
+          }
+          resolve({ ok: false, error: serverMsg })
+        }
+
+        xhr.onerror = () => {
+          resolve({
+            ok: false,
+            error: "Network error while uploading media file.",
+          })
+        }
+
+        xhr.onabort = () => {
+          resolve({ ok: false, aborted: true, error: "Upload cancelled." })
+        }
+
+        xhr.send(file)
+      })
+
+      if (slot === "video") {
+        lifecycle.videoXhr = null
+      } else {
+        lifecycle.posterXhr = null
+      }
+      if (!uploadOutcome.ok) {
+        if (!uploadOutcome.aborted) {
+          setError(uploadOutcome.error)
+        }
+        return
+      }
+
+      discardStagedDraft(slot)
+      if (slot === "video") {
+        lifecycle.stagedVideoDraft = {
+          key: uploadOutcome.storageKey,
+          url: uploadOutcome.publicUrl,
+        }
+        setVideoUrl(uploadOutcome.publicUrl)
+      } else {
+        lifecycle.stagedPosterDraft = {
+          key: uploadOutcome.storageKey,
+          url: uploadOutcome.publicUrl,
+        }
+        setImageUrl(uploadOutcome.publicUrl)
+      }
+      setSlotProgress(100)
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to upload media file."
+      )
+    } finally {
+      setSlotUploading(false)
+    }
+  }
+
+  function handleRemoveVideo() {
+    lifecycleRef.current.videoXhr?.abort()
+    lifecycleRef.current.videoXhr = null
+    setVideoUploading(false)
+    setVideoProgress(0)
+    discardStagedDraft("video")
+    setVideoUrl("")
+    if (videoInputRef.current) {
+      videoInputRef.current.value = ""
+    }
+  }
+
+  function handlePosterUrlChange(nextVal: string) {
+    if (
+      lifecycleRef.current.stagedPosterDraft &&
+      nextVal.trim() !== lifecycleRef.current.stagedPosterDraft.url
+    ) {
+      discardStagedDraft("poster")
+    }
+    setImageUrl(nextVal)
+  }
+
+  function handleVideoUrlChange(nextVal: string) {
+    if (
+      lifecycleRef.current.stagedVideoDraft &&
+      nextVal.trim() !== lifecycleRef.current.stagedVideoDraft.url
+    ) {
+      discardStagedDraft("video")
+    }
+    setVideoUrl(nextVal)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!imageUrl.trim()) {
+      setError("A poster image is required for every hero slide.")
+      return
+    }
+
     setLoading(true)
     setError(null)
 
@@ -93,7 +451,8 @@ function HeroSlideFormBody({
         badge: badge || undefined,
         title,
         subtitle,
-        imageUrl,
+        imageUrl: imageUrl.trim(),
+        videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
         primaryCtaLabel,
         primaryCtaUrl,
         secondaryCtaLabel: secondaryCtaLabel || undefined,
@@ -102,6 +461,9 @@ function HeroSlideFormBody({
         sortOrder,
       })
       if (res.success) {
+        lifecycleRef.current.committed = true
+        lifecycleRef.current.stagedPosterDraft = null
+        lifecycleRef.current.stagedVideoDraft = null
         onSuccess()
         router.refresh()
       } else {
@@ -115,6 +477,8 @@ function HeroSlideFormBody({
     }
   }
 
+  const isBusy = loading || posterUploading || videoUploading
+
   return (
     <>
       <DialogHeader>
@@ -122,99 +486,347 @@ function HeroSlideFormBody({
           {slide ? "Edit Hero Slide" : "Add Hero Slide"}
         </DialogTitle>
         <DialogDescription>
-          Hero headline, Arabic badge, background visual, and CTAs.
+          Upload a required poster image and an optional silent MP4 background
+          loop (up to 25 MB each), then set the slide copy and call to action
+          links.
         </DialogDescription>
       </DialogHeader>
 
       {error && (
-        <div className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2.5 text-xs text-status-danger">
+        <div
+          role="alert"
+          className="rounded-lg border border-status-danger-border bg-status-danger-bg p-2.5 text-xs text-status-danger"
+        >
           {error}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-3 py-2">
-        <div className="space-y-1">
-          <Label htmlFor="hs-badge">Arabic Top Badge</Label>
-          <Input
-            id="hs-badge"
-            lang="ar"
-            dir="rtl"
-            value={badge}
-            onChange={(e) => setBadge(e.target.value)}
-            className="font-arabic text-sm text-gold-text"
-          />
-        </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
+        <FieldGroup className="gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Poster Image Uploader */}
+            <Field>
+              <FieldLabel htmlFor="hs-img">Poster Image (Required)</FieldLabel>
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setPosterDragActive(true)
+                }}
+                onDragLeave={() => setPosterDragActive(false)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setPosterDragActive(false)
+                  const dropped = e.dataTransfer.files?.[0]
+                  if (dropped) {
+                    void uploadHeroMediaFile(dropped, "poster")
+                  }
+                }}
+                className={`flex flex-col gap-2.5 rounded-xl border border-dashed p-3 transition-colors motion-reduce:transition-none ${
+                  posterDragActive
+                    ? "border-primary bg-accent/40"
+                    : "border-border bg-secondary/40"
+                }`}
+              >
+                {isRenderablePreviewUrl(imageUrl) ? (
+                  <div className="relative h-28 w-full overflow-hidden rounded-lg border border-border bg-muted">
+                    <Image
+                      src={imageUrl.trim()}
+                      alt="Hero slide poster preview"
+                      fill
+                      unoptimized
+                      className="object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex h-28 flex-col items-center justify-center gap-1 rounded-lg border border-border/60 bg-background px-3 text-center text-xs text-muted-foreground">
+                    <ImagePlus className="size-5 text-primary" aria-hidden="true" />
+                    <span className="font-medium text-foreground">
+                      Drop JPG, PNG, or WebP
+                    </span>
+                    <span>First frame &amp; reduced motion fallback (max 25 MB)</span>
+                  </div>
+                )}
 
-        <div className="space-y-1">
-          <Label htmlFor="hs-title">Headline Title</Label>
-          <Input
-            id="hs-title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-          />
-        </div>
+                <input
+                  ref={posterInputRef}
+                  id="hs-poster-file"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  aria-label="Upload poster image file"
+                  onChange={(e) => {
+                    const selected = e.target.files?.[0]
+                    if (selected) {
+                      void uploadHeroMediaFile(selected, "poster")
+                    }
+                    e.target.value = ""
+                  }}
+                  className="sr-only"
+                />
 
-        <div className="space-y-1">
-          <Label htmlFor="hs-sub">Subtitle Description</Label>
-          <Textarea
-            id="hs-sub"
-            rows={2}
-            value={subtitle}
-            onChange={(e) => setSubtitle(e.target.value)}
-            required
-          />
-        </div>
+                <div className="flex items-center justify-between gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={posterUploading}
+                    onClick={() => posterInputRef.current?.click()}
+                    className="w-full cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    {posterUploading ? (
+                      <Loader2
+                        data-icon="inline-start"
+                        className="animate-spin motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Upload data-icon="inline-start" aria-hidden="true" />
+                    )}
+                    <span>
+                      {posterUploading
+                        ? `Uploading ${posterProgress}%`
+                        : imageUrl.trim()
+                          ? "Replace Poster"
+                          : "Upload Poster"}
+                    </span>
+                  </Button>
+                </div>
 
-        <div className="space-y-1">
-          <Label htmlFor="hs-img">High-Res Background Image URL</Label>
-          <Input
-            id="hs-img"
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            required
-          />
-        </div>
+                {posterUploading && (
+                  <div role="status" className="flex flex-col gap-1">
+                    <progress
+                      value={posterProgress}
+                      max={100}
+                      aria-label="Poster image upload progress"
+                      className="h-1.5 w-full overflow-hidden rounded-full accent-primary"
+                    />
+                    <span className="text-[11px] tabular-nums text-muted-foreground">
+                      <span className="font-mono">{posterProgress}%</span>{" "}
+                      uploaded
+                    </span>
+                  </div>
+                )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label htmlFor="hs-p-label">Primary CTA Text</Label>
+                <Input
+                  id="hs-img"
+                  value={imageUrl}
+                  onChange={(e) => handlePosterUrlChange(e.target.value)}
+                  placeholder="https://r2.alramlahtravels.com/... or upload above"
+                  required
+                />
+              </div>
+            </Field>
+
+            {/* Optional Ambient Video Uploader */}
+            <Field>
+              <FieldLabel htmlFor="hs-video">
+                Ambient Video (Optional MP4)
+              </FieldLabel>
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setVideoDragActive(true)
+                }}
+                onDragLeave={() => setVideoDragActive(false)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setVideoDragActive(false)
+                  const dropped = e.dataTransfer.files?.[0]
+                  if (dropped) {
+                    void uploadHeroMediaFile(dropped, "video")
+                  }
+                }}
+                className={`flex flex-col gap-2.5 rounded-xl border border-dashed p-3 transition-colors motion-reduce:transition-none ${
+                  videoDragActive
+                    ? "border-primary bg-accent/40"
+                    : "border-border bg-secondary/40"
+                }`}
+              >
+                {videoUrl.trim() ? (
+                  <div className="relative h-28 w-full overflow-hidden rounded-lg border border-border bg-sidebar">
+                    <video
+                      key={videoUrl.trim()}
+                      src={videoUrl.trim()}
+                      poster={imageUrl.trim() || undefined}
+                      muted
+                      playsInline
+                      autoPlay
+                      loop
+                      preload="metadata"
+                      aria-label="Hero slide ambient video preview"
+                      className="size-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex h-28 flex-col items-center justify-center gap-1 rounded-lg border border-border/60 bg-background px-3 text-center text-xs text-muted-foreground">
+                    <Film className="size-5 text-primary" aria-hidden="true" />
+                    <span className="font-medium text-foreground">
+                      Drop silent MP4 loop
+                    </span>
+                    <span>Plays muted over poster (8 to 20s, max 25 MB)</span>
+                  </div>
+                )}
+
+                <input
+                  ref={videoInputRef}
+                  id="hs-video-file"
+                  type="file"
+                  accept="video/mp4"
+                  aria-label="Upload ambient MP4 video file"
+                  onChange={(e) => {
+                    const selected = e.target.files?.[0]
+                    if (selected) {
+                      void uploadHeroMediaFile(selected, "video")
+                    }
+                    e.target.value = ""
+                  }}
+                  className="sr-only"
+                />
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={videoUploading}
+                    onClick={() => videoInputRef.current?.click()}
+                    className="flex-1 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    {videoUploading ? (
+                      <Loader2
+                        data-icon="inline-start"
+                        className="animate-spin motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Upload data-icon="inline-start" aria-hidden="true" />
+                    )}
+                    <span>
+                      {videoUploading
+                        ? `Uploading ${videoProgress}%`
+                        : videoUrl.trim()
+                          ? "Replace MP4"
+                          : "Upload MP4"}
+                    </span>
+                  </Button>
+                  {videoUrl.trim() && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-testid="remove-hero-video-btn"
+                      onClick={handleRemoveVideo}
+                      className="shrink-0 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      aria-label="Remove ambient video"
+                    >
+                      <Trash2 data-icon="inline-start" aria-hidden="true" />
+                      <span>Remove Video</span>
+                    </Button>
+                  )}
+                </div>
+
+                {videoUploading && (
+                  <div role="status" className="flex flex-col gap-1">
+                    <progress
+                      value={videoProgress}
+                      max={100}
+                      aria-label="Ambient video upload progress"
+                      className="h-1.5 w-full overflow-hidden rounded-full accent-primary"
+                    />
+                    <span className="text-[11px] tabular-nums text-muted-foreground">
+                      <span className="font-mono">{videoProgress}%</span>{" "}
+                      uploaded
+                    </span>
+                  </div>
+                )}
+
+                <Input
+                  id="hs-video"
+                  value={videoUrl}
+                  onChange={(e) => handleVideoUrlChange(e.target.value)}
+                  placeholder="Optional MP4 URL (leave empty for photo slide)"
+                />
+              </div>
+              <FieldDescription className="text-[11px]">
+                Direct URLs must use configured Cloudflare R2,{" "}
+                <code>alramlahtravels.com</code>, or relative{" "}
+                <code>/uploads/...</code> paths to pass Content Security Policy.
+              </FieldDescription>
+            </Field>
+          </div>
+
+          <Field>
+            <FieldLabel htmlFor="hs-badge">Top Eyebrow / Arabic Badge</FieldLabel>
             <Input
-              id="hs-p-label"
-              value={primaryCtaLabel}
-              onChange={(e) => setPrimaryCtaLabel(e.target.value)}
+              id="hs-badge"
+              lang="ar"
+              dir="rtl"
+              value={badge}
+              onChange={(e) => setBadge(e.target.value)}
+              className="font-arabic text-sm text-gold-text"
+            />
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="hs-title">Headline Title</FieldLabel>
+            <Input
+              id="hs-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
               required
             />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="hs-p-url">Primary CTA URL</Label>
-            <Input
-              id="hs-p-url"
-              value={primaryCtaUrl}
-              onChange={(e) => setPrimaryCtaUrl(e.target.value)}
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="hs-sub">Subtitle Description</FieldLabel>
+            <Textarea
+              id="hs-sub"
+              rows={2}
+              value={subtitle}
+              onChange={(e) => setSubtitle(e.target.value)}
               required
             />
-          </div>
-        </div>
+          </Field>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label htmlFor="hs-s-label">Secondary CTA Text</Label>
-            <Input
-              id="hs-s-label"
-              value={secondaryCtaLabel}
-              onChange={(e) => setSecondaryCtaLabel(e.target.value)}
-            />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="hs-p-label">Primary CTA Text</FieldLabel>
+              <Input
+                id="hs-p-label"
+                value={primaryCtaLabel}
+                onChange={(e) => setPrimaryCtaLabel(e.target.value)}
+                required
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="hs-p-url">Primary CTA URL</FieldLabel>
+              <Input
+                id="hs-p-url"
+                value={primaryCtaUrl}
+                onChange={(e) => setPrimaryCtaUrl(e.target.value)}
+                required
+              />
+            </Field>
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="hs-s-url">Secondary CTA URL</Label>
-            <Input
-              id="hs-s-url"
-              value={secondaryCtaUrl}
-              onChange={(e) => setSecondaryCtaUrl(e.target.value)}
-            />
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="hs-s-label">Secondary CTA Text</FieldLabel>
+              <Input
+                id="hs-s-label"
+                value={secondaryCtaLabel}
+                onChange={(e) => setSecondaryCtaLabel(e.target.value)}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="hs-s-url">Secondary CTA URL</FieldLabel>
+              <Input
+                id="hs-s-url"
+                value={secondaryCtaUrl}
+                onChange={(e) => setSecondaryCtaUrl(e.target.value)}
+              />
+            </Field>
           </div>
-        </div>
+        </FieldGroup>
 
         <div className="flex items-center justify-between border-t border-border pt-3">
           <label className="flex cursor-pointer items-center gap-2 text-xs">
@@ -235,7 +847,7 @@ function HeroSlideFormBody({
               type="number"
               value={sortOrder}
               onChange={(e) => setSortOrder(Number(e.target.value))}
-              className="h-7 w-14 font-mono text-xs"
+              className="h-7 w-16 font-mono text-xs tabular-nums"
             />
           </div>
         </div>
@@ -246,12 +858,13 @@ function HeroSlideFormBody({
           </DialogClose>
           <Button
             type="submit"
-            disabled={loading}
+            disabled={isBusy}
             className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             {loading && (
               <Loader2
-                className="size-4 animate-spin motion-reduce:animate-none"
+                data-icon="inline-start"
+                className="animate-spin motion-reduce:animate-none"
                 aria-hidden="true"
               />
             )}
@@ -288,13 +901,13 @@ export function HeroSlideDialog({
             (trigger as React.ReactElement)
           ) : (
             <Button className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-              <Plus className="size-4" aria-hidden="true" />
+              <Plus data-icon="inline-start" aria-hidden="true" />
               <span>Add Slide</span>
             </Button>
           )
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <HeroSlideFormBody
           key={`${slide?.id ?? "new"}-${formSession}`}
           slide={slide}

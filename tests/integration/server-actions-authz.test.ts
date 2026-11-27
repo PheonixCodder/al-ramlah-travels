@@ -342,6 +342,7 @@ describe("T-078: Dynamic Server Actions AuthZ Matrix (100% Admin Exports) & API 
       { id: "catalog.ts:updateUserRole", fn: catalogActions.updateUserRole as GenericActionFn },
       { id: "catalog.ts:resetStaffPassword", fn: catalogActions.resetStaffPassword as GenericActionFn },
       { id: "cms.ts:upsertHeroSlide", fn: cmsActions.upsertHeroSlide as GenericActionFn },
+      { id: "cms.ts:deleteUnreferencedHeroMediaAction", fn: cmsActions.deleteUnreferencedHeroMediaAction as GenericActionFn },
       { id: "cms.ts:deleteContactMessage", fn: cmsActions.deleteContactMessage as GenericActionFn },
       { id: "quotes.ts:exportApplicationsCsvAction", fn: quotesActions.exportApplicationsCsvAction as GenericActionFn },
       { id: "social-scheduler.ts:saveManualSocialIntegrationAction", fn: socialSchedulerActions.saveManualSocialIntegrationAction as GenericActionFn },
@@ -488,6 +489,38 @@ describe("T-078: Dynamic Server Actions AuthZ Matrix (100% Admin Exports) & API 
       })
     )
     expect(validPresignRes.status).toBe(200)
+
+    const staffHeroPresignRes = await presignPostHandler(
+      new Request("http://localhost:3000/api/uploads/presign", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          cookie: activeStaffCookie,
+        },
+        body: JSON.stringify({
+          filename: "hero.mp4",
+          contentType: "video/mp4",
+          folder: "cms/hero-slides/videos",
+          sizeBytes: 4096,
+        }),
+      })
+    )
+    expect(staffHeroPresignRes.status).toBe(403)
+
+    const staffHeroLocalPutRes = await localUploadPutHandler(
+      new NextRequest(
+        "http://localhost:3000/api/uploads/local?folder=cms/hero-slides/videos",
+        {
+          method: "PUT",
+          headers: { cookie: activeStaffCookie },
+          body: new Uint8Array([
+            0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f,
+            0x6d,
+          ]),
+        }
+      )
+    )
+    expect(staffHeroLocalPutRes.status).toBe(403)
 
     const unauthLocalPutRes = await localUploadPutHandler(
       new NextRequest("http://localhost:3000/api/uploads/local?folder=flyers", {

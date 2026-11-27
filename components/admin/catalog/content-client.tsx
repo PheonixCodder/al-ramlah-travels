@@ -31,9 +31,12 @@ import {
   ArrowDown,
   ArrowUp,
   Edit2,
+  Film,
   HelpCircle,
+  Image as ImageIcon,
   Images,
   Loader2,
+  Lock,
   MessageSquareQuote,
   Plus,
   Save,
@@ -50,6 +53,7 @@ interface ContentClientProps {
   initialFaqs: FaqData[]
   initialHotels?: HotelData[]
   initialSubTab?: CmsSubTab
+  canManageCms?: boolean
 }
 
 export function ContentClient({
@@ -58,6 +62,7 @@ export function ContentClient({
   initialFaqs,
   initialHotels = [],
   initialSubTab = "slides",
+  canManageCms = true,
 }: ContentClientProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<CmsSubTab>(initialSubTab)
@@ -423,9 +428,22 @@ export function ContentClient({
           </p>
         </div>
         <div>
-          {activeTab === "slides" && <HeroSlideDialog />}
-          {activeTab === "reviews" && <TestimonialDialog />}
-          {activeTab === "faqs" && <FaqDialog />}
+          {canManageCms ? (
+            <>
+              {activeTab === "slides" && <HeroSlideDialog />}
+              {activeTab === "reviews" && <TestimonialDialog />}
+              {activeTab === "faqs" && <FaqDialog />}
+            </>
+          ) : (
+            <Badge
+              variant="outline"
+              data-testid="cms-read-only-badge"
+              className="gap-1.5 border-gold-border bg-accent/50 px-3 py-1 text-xs font-semibold text-gold-text"
+            >
+              <Lock className="size-3.5" aria-hidden="true" />
+              <span>Super Admin Only · Read Only</span>
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -511,10 +529,31 @@ export function ContentClient({
                     src={s.imageUrl}
                     alt={s.title}
                     fill
+                    unoptimized={s.imageUrl.startsWith("/uploads/r2-local/")}
                     sizes="(max-width: 768px) 100vw, 33vw"
                     className="object-cover"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/35 to-primary/20" />
+                  <div className="absolute top-3 left-3">
+                    {s.videoUrl?.trim() ? (
+                      <Badge
+                        data-testid="hero-slide-media-badge"
+                        className="gap-1 border border-gold/40 bg-primary/90 text-[10px] font-semibold text-gold"
+                      >
+                        <Film className="size-3" aria-hidden="true" />
+                        <span>Video + Poster</span>
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        data-testid="hero-slide-media-badge"
+                        className="gap-1 border-primary-foreground/30 bg-primary/75 text-[10px] font-medium text-primary-foreground"
+                      >
+                        <ImageIcon className="size-3" aria-hidden="true" />
+                        <span>Photo Slide</span>
+                      </Badge>
+                    )}
+                  </div>
                   <div className="absolute right-3 bottom-3 left-3 text-primary-foreground">
                     {s.badge && (
                       <span
@@ -555,61 +594,83 @@ export function ContentClient({
               </div>
 
               <div className="flex items-center justify-between border-t border-border/80 bg-muted/10 px-4 py-2.5 text-xs">
-                <button
-                  type="button"
-                  onClick={() => s.id && handleSlideToggle(s.id, s.isActive)}
-                  className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
-                >
-                  {s.isActive ? (
-                    <span className="font-semibold text-status-success">
-                      Active in Hero
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">Hidden</span>
-                  )}
-                </button>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    disabled={idx === 0}
-                    onClick={() => handleSlideMove(idx, -1)}
-                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                    title="Move Slide Up"
-                  >
-                    <ArrowUp className="size-3.5" aria-hidden="true" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    disabled={idx === slides.length - 1}
-                    onClick={() => handleSlideMove(idx, 1)}
-                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                    title="Move Slide Down"
-                  >
-                    <ArrowDown className="size-3.5" aria-hidden="true" />
-                  </Button>
-                  <HeroSlideDialog
-                    slide={s}
-                    trigger={
+                {canManageCms ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        s.id && handleSlideToggle(s.id, s.isActive)
+                      }
+                      className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
+                    >
+                      {s.isActive ? (
+                        <span className="font-semibold text-status-success">
+                          Active in Hero
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Hidden</span>
+                      )}
+                    </button>
+                    <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="size-7 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        disabled={idx === 0}
+                        onClick={() => handleSlideMove(idx, -1)}
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        title="Move Slide Up"
+                        aria-label={`Move slide ${s.title} up`}
                       >
-                        <Edit2 className="size-3.5" aria-hidden="true" />
+                        <ArrowUp className="size-3.5" aria-hidden="true" />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={idx === slides.length - 1}
+                        onClick={() => handleSlideMove(idx, 1)}
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        title="Move Slide Down"
+                        aria-label={`Move slide ${s.title} down`}
+                      >
+                        <ArrowDown className="size-3.5" aria-hidden="true" />
+                      </Button>
+                      <HeroSlideDialog
+                        slide={s}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Edit slide ${s.title}`}
+                            className="size-7 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                          >
+                            <Edit2 className="size-3.5" aria-hidden="true" />
+                          </Button>
+                        }
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Delete slide ${s.title}`}
+                        onClick={() =>
+                          s.id && handleSlideDelete(s.id, s.title)
+                        }
+                        className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        <Trash2 className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <span
+                    className={
+                      s.isActive
+                        ? "font-semibold text-status-success"
+                        : "text-muted-foreground"
                     }
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => s.id && handleSlideDelete(s.id, s.title)}
-                    className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <Trash2 className="size-3.5" aria-hidden="true" />
-                  </Button>
-                </div>
+                    {s.isActive ? "Active in Hero" : "Hidden"}
+                  </span>
+                )}
               </div>
             </div>
           ))}
@@ -661,63 +722,79 @@ export function ContentClient({
               </div>
 
               <div className="mt-3 flex items-center justify-between border-t border-border/80 pt-3 text-xs">
-                <button
-                  type="button"
-                  onClick={() => t.id && handleReviewToggle(t.id, t.isActive)}
-                  className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
-                >
-                  {t.isActive ? (
-                    <span className="font-semibold text-status-success">
-                      Published
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">Draft</span>
-                  )}
-                </button>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    disabled={idx === 0}
-                    onClick={() => handleReviewMove(idx, -1)}
-                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                    title="Move Up"
-                  >
-                    <ArrowUp className="size-3.5" aria-hidden="true" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    disabled={idx === testimonials.length - 1}
-                    onClick={() => handleReviewMove(idx, 1)}
-                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                    title="Move Down"
-                  >
-                    <ArrowDown className="size-3.5" aria-hidden="true" />
-                  </Button>
-                  <TestimonialDialog
-                    testimonial={t}
-                    trigger={
+                {canManageCms ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        t.id && handleReviewToggle(t.id, t.isActive)
+                      }
+                      className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
+                    >
+                      {t.isActive ? (
+                        <span className="font-semibold text-status-success">
+                          Published
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Draft</span>
+                      )}
+                    </button>
+                    <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="size-7 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        disabled={idx === 0}
+                        onClick={() => handleReviewMove(idx, -1)}
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        title="Move Up"
                       >
-                        <Edit2 className="size-3.5" aria-hidden="true" />
+                        <ArrowUp className="size-3.5" aria-hidden="true" />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={idx === testimonials.length - 1}
+                        onClick={() => handleReviewMove(idx, 1)}
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        title="Move Down"
+                      >
+                        <ArrowDown className="size-3.5" aria-hidden="true" />
+                      </Button>
+                      <TestimonialDialog
+                        testimonial={t}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            className="size-7 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                          >
+                            <Edit2 className="size-3.5" aria-hidden="true" />
+                          </Button>
+                        }
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() =>
+                          t.id && handleReviewDelete(t.id, t.pilgrimName)
+                        }
+                        className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        <Trash2 className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <span
+                    className={
+                      t.isActive
+                        ? "font-semibold text-status-success"
+                        : "text-muted-foreground"
                     }
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() =>
-                      t.id && handleReviewDelete(t.id, t.pilgrimName)
-                    }
-                    className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <Trash2 className="size-3.5" aria-hidden="true" />
-                  </Button>
-                </div>
+                    {t.isActive ? "Published" : "Draft"}
+                  </span>
+                )}
               </div>
             </div>
           ))}
@@ -749,61 +826,77 @@ export function ContentClient({
               </div>
 
               <div className="mt-3 flex items-center justify-between border-t border-border/80 pt-3 text-xs">
-                <button
-                  type="button"
-                  onClick={() => f.id && handleFaqToggle(f.id, f.isActive)}
-                  className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
-                >
-                  {f.isActive ? (
-                    <span className="font-semibold text-status-success">
-                      Visible
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">Hidden</span>
-                  )}
-                </button>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    disabled={idx === 0}
-                    onClick={() => handleFaqMove(idx, -1)}
-                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                    title="Move Up"
-                  >
-                    <ArrowUp className="size-3.5" aria-hidden="true" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    disabled={idx === faqs.length - 1}
-                    onClick={() => handleFaqMove(idx, 1)}
-                    className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                    title="Move Down"
-                  >
-                    <ArrowDown className="size-3.5" aria-hidden="true" />
-                  </Button>
-                  <FaqDialog
-                    faq={f}
-                    trigger={
+                {canManageCms ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => f.id && handleFaqToggle(f.id, f.isActive)}
+                      className="flex cursor-pointer items-center gap-1.5 rounded font-medium transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
+                    >
+                      {f.isActive ? (
+                        <span className="font-semibold text-status-success">
+                          Visible
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Hidden</span>
+                      )}
+                    </button>
+                    <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="size-7 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        disabled={idx === 0}
+                        onClick={() => handleFaqMove(idx, -1)}
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        title="Move Up"
                       >
-                        <Edit2 className="size-3.5" aria-hidden="true" />
+                        <ArrowUp className="size-3.5" aria-hidden="true" />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={idx === faqs.length - 1}
+                        onClick={() => handleFaqMove(idx, 1)}
+                        className="size-7 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        title="Move Down"
+                      >
+                        <ArrowDown className="size-3.5" aria-hidden="true" />
+                      </Button>
+                      <FaqDialog
+                        faq={f}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            className="size-7 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                          >
+                            <Edit2 className="size-3.5" aria-hidden="true" />
+                          </Button>
+                        }
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() =>
+                          f.id && handleFaqDelete(f.id, f.question)
+                        }
+                        className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        <Trash2 className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <span
+                    className={
+                      f.isActive
+                        ? "font-semibold text-status-success"
+                        : "text-muted-foreground"
                     }
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => f.id && handleFaqDelete(f.id, f.question)}
-                    className="size-7 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <Trash2 className="size-3.5" aria-hidden="true" />
-                  </Button>
-                </div>
+                    {f.isActive ? "Visible" : "Hidden"}
+                  </span>
+                )}
               </div>
             </div>
           ))}
@@ -847,34 +940,38 @@ export function ContentClient({
                   <Input
                     id="gallery-cover-url"
                     value={galleryCoverUrl}
+                    readOnly={!canManageCms}
+                    disabled={!canManageCms}
                     onChange={(e) => setGalleryCoverUrl(e.target.value)}
                     placeholder="https://cdn.example.com/hotels/cover.jpg"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="gallery-new-url">
-                  Add Room / Courtyard / Dining Photo URL
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="gallery-new-url"
-                    value={newGalleryUrl}
-                    onChange={(e) => setNewGalleryUrl(e.target.value)}
-                    placeholder="https://cdn.example.com/posters/hotel.jpg"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleAddGalleryPhoto}
-                    className="shrink-0 cursor-pointer gap-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                  >
-                    <Plus className="size-4" aria-hidden="true" />
-                    <span>Add Photo</span>
-                  </Button>
+              {canManageCms && (
+                <div className="space-y-2">
+                  <Label htmlFor="gallery-new-url">
+                    Add Room / Courtyard / Dining Photo URL
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="gallery-new-url"
+                      value={newGalleryUrl}
+                      onChange={(e) => setNewGalleryUrl(e.target.value)}
+                      placeholder="https://cdn.example.com/posters/hotel.jpg"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleAddGalleryPhoto}
+                      className="shrink-0 cursor-pointer gap-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    >
+                      <Plus className="size-4" aria-hidden="true" />
+                      <span>Add Photo</span>
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {galleryUrls.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
@@ -903,63 +1000,67 @@ export function ContentClient({
                         <span className="truncate font-mono text-[10px] text-muted-foreground">
                           {url}
                         </span>
-                        <div className="flex shrink-0 items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            disabled={idx === 0}
-                            onClick={() => handleMoveGalleryPhoto(idx, -1)}
-                            className="size-6 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                            title="Move Earlier"
-                          >
-                            <ArrowUp className="size-3" aria-hidden="true" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            disabled={idx === galleryUrls.length - 1}
-                            onClick={() => handleMoveGalleryPhoto(idx, 1)}
-                            className="size-6 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                            title="Move Later"
-                          >
-                            <ArrowDown className="size-3" aria-hidden="true" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => handleRemoveGalleryPhoto(idx)}
-                            className="size-6 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                            title="Remove Photo"
-                          >
-                            <Trash2 className="size-3" aria-hidden="true" />
-                          </Button>
-                        </div>
+                        {canManageCms && (
+                          <div className="flex shrink-0 items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              disabled={idx === 0}
+                              onClick={() => handleMoveGalleryPhoto(idx, -1)}
+                              className="size-6 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                              title="Move Earlier"
+                            >
+                              <ArrowUp className="size-3" aria-hidden="true" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              disabled={idx === galleryUrls.length - 1}
+                              onClick={() => handleMoveGalleryPhoto(idx, 1)}
+                              className="size-6 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                              title="Move Later"
+                            >
+                              <ArrowDown className="size-3" aria-hidden="true" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={() => handleRemoveGalleryPhoto(idx)}
+                              className="size-6 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                              title="Remove Photo"
+                            >
+                              <Trash2 className="size-3" aria-hidden="true" />
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
                 </div>
               )}
 
-              <div className="flex items-center justify-end border-t border-border pt-3">
-                <Button
-                  type="submit"
-                  disabled={savingGallery}
-                  className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                >
-                  {savingGallery ? (
-                    <Loader2
-                      className="size-4 animate-spin motion-reduce:animate-none"
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <Save className="size-4" aria-hidden="true" />
-                  )}
-                  <span>Save Property Gallery</span>
-                </Button>
-              </div>
+              {canManageCms && (
+                <div className="flex items-center justify-end border-t border-border pt-3">
+                  <Button
+                    type="submit"
+                    disabled={savingGallery}
+                    className="cursor-pointer gap-2 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    {savingGallery ? (
+                      <Loader2
+                        className="size-4 animate-spin motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Save className="size-4" aria-hidden="true" />
+                    )}
+                    <span>Save Property Gallery</span>
+                  </Button>
+                </div>
+              )}
             </form>
           )}
         </div>

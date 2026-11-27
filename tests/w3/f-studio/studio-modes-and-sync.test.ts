@@ -430,11 +430,18 @@ describe("F-STUDIO T-026: Mode A vs Mode B Financials, Raw Flyer Leak Guard, Pos
       where: eq(schema.groupPackages.id, pubRes.groupPackageId),
     })
     assert.ok(publicPkg)
+    // covers: AC-1
     assert.equal(
-      publicPkg.bannerUrl,
+      publicPkg.internalPosterUrl,
       wrappedAlRamlahPosterUrl,
-      "Public groupPackages.bannerUrl must use wrapped Al Ramlah poster, never raw B2B flyer"
+      "Internal poster stored on groupPackages.internalPosterUrl for Studio/Cmd+K/Campaigns"
     )
+    assert.equal(
+      publicPkg.coverImageUrl,
+      null,
+      "Public website coverImageUrl remains null so posters never leak onto public website cards"
+    )
+    assert.equal(publicPkg.bannerUrl, null)
     assert.equal(publicPkg.isActive, true)
 
     // Test reversible unpublish action (`T-026`)

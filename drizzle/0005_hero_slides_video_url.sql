@@ -1,0 +1,2 @@
+ALTER TABLE "hero_slides" ADD COLUMN "video_url" text;--> statement-breakpoint
+ALTER TABLE "hero_slides" ADD CONSTRAINT "chk_hero_slides_non_empty_video_url" CHECK ("hero_slides"."video_url" IS NULL OR length(btrim("hero_slides"."video_url")) > 0);

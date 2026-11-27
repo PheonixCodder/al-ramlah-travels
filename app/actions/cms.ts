@@ -10,6 +10,13 @@ import { recordAuditLog } from "@/lib/audit-log"
 import { requireAdmin, requireSuperAdmin } from "@/lib/auth-guard"
 import { extractClientIp } from "@/lib/rate-limit"
 import { revalidatePublicSeoPaths } from "@/lib/seo/revalidate-public"
+import { deleteR2Objects, readR2ObjectHeaderBytes } from "@/lib/storage/r2"
+import {
+  extractManagedHeroSlidesKey,
+  HERO_SLIDE_IMAGE_MIMES,
+  MAX_HERO_SLIDE_MEDIA_BYTES,
+  sniffAllowedBinaryMagicBytes,
+} from "@/lib/storage/upload-security"
 import {
   faqSchema,
   heroSlideSchema,
@@ -98,13 +105,6 @@ async function resolveRequestClientIp(): Promise<string> {
 // ==========================================
 
 const hardenedHeroSlideSchema = heroSlideSchema.safeExtend({
-  imageUrl: z
-    .string()
-    .trim()
-    .min(1, "Hero image URL is required.")
-    .refine(isSafeCmsUrl, {
-      message: "Image URL must use http://, https://, or a relative path.",
-    }),
   primaryCtaUrl: z
     .string()
     .trim()
@@ -121,17 +121,171 @@ const hardenedHeroSlideSchema = heroSlideSchema.safeExtend({
     .optional(),
 })
 
+const deleteHeroMediaDraftSchema = z.object({
+  keyOrUrl: z
+    .string()
+    .trim()
+    .min(1, "Media storage key or URL is required.")
+    .max(2048, "Media storage key or URL is too long."),
+})
+
+async function countHeroSlideKeyReferences(managedKey: string): Promise<number> {
+  const rows = await db
+    .select({
+      imageUrl: heroSlides.imageUrl,
+      videoUrl: heroSlides.videoUrl,
+    })
+    .from(heroSlides)
+
+  let count = 0
+  for (const row of rows) {
+    if (
+      extractManagedHeroSlidesKey(row.imageUrl) === managedKey ||
+      extractManagedHeroSlidesKey(row.videoUrl) === managedKey
+    ) {
+      count++
+    }
+  }
+  return count
+}
+
+async function cleanupUnreferencedHeroMediaKeys(
+  candidates: ReadonlyArray<string | null | undefined>
+): Promise<string[]> {
+  const uniqueKeys = Array.from(
+    new Set(
+      candidates
+        .map((item) => extractManagedHeroSlidesKey(item))
+        .filter((key): key is string => Boolean(key))
+    )
+  )
+
+  const deletedKeys: string[] = []
+  for (const managedKey of uniqueKeys) {
+    try {
+      const refs = await countHeroSlideKeyReferences(managedKey)
+      if (refs === 0) {
+        const res = await deleteR2Objects([managedKey])
+        deletedKeys.push(...res.deleted)
+      }
+    } catch {
+      // Non-fatal post-commit cleanup so transient R2 errors never abort DB writes
+    }
+  }
+
+  return deletedKeys
+}
+
+async function verifyManagedHeroMediaOrReject(
+  urlOrKey: string | null | undefined,
+  slot: "image" | "video"
+): Promise<
+  | { ok: true }
+  | {
+      ok: false
+      statusCode: 422
+      code: "INVALID_HERO_MEDIA_BINARY"
+      error: string
+    }
+> {
+  const managedKey = extractManagedHeroSlidesKey(urlOrKey)
+  if (!managedKey) {
+    return { ok: true }
+  }
+
+  const head = await readR2ObjectHeaderBytes(managedKey, 512)
+  const sniffed = head ? sniffAllowedBinaryMagicBytes(head.headerBytes) : null
+  const isSizeValid =
+    head !== null &&
+    head.totalSizeBytes > 0 &&
+    head.totalSizeBytes <= MAX_HERO_SLIDE_MEDIA_BYTES
+  const isMimeValid =
+    sniffed !== null &&
+    (slot === "video"
+      ? sniffed.mimeType === "video/mp4"
+      : HERO_SLIDE_IMAGE_MIMES.has(sniffed.mimeType))
+
+  if (!head || !isSizeValid || !isMimeValid) {
+    if (head) {
+      try {
+        const refs = await countHeroSlideKeyReferences(managedKey)
+        if (refs === 0) {
+          await deleteR2Objects([managedKey])
+        }
+      } catch {
+        // Best-effort cleanup of unreferenced invalid binary
+      }
+    }
+
+    return {
+      ok: false,
+      statusCode: 422,
+      code: "INVALID_HERO_MEDIA_BINARY",
+      error:
+        slot === "video"
+          ? "Uploaded hero video is missing, exceeds 25MB, or is not a valid MP4 binary."
+          : "Uploaded hero poster image is missing, exceeds 25MB, or is not a valid JPEG, PNG, or WebP binary.",
+    }
+  }
+
+  return { ok: true }
+}
+
 export async function upsertHeroSlide(rawInput: unknown) {
   const adminSession = await requireSuperAdmin()
   const parsed = hardenedHeroSlideSchema.safeParse(rawInput)
   if (!parsed.success) {
     const formatted = formatZodIssues(parsed.error)
-    return { success: false as const, ...formatted }
+    return { success: false as const, statusCode: 422 as const, ...formatted }
   }
   const validated = parsed.data
+
+  const imageCheck = await verifyManagedHeroMediaOrReject(
+    validated.imageUrl,
+    "image"
+  )
+  if (!imageCheck.ok) {
+    return {
+      success: false as const,
+      statusCode: imageCheck.statusCode,
+      code: imageCheck.code,
+      error: imageCheck.error,
+    }
+  }
+
+  const videoCheck = await verifyManagedHeroMediaOrReject(
+    validated.videoUrl,
+    "video"
+  )
+  if (!videoCheck.ok) {
+    return {
+      success: false as const,
+      statusCode: videoCheck.statusCode,
+      code: videoCheck.code,
+      error: videoCheck.error,
+    }
+  }
+
   const clientIp = await resolveRequestClientIp()
 
   if (validated.id) {
+    const existing = await db.query.heroSlides.findFirst({
+      where: eq(heroSlides.id, validated.id),
+      columns: {
+        id: true,
+        imageUrl: true,
+        videoUrl: true,
+      },
+    })
+
+    if (!existing) {
+      return {
+        success: false as const,
+        statusCode: 404 as const,
+        error: "Hero slide not found.",
+      }
+    }
+
     const [updated] = await db
       .update(heroSlides)
       .set({
@@ -139,6 +293,7 @@ export async function upsertHeroSlide(rawInput: unknown) {
         title: validated.title,
         subtitle: validated.subtitle,
         imageUrl: validated.imageUrl,
+        videoUrl: validated.videoUrl ?? null,
         primaryCtaLabel: validated.primaryCtaLabel,
         primaryCtaUrl: validated.primaryCtaUrl,
         secondaryCtaLabel: validated.secondaryCtaLabel || null,
@@ -151,8 +306,19 @@ export async function upsertHeroSlide(rawInput: unknown) {
       .returning()
 
     if (!updated) {
-      return { success: false as const, error: "Hero slide not found." }
+      return {
+        success: false as const,
+        statusCode: 404 as const,
+        error: "Hero slide not found.",
+      }
     }
+
+    await cleanupUnreferencedHeroMediaKeys([
+      existing.imageUrl !== updated.imageUrl ? existing.imageUrl : null,
+      existing.videoUrl && existing.videoUrl !== updated.videoUrl
+        ? existing.videoUrl
+        : null,
+    ])
 
     await recordAuditLog({
       actorId: adminSession.user.id,
@@ -160,7 +326,11 @@ export async function upsertHeroSlide(rawInput: unknown) {
       action: "cms.hero_slide.updated",
       entityType: "hero_slide",
       entityId: updated.id,
-      after: { title: updated.title, isActive: updated.isActive },
+      after: {
+        title: updated.title,
+        isActive: updated.isActive,
+        hasVideo: Boolean(updated.videoUrl),
+      },
       ipAddress: clientIp,
     })
 
@@ -175,6 +345,7 @@ export async function upsertHeroSlide(rawInput: unknown) {
       title: validated.title,
       subtitle: validated.subtitle,
       imageUrl: validated.imageUrl,
+      videoUrl: validated.videoUrl ?? null,
       primaryCtaLabel: validated.primaryCtaLabel,
       primaryCtaUrl: validated.primaryCtaUrl,
       secondaryCtaLabel: validated.secondaryCtaLabel || null,
@@ -190,7 +361,11 @@ export async function upsertHeroSlide(rawInput: unknown) {
     action: "cms.hero_slide.created",
     entityType: "hero_slide",
     entityId: inserted.id,
-    after: { title: inserted.title, isActive: inserted.isActive },
+    after: {
+      title: inserted.title,
+      isActive: inserted.isActive,
+      hasVideo: Boolean(inserted.videoUrl),
+    },
     ipAddress: clientIp,
   })
 
@@ -234,17 +409,32 @@ export async function deleteHeroSlide(id: string) {
   const adminSession = await requireSuperAdmin()
   const parsedId = uuidIdSchema.safeParse(id)
   if (!parsedId.success) {
-    return { success: false as const, error: "Invalid hero slide ID." }
+    return {
+      success: false as const,
+      statusCode: 400 as const,
+      error: "Invalid hero slide ID.",
+    }
   }
 
   const [deleted] = await db
     .delete(heroSlides)
     .where(eq(heroSlides.id, parsedId.data))
-    .returning({ id: heroSlides.id, title: heroSlides.title })
+    .returning({
+      id: heroSlides.id,
+      title: heroSlides.title,
+      imageUrl: heroSlides.imageUrl,
+      videoUrl: heroSlides.videoUrl,
+    })
 
   if (!deleted) {
-    return { success: false as const, error: "Hero slide not found." }
+    return {
+      success: false as const,
+      statusCode: 404 as const,
+      error: "Hero slide not found.",
+    }
   }
+
+  await cleanupUnreferencedHeroMediaKeys([deleted.imageUrl, deleted.videoUrl])
 
   await recordAuditLog({
     actorId: adminSession.user.id,
@@ -252,12 +442,59 @@ export async function deleteHeroSlide(id: string) {
     action: "cms.hero_slide.deleted",
     entityType: "hero_slide",
     entityId: deleted.id,
-    before: { title: deleted.title },
+    before: { title: deleted.title, hasVideo: Boolean(deleted.videoUrl) },
     ipAddress: await resolveRequestClientIp(),
   })
 
   safeRevalidateCmsPaths(["/admin/content"])
   return { success: true as const }
+}
+
+export async function deleteUnreferencedHeroMediaAction(rawInput: unknown) {
+  const adminSession = await requireSuperAdmin()
+  const parsed = deleteHeroMediaDraftSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    return {
+      success: false as const,
+      statusCode: 400 as const,
+      error:
+        parsed.error.issues[0]?.message ||
+        "Invalid hero media storage key or URL.",
+    }
+  }
+
+  const managedKey = extractManagedHeroSlidesKey(parsed.data.keyOrUrl)
+  if (!managedKey) {
+    return {
+      success: false as const,
+      statusCode: 400 as const,
+      error: "Only managed cms/hero-slides/ media keys may be discarded.",
+    }
+  }
+
+  const refs = await countHeroSlideKeyReferences(managedKey)
+  if (refs > 0) {
+    return {
+      success: true as const,
+      deleted: false as const,
+    }
+  }
+
+  await deleteR2Objects([managedKey])
+
+  await recordAuditLog({
+    actorId: adminSession.user.id,
+    actorRole: adminSession.user.role,
+    action: "cms.hero_media.draft_deleted",
+    entityType: "hero_slide_media",
+    after: { storageKey: managedKey },
+    ipAddress: await resolveRequestClientIp(),
+  })
+
+  return {
+    success: true as const,
+    deleted: true as const,
+  }
 }
 
 // ==========================================

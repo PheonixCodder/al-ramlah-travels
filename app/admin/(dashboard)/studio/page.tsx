@@ -3,6 +3,7 @@ import { asc } from "drizzle-orm"
 import { db } from "@/db"
 import * as schema from "@/db/schema"
 import { requireAdmin } from "@/lib/auth-guard"
+import { getTodayPktIso } from "@/lib/seo/public-queries"
 import {
   StudioHubClient,
   type SupplierRecord,
@@ -12,9 +13,9 @@ import {
 import { type PackageWithRelations } from "@/components/admin/catalog/groups-client"
 
 export const metadata = {
-  title: "4K Poster & Package Studio | Al Ramlah Travels Admin",
+  title: "Umrah Packages & Studio | Al Ramlah Travels Admin",
   description:
-    "Finished 4K Poster & Package Studio: Drop your finished 4K Gemini Ultra posters or PDFs, extract package cards, track wholesale commissions, and publish live.",
+    "Manage fixed-departure Umrah packages, schedule multi-city departure batches, and run AI 4K poster extraction.",
 }
 
 interface AdminStudioPageProps {
@@ -29,7 +30,8 @@ export default async function AdminStudioPage({
   await requireAdmin()
 
   const resolvedParams = await searchParams
-  const initialTab = resolvedParams?.tab || "studio"
+  const initialTab = resolvedParams?.tab || "packages"
+  const todayPktIso = getTodayPktIso()
 
   const [
     suppliers,
@@ -78,10 +80,34 @@ export default async function AdminStudioPage({
         },
       },
     }),
-    db.select().from(schema.airlines).orderBy(asc(schema.airlines.name)),
-    db.select().from(schema.hotels).orderBy(asc(schema.hotels.name)),
     db
-      .select()
+      .select({
+        id: schema.airlines.id,
+        name: schema.airlines.name,
+        iataCode: schema.airlines.iataCode,
+      })
+      .from(schema.airlines)
+      .orderBy(asc(schema.airlines.name)),
+    db
+      .select({
+        id: schema.hotels.id,
+        name: schema.hotels.name,
+        city: schema.hotels.city,
+        starRating: schema.hotels.starRating,
+        distanceMeters: schema.hotels.distanceMeters,
+        distanceLabel: schema.hotels.distanceLabel,
+        accessType: schema.hotels.accessType,
+        imageUrl: schema.hotels.imageUrl,
+        galleryUrls: schema.hotels.galleryUrls,
+      })
+      .from(schema.hotels)
+      .orderBy(asc(schema.hotels.sortOrder), asc(schema.hotels.name)),
+    db
+      .select({
+        id: schema.departureCities.id,
+        cityName: schema.departureCities.cityName,
+        airportCode: schema.departureCities.airportCode,
+      })
       .from(schema.departureCities)
       .orderBy(asc(schema.departureCities.cityName)),
   ])
@@ -89,6 +115,7 @@ export default async function AdminStudioPage({
   return (
     <StudioHubClient
       initialTab={initialTab}
+      todayPktIso={todayPktIso}
       suppliers={suppliers as SupplierRecord[]}
       supplierFlyers={flyers as unknown as SupplierFlyerRecord[]}
       postAssets={assets as unknown as PostAssetRecord[]}

@@ -627,14 +627,20 @@ export function UmrahPackageCard<T extends UmrahPackageCardItem>({
 
                 <span
                   className={
-                    primarySeatsRemaining <= 5
+                    primarySeatsRemaining <= 0 ||
+                    primaryBatch.status === "sold_out"
                       ? "rounded-full bg-status-danger-bg px-2.5 py-0.5 text-xs font-semibold text-status-danger tabular-nums"
-                      : primarySeatsRemaining <= 10
-                        ? "rounded-full bg-status-warning-bg px-2.5 py-0.5 text-xs font-semibold text-status-warning tabular-nums"
-                        : "rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-primary tabular-nums"
+                      : primarySeatsRemaining <= 5
+                        ? "rounded-full bg-status-danger-bg px-2.5 py-0.5 text-xs font-semibold text-status-danger tabular-nums"
+                        : primarySeatsRemaining <= 10
+                          ? "rounded-full bg-status-warning-bg px-2.5 py-0.5 text-xs font-semibold text-status-warning tabular-nums"
+                          : "rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-primary tabular-nums"
                   }
                 >
-                  {`${primarySeatsRemaining} seats left`}
+                  {primarySeatsRemaining <= 0 ||
+                  primaryBatch.status === "sold_out"
+                    ? "Sold Out"
+                    : `${primarySeatsRemaining} seats left`}
                 </span>
               </div>
 

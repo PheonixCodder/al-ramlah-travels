@@ -49,7 +49,7 @@ npm audit --omit=dev --audit-level=high                                         
 npx next typegen && npm run typecheck && npx tsc --noEmit -p tests/e2e/tsconfig.json # Strict TS checks
 npm run lint && npm run format                                                      # ESLint (0 errors) & Prettier
 npm test                                                                            # Hermetic unit, property, SEO & PG suite (.env.audit)
-npm run test:e2e                                                                    # Playwright E2E + Axe WCAG 2.2 AA (J1–J25)
+npm run test:e2e                                                                    # Playwright E2E + Axe WCAG 2.2 AA (J1–J26)
 npm run build                                                                       # Production standalone build
 npm run trigger:dev && npm run trigger:deploy                                       # Trigger.dev v4 worker dev & deploy
 npm run db:generate && npm run db:migrate && npm run db:seed && npm run db:backup   # Drizzle DB lifecycle
@@ -98,4 +98,4 @@ npm run db:generate && npm run db:migrate && npm run db:seed && npm run db:backu
 - [lib/social/AGENTS.md](lib/social/AGENTS.md): Core 5 Social OAuth, PKCE/HKDF state, `OD-11` vendor audit gates & live-only analytics
 - [trigger/AGENTS.md](trigger/AGENTS.md): Trigger.dev Cloud v4 `schemaTask`s, `9` bounded queues, `6` PKT crons & realtime hooks
 
-_Synchronized after Slice 50 (Hybrid Hero Video and Admin Media Uploader)._
+_Synchronized after Slice 51 (End-to-End Umrah Package Lifecycle & Storefront Redesign)._

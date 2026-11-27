@@ -301,7 +301,7 @@ export function UmrahPackageBookingCta({
       : activeBatch?.sharingPriceOverridePkr !== null &&
           activeBatch?.sharingPriceOverridePkr !== undefined
         ? activeBatch.sharingPriceOverridePkr
-        : pkg.sharingPricePkr !== undefined
+        : pkg.sharingPricePkr !== undefined && pkg.sharingPricePkr !== null
           ? pkg.sharingPricePkr
           : pkg.quadPricePkr
   )

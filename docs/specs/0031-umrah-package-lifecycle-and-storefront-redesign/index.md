@@ -1,7 +1,7 @@
 # 0031. End-to-End Umrah Package Lifecycle & Storefront Redesign
 
 **Date**: 2026-11-24
-**Status**: In Progress
+**Status**: Accepted
 **Tier**: Beta
 **Scope**: [scope.md](../../scope/scope.md) Feature #55 (Slice 51)
 **Constitutional Invariants**: `CONST-DOM-03`, `CONST-DOM-04`, `CONST-DOM-05`, `CONST-DOM-07`, `CONST-SEC-02`, `CONST-SEC-03`, `CONST-SEC-04`, `CONST-SEC-06`, `CONST-SEC-08`, `CONST-OMNI-01`, `CONST-SEO-01`, `CONST-SEO-02`, `CONST-SEO-03`, `CONST-SEO-04`, `CONST-SEO-05`, `CONST-UI-01`, `CONST-UI-02`, `CONST-UI-03`, `CONST-UI-04`, `CONST-UI-05`
@@ -10,7 +10,7 @@
 - **Worker M2 (Admin `/admin/studio` Package-First Operate Workbench & 3-Step Slide-Over Builder)**: `web/app/admin/(dashboard)/studio/page.tsx`, `web/components/admin/hubs/studio-hub-client.tsx`, `web/components/admin/studio/package-workbench-client.tsx`, `web/components/admin/studio/package-builder-sheet.tsx`, `web/components/admin/catalog/groups-client.tsx`, `web/components/admin/catalog/group-package-dialog.tsx`, `web/components/admin/catalog/departure-batch-dialog.tsx`
 - **Worker M3 (Shared Editorial Package Card, Public Discovery Explorer & Homepage Sync)**: `web/components/public/umrah-package-card.tsx`, `web/components/public/umrah-packages-explorer.tsx`, `web/app/(public)/umrah-packages/page.tsx`, `web/components/seo/umrah-city-gateway-view.tsx`, `web/components/public/group-packages-section.tsx`, `web/app/(public)/page.tsx`
 - **Worker M4 (Public `/umrah-packages/[slug]` Sanctuary Showcase, Timeline & Live Sticky Family Calculator)**: `web/app/(public)/umrah-packages/[slug]/page.tsx`, `web/components/seo/umrah-package-booking-cta.tsx`, `web/components/seo/umrah-departures-schedule.tsx`
-- **Worker M5 (Unit, Studio Media-Isolation, Gate B SEO & Playwright E2E Suite)**: `web/tests/w3/f-studio/studio-modes-and-sync.test.ts`, `web/tests/w6/f-seo-umrah/umrah-spokes.test.ts`, `web/tests/unit/umrah-lifecycle-and-explorer.test.tsx`, `web/tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts`, `web/tests/e2e/j26-umrah-lifecycle-and-storefront.spec.ts`
+- **Worker M5 (Unit, Studio Media-Isolation, Gate B SEO & Playwright E2E Suite)**: `web/tests/w3/f-studio/studio-modes-and-sync.test.ts`, `web/tests/w6/f-seo-umrah/umrah-spokes.test.ts`, `web/tests/unit/umrah-lifecycle-and-explorer.test.tsx`, `web/tests/integration/group-package-lifecycle.integration.test.ts`, `web/tests/e2e/j06-j12-admin-desk-quote-studio.spec.ts`, `web/tests/e2e/j26-umrah-lifecycle-and-storefront.spec.ts`
 - **Orchestrator Only (Post-Build Rollups)**: `web/docs/scope/scope.md`, `web/docs/INDEX.md`, `AGENTS.md`, `web/AGENTS.md`, `web/db/AGENTS.md`, `web/app/(public)/AGENTS.md`, `web/app/admin/AGENTS.md`, `web/components/AGENTS.md`
 **UI Surface Mode**: `Operate` (`/admin/studio`) and `Persuade` (`/umrah-packages`, `/umrah-packages/from-[city]`, `/umrah-packages/[slug]`, and `/` `#packages`)
 

@@ -800,8 +800,59 @@ describe("Spec 0031: Umrah Package Lifecycle, Media Split, Explorer & Sticky Cal
     expect(studioHubHtml).toContain("3. Internal 4K Poster Vault")
     expect(studioHubHtml).toContain('aria-selected="true"')
     expect(studioHubHtml).toContain("Live (1 Open Batch)")
+    // Regression guard: WCAG 2.5.3 Label in Name uses visible /slug + sr-only suffix without parenthetical aria-label mismatch
+    expect(studioHubHtml).toMatch(
+      /<span class="font-mono">\/[a-z0-9-]+<\/span><span class="sr-only">\s*View [^<]+ on public website<\/span>/
+    )
+    expect(studioHubHtml).not.toContain("aria-label=\"View ")
 
-    // Confirm Operate UI craft laws (0 window.confirm/alert, 0 asChild, 0 HaramainSectionReveal)
+    // Regression guard: sold-out fallback batch renders "Sold Out" rather than "0 seats left"
+    const soldOutCardHtml = renderToStaticMarkup(
+      React.createElement(UmrahPackageCard, {
+        pkg: makePublicPackageFixture({
+          departures: [
+            {
+              id: TEST_UUID_4,
+              batchCode: "ART-SOLD-OUT-01",
+              departureDate: "2027-04-10",
+              returnDate: "2027-04-24",
+              totalSeats: 40,
+              bookedSeats: 40,
+              seatsRemaining: 0,
+              status: "sold_out",
+              quadPriceOverridePkr: null,
+              triplePriceOverridePkr: null,
+              doublePriceOverridePkr: null,
+              sharingPriceOverridePkr: null,
+              outboundFlightNumber: "SV-739",
+              returnFlightNumber: "SV-738",
+              flightScheduleSummary: "Direct LHE-JED",
+              routingNote: null,
+              baggageAllowance: "46 KG",
+              departureCity: {
+                id: TEST_UUID_5,
+                cityName: "Lahore",
+                airportCode: "LHE",
+              },
+            },
+          ],
+        }),
+      })
+    )
+    expect(soldOutCardHtml).toContain("Sold Out")
+    expect(soldOutCardHtml).not.toContain("0 seats left")
+
+    // Confirm Operate UI craft laws (0 window.confirm/alert, 0 asChild, 0 HaramainSectionReveal) + PackageBuilderSheet regressions
+    const builderSheetSrc = fs.readFileSync(
+      path.join(WEB_ROOT, "components/admin/studio/package-builder-sheet.tsx"),
+      "utf8"
+    )
+    expect(builderSheetSrc).toContain('key="pb-next-step-btn"')
+    expect(builderSheetSrc).toContain('key="pb-submit-package-btn"')
+    expect(builderSheetSrc).toContain("if (step < 3)")
+    expect(builderSheetSrc).toContain("data-[side=right]:sm:max-w-3xl")
+    expect(builderSheetSrc).toContain("data-[side=right]:lg:max-w-4xl")
+
     for (const rel of [
       "components/admin/studio/package-workbench-client.tsx",
       "components/admin/studio/package-builder-sheet.tsx",

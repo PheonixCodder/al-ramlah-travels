@@ -813,6 +813,10 @@ function PackageBuilderFormBody({
 
   async function handleSaveAll(e: React.FormEvent) {
     e.preventDefault()
+    if (step < 3) {
+      setStep((prev) => (prev === 1 ? 2 : 3))
+      return
+    }
     setError(null)
 
     const cleanTitle = title.trim()
@@ -2316,6 +2320,31 @@ function PackageBuilderFormBody({
                           </div>
                           <div className="flex flex-col gap-1">
                             <Label
+                              htmlFor={`upg-makkah-dist-${opt.clientKey}`}
+                              className="text-[11px] font-medium"
+                            >
+                              Makkah Distance
+                            </Label>
+                            <Input
+                              id={`upg-makkah-dist-${opt.clientKey}`}
+                              value={opt.makkahDistance}
+                              onChange={(e) =>
+                                setMultiHotelOptions((prev) =>
+                                  prev.map((item) =>
+                                    item.clientKey === opt.clientKey
+                                      ? {
+                                          ...item,
+                                          makkahDistance: e.target.value,
+                                        }
+                                      : item
+                                  )
+                                )
+                              }
+                              className="h-8 bg-card text-xs"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <Label
                               htmlFor={`upg-madinah-${opt.clientKey}`}
                               className="text-[11px] font-medium"
                             >
@@ -2331,6 +2360,31 @@ function PackageBuilderFormBody({
                                       ? {
                                           ...item,
                                           madinahHotelName: e.target.value,
+                                        }
+                                      : item
+                                  )
+                                )
+                              }
+                              className="h-8 bg-card text-xs"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <Label
+                              htmlFor={`upg-madinah-dist-${opt.clientKey}`}
+                              className="text-[11px] font-medium"
+                            >
+                              Madinah Distance
+                            </Label>
+                            <Input
+                              id={`upg-madinah-dist-${opt.clientKey}`}
+                              value={opt.madinahDistance}
+                              onChange={(e) =>
+                                setMultiHotelOptions((prev) =>
+                                  prev.map((item) =>
+                                    item.clientKey === opt.clientKey
+                                      ? {
+                                          ...item,
+                                          madinahDistance: e.target.value,
                                         }
                                       : item
                                   )
@@ -3036,9 +3090,13 @@ function PackageBuilderFormBody({
         <div className="flex items-center gap-2">
           {step < 3 ? (
             <Button
+              key="pb-next-step-btn"
               type="button"
               size="sm"
-              onClick={() => setStep((prev) => (prev === 1 ? 2 : 3))}
+              onClick={(e) => {
+                e.preventDefault()
+                setStep((prev) => (prev === 1 ? 2 : 3))
+              }}
               className="cursor-pointer gap-1 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               <span>Next Step</span>
@@ -3046,6 +3104,7 @@ function PackageBuilderFormBody({
             </Button>
           ) : (
             <Button
+              key="pb-submit-package-btn"
               type="submit"
               size="sm"
               disabled={saving}
@@ -3097,7 +3156,7 @@ export function PackageBuilderSheet({
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
         side="right"
-        className="w-full overflow-y-auto p-0 sm:max-w-3xl lg:max-w-4xl"
+        className="w-full overflow-y-auto p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-3xl data-[side=right]:lg:max-w-4xl"
       >
         <PackageBuilderFormBody
           key={`${pkg?.id ?? "new"}-${sessionNonce}`}

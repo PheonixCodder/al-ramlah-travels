@@ -68,7 +68,7 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 52 | Spec 0028 · Admin 4 Hub Operate Surface and Shell Alignment | Slice 48 | done |
 | 53 | Spec 0029 · Pilgrim Document Upload Portal and Staff Verification | Slice 49 | done |
 | 54 | Spec 0030 · Hybrid Hero Video and Admin Media Uploader | Slice 50 | done |
-| 55 | Spec 0031 · End-to-End Umrah Package Lifecycle & Storefront Redesign | Slice 51 | in-progress |
+| 55 | Spec 0031 · End-to-End Umrah Package Lifecycle & Storefront Redesign | Slice 51 | done |
 
 ## Foundations
 
@@ -820,7 +820,7 @@ spec [0030](docs/specs/0030-hybrid-hero-video-and-uploader/index.md) · code in 
 
 ## Slice 51: End-to-End Umrah Package Lifecycle & Storefront Redesign
 
-### 55. Slice 51 · End-to-End Umrah Package Lifecycle & Storefront Redesign · Beta · in-progress
+### 55. Slice 51 · End-to-End Umrah Package Lifecycle & Storefront Redesign · Beta · done
 
 Separate public website package cover photography from internal 4K marketing posters, turn `/admin/studio` into a Package-First `Operate` workbench with a 3-step Slide-Over Package + Multi-City Batch Builder, and redesign `/umrah-packages`, `/umrah-packages/from-[city]`, `/umrah-packages/[slug]`, and Homepage `#packages` with an interactive Visual Explorer and a Live Sticky Family Calculator.
 **Done when:** `group_packages` isolates `cover_image_url` from `internal_poster_url` (`0%` poster serialization on public pages), `/admin/studio` defaults to a scannable package/batch workbench with 1-click batch cloning and atomic multi-batch creation, `/umrah-packages` and `/from-[city]` render interactive visual cards with live occupancy price switching and matrix toggle, `/umrah-packages/[slug]` provides inline family reservation without double-modal friction, and all `ui:lint`, SEO, hermetic unit/integration, Playwright E2E (`J26`), and `cdd:check` gates pass.
@@ -832,8 +832,8 @@ spec [0031](docs/specs/0031-umrah-package-lifecycle-and-storefront-redesign/inde
   - [x] Milestone 2 (`M2` Admin `/admin/studio` Package-First Workbench & 3-Step Slide-Over): Build `package-workbench-client.tsx` and `package-builder-sheet.tsx` and align `studio/page.tsx` + `studio-hub-client.tsx` (`AC-3`, `AC-4`, `AC-10`)
   - [x] Milestone 3 (`M3` Shared `UmrahPackageCard`, `UmrahPackagesExplorer`, Hub, City Spokes & Home Sync): Build `umrah-package-card.tsx` and `umrah-packages-explorer.tsx` and wire `/umrah-packages`, `/from-[city]`, and `/` `GroupPackagesSection` (`AC-5`, `AC-6`, `AC-9`, `AC-10`)
   - [x] Milestone 4 (`M4` `/umrah-packages/[slug]` Sanctuary Showcase, Timeline & Live Sticky Family Calculator): Upgrade `[slug]/page.tsx`, `umrah-departures-schedule.tsx`, and `umrah-package-booking-cta.tsx` (`AC-7`, `AC-8`, `AC-9`, `AC-10`)
-- [ ] Verify it: `/check verify End-to-End Umrah Package Lifecycle & Storefront Redesign`
-- [x] Test it: `/test End-to-End Umrah Package Lifecycle & Storefront Redesign` ([umrah-lifecycle-and-explorer.test.tsx](tests/unit/umrah-lifecycle-and-explorer.test.tsx) · [j26-umrah-lifecycle-and-storefront.spec.ts](tests/e2e/j26-umrah-lifecycle-and-storefront.spec.ts))
+- [x] Verify it: `/check verify End-to-End Umrah Package Lifecycle & Storefront Redesign` ([verify.md](docs/specs/0031-umrah-package-lifecycle-and-storefront-redesign/verify.md) · [2026-11-27-slice-51.md](docs/reviews/2026-11-27-slice-51.md))
+- [x] Test it: `/test End-to-End Umrah Package Lifecycle & Storefront Redesign` ([umrah-lifecycle-and-explorer.test.tsx](tests/unit/umrah-lifecycle-and-explorer.test.tsx) · [group-package-lifecycle.integration.test.ts](tests/integration/group-package-lifecycle.integration.test.ts) · [j26-umrah-lifecycle-and-storefront.spec.ts](tests/e2e/j26-umrah-lifecycle-and-storefront.spec.ts))
 
 ## Deferred
 

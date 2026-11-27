@@ -132,8 +132,7 @@ function GroupPackageFormBody({
       : "Direct Saudi Airlines, 50m Clock Tower Hotel, Dedicated Scholar Guide, Private Ziyarat Coach"
   )
   const [bannerUrl, setBannerUrl] = useState(
-    pkg?.bannerUrl ??
-      "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800"
+    pkg?.coverImageUrl ?? pkg?.bannerUrl ?? ""
   )
   const [uploadingImage, setUploadingImage] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
@@ -244,7 +243,8 @@ function GroupPackageFormBody({
         giftedInclusions,
         multiHotelOptions: pkg?.multiHotelOptions ?? [],
         highlights,
-        bannerUrl: bannerUrl || undefined,
+        coverImageUrl: bannerUrl.trim() || null,
+        bannerUrl: bannerUrl.trim() || null,
         isFeatured,
         isActive,
         sortOrder,

@@ -716,7 +716,6 @@ function HeroSlideFormBody({
                       data-testid="remove-hero-video-btn"
                       onClick={handleRemoveVideo}
                       className="shrink-0 cursor-pointer text-status-danger hover:bg-status-danger-bg hover:text-status-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                      aria-label="Remove ambient video"
                     >
                       <Trash2 data-icon="inline-start" aria-hidden="true" />
                       <span>Remove Video</span>

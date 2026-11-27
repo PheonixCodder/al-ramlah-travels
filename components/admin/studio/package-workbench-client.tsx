@@ -752,6 +752,7 @@ export function PackageWorkbenchClient({
             type: "error",
             text: res.error || "Failed to delete group package.",
           })
+          setDeleteTarget(null)
           return
         }
         setPackages((prev) => prev.filter((p) => p.id !== current.id))
@@ -788,6 +789,7 @@ export function PackageWorkbenchClient({
           type: "error",
           text: res.error || "Failed to delete departure batch.",
         })
+        setDeleteTarget(null)
         return
       }
       setPackages((prev) =>
@@ -1234,10 +1236,13 @@ export function PackageWorkbenchClient({
                           href={`/umrah-packages/${pkg.slug}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          aria-label={`View ${pkg.title} on public website`}
-                          className="inline-flex items-center gap-1 rounded-sm font-mono text-xs text-muted-foreground hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                          className="inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
-                          <span>/{pkg.slug}</span>
+                          <span className="font-mono">/{pkg.slug}</span>
+                          <span className="sr-only">
+                            {" "}
+                            View {pkg.title} on public website
+                          </span>
                           <ExternalLink className="size-3" aria-hidden="true" />
                         </Link>
                       </div>
@@ -1789,7 +1794,6 @@ export function PackageWorkbenchClient({
                   Close
                 </Button>
                 <Button
-                  type="button"
                   size="sm"
                   render={
                     <a

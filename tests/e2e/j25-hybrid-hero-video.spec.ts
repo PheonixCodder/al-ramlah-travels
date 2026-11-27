@@ -6,7 +6,7 @@ import path from "node:path"
 import type { Page } from "@playwright/test"
 import { eq, inArray } from "drizzle-orm"
 import * as schema from "../../db/schema"
-import { extractManagedHeroSlidesKey } from "../../lib/storage/upload-security"
+import { extractStorageKeyFromUrlOrKey } from "../../lib/storage/r2"
 import { STAFF_AUTH_FILE, SUPERADMIN_AUTH_FILE } from "./global-setup"
 import { assertZeroSeriousOrCriticalAxeViolations } from "./helpers/assertions"
 import { clearAuthRateLimits, getE2eDb } from "./helpers/db"
@@ -164,8 +164,10 @@ test.describe("J25: Hybrid Hero Video & Admin Catalog Media Uploader", () => {
       savedSlideId = savedRow.id
       createdSlideIds.push(savedSlideId)
 
-      uploadedPosterKey = extractManagedHeroSlidesKey(savedRow.imageUrl) ?? ""
-      uploadedVideoKey = extractManagedHeroSlidesKey(savedRow.videoUrl) ?? ""
+      uploadedPosterKey =
+        extractStorageKeyFromUrlOrKey(savedRow.imageUrl ?? "") ?? ""
+      uploadedVideoKey =
+        extractStorageKeyFromUrlOrKey(savedRow.videoUrl ?? "") ?? ""
       expect(uploadedPosterKey).toMatch(/^cms\/hero-slides\/images\//)
       expect(uploadedVideoKey).toMatch(/^cms\/hero-slides\/videos\//)
       createdStorageKeys.push(uploadedPosterKey, uploadedVideoKey)
@@ -205,10 +207,11 @@ test.describe("J25: Hybrid Hero Video & Admin Catalog Media Uploader", () => {
         )
         expect(isPausedAfterClick).toBe(true)
 
-        // Resume video, move pointer & focus outside HeroSlider so auto-advance on `onEnded` fires (`~1.2s`)
+        // Resume video, move pointer onto sticky top header (keeping scrollY=0 so HeroSlider stays in viewport!) & blur focus so auto-advance on `onEnded` fires (`~1.2s`)
         await playBtn.click()
-        await pilgrimPage.locator("footer").hover().catch(() => undefined)
+        await pilgrimPage.mouse.move(10, 10)
         await pilgrimPage.evaluate(() => {
+          window.scrollTo(0, 0)
           if (document.activeElement instanceof HTMLElement) {
             document.activeElement.blur()
           }
